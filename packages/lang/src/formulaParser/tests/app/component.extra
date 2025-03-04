@@ -1,0 +1,36 @@
+╭───────╮
+│ Types │
+╰───────╯
+type User = {name: String}
+
+╭────────╮
+│ @State │
+╰────────╯
+@users: User[] = []
+
+╭──────────╮
+│ <Main /> │
+╰──────────╯
+Main(name: String, onResetName: fn() => &) =>
+  <>
+    Name: {name}
+    <Button onPress=&addUser(name)>Add</Button>
+  </>
+
+╭──────────╮
+│ &Actions │
+╰──────────╯
+fn &addUser(name: String, next: fn() => &) =>
+  if (name.length > 0 && @users.none(|u| => u.name == name)) then:
+    &[
+      @users.push({ name: })
+      next()
+    ]
+
+╭───────────╮
+│ Helpers() │
+╰───────────╯
+
+╭─────────╮
+│ <Views> │
+╰─────────╯

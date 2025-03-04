@@ -1,0 +1,21 @@
+{
+  "name": "demos",
+  "main": ".dist/index.js",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm tsc",
+    "start": "pnpm build && node --enable-source-maps -- .dist/index.js",
+    "clean": "rm -rf .dist/"
+  },
+  "dependencies": {
+    "@extra-lang/lang": "workspace:*",
+    "@teaui/core": "^1.2.3",
+    "@teaui/react": "^1.2.3",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@extra-lang/shared": "workspace:*",
+    "@types/node": "^22.13.8",
+    "@types/react": "^18.2.39"
+  }
+}

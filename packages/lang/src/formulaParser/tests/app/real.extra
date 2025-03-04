@@ -1,0 +1,34 @@
+import Http -- imported as 'Http'
+import /components/Bar  -- imported as 'Bar'
+import Lib/A as AComps
+import Lib/B : {b}
+import Lib/C : {
+  b as C_b
+}
+import ./types -- imported as 'types'
+import ./types as T -- imported as T
+
+
+public type Foo = Int
+public type Something = 1 | 2
+type Else = 3 | 4
+type Last = Int
+type AsyncLoad<T> = enum
+  | Loaded
+  | Loading
+  | Success(data: T)
+type Point = {x: Int, y: Int}
+
+
+@location: Point = { x: 0, y: 0 }
+@user2: User = User(first-name: 'C')
+
+
+Main() => <Hello user1=@user1 user2=@user2 />
+
+
+fn &updateUser(a: User) => &.set(@user, a)
+
+
+fn map1<T>(a: T): T => a
+fn map2<T>(a: T): T => a

@@ -1,0 +1,42 @@
+{
+  "tests": [
+    {
+      "desc": "test",
+      "formula": "test",
+      "expectedCode": "test",
+      "expectedValue": "'test'",
+      "variables": [["test", "'test'"]]
+    },
+    {
+      "desc": "arg scope",
+      "formula": "f('heeey')",
+      "expectedCode": "f('heeey')",
+      "expectedValue": "'<heeey>'",
+      "variables": [["f", "fn(a: String) => \"<${a}>\""]]
+    },
+    {
+      "desc": "functions",
+      "skip": true,
+      "formula": "{ fn1(1), fn2(two: 2), fn3(1, two: 2), fn3(two: 2, 1), fn4(1, 2), fn5(2, 1, 2) }",
+      "expectedCode": "{fn1(1), fn2(two: 2), fn3(1, two: 2), fn3(two: 2, 1), fn4(1, 2), fn5(2, 1, 2)}",
+      "expectedValue": "<unknown>",
+      "variables": [
+        ["fn1", "fn(#one: Int) => one + 1"],
+        ["fn2", "fn(two: Int) => two + 2"],
+        ["fn3", "fn(#one: Int, two: Int) => one + two"],
+        ["fn4", "fn(...#ints: Array(Int)) => ints.length"],
+        ["fn5", "fn(#one: Int, ...#ints: Array(Int)) => one + ints.length"]
+      ]
+    },
+    {
+      "desc": "tuples",
+      "formula": "{ fn1(1), fn2(two: 2) }",
+      "expectedCode": "{fn1(1), fn2(two: 2)}",
+      "expectedValue": "{2, 4, 3}",
+      "variables": [
+        ["fn1", "fn(#one: Int) => one + 1"],
+        ["fn2", "fn(two: Int) => two + 2"]
+      ]
+    }
+  ]
+}

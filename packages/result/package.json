@@ -1,0 +1,38 @@
+{
+  "name": "@extra-lang/result",
+  "description": "A simple result class",
+  "author": "Colin T.A. Gray <colinta@colinta.com>",
+  "contributors": [],
+  "version": "0.1.0",
+  "license": "MIT",
+  "preferGlobal": false,
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/colinta/extra.git"
+  },
+  "homepage": "https://github.com/colinta/extra",
+  "main": ".dist/index.js",
+  "types": ".dist/index.d.ts",
+  "files": [
+    ".dist/"
+  ],
+  "bugs": {
+    "url": "http://github.com/colinta/extra/issues"
+  },
+  "scripts": {},
+  "keywords": [],
+  "tags": [],
+  "engines": {
+    "node": ">= 18.12.0"
+  },
+  "devDependencies": {
+    "@extra-lang/cases": "workspace:*",
+    "@extra-lang/inspect": "workspace:*",
+    "@extra-lang/shared": "workspace:*",
+    "@types/jest": "^29.5.1",
+    "jest": "^29.7.0",
+    "prettier": "^2.8.8",
+    "ts-jest": "^29.2.6",
+    "typescript": "^5.7.3"
+  }
+}

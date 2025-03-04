@@ -1,0 +1,25 @@
+{
+  "exclude": ["bin/", ".dist/"],
+  "compilerOptions": {
+    //
+    "noUnusedLocals": true,
+    "noUnusedParameters": false,
+    //
+    "target": "esnext",
+    "module": "commonjs",
+    "declaration": true,
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "skipLibCheck": true,
+    "jsx": "react",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["src/*"]
+    }
+  }
+}

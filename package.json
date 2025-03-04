@@ -1,0 +1,18 @@
+{
+  "license": "MIT",
+  "scripts": {
+    "repl": "bun apps/repl/src/index.tsx",
+    "publish": "bun publish TODO"
+  },
+  "workspaces": [
+    "shared",
+    "packages/cases",
+    "packages/inspect",
+    "packages/lang",
+    "packages/parse",
+    "packages/result",
+    "apps/repl"
+  ],
+  "dependencies": {},
+  "devDependencies": {}
+}

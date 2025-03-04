@@ -1,0 +1,31 @@
+import ./Foo  -- relative to file
+import Foo    -- relative to project
+import /Foo   -- relative to installed packages
+import /Foo/Bar/Baz: { a-a, b-b }  -- partial import
+import Bar: {a , b , c}
+import Baz: {
+  a
+  b
+  c
+}
+
+╭───────╮
+│ Types │
+╰───────╯
+╭────────╮
+│ @State │
+╰────────╯
+╭──────────╮
+│ <Main /> │
+╰──────────╯
+Main() => null
+
+╭──────────╮
+│ &Actions │
+╰──────────╯
+╭───────────╮
+│ Helpers() │
+╰───────────╯
+╭─────────╮
+│ <Views> │
+╰─────────╯
