@@ -30,6 +30,13 @@ import * as Values from '../values'
 import {combineConcatLengths} from '../narrowed'
 
 export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
+export const NAMED_BINARY_ALIAS = {
+  '&&': 'and',
+  '||': 'or',
+  '≤': '<=',
+  '≥': '>=',
+  '≠': '!=',
+} as const
 export const NAMED_UNARY_OPS = ['not', 'typeof'] as const
 
 export const LOWEST_PRECEDENCE = -10

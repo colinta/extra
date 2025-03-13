@@ -1,6 +1,11 @@
 import {Scanner} from '../scanner'
 import {Operator, ParseError} from '../types'
-import {binaryOperatorNamed, isBinaryOperator, NAMED_BINARY_OPS} from '../operators'
+import {
+  binaryOperatorNamed,
+  isBinaryOperator,
+  NAMED_BINARY_ALIAS,
+  NAMED_BINARY_OPS,
+} from '../operators'
 import {isBinaryOperatorChar} from '../grammars'
 
 export function scanBinaryOperator(scanner: Scanner): Operator {
@@ -23,16 +28,8 @@ export function scanBinaryOperator(scanner: Scanner): Operator {
     }
   }
 
-  switch (currentToken) {
-    case '≤':
-      currentToken = '<='
-      break
-    case '≥':
-      currentToken = '>='
-      break
-    case '≠':
-      currentToken = '!='
-      break
+  if (currentToken in NAMED_BINARY_ALIAS) {
+    currentToken = NAMED_BINARY_ALIAS[currentToken as keyof typeof NAMED_BINARY_ALIAS]
   }
 
   if (!isBinaryOperator(currentToken)) {
