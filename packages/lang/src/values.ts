@@ -1026,6 +1026,9 @@ export class ArrayValue extends Value {
   }
 
   private static _props: Map<string, (value: ArrayValue) => Value> = new Map([])
+  static init() {
+    ArrayValue._props.set('length', (value: ArrayValue) => int(value.values.length))
+  }
 
   propValue(propName: string): Value | undefined {
     const prop = ArrayValue._props.get(propName)
@@ -1455,3 +1458,5 @@ export class FragmentViewValue extends Value {
     return undefined
   }
 }
+
+ArrayValue.init()

@@ -61,8 +61,10 @@ describe('formulas', () => {
       c(['(fn(): Int => 0)()', Values.int(0)]),
       c(['(fn(#a: Int): Int => a)(1)', Values.int(1)]),
       c(['(fn(a: Int): Int => a)(a: 1)', Values.int(1)]),
-      c(['(fn(#a: Int, b: Int): Int => a + b)(1, 2)', Values.int(3)]),
-      c.skip(['(fn(#a: Int, b: Int): Int => a + b)(b: 2, 1)', Values.int(3)]),
+      c(['(fn(#a: Int, b: Int): Int => a + b)(1, b: 2)', Values.int(3)]),
+      c(['(fn(#a: Int, b: Int): Int => a + b)(b: 2, 1)', Values.int(3)]),
+      c.skip(['(fn(...#a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))()', Values.int(-2)]),
+      c.skip(['(fn(...#a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))(1)', Values.int(0)]),
       c.skip(['(fn(...#a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))(1, 2)', Values.int(3)]),
     ).run(([formula, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
@@ -78,6 +80,7 @@ describe('formulas', () => {
     )
 
     cases<[string, string]>(
+      c(['(fn(#a: Int, b: Int): Int => a + b)(1, 2)', "No argument passed for 'b'"]),
       c(['(fn(#a: Int, b: Int): Int => a + b)(a: 1, b: 2)', 'No argument passed at position #1']),
     ).run(([formula, expectedMessage], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {

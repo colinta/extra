@@ -78,13 +78,6 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
     let firstDefaultName = ''
     let prevIsOptional = false
     let prevOptionalArg = ''
-    // there can only be one spread-positional arg, when hasSpreadPositionalArg
-    // changes from false to true, assign spreadPositionalArg the current arg name.
-    // it cannot be assigned again.
-    /**
-     * Whether any spread positional argument has been found
-     */
-    let hasSpreadPositionalArg = false
     /**
      * The name of the first (and only) positional spread arg
      *
@@ -104,13 +97,17 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
 
       const argRange0 = scanner.charIndex
       /**
-       * Current argument is a spread arg.
+       * Current argument is a spread arg (positional OR named)
        */
       let spreadArg: false | 'spread' | 'kwargs' = false
+      /**
+       * true => positional, false => named
+       */
+      let isSpreadPositionalArg = false
       if (scanner.is(/^\.\.\.\s*#/m)) {
         scanner.expectString('...')
         scanner.scanAllWhitespace()
-        hasSpreadPositionalArg = true
+        isSpreadPositionalArg = true
         spreadArg = 'spread'
       } else if (scanner.is(/^\.\.\.\s*\b/m)) {
         scanner.expectString('...')
@@ -129,10 +126,10 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       scanner.scanSpaces()
       argName.followingComments.push(...scanner.flushComments())
 
-      if (hasSpreadPositionalArg && spreadPositionalArg === undefined) {
+      if (isSpreadPositionalArg && spreadPositionalArg === undefined) {
         spreadPositionalArg = argName.name
-      } else if (hasSpreadPositionalArg) {
-        // spreadPositionalArg should be undefined at this point. If it is assigned, //
+      } else if (isSpreadPositionalArg) {
+        // spreadPositionalArg should be undefined at this point. If it is assigned,
         // we already have a spread positional arg
         throw new ParseError(
           scanner,
@@ -239,7 +236,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         if (spreadArg === 'spread' && !(argType instanceof Expressions.ArrayTypeExpression)) {
           throw new ParseError(
             scanner,
-            `Expected 'Array' type for '...${hasSpreadPositionalArg ? '#' : ''}${
+            `Expected 'Array' type for '...${isSpreadPositionalArg ? '#' : ''}${
               argName.name
             }', found '${argType}'. Remaining argument lists must use the Array type, e.g. 'Array(${argType})'.`,
           )

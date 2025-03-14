@@ -2783,35 +2783,46 @@ export class FunctionInvocationOperator extends BinaryOperator {
 
   operatorType(
     runtime: TypeRuntime,
-    formulaType: Types.Type,
-    argsType: Types.Type,
-    formulaExpression: Expression,
-    args: Expression,
+    lhFormulaType: Types.Type,
+    rhArgsType: Types.Type,
+    lhFormulaExpression: Expression,
+    rhArgsExpression: Expression,
   ) {
-    return functionInvocationOperatorType(runtime, formulaType, argsType, formulaExpression, args)
+    return functionInvocationOperatorType(
+      runtime,
+      lhFormulaType,
+      rhArgsType,
+      lhFormulaExpression,
+      rhArgsExpression,
+    )
   }
 
   operatorEval(
     runtime: ValueRuntime,
-    formula: Values.Value,
-    _args: () => GetValueResult,
-    formulaExpression: Expression,
-    args: Expression,
+    lhFormula: Values.Value,
+    _rhArgs: () => GetValueResult,
+    lhFormulaExpression: Expression,
+    rhArgsExpression: Expression,
   ): GetValueResult {
-    if (formulaExpression.isNullCoalescing() && formula === Values.NullValue) {
+    if (lhFormulaExpression.isNullCoalescing() && lhFormula === Values.NullValue) {
       return ok(Values.NullValue)
     }
 
-    if (!(formula instanceof Values.FormulaValue)) {
-      return err(new RuntimeError(formulaExpression, `Expected a Formula, found '${formula}'`))
+    if (!(lhFormula instanceof Values.FormulaValue)) {
+      return err(new RuntimeError(lhFormulaExpression, `Expected a Formula, found '${lhFormula}'`))
     }
 
-    if (!(args instanceof ArgumentsList)) {
-      return err(new RuntimeError(args, `Expected function arguments, found '${args}'`))
+    if (!(rhArgsExpression instanceof ArgumentsList)) {
+      return err(
+        new RuntimeError(
+          rhArgsExpression,
+          `Expected function arguments, found '${rhArgsExpression}'`,
+        ),
+      )
     }
 
-    return args.formulaArgs(runtime).map(args =>
-      formula.call(args).mapResult(result => {
+    return rhArgsExpression.formulaArgs(runtime).map(args =>
+      lhFormula.call(args).mapResult(result => {
         if (result.isOk()) {
           return ok(result.get())
         } else {
@@ -2819,7 +2830,7 @@ export class FunctionInvocationOperator extends BinaryOperator {
             return err(result.error)
           }
 
-          return err(new RuntimeError(formulaExpression, result.error))
+          return err(new RuntimeError(lhFormulaExpression, result.error))
         }
       }),
     )

@@ -39,9 +39,9 @@ describe('repl tests', () => {
           }
 
           expression = parse(test.formula).get()
-
-          expect(expression.eval(valueRuntime).get()?.toCode()).toEqual(test.expectedValue)
         }).not.toThrow()
+
+        expect(expression!.eval(valueRuntime).get()?.toCode()).toEqual(test.expectedValue)
       })
     })
   }

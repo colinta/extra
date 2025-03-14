@@ -270,7 +270,7 @@ export class Literal extends Expression {
     return this.value.toCode()
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return ok(this.value.getType())
   }
 
@@ -409,7 +409,7 @@ export class Reference extends Identifier {
     })
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime) {
     const value = runtime.getLocalValue(this.name)
     if (value) {
       return ok(value)
@@ -455,7 +455,7 @@ export class StateReference extends Reference {
     return err(new RuntimeError(this, `Cannot get type of entity named '${this.name}'`))
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime) {
     const value = runtime.getStateValue(this.name)
     if (value) {
       return ok(value)
@@ -501,7 +501,7 @@ export class ActionReference extends Reference {
     return err(new RuntimeError(this, `Cannot get type of entity named '${this.name}'`))
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime) {
     const value = runtime.getActionValue(this.name)
     if (value) {
       return ok(value)
@@ -579,7 +579,7 @@ export class StringTemplateOperation extends Operation {
     return ok(Types.StringType)
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime) {
     return mapAll(this.args.map(arg => arg.eval(runtime))).map(values => {
       let result = ''
       for (const value of values) {
@@ -687,7 +687,7 @@ export class ObjectExpression extends Expression {
         values.reduce(
           ([tupleValues, namedValues], [nextTupleValues, nextNamedValues]) => {
             return [
-              tupleValues.concat(nextTupleValues, nextTupleValues),
+              tupleValues.concat(nextTupleValues),
               new Map([...namedValues, ...nextNamedValues]),
             ]
           },
@@ -1075,7 +1075,7 @@ export class NamespaceAccessExpression extends TypeExpression {
     }
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'NamespaceAccessExpression has no intrinsic type'))
   }
 
@@ -1267,7 +1267,7 @@ export class ArrayTypeExpression extends TypeExpression {
     return this.of.typeAssertion(runtime).map(type => Types.array(type, this.narrowed))
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'ArrayType has no intrinsic type'))
   }
 
@@ -1316,7 +1316,7 @@ export class DictTypeExpression extends TypeExpression {
       .map(type => Types.dict(type, this.narrowedLength, this.narrowedNames))
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'DictType has no intrinsic type'))
   }
 
@@ -1357,7 +1357,7 @@ export class SetTypeExpression extends TypeExpression {
     return this.of.typeAssertion(runtime).map(type => Types.set(type, this.narrowedLength))
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'SetType has no intrinsic type'))
   }
 
@@ -1403,7 +1403,7 @@ export abstract class ArgumentExpression extends Expression {
     return new Set([this.aliasRef.name])
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'ArgumentExpression has no intrinsic type'))
   }
 
@@ -1444,7 +1444,7 @@ export class DictEntry extends Expression {
     return `${name}: ${value}`
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'DictEntry does not have a type'))
   }
 
@@ -1503,7 +1503,7 @@ export abstract class Argument extends Expression {
     return getChildType(this, this.value, runtime)
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime) {
     return this.value.eval(runtime)
   }
 }
@@ -1798,7 +1798,7 @@ export class DiceExpression extends Expression {
     super(range, precedingComments)
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'not sure yet'))
   }
 
@@ -1889,7 +1889,7 @@ export class LetExpression extends Expression {
       .map(() => this.body.getType(nextRuntime))
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime) {
     let nextRuntime = new MutableValueRuntime(runtime)
     return this.sortedBindings()
       .map(deps =>
@@ -1959,7 +1959,7 @@ export class InferIdentifier extends ReservedWord {
 export class IfExpression extends ReservedWord {
   readonly name = 'if'
 
-  getType(): GetTypeResult {
+  getType() {
     return ok(
       Types.withGenericT(T =>
         Types.namedFormula(
@@ -1983,7 +1983,7 @@ export class IfExpression extends ReservedWord {
 export class ElseIfExpression extends ReservedWord {
   readonly name = 'elseif'
 
-  getType(): GetTypeResult {
+  getType() {
     return ok(
       Types.withGenericT(T =>
         Types.namedFormula(
@@ -2033,7 +2033,7 @@ export class ThisIdentifier extends ReservedWord {
     return ok(Types.NeverType)
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
   }
 
@@ -2300,7 +2300,7 @@ export class PipePlaceholderExpression extends Expression {
     )
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime) {
     const pipeType = runtime.getPipeValue()
     if (pipeType) {
       return ok(pipeType)
@@ -2351,7 +2351,7 @@ export class EnumMemberExpression extends Expression {
     return code
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'EnumEntryExpression does not have a type'))
   }
 
@@ -2384,7 +2384,7 @@ export class EnumTypeExpression extends Expression {
     return 'enum\n  | ' + this.members.map(m => m.toCode()).join('\n  | ')
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'EnumTypeExpression does not have a type'))
   }
 
@@ -2515,7 +2515,7 @@ export class ArgumentsList extends Expression {
     return insideCode + ' ' + blockCode
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'ArgumentsList do not have a type'))
   }
 
@@ -2825,7 +2825,7 @@ export class FormulaTypeExpression extends Expression {
     return `fn(${this.argDefinitions.toCode()})${returnType}`
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, ''))
   }
 
@@ -3134,7 +3134,6 @@ export class FormulaExpression extends Expression {
     formulaType: Types.FormulaType,
     args: Values.FormulaArgs,
   ): GetRuntimeResult<ValueRuntime> {
-    // TODO: support spread and kwargs
     const defaultValues = new Map(
       this.argDefinitions.args.map((arg, position) => {
         const index = arg.isPositional ? position : arg.aliasRef.name
@@ -3143,28 +3142,69 @@ export class FormulaExpression extends Expression {
     )
 
     let argCount = 0
-    const argValues: Map<string | number, Values.Value> = new Map(
-      args.args.map(([alias, arg], position): [string | number, Values.Value] => {
-        if (alias) {
-          return [alias, arg] as [string, Values.Value]
-        } else {
-          argCount = position + 1
-          return [position, arg] as [number, Values.Value]
-        }
-      }),
-    )
+    const argValues: Map<string | number, Values.Value> = new Map()
+    const repeatedArgValues: Map<string, Values.Value[]> = new Map()
+    for (const [alias, arg] of args.args) {
+      if (alias) {
+        argValues.set(alias, arg)
 
+        const repeated = repeatedArgValues.get(alias) ?? []
+        repeated.push(arg)
+        repeatedArgValues.set(alias, repeated)
+      } else {
+        argValues.set(argCount++, arg)
+      }
+    }
+
+    let formulaTypeArgIndex = 0
     const resolvedValues = mapAll(
-      formulaType.args.map((argType, position) => {
+      formulaType.args.map(argType => {
         let arg: GetValueResult
         let fromArgs: Values.Value | undefined
         let fromDefault: Expression | undefined
-        if (position < argCount) {
-          fromArgs = argValues.get(position)
-          fromDefault = defaultValues.get(position)
-        } else {
-          fromArgs = argValues.get(argType.alias || position)
-          fromDefault = defaultValues.get(argType.alias || position)
+        switch (argType.is) {
+          case 'positional-argument':
+            fromArgs = argValues.get(formulaTypeArgIndex)
+            fromDefault = defaultValues.get(formulaTypeArgIndex)
+            argValues.delete(formulaTypeArgIndex)
+
+            formulaTypeArgIndex++
+            break
+          case 'named-argument':
+            fromArgs = argValues.get(argType.alias)
+            fromDefault = defaultValues.get(argType.alias)
+
+            argValues.delete(argType.alias)
+            repeatedArgValues.delete(argType.alias)
+            break
+          case 'spread-positional-argument':
+            // starting at formulaTypeArgIndex until argCount
+            // put all remaining values into fromArgs ArrayValue
+            const spreadArgs: Values.Value[] = []
+            for (let index = formulaTypeArgIndex; index < argCount; index++) {
+              const value = argValues.get(index)
+              if (!value) {
+                break
+              }
+              spreadArgs.push(value)
+              argValues.delete(index)
+            }
+            fromArgs = new Values.ArrayValue(spreadArgs)
+            break
+          case 'repeated-named-argument':
+            const repeatedArgs = repeatedArgValues.get(argType.alias)
+            fromArgs = new Values.ArrayValue(repeatedArgs ?? [])
+            argValues.delete(argType.alias)
+            repeatedArgValues.delete(argType.alias)
+            break
+          case 'kwarg-list-argument':
+            const kwargArgs: Map<string, Values.Value> = new Map()
+            for (const [key, value] of argValues) {
+              kwargArgs.set(key as string, value)
+              argValues.delete(key)
+            }
+            fromArgs = new Values.DictValue(kwargArgs)
+            break
         }
 
         if (fromArgs) {
@@ -3174,7 +3214,9 @@ export class FormulaExpression extends Expression {
         } else if (argType.alias) {
           arg = err(new RuntimeError(this, `No argument passed for '${argType.alias}'`))
         } else {
-          arg = err(new RuntimeError(this, `No argument passed at position #${position + 1}`))
+          arg = err(
+            new RuntimeError(this, `No argument passed at position #${formulaTypeArgIndex}`),
+          )
         }
 
         return arg.map(arg => [argType.name, arg] as [string, Values.Value])
@@ -3414,7 +3456,7 @@ abstract class ViewExpression extends Expression {
     })
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime) {
     const childrenResult = mapAll(this.children.map(child => child.eval(runtime))).map(children =>
       children
         .flatMap(child => {
@@ -3574,7 +3616,7 @@ export class ImportSpecific extends Expression {
     return this.name.name
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'ImportSpecific does not have a type'))
   }
 
@@ -3604,7 +3646,7 @@ export class RequiresStatement extends Expression {
     return `requires ${this.envs.join(', ')}`
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'RequiresStatement does not have a type'))
   }
 
@@ -3665,7 +3707,7 @@ export class ImportSource extends Expression {
     return code
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'ImportStatement does not have a type'))
   }
 
@@ -3731,7 +3773,7 @@ export class ImportStatement extends Expression {
     return code
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'ImportStatement does not have a type'))
   }
 
@@ -3802,7 +3844,7 @@ export class TypeDefinition extends Expression {
     return getChildType(this, this.type, runtime)
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime) {
     return this.type.eval(runtime)
   }
 }
@@ -3858,7 +3900,7 @@ export class StateDefinition extends Expression {
     return code
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'StateDefinition does not have a type'))
   }
 
@@ -3882,7 +3924,7 @@ export class BuiltinActionExpression extends Identifier {
     return '&'
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, '& does not have a type'))
   }
 
@@ -3944,7 +3986,7 @@ export class HelperDefinition extends Expression {
     return getChildType(this, this.value, runtime)
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime) {
     return this.value.eval(runtime)
   }
 }
