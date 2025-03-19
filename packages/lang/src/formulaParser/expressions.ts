@@ -390,7 +390,7 @@ export class Reference extends Identifier {
       return ok(type)
     }
 
-    return err(new RuntimeError(this, `Cannot get type of entity named '${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get type of variable named '${this.name}'`))
   }
 
   getArgType(runtime: TypeRuntime): GetTypeResult {
@@ -415,7 +415,7 @@ export class Reference extends Identifier {
       return ok(value)
     }
 
-    return err(new RuntimeError(this, `Cannot get value of entity named '${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get value of variable named '${this.name}'`))
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
@@ -452,7 +452,7 @@ export class StateReference extends Reference {
       return ok(type)
     }
 
-    return err(new RuntimeError(this, `Cannot get type of entity named '${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get type of variable named '${this.name}'`))
   }
 
   eval(runtime: ValueRuntime) {
@@ -461,7 +461,7 @@ export class StateReference extends Reference {
       return ok(value)
     }
 
-    return err(new RuntimeError(this, `Cannot get value of entity named '${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get value of variable named '${this.name}'`))
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
@@ -498,7 +498,7 @@ export class ActionReference extends Reference {
       return ok(type)
     }
 
-    return err(new RuntimeError(this, `Cannot get type of entity named '${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get type of variable named '${this.name}'`))
   }
 
   eval(runtime: ValueRuntime) {
@@ -507,7 +507,7 @@ export class ActionReference extends Reference {
       return ok(value)
     }
 
-    return err(new RuntimeError(this, `Cannot get value of entity named '${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get value of variable named '${this.name}'`))
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type) {

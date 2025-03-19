@@ -10,7 +10,8 @@ import {scanValidName, scanAtom} from './identifier'
 /**
  * Supports '', "", ``, triple quotes, and "no quotes" :word
  *
- * Backtick strings support $string ${templates}
+ * Backtick and double quoted strings support `$string ${templates}`
+ * Backtick strings support 'tags``'
  *
  * Triple quotes ignore intendation up to the closing quote.
  *      -- start indentation doesn't matter
