@@ -1,0 +1,16 @@
+{
+  "desc": "tuple arguments",
+  "only": false,
+  "skip": false,
+  "formula": "foo(...tuple)",
+  "vars": [
+    {
+      "name": "foo",
+      "value": "fn(#a: Int,b: String) => b .. $a"
+    },
+    {
+      "name": "tuple",
+      "value": "{0, b: 'test' }"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useReducer, useState} from 'react'
 import {existsSync, readFileSync, writeFileSync} from 'node:fs'
-import {resolve} from 'node:path'
+import {resolve, basename} from 'node:path'
 
 import {MutableValueRuntime, parse, type Expression, dependencySort} from '@extra-lang/lang'
 import {interceptConsoleLog, red} from '@teaui/core'
@@ -17,8 +17,36 @@ import {
   run,
 } from '@teaui/react'
 
-const STATE_FILE = resolve(__dirname, './state.json')
-const REPL_TESTS_FILE = resolve(process.cwd(), 'packages/lang/src/formulaParser/tests/repl.json')
+const STATE_FILE = (() => {
+  // start at process.cwd() and work up until repl exists, use that as "projectRoot"
+  let replRoot = process.cwd()
+  if (existsSync(resolve(replRoot, '.git'))) {
+    replRoot = resolve(replRoot, 'apps/repl')
+  }
+
+  while (basename(replRoot) !== 'repl') {
+    replRoot = resolve(replRoot, '..')
+    if (replRoot === '/') {
+      throw new Error('Could not find project root (no .git folder found)')
+    }
+  }
+
+  return resolve(replRoot, 'state.json')
+})()
+
+const REPL_TESTS_FILE = (() => {
+  // start at process.cwd() and work up until .git exists, use that as "projectRoot"
+  let projectRoot = process.cwd()
+  while (!existsSync(resolve(projectRoot, '.git'))) {
+    projectRoot = resolve(projectRoot, '..')
+    if (projectRoot === '/') {
+      throw new Error('Could not find project root (no .git folder found)')
+    }
+  }
+
+  return resolve(projectRoot, 'packages/lang/src/formulaParser/tests/repl.json')
+})()
+
 const REPL_TESTS_JSON = (() => {
   if (existsSync(REPL_TESTS_FILE)) {
     return JSON.parse(readFileSync(REPL_TESTS_FILE).toString('utf8'))
@@ -104,8 +132,8 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
             skip,
             formula,
             vars: inputs.map(({name, value}) => ({
-              name,
-              value,
+              name: name.trim(),
+              value: value.trim(),
             })),
           },
           null,
@@ -122,17 +150,18 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
         if (index !== inputIndex) {
           return input
         }
-        return {name: name.trim(), value: input.value}
+        return {name, value: input.value}
       }),
     )
   }
+
   function updateInputValue(inputIndex: number, value: string) {
     setInputs(
       inputs.map((input, index) => {
         if (index !== inputIndex) {
           return input
         }
-        return {name: input.name, value: value.trim()}
+        return {name: input.name, value}
       }),
     )
   }

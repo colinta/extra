@@ -9,13 +9,13 @@
   },
   "dependencies": {
     "@extra-lang/lang": "workspace:*",
-    "@teaui/core": "^1.2.3",
-    "@teaui/react": "^1.2.3",
+    "@teaui/core": "^1.2.5",
+    "@teaui/react": "^1.2.5",
     "react": "^18.3.1"
   },
   "devDependencies": {
     "@extra-lang/shared": "workspace:*",
-    "@types/node": "^22.13.8",
-    "@types/react": "^18.2.39"
+    "@types/node": "^22.13.10",
+    "@types/react": "^18.3.19"
   }
 }
