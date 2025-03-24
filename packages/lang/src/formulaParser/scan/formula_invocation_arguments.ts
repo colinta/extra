@@ -6,10 +6,9 @@ import {scanValidName} from './identifier'
 
 /**
  * Args passed to a function.
- *
- * Function args must be in the following order:
- * - positional (unnamed)
- * - named (in any order)
+ * - positional arguments
+ * - named arguments
+ * - spread arguments (tuple, array, or dict)
  */
 export function scanInvocationArgs(scanner: Scanner, parseNext: ParseNext) {
   return _scanArguments(scanner, parseNext, 'invocation')
@@ -20,6 +19,7 @@ export function scanBlockArgs(scanner: Scanner, parseNext: ParseNext) {
 }
 
 function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocation' | 'block') {
+  const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
   scanner.whereAmI('scanInvocationArgs')
   let closer: string
@@ -64,6 +64,7 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
           argName.name,
           expression,
         )
+        arg.precedingComments = argName.precedingComments
       } else {
         arg = new Expressions.PositionalArgument(
           [argRange0, scanner.charIndex],
@@ -84,10 +85,11 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
     }
   }
 
-  scanner.whereAmI(`scanInvocationArgs: ${args.length} ` + args.map(arg => arg.toCode()).join(','))
+  scanner.whereAmI(`scanInvocationArgs: ${args.length} ` + args.map(arg => arg.toCode()).join(', '))
 
   return new Expressions.ArgumentsList(
     [range0, scanner.charIndex],
+    precedingComments,
     scanner.flushComments(),
     args,
     [],

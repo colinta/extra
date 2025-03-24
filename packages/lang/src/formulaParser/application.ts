@@ -323,7 +323,7 @@ export class Application extends Expression {
     if (this.main) {
       const op = new FunctionInvocationOperator(this.main.range, [], [], binaryOperatorNamed('.'), [
         this.main,
-        new Expressions.ArgumentsList(this.main.range, [], [], []),
+        new Expressions.ArgumentsList(this.main.range, [], [], [], []),
       ])
       return op.eval(nextRuntime).map(result => {
         return result

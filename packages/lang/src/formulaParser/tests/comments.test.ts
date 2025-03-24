@@ -84,7 +84,7 @@ describe('comments', () => {
     })
   })
 
-  describe('scanning comments', () => {
+  describe('attaching comments to expressions', () => {
     it('attaches comments to lhs + rhs', () => {
       const formula = `\
 --comment0
@@ -129,7 +129,7 @@ rhs --comment5
       ])
     })
 
-    it('attaches empty array items', () => {
+    it('attaches comments to empty array items', () => {
       const formula = `\
 --comment0
 [ --comment1
@@ -161,7 +161,7 @@ rhs --comment5
       ])
     })
 
-    it('attaches single array items', () => {
+    it('attaches comments to single array items', () => {
       const formula = `\
 --comment0
 [ --comment1
@@ -201,7 +201,7 @@ rhs --comment5
       ])
     })
 
-    it('attaches array items', () => {
+    it('attaches comments to array items', () => {
       const formula = `\
 --comment0
 [ --comment1
@@ -226,7 +226,6 @@ item1 --comment4
       // Test comments preceding the array expression
       expect(arrayExpr.precedingComments).toEqual([
         {delim: '--', comment: 'comment0', type: 'line'},
-        ,
       ])
 
       // Test comments preceding and following the first array item
@@ -246,7 +245,7 @@ item1 --comment4
       ])
     })
 
-    it('attaches empty object items', () => {
+    it('attaches comments to empty object items', () => {
       const formula = `\
 --comment0
 { --comment1
@@ -275,7 +274,7 @@ item1 --comment4
       ])
     })
 
-    it('attaches object items', () => {
+    it('attaches comments to object items', () => {
       const formula = `\
 --comment0
 { --comment1
@@ -340,7 +339,7 @@ item2  --comment6
       ])
     })
 
-    it('attaches dict items', () => {
+    it('attaches comments to dict items', () => {
       const formula = `\
 --comment0
 dict( --comment1
@@ -380,7 +379,7 @@ dict( --comment1
       expect(dictExpr.followingComments).toEqual([{delim: '--', comment: 'comment6', type: 'line'}])
     })
 
-    it('attaches set items', () => {
+    it('attaches comments to set items', () => {
       const formula = `\
 --comment0
 set( --comment1
@@ -420,7 +419,7 @@ set( --comment1
       expect(setExpr.followingComments).toEqual([{delim: '--', comment: 'comment6', type: 'line'}])
     })
 
-    it('attaches misc formula', () => {
+    it('attaches comments to misc formula', () => {
       const formula = `\
 --comment0
   let --comment1
@@ -691,6 +690,246 @@ fn
 
       // Test comments preceding the function body
       expect(ref0.precedingComments).toEqual([{delim: '--', comment: 'comment20', type: 'line'}])
+    })
+
+    it('attaches comments to function invocation', () => {
+      const formula = `\
+--comment0
+foo --comment1
+--comment2
+( --comment3
+  item0 --comment4
+  --comment5
+  arg:
+    --comment6
+    item1 --comment7
+--comment8
+) --comment9
+--comment10
+`
+      let fnExpr: Expressions.Expression
+      expect(() => {
+        fnExpr = parse(formula).get()
+      }).not.toThrow()
+
+      expect(fnExpr!).toBeInstanceOf(Expressions.Operation)
+      if (!(fnExpr! instanceof Expressions.Operation)) {
+        return
+      }
+
+      // Destructure the array's items
+      const [fooRef, argsList] = fnExpr.args
+
+      expect(argsList!).toBeInstanceOf(Expressions.ArgumentsList)
+      if (!(argsList! instanceof Expressions.ArgumentsList)) {
+        return
+      }
+
+      const [item0, item1, item2, item3] = argsList.allArgs
+
+      // Test comments preceding the array expression
+      expect(fooRef.precedingComments).toEqual([{delim: '--', comment: 'comment0', type: 'line'}])
+      expect(fooRef.followingComments).toEqual([{delim: '--', comment: 'comment1', type: 'line'}])
+
+      expect(fnExpr.precedingComments).toEqual([{delim: '--', comment: 'comment2', type: 'line'}])
+
+      // Test comments preceding and following item0
+      expect(item0.value.precedingComments).toEqual([
+        {delim: '--', comment: 'comment3', type: 'line'},
+      ])
+      expect(item0.value.followingComments).toEqual([
+        {delim: '--', comment: 'comment4', type: 'line'},
+      ])
+
+      // Test comments preceding and following the second argument item
+      expect(item1.precedingComments).toEqual([{delim: '--', comment: 'comment5', type: 'line'}])
+      expect(item1.value.precedingComments).toEqual([
+        {delim: '--', comment: 'comment6', type: 'line'},
+      ])
+      expect(item1.value.followingComments).toEqual([
+        {delim: '--', comment: 'comment7', type: 'line'},
+      ])
+
+      // Test comments following the array expression (after closing bracket)
+      expect(argsList.followingComments).toEqual([{delim: '--', comment: 'comment9', type: 'line'}])
+      expect(fnExpr.followingComments).toEqual([{delim: '--', comment: 'comment10', type: 'line'}])
+    })
+
+    it('attaches comments to function invocation with single block argument', () => {
+      const formula = `\
+--comment0
+foo --comment1
+--comment2
+( --comment3
+  item0 --comment4
+  --comment5
+  arg:
+    --comment6
+    item1 --comment7
+--comment8
+) --comment9
+: --comment10
+  item2 --comment11
+--comment12
+`
+      let fnExpr: Expressions.Expression
+      expect(() => {
+        fnExpr = parse(formula).get()
+      }).not.toThrow()
+
+      expect(fnExpr!).toBeInstanceOf(Expressions.Operation)
+      if (!(fnExpr! instanceof Expressions.Operation)) {
+        return
+      }
+
+      // Destructure the array's items
+      const [fooRef, argsList] = fnExpr.args
+
+      expect(argsList!).toBeInstanceOf(Expressions.ArgumentsList)
+      if (!(argsList! instanceof Expressions.ArgumentsList)) {
+        return
+      }
+
+      const [item0, item1, item2] = argsList.allArgs
+
+      // Test comments preceding the array expression
+      expect(fooRef.precedingComments).toEqual([{delim: '--', comment: 'comment0', type: 'line'}])
+      expect(fooRef.followingComments).toEqual([{delim: '--', comment: 'comment1', type: 'line'}])
+
+      expect(fnExpr.precedingComments).toEqual([{delim: '--', comment: 'comment2', type: 'line'}])
+
+      // Test comments preceding and following item0
+      expect(item0.value.precedingComments).toEqual([
+        {delim: '--', comment: 'comment3', type: 'line'},
+      ])
+      expect(item0.value.followingComments).toEqual([
+        {delim: '--', comment: 'comment4', type: 'line'},
+      ])
+
+      // Test comments preceding and following the second argument item
+      expect(item1.precedingComments).toEqual([{delim: '--', comment: 'comment5', type: 'line'}])
+      expect(item1.value.precedingComments).toEqual([
+        {delim: '--', comment: 'comment6', type: 'line'},
+      ])
+      expect(item1.value.followingComments).toEqual([
+        {delim: '--', comment: 'comment7', type: 'line'},
+      ])
+
+      expect(argsList.lastParensComments).toEqual([
+        {delim: '--', comment: 'comment8', type: 'line'},
+      ])
+      expect(argsList.betweenComments).toEqual([{delim: '--', comment: 'comment9', type: 'line'}])
+
+      expect(item2.value.precedingComments).toEqual([
+        {delim: '--', comment: 'comment10', type: 'line'},
+      ])
+      expect(item2.value.followingComments).toEqual([
+        {delim: '--', comment: 'comment11', type: 'line'},
+      ])
+
+      expect(fnExpr.followingComments).toEqual([{delim: '--', comment: 'comment12', type: 'line'}])
+    })
+
+    it('attaches comments to function invocation with block arguments', () => {
+      const formula = `\
+--comment0
+foo --comment1
+--comment2
+( --comment3
+  item0 --comment4
+  --comment5
+  arg:
+    --comment6
+    item1 --comment7
+--comment8
+) --comment9
+--comment10
+{
+  --comment11
+  item2 --comment12
+  --comment13
+  then: --comment14
+    --comment15
+    item3 --comment16
+  --comment17
+} --comment18
+`
+      let fnExpr: Expressions.Expression
+      expect(() => {
+        fnExpr = parse(formula, 1).get()
+      }).not.toThrow()
+
+      console.log('=========== comments.test.ts at line 712 ===========')
+      console.log({fnExpr: fnExpr!})
+      expect(fnExpr!).toBeInstanceOf(Expressions.Operation)
+      if (!(fnExpr! instanceof Expressions.Operation)) {
+        return
+      }
+
+      // Destructure the array's items
+      const [fooRef, argsList] = fnExpr.args
+
+      expect(argsList!).toBeInstanceOf(Expressions.ArgumentsList)
+      if (!(argsList! instanceof Expressions.ArgumentsList)) {
+        return
+      }
+
+      const [item0, item1, item2, item3] = argsList.allArgs
+
+      // Test comments preceding the array expression
+      expect(fooRef.precedingComments).toEqual([{delim: '--', comment: 'comment0', type: 'line'}])
+      expect(fooRef.followingComments).toEqual([{delim: '--', comment: 'comment1', type: 'line'}])
+
+      expect(fnExpr.precedingComments).toEqual([{delim: '--', comment: 'comment2', type: 'line'}])
+
+      // Test comments preceding and following item0
+      expect(item0.value.precedingComments).toEqual([
+        {delim: '--', comment: 'comment3', type: 'line'},
+      ])
+      expect(item0.value.followingComments).toEqual([
+        {delim: '--', comment: 'comment4', type: 'line'},
+      ])
+
+      // Test comments preceding and following the second argument item
+      expect(item1.precedingComments).toEqual([{delim: '--', comment: 'comment5', type: 'line'}])
+      expect(item1.value.precedingComments).toEqual([
+        {delim: '--', comment: 'comment6', type: 'line'},
+      ])
+      expect(item1.value.followingComments).toEqual([
+        {delim: '--', comment: 'comment7', type: 'line'},
+      ])
+
+      expect(argsList.lastParensComments).toEqual([
+        {delim: '--', comment: 'comment8', type: 'line'},
+      ])
+      expect(argsList.betweenComments).toEqual([
+        {delim: '--', comment: 'comment9', type: 'line'},
+        {delim: '--', comment: 'comment10', type: 'line'},
+      ])
+
+      expect(fnExpr.followingComments).toEqual([])
+      expect(item2.value.precedingComments).toEqual([
+        {delim: '--', comment: 'comment11', type: 'line'},
+      ])
+      expect(item2.value.followingComments).toEqual([
+        {delim: '--', comment: 'comment12', type: 'line'},
+      ])
+      expect(item3.precedingComments).toEqual([{delim: '--', comment: 'comment13', type: 'line'}])
+      expect(item3.value.precedingComments).toEqual([
+        {delim: '--', comment: 'comment14', type: 'line'},
+        {delim: '--', comment: 'comment15', type: 'line'},
+      ])
+      expect(item3.value.followingComments).toEqual([
+        {delim: '--', comment: 'comment16', type: 'line'},
+      ])
+      expect(argsList.lastBlockComments).toEqual([
+        {delim: '--', comment: 'comment17', type: 'line'},
+      ])
+
+      // Test comments following the array expression (after closing bracket)
+      expect(argsList.followingComments).toEqual([
+        {delim: '--', comment: 'comment18', type: 'line'},
+      ])
     })
 
     it('attaches comments to imports 1', () => {

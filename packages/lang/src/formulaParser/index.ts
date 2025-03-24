@@ -392,9 +392,9 @@ function parseInternal(
     isMatchingExpression = false
   }
 
-  function processMaybeBlock() {
+  function processBlockArguments() {
     const appendToArguments = expressionStack.pop()
-    // blocks can only be appeneded to ArgumentsList
+    // blocks can only be appended to ArgumentsList
     if (!(appendToArguments instanceof Expressions.ArgumentsList)) {
       throw new ParseError(
         scanner,
@@ -402,33 +402,37 @@ function parseInternal(
       )
     }
 
+    let nextArguments: Expressions.ArgumentsList
     if (scanner.scanIfString(SINGLE_BLOCK_OPEN)) {
-      scanner.scanAllWhitespace()
       const expression = parseNext('argument')
-      expressionStack.push(
-        new Expressions.ArgumentsList(
-          [appendToArguments.range[0], expression.range[1]],
-          scanner.flushComments(),
-          appendToArguments.parenArgs,
-          [
-            new Expressions.PositionalArgument(
-              expression.range,
-              scanner.flushComments(),
-              expression,
-            ),
-          ],
-        ),
+      nextArguments = new Expressions.ArgumentsList(
+        [appendToArguments.range[0], expression.range[1]],
+        [],
+        [],
+        appendToArguments.parenArgs,
+        [new Expressions.PositionalArgument(expression.range, scanner.flushComments(), expression)],
       )
     } else {
       const blockArguments = scanBlockArgs(scanner, parseNext)
-      expressionStack.push(
-        new Expressions.ArgumentsList(
-          [appendToArguments.range[0], blockArguments.range[1]],
-          scanner.flushComments(),
-          appendToArguments.parenArgs,
-          blockArguments.parenArgs,
-        ),
+      nextArguments = new Expressions.ArgumentsList(
+        [appendToArguments.range[0], blockArguments.range[1]],
+        blockArguments.precedingComments,
+        blockArguments.followingComments,
+        appendToArguments.parenArgs,
+        blockArguments.parenArgs,
       )
+      nextArguments.lastParensComments = blockArguments.lastParensComments
+    }
+
+    if (nextArguments) {
+      nextArguments.lastBlockComments = nextArguments.lastParensComments
+      nextArguments.lastParensComments = appendToArguments.lastParensComments
+      nextArguments.betweenComments = [
+        ...appendToArguments.followingComments,
+        ...nextArguments.precedingComments,
+      ]
+      nextArguments.precedingComments = appendToArguments.precedingComments
+      expressionStack.push(nextArguments)
     }
   }
 
@@ -606,7 +610,7 @@ function parseInternal(
           processOperator(scanBinaryOperator(scanner))
         } else if (isBlockStartOperator(scanner)) {
           // scans for `foo() { arg0, name: arg1, other: arg2, arg3 }`
-          processMaybeBlock()
+          processBlockArguments()
         } else {
           const expectComma = treatNewlineAsComma(expressionType)
           throw new ParseError(

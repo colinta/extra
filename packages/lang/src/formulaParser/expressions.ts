@@ -1552,10 +1552,16 @@ abstract class TypeArgument extends Argument {
 }
 
 /**
- * A named argument passed to a function, object, or view.
+ * A named argument passed to a function, object, or view. Also used to store
+ * 'let' declarations
  *
  *     foo(name: 'value')
  *         ^^^^^^^^^^^^^
+ *
+ *     let
+ *       name = value
+ *       ^^^^^^^^^^^^
+ *     in
  */
 export class NamedArgument extends Argument {
   /**
@@ -2427,10 +2433,13 @@ export class ViewTypeExpression extends TypeIdentifier {
 export class ArgumentsList extends Expression {
   private positionalArgs: Expression[] = []
   private repeatedNamedArgs: Map<string, Expression[]> = new Map()
+  lastBlockComments: Comment[] = []
+  betweenComments: Comment[] = []
 
   constructor(
     range: Range,
     precedingComments: Comment[],
+    public lastParensComments: Comment[],
     readonly parenArgs: Argument[],
     readonly blockArgs: Argument[],
   ) {
