@@ -372,16 +372,18 @@ This was hard so you better like it.
 ```extra
 -- foo: String | Array(String)
 switch (foo)
-  when 'foo' ++ bar => bar
+  when 'foo' <> bar => bar
   when ['foo', ...a] => a.join(',')
   else => 'not "foo…" or [a, …]'
 ```
 
-Not every operator is supported in this way, but I tried to support everything that makes sense. Arrays can only have one `...` splat, strings can only end in one `++ var`, values can be ignored using `_`, the usual stuff.
+Not every operator is supported in this way, but I tried to support everything that makes sense. Values can be ignored using `_`.
 
 ## Unambiguous operators
 
-Minor thing: `+` is a mathematical operator that adds two numbers. Did you know that `a + b == b + a`? Except in Java and Javascript and Swift and many other languages. 🙄 `++` is a computer science-y operator that concatenates two lists (strings, arrays, or merges two dicts).
+Minor thing: `+` is a mathematical operator that adds two numbers. Did you know that `a + b == b + a`? Except in Java and Javascript and Swift and many other languages. 🙄
+
+`++` is a computer science-y operator that concatenates two lists (strings, arrays, or merges two dicts).
 
 Words are used for logical operators, but not bitwise operators.
 
@@ -394,10 +396,10 @@ Extra's "coerce to String" (`toString()`) is a unary operator `$`, and it's also
 -- and String coercion:
 
 "How many: $n"
-"How many: " ++ $n
+"How many: " <> $n
 
 -- String coercion will happen in the case of
--- String interpolation and the concatenation operator ++,
+-- String interpolation and the concatenation operator <>,
 -- but not for function arguments that expect a String
 
 -- because it's an _operator_, you can do things like
@@ -509,8 +511,8 @@ I'm a big fan of pipes from Elm and Elixir. In these languages, the value enteri
 I picked the `#` character, because it's also used in functions as a "positional argument" indicator. JS's proposal currently favors `^^` I think? 🤢 Why can't JS do anything right... and why don't they just _ask me_, since I seem to know all the answers.
 
 ```extra
-'abc' |> # ++ #
-  --> 'abc' ++ 'abc'
+'abc' |> # <> #
+  --> 'abc' <> 'abc'
   --> 'abcabc'
 
 -- extract two elements from an object, place them in an array
@@ -523,7 +525,7 @@ Also available is the "null coalescing pipe". If the value is `null`, it skips t
 let
   a: String? = 'bang'
   b: String? = null
-  fn example(#foo: String?) => foo ?|> # ++ "!"
+  fn example(#foo: String?) => foo ?|> # <> "!"
 in
   [
     example(a) --> 'bang!'
@@ -628,7 +630,7 @@ Student = User & {
   summary() =>
     -- string concat and two string embed examples
     -- '.' operator would be `this` or `self` in many languages
-    .name ++ " is ${.age} years old and is in grade $.grade"
+    .name <> " is ${.age} years old and is in grade $.grade"
 }
 ```
 
@@ -780,7 +782,7 @@ userSummary(user: User) =>
   }
 
 greet(name: String) =>
-  'Hi, ' ++ name
+  'Hi, ' <> name
 ```
 
 ## Section Header Formal Rules
@@ -1342,19 +1344,136 @@ Included only because of its cool name. 😎
 a ?? b --> returns `b` if a is null, otherwise returns `a`
 ```
 
-## Concatenation
+## String Concatenation
 
-I've never liked `+` as String/array concatenation. `+` should be communative, because maths. Also because then String coersion becomes obvious.
+I've never liked `+` as String/Array concatenation. `+` should be communative, because maths. Also because then String coersion becomes obvious.
 
 ```extra
-"aaa" ++ "BBB" --> "aaaBBB"
+"aaa" <> "BBB" --> "aaaBBB"
 
-12345 ++ 'dollars'  --> "12345 dollars"
+12345 <> 'dollars'  --> "12345 dollars"
 `${12345} dollars`  --> "12345 dollars"
 
 -- if you want locale-specific formatting:
-12345.toLocale('en-ca') ++ " dollars" --> "12,345 dollars"
+12345.toLocale('en-ca') <> " dollars" --> "12,345 dollars"
 ```
+
+## Array Concatenation
+
+I realized at some point that while, sure, I could implement the `<>` operator
+in a way that supported Strings _and Arrays_, why not have two operators so that
+the *intention* was that much clearer? So that's what I did.
+
+```extra
+[1,2,3] ++ [4,5,6]
+```
+
+## Object and Dict Merging
+
+Last but not least, you can merge two objects or dicts with `~~`, and in this
+case the values on the left-hand-side will be replaced with the values on the
+right-hand-side if they have the same keys.
+
+###### Dict Example
+```extra
+let
+  old_users = dict(a: …, b: …)
+  new_users = dict(b: …, c: …)
+in
+  old_users ~~ new_users
+  -- returns dict(a: …, b: …, c: …), with 'b' coming from new_users
+```
+
+###### Object Example
+```extra
+let
+  user = {name: 'Alice', age: 50}
+  updates = {age: 51}
+in
+  user ~~ updates
+```
+
+Since Objects are _also Tuples_ I had to make a decision on how to merge
+positional arguments. Should they override in numeric order (spoiler: yes they
+do) or should they _concatenate_ (they don't)!?
+
+```extra
+let
+  weather = {50, unit: 'celsius'}
+  new_temp = 60
+in
+  weather ~~ {new_temp}
+  -- option A: {60, unit: 'celsius'}
+  -- option B: {50, unit: 'celsius', 60}
+```
+
+So I went with option A.
+
+## Splats
+
+You can achieve option B easily, though, using the splat operator `...`:
+
+```extra
+let
+  weather = {50, unit: 'celsius'}
+  new_temp = 60
+in
+  {...weather, new_temp}
+  -- {50, unit: 'celsius', 60}
+```
+
+The `...` operator will also merge keys, preferring the later values, which provides yet another way to merge Dicts and Objects.
+
+```extra
+let
+  user = {name: 'Alice', age: 50}
+  updates = {age: 51}
+in
+  {...user, ...updates}
+```
+
+Splatting also applies to Set and Array types:
+
+```extra
+[...list1, ...list2]
+set(...set1, ...set2)
+```
+
+## Putting it all together
+
+I want to take a moment to point something out - there are always two ways to
+merge/join/concat. You can start with the "container" and put in the parts you
+want, or you can start with one container and join others onto it. I'll show you
+what I mean:
+
+### String
+
+1. String interpolation: `"${name} is ${age} years old"`
+2. String concatenation: `name <> ' is ' <> $age <> ' years old'`
+
+### Array
+
+1. Splat: `[...list1, ...list2]`
+2. Concatenation: `list1 ++ list2`
+
+### Dict
+
+1. Splat: `dict(...dict1, ...dict2)`
+2. Merge: `dict1 ~~ dict2`
+(`dict2` overrides keys in `dict1` in both cases)
+
+### Set
+
+1. Splat: `set(...set1, ...set2)`
+2. Union: `set1 + set2`
+
+### Tuple/Object
+
+1. Splat: `{...obj1, ...obj2}`
+2. Merge: `obj1 ~~ obj2`
+* Though it's important to point out that the merge strategy of `...` is *different* from the merge stragegy of `~~` - positional values will be overridden using `~~` and concatenated using `...`.
+
+I think this is a nice symmetry, and also the operators indicate (somewhat) the type that is being operated on.
 
 ## Array/Dict/Tuple/Object Access / Property Access
 
@@ -1392,7 +1511,7 @@ Everyone's favourite! Well it's _my_ favourite, and if you haven't used it today
   |>
     if(#.length) {
     then:
-      $# ++ ','
+      $# <> ','
     else
       ''
     }
@@ -1404,7 +1523,7 @@ There's also a null-safe version:
 
 ```extra
 -- name is String | null
-name ?|> name ++ ':' --> inside the pipe `name` is guaranteed to be a String, otherwise the expression is skipped and `null` is returned.
+name ?|> name <> ':' --> inside the pipe `name` is guaranteed to be a String, otherwise the expression is skipped and `null` is returned.
 ```
 
 There's a clever trick with the `=>` operator that allows us to "name" the `#` symbol. This is eerily similar to `fn() =>`, so be mindful that we are using the *match* feature of Extra here, not function invocation.
@@ -1414,7 +1533,7 @@ There's a clever trick with the `=>` operator that allows us to "name" the `#` s
   |> numbers =>
     if(numbers.length) {
     then:
-      $numbers ++ ','
+      $numbers <> ','
     else:
       ''
     }

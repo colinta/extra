@@ -67,7 +67,7 @@ const PRECEDENCE = {
     is: 10,
     '!is': 10,
     '++': 11,
-    '..': 11,
+    '<>': 11,
     '~~': 11,
     '...': 11,
     '<..': 11,
@@ -1992,7 +1992,7 @@ addBinaryOperator({
 })
 
 class StringConcatenationOperator extends BinaryOperator {
-  symbol = '..'
+  symbol = '<>'
 
   operatorType(
     _runtime: TypeRuntime,
@@ -2066,8 +2066,8 @@ class StringConcatenationOperator extends BinaryOperator {
 
 addBinaryOperator({
   name: 'string-concatenation',
-  symbol: '..',
-  precedence: PRECEDENCE.BINARY['..'],
+  symbol: '<>',
+  precedence: PRECEDENCE.BINARY['<>'],
   associativity: 'left',
   create(
     range: [number, number],

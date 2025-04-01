@@ -80,12 +80,12 @@ elseif(b) :
   4
 else :
   '4'
-  ..
+  <>
   '5'
 }
 `,
-        "(if (a) { (then: (+ 1 2)) (fn `elseif` (b) { (+ 3 4) }) (else: (.. '4' '5')) })",
-        "if(a) { then: 1 + 2, elseif(b): 3 + 4, else: '4' .. '5' }",
+        "(if (a) { (then: (+ 1 2)) (fn `elseif` (b) { (+ 3 4) }) (else: (<> '4' '5')) })",
+        "if(a) { then: 1 + 2, elseif(b): 3 + 4, else: '4' <> '5' }",
       ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse if '${formula}'`, () => {
@@ -155,7 +155,7 @@ else:
         `\
 if(a) {
 then:
-  a .. '!'
+  a <> '!'
 else:
   b
 }
@@ -169,7 +169,7 @@ else:
         `\
 if(a) {
 then:
-  a .. '!'
+  a <> '!'
 else:
   b
 }
@@ -183,7 +183,7 @@ else:
         `\
 if(a) {
 then:
-  a .. a
+  a <> a
 else:
   b
 }

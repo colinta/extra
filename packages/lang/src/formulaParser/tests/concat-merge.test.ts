@@ -22,8 +22,8 @@ describe('getType', () => {
       runtimeTypes['str'] = [Types.string(), Values.string('test')]
     })
     cases<[string, Types.Type]>(
-      c(['"test" .. "test"', Types.literal('testtest')]),
-      c(['str .. str', Types.string()]),
+      c(['"test" <> "test"', Types.literal('testtest')]),
+      c(['str <> str', Types.string()]),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`${formula} => ${expected}`, () => {
         const expression = parse(formula).get()
@@ -71,7 +71,7 @@ describe('eval', () => {
       'lhs ++ rhs',
       Values.array([Values.float(2), Values.int(1), Values.int(2), Values.int(3)]),
     ]),
-    c([Values.string('asdf'), Values.string('jkl'), 'lhs .. rhs', Values.string('asdfjkl')]),
+    c([Values.string('asdf'), Values.string('jkl'), 'lhs <> rhs', Values.string('asdfjkl')]),
   ).run(([lhs, rhs, formula, expected], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
       `should eval ${formula} = ${expected} (lhs = ${lhs}, rhs = ${rhs})`,

@@ -178,15 +178,11 @@ describe('getType', () => {
         }),
       )
     })
-
-    it('should not recognize "<>"', () => {
-      expect(() => parse(`1 <> 1`).get()).toThrow()
-    })
   })
 
   describe('pipe operator', () => {
-    it('"test" |> # .. "test" => String', () => {
-      const expression = parse('"test" |> # .. "test"').get()
+    it('"test" |> # <> "test" => String', () => {
+      const expression = parse('"test" |> # <> "test"').get()
       expect(expression.getType(typeRuntime).get()).toEqual(Types.literal('testtest'))
     })
 
