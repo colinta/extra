@@ -27,7 +27,7 @@ const STATE_FILE = (() => {
   while (basename(replRoot) !== 'repl') {
     replRoot = resolve(replRoot, '..')
     if (replRoot === '/') {
-      throw new Error('Could not find project root (no .git folder found)')
+      throw new Error("Could not find project root (no 'repl/' folder found)")
     }
   }
 
@@ -40,7 +40,7 @@ const REPL_TESTS_FILE = (() => {
   while (!existsSync(resolve(projectRoot, '.git'))) {
     projectRoot = resolve(projectRoot, '..')
     if (projectRoot === '/') {
-      throw new Error('Could not find project root (no .git folder found)')
+      throw new Error("Could not find project root (no '.git/' folder found)")
     }
   }
 

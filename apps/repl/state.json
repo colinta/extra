@@ -2,11 +2,11 @@
   "desc": "tuple arguments",
   "only": false,
   "skip": false,
-  "formula": "foo(...tuple)",
+  "formula": "let\n  foo = fn(#a: Int, b: String, ...#aa: Array(Int), bb: Array(Int)) => b <> $a\nin\nfoo(...tuple)",
   "vars": [
     {
       "name": "foo",
-      "value": "fn(#a: Int,b: String) => b .. $a"
+      "value": "fn(#a: Int, b: String) => b <> $a"
     },
     {
       "name": "tuple",
