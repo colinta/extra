@@ -177,7 +177,7 @@ export function inspect(value: any, wrap = true, depth = 0, found = new Set<any>
     key => `${colorize.key(key)}: ${inspect(value[key], wrap, depth + 1, nextFound)}`,
   )
   const count = values.reduce((len, val) => len + val.length, 0)
-  const newline = (wrap && count > 100) || className
+  const newline = className || (wrap && count > 100)
   let inner: string
   if (newline) {
     inner = values.join(`,\n${innerTab}`)
@@ -185,7 +185,11 @@ export function inspect(value: any, wrap = true, depth = 0, found = new Set<any>
     inner = values.join(', ')
   }
 
-  return newline ? `{\n${innerTab}${className}\n${innerTab}${inner}\n${tab}}` : `{ ${inner} }`
+  if (className) {
+    className = `${innerTab}${className}\n`
+  }
+
+  return newline ? `{\n${className}${innerTab}${inner}\n${tab}}` : `{ ${inner} }`
 }
 
 for (const logLevel of ['log', 'warn', 'debug', 'info', 'error'] as const) {
