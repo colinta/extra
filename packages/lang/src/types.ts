@@ -120,16 +120,21 @@ export function oneOf(types: Type[]) {
   return OneOfType.createOneOf(types)
 }
 
-export function formula(args: Argument[], returnType: Type) {
-  return new FormulaType(returnType, args)
+export function formula(args: Argument[], returnType: Type, genericTypes: GenericType[] = []) {
+  return new FormulaType(returnType, args, genericTypes)
 }
 
 export function lazy(returnType: Type) {
-  return new FormulaType(returnType, [])
+  return new FormulaType(returnType, [], [])
 }
 
-export function namedFormula(name: string, args: Argument[], returnType: Type) {
-  return new NamedFormulaType(name, returnType, args)
+export function namedFormula(
+  name: string,
+  args: Argument[],
+  returnType: Type,
+  genericTypes: GenericType[] = [],
+) {
+  return new NamedFormulaType(name, returnType, args, genericTypes)
 }
 
 export function generic(name: string, resolvedType?: Type) {
@@ -507,13 +512,14 @@ export class GenericType extends Type {
      * the resolved type, but the resolved type must be assignable to them.
      *
      * @example
-     *     example: <T>(#callback: (input: T): [T], #arg: T)
+     *     example: <T>(#callback: (input: T): Array(T), #arg: T)
+     *     callback: fn(#foo: Int | String): Array(String)
      *
-     *     example((#foo: Int | String): [String], '')
+     *     example(callback, '')
      *
-     * --> #foo: Int | String is a requirement
-     * --> [String] is a hint
-     * --> '' (literal('')) is a hint
+     * --> `#foo: Int | String` is a requirement
+     * --> `[String]` is a hint
+     * --> `''` is a hint
      *
      * `T` will resolve to `String`, because it is derived from the two hints, and
      * also satisfies the requirement of `T: Int | String`
@@ -584,7 +590,7 @@ export class GenericType extends Type {
   }
 
   generics() {
-    return new Set<GenericType>([this])
+    return new Set([this])
   }
 
   copy() {
@@ -724,13 +730,10 @@ export class FormulaType extends Type {
   constructor(
     public returnType: Type,
     args: Argument[],
+    readonly genericTypes: GenericType[],
   ) {
     super()
 
-    // these are supposed to come in ordered "positional ... named", but just in
-    // case they aren't, the constructor guarantees this order.
-    // const positional: Argument[] = []
-    // const optional: Argument[] = []
     for (const argument of args) {
       if (argument.is === 'named-argument' || argument.is === 'repeated-named-argument') {
         this._named.set(argument.alias, argument)
@@ -785,7 +788,7 @@ export class FormulaType extends Type {
    * the argument-definition of the formula.
    */
   positionalArg(at: number): Argument | undefined {
-    return this.args[at]
+    return this._positional[at]
   }
 
   /**
@@ -805,10 +808,7 @@ export class FormulaType extends Type {
       desc += ` ${this.name}`
     }
 
-    const generics = Array.from(this.generics())
-      .map(generic => generic.name)
-      .sort()
-      .join(', ')
+    const generics = this.genericTypes.map(generic => generic.name).join(', ')
     if (generics.length) {
       desc += `<${generics}>`
     }
@@ -845,9 +845,9 @@ export class ViewFormulaType extends FormulaType {
    */
   public args: NamedArgument[]
 
-  constructor(args: NamedArgument[]) {
+  constructor(args: NamedArgument[], genericTypes: GenericType[]) {
     const returnType: Type = UserViewType
-    super(returnType, args)
+    super(returnType, args, genericTypes)
 
     this.args = args
     Object.defineProperty(this, '_named', {enumerable: false})
@@ -892,8 +892,9 @@ export class NamedFormulaType extends FormulaType {
     readonly name: string,
     returnType: Type,
     args: Argument[] = [],
+    genericTypes: GenericType[],
   ) {
-    super(returnType, args)
+    super(returnType, args, genericTypes)
     this.name = name
   }
 }
@@ -904,8 +905,9 @@ export class TypeConstructor extends NamedFormulaType {
     readonly intendedType: Type,
     returnType: Type,
     args: Argument[] = [],
+    genericTypes: GenericType[] = [],
   ) {
-    super(name, returnType, args)
+    super(name, returnType, args, genericTypes)
   }
 
   fromTypeConstructor(): Type {
@@ -1001,9 +1003,17 @@ export abstract class OneOfType extends Type {
       return types[0]
     }
 
-    if (types.length === 2 && types.some(t => t === NullType) && types.some(t => t !== NullType)) {
-      const type = types.filter(t => t !== NullType).at(0)
-      return OptionalType.createOptional(type ?? NeverType)
+    // special case for oneOf([Type, NullType]) => OptionalType
+    const nonNullType = types.find(t => t !== NullType)
+    if (
+      // only 2
+      types.length === 2 &&
+      // one is NullType
+      types.some(t => t === NullType) &&
+      // the other isn't
+      nonNullType
+    ) {
+      return OptionalType.createOptional(nonNullType)
     }
 
     return types.reduce((previous, current) => compatibleWithBothTypes(previous, current))
@@ -1032,10 +1042,7 @@ export class OptionalType extends OneOfType {
   readonly is = 'optional'
 
   private constructor(type: Type) {
-    const types = [type]
-    if (type !== NullType) {
-      types.push(NullType)
-    }
+    const types = [type, NullType]
     super(types)
   }
 
@@ -1044,6 +1051,17 @@ export class OptionalType extends OneOfType {
   }
 
   static createOptional(type: Type): Type {
+    // shouldn't happen but just in case
+    if (type instanceof OneOfType) {
+      // if types includes NullType, return it, otherwise return OneOfType with NullType
+      // added
+      if (type.of.includes(NullType)) {
+        return type
+      } else {
+        return new __OneOfType([...type.of, NullType])
+      }
+    }
+
     if (type === NullType) {
       return NullType
     }
@@ -3061,7 +3079,12 @@ function compatibleWithBothFormulas(lhs: FormulaType, rhs: FormulaType) {
   }
 
   const returnType = compatibleWithBothTypes(lhs.returnType, rhs.returnType)
-  return formula(args, returnType)
+
+  if (lhs.genericTypes.length || rhs.genericTypes.length) {
+    throw 'TODO'
+  }
+
+  return formula(args, returnType, [])
 }
 
 /**
@@ -3410,21 +3433,22 @@ function canBeAssignedToSet(testType: SetType, assignTo: SetType) {
  * The next argument, `#arg: T`, will resolve T to something concrete.
  */
 export function checkFormulaArguments(
-  positions: number,
-  names: Set<string>,
+  positionsLength: number,
+  names: string[],
   assignToFormula: FormulaType,
   argumentAt: (position: number) => Type | undefined,
   argumentNamed: (name: string) => Type | undefined,
-  isRequired: (id: string | number) => boolean,
+  spreadPositionalArguments: ArrayType[],
   resolvedGenerics?: Map<GenericType, GenericType>,
 ) {
   const errorMessages = _checkFormulaArguments(
-    positions,
+    positionsLength,
     names,
     assignToFormula,
     argumentAt,
     argumentNamed,
-    isRequired,
+    spreadPositionalArguments,
+    () => true,
     resolvedGenerics,
     true,
   )
@@ -3443,6 +3467,18 @@ export function checkFormulaArguments(
 /**
  * Checks that the formula *implementation* is compatible with a formula *definition*.
  *
+ * - formula *implementation* is the argument being passed as an argument
+ * - formula *definition* is the expected FormulaType, as defined by the receiving formula
+ *
+ *     let
+ *       mapFunc = fn(#a: Int, #b: Int) => a * b
+ *       --        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ implementation
+ *       fn mapNumbers(#func: fn(#a: Int, #b): Int) => func(1, 2)
+ *       --            ^^^^^^^^^^^^^^^^^^^^^^^^^^^ definition
+ *     in
+ *       mapNumbers(mapFunc)
+ *       --> `mapFunc` is type checked against the `#func` argument type
+ *
  * @param formulaArgument The function being passed as an argument
  * @param formulaType The expected formula type
  */
@@ -3451,10 +3487,13 @@ function canBeAssignedToFormula(
   formulaType: FormulaType,
   resolvedGenerics?: Map<GenericType, GenericType>,
 ) {
-  const positions = formulaType.args.reduce((count, arg) => (arg.alias ? count : count + 1), 0)
-  const names = new Set(formulaType.args.flatMap(arg => (arg.alias ? [arg.alias] : [])))
+  const positionsLength = formulaType.args.reduce(
+    (count, arg) => (arg.is === 'positional-argument' ? count + 1 : count),
+    0,
+  )
+  const names = formulaType.args.flatMap(arg => (arg.is === 'named-argument' ? [arg.alias] : []))
   const errorMessages = _checkFormulaArguments(
-    positions,
+    positionsLength,
     names,
     formulaArgument,
     function argumentAt(position: number) {
@@ -3463,6 +3502,8 @@ function canBeAssignedToFormula(
     function argumentNamed(name: string) {
       return formulaType.namedArg(name)?.type
     },
+    // spreadPositionalArguments:
+    [],
     function isRequired(id: string | number) {
       if (typeof id === 'number') {
         return formulaType.positionalArg(id)?.isRequired ?? false
@@ -3485,57 +3526,132 @@ function canBeAssignedToFormula(
   }
 }
 
-// `positionalCount` is the number of positional arguments that will be passed to assignToFormula
-// `namedArgs` are the names of the named arguments
-//
-// `positionalCount` number of arguments from assignToFormula will be ignored when checking
-// against the named arguments. e.g.
-//     fn(#a, #b?:, c:, d:) --> positionalCount = 2, named = [c, d]
-// if assignToFormula is `fn(a, b, c, d)`, all is well (2 positional arguments,
-// named arguments c & d).
-//
-// if assignToFormula is `fn(d, c, b, a)`, no good because d/c are "used" by the
-// positional arguments
+/**
+ * This function works *opposite* to how you might think.
+ *
+ * It is called from two places:
+ * - canBeAssignedToFormula (above)
+ * - functionInvocationOperatorType (operators.ts)
+ *
+ * When it is called from `canBeAssignedToFormula`, it is called with the *formula
+ * instance* being passed in as `formulaBeingCalled` and the *formula type*'s
+ * arguments being checked.
+ *
+ * It takes a second to figure out why.
+ *
+ * Imagine a formula is being passed as an argument that expects an int-to-string
+ * mapping function. Here, `intToString` is the "outer" formula, which expects a
+ * formula.
+ *
+ *     intToString: fn(#originalMap fn(#a: Int): String ) =>
+ *       originalMap(0)
+ *
+ *     let
+ *       myMap = fn(a: Int | String) => $a
+ *     in
+ *       intToString(myMap)
+ *
+ * This means that when `myMap` is called, it will be called *as if it is the
+ * `originalMap` function. So ask yourself, should we check that `Int|String` can
+ * be assigned to `Int`? Or the opposite; that `Int` can be assigned to `Int |
+ * String`. The latter; `originalMap` will be called with an `Int` *only*.
+ *
+ * This also has implications for another feature we see above: myMap is defined
+ * with only named arguments, but originalMap is called with positional arguments.
+ *
+ * So we need to verify that if myMap (`formulaBeingCalled`) only expects named
+ * arguments, but the arguments are all positional, the named arguments are
+ * *treated like* positional arguments.
+ */
 function _checkFormulaArguments(
-  positionalCount: number,
-  namedArgs: Set<string>,
-  assignToFormula: FormulaType,
+  positionsLength: number,
+  namedArgs: string[],
+  formulaBeingCalled: FormulaType,
   argumentAt: (position: number) => Type | undefined,
   argumentNamed: (name: string) => Type | undefined,
+  spreadPositionalArguments: ArrayType[],
   isRequired: (id: string | number) => boolean,
   resolvedGenerics: Map<GenericType, GenericType> | undefined,
   useHints: boolean,
-) {
+): string[] {
+  // short-circuit the special case of all-named-expected and all-positional-provided
+  if (
+    // all named expected?
+    formulaBeingCalled.args.every(arg => arg.is === 'named-argument') &&
+    // and all positional provided?
+    namedArgs.length === 0 &&
+    positionsLength
+  ) {
+    const expectedNames = formulaBeingCalled.args.map(({alias}) => alias)
+    return _checkFormulaArguments(
+      0,
+      expectedNames,
+      formulaBeingCalled,
+      function argumentAt_(position) {
+        return undefined
+      },
+      function argumentNamed(name) {
+        const index = expectedNames.indexOf(name)
+        return argumentAt(index)
+      },
+      spreadPositionalArguments,
+      function isRequired_(id) {
+        if (typeof id === 'number') {
+          return false
+        }
+        const index = expectedNames.indexOf(id)
+        return isRequired(index)
+      },
+      resolvedGenerics,
+      useHints,
+    )
+  }
+
   const errors: string[] = []
   const reason = {reason: ''}
+  let position = 0
+  const remaininedNames = new Set<string>(namedArgs)
 
-  for (const [position, formulaArgument] of assignToFormula.args.entries()) {
+  for (const formulaArgument of formulaBeingCalled.args) {
     let argumentType: Type | undefined
     let argumentIsRequired: boolean
-    if (position < positionalCount) {
+    if (formulaArgument.is === 'positional-argument') {
       argumentType = argumentAt(position)
       argumentIsRequired = isRequired(position)
-
-      if (formulaArgument.alias && namedArgs.has(formulaArgument.alias)) {
-        errors.push(duplicateArgumentIdentifierError(formulaArgument.alias, position))
-        continue
-      }
-    } else if (formulaArgument.alias) {
+      position += 1
+    } else if (formulaArgument.is === 'named-argument') {
       argumentType = argumentNamed(formulaArgument.alias)
       argumentIsRequired = isRequired(formulaArgument.alias)
+      remaininedNames.delete(formulaArgument.alias)
+    } else if (formulaArgument.is === 'spread-positional-argument') {
+      // all remaining positional args need to be of type formulaArgument.type
+      let type: Type = AnyType
+      argumentIsRequired = true
+      for (let positionIndex = position; positionIndex < positionsLength; ++positionIndex) {
+        const argTypeAtIndex = argumentAt(positionIndex)
+        if (!argTypeAtIndex) {
+          throw `Weird, positionsLength is ${positionsLength}, but no argument at position ${positionIndex}`
+        }
+        type = compatibleWithBothTypes(type, argTypeAtIndex)
+        argumentIsRequired = argumentIsRequired && isRequired(positionIndex)
+      }
+
+      for (const spreadPositionalArgument of spreadPositionalArguments) {
+        type = compatibleWithBothTypes(type, spreadPositionalArgument.of)
+      }
+
+      position = positionsLength
+      argumentType = new ArrayType(type)
     } else {
-      // could call argumentAt here, but why bother? `positionalCount` already defines
-      // the maximum number of positional arguments that will be passed.
-      argumentType = undefined
-      argumentIsRequired = false
+      throw formulaArgument.is
     }
 
     if (!argumentType) {
       if (formulaArgument.isRequired) {
         if (formulaArgument.alias) {
-          errors.push(missingNamedArgumentInFormulaError(assignToFormula, formulaArgument))
+          errors.push(missingNamedArgumentInFormulaError(formulaBeingCalled, formulaArgument.alias))
         } else {
-          errors.push(outOfArgumentsMessageError(assignToFormula, formulaArgument, position))
+          errors.push(outOfArgumentsMessageError(formulaBeingCalled, position))
         }
       }
 
@@ -3568,10 +3684,10 @@ function _checkFormulaArguments(
     } else if (!argumentIsRequired && formulaArgument.isRequired) {
       if (formulaArgument.alias) {
         errors.push(
-          requiredArgumentError(formulaArgument.alias, formulaArgument.type, assignToFormula),
+          requiredArgumentError(formulaArgument.alias, formulaArgument.type, formulaBeingCalled),
         )
       } else {
-        errors.push(requiredArgumentError(position, formulaArgument.type, assignToFormula))
+        errors.push(requiredArgumentError(position, formulaArgument.type, formulaBeingCalled))
       }
     }
   }
@@ -3605,35 +3721,16 @@ export function combineErrorMessages(errorMessages: string[]) {
   return errorMessage
 }
 
-export function outOfArgumentsMessageError(
-  formulaType: FormulaType,
-  formulaArgument: Argument,
-  position: number,
-) {
+export function outOfArgumentsMessageError(formulaArgumentType: Type, position: number) {
   let errorMessage = `Expected argument at position #${position + 1}`
-  errorMessage += ` of type '${formulaArgument.type.toCode()}'`
-  errorMessage += ` in '${formulaType.toCode()}'`
+  errorMessage += ` of type '${formulaArgumentType.toCode()}'`
 
   return errorMessage
 }
 
-export function missingNamedArgumentInFormulaError(
-  formulaType: FormulaType,
-  formulaArgument: NamedArgument | RepeatedNamedArgument,
-) {
-  let errorMessage = `Function '${formulaType.toCode()}'`
-  errorMessage += missingNamedArgumentPartialError(
-    formulaArgument.alias,
-    formulaArgument.type.toCode(),
-  )
-
-  return errorMessage
-}
-
-export function missingNamedArgumentPartialError(alias: string, type: string) {
-  let errorMessage = ''
-  errorMessage += ` expected argument named '${alias}'`
-  errorMessage += ` of type '${type}'`
+export function missingNamedArgumentInFormulaError(formulaArgumentType: Type, name: string) {
+  let errorMessage = `Expected argument named ${name}`
+  errorMessage += ` of type '${formulaArgumentType.toCode()}'`
 
   return errorMessage
 }
@@ -3648,12 +3745,6 @@ export function cannotAssignToPositionalArgumentError(
 
 export function cannotAssignToNamedArgumentError(testType: Type, assignTo: Type, name: string) {
   return `Incorrect type for argument '${name}'. ${cannotAssignToError(testType, assignTo)}`
-}
-
-export function duplicateArgumentIdentifierError(name: string, position: number) {
-  return `Named argument '${name}' would be called both as a positional argument (#${
-    position + 1
-  }) and as a named argument.`
 }
 
 export function requiredArgumentError(
@@ -3745,6 +3836,7 @@ function addRequirement(
             }),
           ],
           genericT,
+          [genericT],
         ),
       ),
   }
@@ -3772,6 +3864,7 @@ function addRequirement(
             }),
           ],
           genericT,
+          [genericT],
         ),
       ),
   }
@@ -3826,19 +3919,20 @@ function addRequirement(
       IntType,
     ),
     // 5.times(fn(Int): T): T[]
-    times: withGenericT(generic =>
+    times: withGenericT(genericT =>
       formula(
         [
           positionalArgument({
             name: 'do',
             type: formula(
               [positionalArgument({name: 'index', type: IntType, isRequired: true})],
-              generic,
+              genericT,
             ),
             isRequired: true,
           }),
         ],
-        array(generic),
+        array(genericT),
+        [genericT],
       ),
     ),
   }
@@ -3853,51 +3947,54 @@ function addRequirement(
     // length: Int
     length: IntType,
     // mapChars(fn: fn(input: String): T): T[]
-    mapChars: withGenericT(generic =>
+    mapChars: withGenericT(genericT =>
       formula(
         [
           positionalArgument({
             name: FN,
             type: formula(
               [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-              generic,
+              genericT,
             ),
             isRequired: true,
           }),
         ],
-        generic,
+        genericT,
+        [genericT],
       ),
     ),
     // flatMapChars(fn: fn(input: String): T[]): T[]
-    flatMapChars: withGenericT(generic =>
+    flatMapChars: withGenericT(genericT =>
       formula(
         [
           positionalArgument({
             name: FN,
             type: formula(
               [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-              generic,
+              genericT,
             ),
             isRequired: true,
           }),
         ],
-        generic,
+        genericT,
+        [genericT],
       ),
     ),
     // compactMapChars(fn: fn(input: String): T | null): T[]
-    compactMapChars: withGenericT(generic =>
+    compactMapChars: withGenericT(genericT =>
       formula(
         [
           positionalArgument({
             name: FN,
             type: formula(
               [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-              oneOf([generic, NullType]),
+              oneOf([genericT, NullType]),
             ),
             isRequired: true,
           }),
         ],
-        generic,
+        genericT,
+        [genericT],
       ),
     ),
     // indexOf(String): Int | null

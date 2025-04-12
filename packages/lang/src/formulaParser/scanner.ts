@@ -62,10 +62,10 @@ export class Scanner {
   /**
    * Runs the test scan, and rewinds after the check is performed.
    */
-  test(test: () => boolean, message?: string) {
+  test(test: (scanner: Scanner) => boolean, message?: string) {
     this.#pauseComments = true
     const rewind = this.charIndex
-    const result = test()
+    const result = test(this)
     if (message) {
       this.whereAmI(`${message}: ${result}`)
     }

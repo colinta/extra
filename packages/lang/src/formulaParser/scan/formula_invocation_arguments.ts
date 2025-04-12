@@ -7,8 +7,30 @@ import {scanValidName} from './identifier'
 /**
  * Args passed to a function.
  * - positional arguments
+ *     foo("a", true, 123)
  * - named arguments
+ *     foo(x: "a", y:
+ ', z: 123)
  * - spread arguments (tuple, array, or dict)
+ *
+ * Tuple arguments are treated as if the arguments were passed directly.
+ * Since Tuples can contain positional and named arguments, it is easy to map these
+ * to the argument list.
+ *     foo(...tuple)  -- Tuple = {"a", y: b, z: 123}
+ *
+ * Array arguments are treated as positional arguments, but there also must be a
+ * positional spread argument defined to handle "the rest". An exception is made if
+ * the array is refined to be of a compatible length
+ *     foo(...array)  -- Array = ["a", b, 123]
+ *     -- fn foo(#a: String)
+ *
+ * In the case of passing an array to a repeated named argument, there *must* be a
+ * repeated named argument, this won't be treated as arguments to the function.
+ *     foo(...name: array)  -- Array = ["a", b, 123]
+ *
+ * Dict arguments are treated as named arguments, and the keyword arguments will
+ * also be checked, if it is defined.
+ *     foo(*dict)     -- Dict  = dict(x: "a", y: b, z: 123)
  */
 export function scanInvocationArgs(scanner: Scanner, parseNext: ParseNext) {
   return _scanArguments(scanner, parseNext, 'invocation')
@@ -33,8 +55,8 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
   scanner.scanAllWhitespace()
 
   const args: Expressions.Argument[] = []
-  if (scanner.input[scanner.charIndex] === closer) {
-    scanner.charIndex++
+  if (scanner.is(closer)) {
+    scanner.expectString(closer)
   } else {
     for (;;) {
       if (scanner.isEOF()) {
@@ -47,8 +69,22 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
 
       const argRange0 = scanner.charIndex
 
+      let isSpreadArg = false
+      let isKwarg = false
+      if (scanner.is('...')) {
+        scanner.expectString('...')
+        isSpreadArg = true
+      } else if (scanner.is('*')) {
+        scanner.expectString('*')
+        isKwarg = true
+      }
+
       let argName: Expressions.Reference | undefined
       if (isNamedArg(scanner)) {
+        // I'm excited for the bug report that points out that you can't insert comments
+        // between the 'name' and ':'. To fix it, we just need to use `scanner.test`
+        // instead of isNamedArg, but then we would need to attach the comments somewhere
+        // and test it in comments.test.ts
         argName = scanValidName(scanner)
         scanner.scanAllWhitespace()
         scanner.expectString(':', "Expected ':' followed by the argument type")
@@ -57,14 +93,28 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
       const expression = parseNext(what === 'invocation' ? 'argument' : 'block_argument')
 
       let arg: Expressions.Argument
-      if (argName) {
+      if (isKwarg || isSpreadArg) {
+        if (argName && isKwarg) {
+          throw new ParseError(
+            scanner,
+            `Keyword argument list operator '*' cannot be applied to named arguments.`,
+          )
+        }
+
+        arg = new Expressions.SpreadFunctionArgument(
+          [argRange0, scanner.charIndex],
+          scanner.flushComments(),
+          argName?.name,
+          expression,
+          isSpreadArg ? 'spread' : isKwarg ? 'kwargs' : undefined,
+        )
+      } else if (argName) {
         arg = new Expressions.NamedArgument(
           [argRange0, scanner.charIndex],
           scanner.flushComments(),
           argName.name,
           expression,
         )
-        arg.precedingComments = argName.precedingComments
       } else {
         arg = new Expressions.PositionalArgument(
           [argRange0, scanner.charIndex],
@@ -72,8 +122,13 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
           expression,
         )
       }
+
+      if (argName) {
+        arg.precedingComments = argName.precedingComments
+      }
+
       args.push(arg)
-      scanner.whereAmI('scanFunctionArg: ' + expression.toLisp())
+      scanner.whereAmI('scanFunctionArg: ' + arg.toLisp())
 
       const shouldBreak = scanner.scanCommaOrBreak(closer, "Expected ',' separating arguments")
 

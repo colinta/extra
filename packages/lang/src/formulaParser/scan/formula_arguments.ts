@@ -6,9 +6,13 @@ import {type ExpressionType, ParseError, type ParseNext} from '../types'
 import {scanArgumentType} from './scanArgumentType'
 import {scanValidName} from './identifier'
 
-// "Formula argument" vs "Formula Type Argument"
+// "Formula" (declared, actual formula) vs "Formula Type" (type signature of a
+// formula)
 
-// formulas _can_ have default values
+// Formulas _can_ have default values
+//
+// fn plusOne(#arg: Int = 0) => foo + 1
+//            ^^^^^^^^^^^^^
 export function scanFormulaArgumentDefinitions(
   scanner: Scanner,
   type: 'view' | 'fn',
@@ -33,7 +37,10 @@ export function scanFormulaArgumentDefinitions(
   )
 }
 
-// _formula types_ cannot have default values, only optional args
+// _Formula Types_ cannot have default values, only optional args
+//
+// fn visit(func: fn(#arg?: Int): Int) => func(0) + func()
+//                ^^^^^^^^^^^^^^^^^^^^
 export function scanFormulaTypeArgumentDefinitions(
   scanner: Scanner,
   expressionType: ExpressionType,
@@ -77,7 +84,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
     const aliases = new Set<string>()
     let firstDefaultName = ''
     let prevIsOptional = false
-    let prevOptionalArg = ''
+    let firstOptionalArg = ''
     /**
      * The name of the first (and only) positional spread arg
      *
@@ -104,16 +111,16 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
        * true => positional, false => named
        */
       let isSpreadPositionalArg = false
-      if (scanner.is(/^\.\.\.\s*#/m)) {
+      if (scanner.test(scannerIsSpreadPositional)) {
         scanner.expectString('...')
         scanner.scanAllWhitespace()
         isSpreadPositionalArg = true
         spreadArg = 'spread'
-      } else if (scanner.is(/^\.\.\.\s*\b/m)) {
+      } else if (scanner.test(scannerIsRepeatedNamed)) {
         scanner.expectString('...')
         scanner.scanAllWhitespace()
         spreadArg = 'spread'
-      } else if (scanner.is(/^\*\s*\b/)) {
+      } else if (scanner.test(scannerIsKeywordList)) {
         scanner.expectString('*')
         scanner.scanAllWhitespace()
         spreadArg = 'kwargs'
@@ -126,9 +133,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       scanner.scanSpaces()
       argName.followingComments.push(...scanner.flushComments())
 
-      if (isSpreadPositionalArg && spreadPositionalArg === undefined) {
-        spreadPositionalArg = argName.name
-      } else if (isSpreadPositionalArg) {
+      if (isSpreadPositionalArg && spreadPositionalArg !== undefined) {
         // spreadPositionalArg should be undefined at this point. If it is assigned,
         // we already have a spread positional arg
         throw new ParseError(
@@ -136,9 +141,17 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
           `Found second remaining arguments list '...#${argName.name}' after '...#${spreadPositionalArg}'`,
           argRange0,
         )
-      } else if (spreadArg === 'kwargs' && kwargsNamedArg === undefined) {
-        kwargsNamedArg = argName.name
-      } else if (spreadArg === 'kwargs') {
+      }
+
+      if (isPositional && spreadPositionalArg !== undefined) {
+        throw new ParseError(
+          scanner,
+          `Found positional argument '#${argName.name}' after '...#${spreadPositionalArg}'.`,
+          argRange0,
+        )
+      }
+
+      if (spreadArg === 'kwargs' && kwargsNamedArg !== undefined) {
         // spreadPositionalArg should be undefined at this point, if it is true,
         // we already have a spread positional arg
         if (kwargsNamedArg !== undefined) {
@@ -148,6 +161,20 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
             argRange0,
           )
         }
+      }
+
+      if (!isPositional && kwargsNamedArg !== undefined) {
+        throw new ParseError(
+          scanner,
+          `Found named argument '${argName.name}' after '*${kwargsNamedArg}'.`,
+          argRange0,
+        )
+      }
+
+      if (isSpreadPositionalArg) {
+        spreadPositionalArg = argName.name
+      } else if (spreadArg === 'kwargs') {
+        kwargsNamedArg = argName.name
       }
 
       if (isPositional && type === 'view') {
@@ -169,7 +196,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       }
 
       if (!isPositional) {
-        argAlias = argAlias ?? argName
+        argAlias ??= argName
 
         if (aliases.has(argAlias.name)) {
           throw new ParseError(
@@ -201,8 +228,10 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       let isOptional = false
       if (is === 'formula_type') {
         isOptional = scanner.scanIfString('?')
-        prevIsOptional = true
-        prevOptionalArg = argName.name
+        if (isOptional) {
+          prevIsOptional = true
+          firstOptionalArg = firstOptionalArg ?? argName.name
+        }
         scanner.scanSpaces()
       } else if (scanner.scanIfString('?')) {
         throw new ParseError(
@@ -212,7 +241,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       } else if (prevIsOptional && isPositional) {
         throw new ParseError(
           scanner,
-          `Required argument '#${argName.name}' must appear before optional argument "#${prevOptionalArg}".\nAll required arguments must come before optional arguments.`,
+          `Required argument '#${argName.name}' must appear before optional argument "#${firstOptionalArg}".\nAll required arguments must come before optional arguments.`,
           scanner.charIndex - argName.name.length,
         )
       }
@@ -277,7 +306,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       if (is === 'formula') {
         arg = new Expressions.FormulaLiteralArgumentAndTypeDeclaration(
           [argRange0, scanner.charIndex],
-          [], //
+          [], // precedingComments
           argName,
           argAlias ?? argName,
           argType,
@@ -288,7 +317,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       } else {
         arg = new Expressions.FormulaTypeArgumentAndType(
           [argRange0, scanner.charIndex],
-          [], //
+          [], // precedingComments
           argName,
           argAlias ?? argName,
           argType,
@@ -322,4 +351,31 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       : Expressions.FormulaTypeArgumentAndType[],
     range1,
   ]
+}
+
+function scannerIsSpreadPositional(scanner: Scanner) {
+  if (!scanner.scanIfString('...')) {
+    return false
+  }
+
+  scanner.scanAllWhitespace()
+  return scanner.is('#')
+}
+
+function scannerIsRepeatedNamed(scanner: Scanner) {
+  if (!scanner.scanIfString('...')) {
+    return false
+  }
+
+  scanner.scanAllWhitespace()
+  return scanner.is(/^\b/)
+}
+
+function scannerIsKeywordList(scanner: Scanner) {
+  if (!scanner.scanIfString('*')) {
+    return false
+  }
+
+  scanner.scanAllWhitespace()
+  return scanner.is(/^\b/)
 }

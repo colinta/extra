@@ -1257,7 +1257,7 @@ export class FormulaArgs {
   private _positional: Value[] = []
   private _named: Map<string, Value> = new Map()
 
-  constructor(readonly args: [string | undefined, Value][] = []) {
+  constructor(readonly args: [string | undefined, Value][]) {
     for (const [alias, arg] of args) {
       if (!alias) {
         this._positional.push(arg)

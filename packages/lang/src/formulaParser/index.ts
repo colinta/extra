@@ -545,6 +545,7 @@ function parseInternal(
       }
 
       if (isMatchingExpression) {
+        scanner.whereAmI(`expressionType ${expressionType}`)
         if (isOperator(prevOperator, 'is', 2) || isOperator(prevOperator, '!is', 2)) {
           // a is Array(Int) <-- scanArgumentType('formula_type') will match `Array(Int)`
           processExpression(scanArgumentType(scanner, 'argument_type', expressionType, parseNext))
@@ -592,9 +593,20 @@ function parseInternal(
         } else {
           throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
         }
+        scanner.whereAmI(`expressionType ${expressionType}`)
 
         if (isWhitespaceChar(scanner.prevChar) && !scanner.isEOF()) {
-          throw new ParseError(scanner, 'sanity check - we should not be skipping whitespace')
+          // very special case for let ... in, where the 'let' ends with whitespace before 'in'
+          if (
+            expressionType === 'let' &&
+            scanner.test(() => {
+              scanner.scanAllWhitespace()
+              return scanner.isWord('in')
+            })
+          ) {
+          } else {
+            throw new ParseError(scanner, 'sanity check - we should not be skipping whitespace')
+          }
         }
       } else {
         if (scanner.is(PARENS_OPEN)) {

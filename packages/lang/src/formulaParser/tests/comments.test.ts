@@ -725,7 +725,7 @@ foo --comment1
         return
       }
 
-      const [item0, item1, item2, item3] = argsList.allArgs
+      const [item0, item1] = argsList.allArgs
 
       // Test comments preceding the array expression
       expect(fooRef.precedingComments).toEqual([{delim: '--', comment: 'comment0', type: 'line'}])

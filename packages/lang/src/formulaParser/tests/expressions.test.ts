@@ -275,8 +275,8 @@ describe('getType', () => {
 
     it('foo.name => throws', () => {
       const expression = parse('foo.name').get()
-      expect(() => expression.getType(typeRuntime).get()).toThrow(
-        "Cannot get type of entity named 'foo'",
+      expect(() => console.log(expression.getType(typeRuntime).get())).toThrow(
+        "Cannot get type of variable named 'foo'",
       )
     })
 

@@ -1369,7 +1369,7 @@ export class SetTypeExpression extends TypeExpression {
 }
 
 /**
- * An argument, either positional or named.
+ * An argument declaration, as part of a formula definition.
  *
  * - required positional:
  *     #name: Int
@@ -1381,6 +1381,12 @@ export class SetTypeExpression extends TypeExpression {
  *     name: Int = 1
  *     alias name: Int
  *     alias name: Int = 1
+ * - spread positional argument:
+ *     ...#name: Array(Int)
+ * - repeated named argument:
+ *     ...name: Array(Int)
+ * - keyword list argument:
+ *     *name: Dict(Int)
  */
 export abstract class ArgumentExpression extends Expression {
   constructor(
@@ -1506,48 +1512,46 @@ export abstract class Argument extends Expression {
   eval(runtime: ValueRuntime) {
     return this.value.eval(runtime)
   }
-}
 
-abstract class TypeArgument extends Argument {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    value: Expression,
-    readonly defaultValue: Expression | undefined,
-  ) {
-    super(range, precedingComments, value)
+  private evalToSpreadArguments(value: Values.Value) {
+    if (value instanceof Values.ObjectValue) {
+      return value.tupleValues
+        .map(value => [undefined, value] as [string | undefined, Values.Value])
+        .concat(
+          [...value.namedValues.entries()].map(
+            ([alias, value]) => [alias, value] as [string | undefined, Values.Value],
+          ),
+        )
+    }
+
+    if (value instanceof Values.ArrayValue) {
+      return value.values.map(value => [undefined, value] as [string | undefined, Values.Value])
+    }
+
+    return err(new RuntimeError(this, 'Expected an Object, found ' + value.constructor.name))
   }
 
-  innerLisp() {
-    if (this.value instanceof FormulaExpression) {
-      return 'fn ' + this.alias + this.value.toLispPrefixed(false)
-    }
-
-    let code = super.innerLisp()
-    if (this.defaultValue !== undefined) {
-      code += ' = ' + this.defaultValue.toLisp()
-    }
-
-    return code
+  private evalToKwargsArguments(value: Values.Value) {
+    return [[this.alias, value] as [string | undefined, Values.Value]]
   }
 
-  toCode() {
-    if (this.value instanceof FormulaExpression) {
-      return 'fn ' + this.alias + this.value.toCodePrefixed(false)
-    }
-
-    let code: string
-    if (this.alias === undefined) {
-      code = this.value.toCode()
-    } else {
-      code = `${this.alias}: ${this.value.toCode()}`
-    }
-
-    if (this.defaultValue !== undefined) {
-      code += ' = ' + this.defaultValue.toCode()
-    }
-
-    return code
+  /**
+   * Called from ArgumentsList to receive the *flattened* arguments for the function
+   * invocation. `...` and `*` are resolved into positional and named arguments.
+   */
+  evalToArguments(
+    runtime: ValueRuntime,
+    spreadArg: 'spread' | 'kwargs' | undefined = undefined,
+  ): GetRuntimeResult<[string | undefined, Values.Value][]> {
+    return this.eval(runtime).map(value => {
+      if (spreadArg === 'spread') {
+        return this.evalToSpreadArguments(value)
+      } else if (spreadArg === 'kwargs') {
+        return this.evalToKwargsArguments(value)
+      } else {
+        return [[this.alias, value] as [string | undefined, Values.Value]]
+      }
+    })
   }
 }
 
@@ -1567,7 +1571,7 @@ export class NamedArgument extends Argument {
   /**
    * - precedingComments: before the alias
    * - followingAliasComments: after the alias
-   * - followingComments: unused
+   * - followingComments: unused (they get attached to the value)
    */
   public followingAliasComments: Comment[] = []
 
@@ -1589,84 +1593,27 @@ export class NamedArgument extends Argument {
  */
 export class PositionalArgument extends Argument {
   readonly alias = undefined
-}
-
-/**
- * A type in an object type expression, possibly with default value
- *
- *     {
- *       name: String
- *       ^^^^^^^^^^^^
- *       name: String = 'value'
- *     } ^^^^^^^^^^^^^^^^^^^^^^
- */
-export class NamedType extends TypeArgument {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly alias: string,
-    value: Expression,
-    defaultValue: Expression | undefined,
-  ) {
-    super(range, precedingComments, value, defaultValue)
-  }
-}
-
-/**
- * A positional type in an object type expression, possibly with default value
- *
- *     {
- *       #name: String
- *       ^^^^^^^^^^^^^
- *       #name: String = 'value'
- *     } ^^^^^^^^^^^^^^^^^^^^^^^
- */
-export class PositionalType extends TypeArgument {
-  readonly alias = undefined
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    value: Expression,
-    readonly defaultValue: Expression | undefined,
-  ) {
-    super(range, precedingComments, value, defaultValue)
-  }
-}
-
-/**
- * A named argument passed to a function as a "block" (a named argument that is
- * outside the function)
- *
- *     foo() { name: 'value' }
- *             ^^^^^^^^^^^^^
- */
-export class NamedBlockArgument extends NamedArgument {
-  constructor(range: Range, precedingComments: Comment[], alias: string, value: Expression) {
-    super(range, precedingComments, alias, value)
-  }
-
-  toLisp() {
-    return `(${this.alias} ${this.value.toLisp()})`
-  }
-
-  toCode() {
-    return `${this.alias} ${this.value}`
-  }
-}
-
-/**
- * A spread argument passed to an object, array, or dict
- *
- *     {...a}
- */
-export abstract class SpreadArgument extends Argument {
-  readonly alias = undefined
 
   constructor(range: Range, precedingComments: Comment[], value: Expression) {
     super(range, precedingComments, value)
   }
+}
 
+/**
+ * A spread argument passed to an object, array, set, dict, or function
+ *
+ *     {...a} -- must be an object
+ *     [...a] -- must be an array (or set?)
+ *     set(...a) -- must a set (or array?)
+ *     dict(...a) -- must be a dict
+ *
+ *     foo(...a)
+ *     -- can be object (the values are "spread" as if they were passed to the function)
+ *     -- or array *if* the function accepts spread args `fn(...#args: Array(T))`
+ *     -- (or repeated-named args `fn(...args: Array(T))`, `foo(...args: args)`)
+ *     -- or dict *if* the function accepts keyword list `fn(*kwargs: Dict(T))`
+ */
+export abstract class SpreadArgument extends Argument {
   toLisp() {
     return `(... ${this.value.toLisp()})`
   }
@@ -1680,6 +1627,8 @@ export abstract class SpreadArgument extends Argument {
  * A spread argument passed to an object
  */
 export class SpreadObjectArgument extends SpreadArgument {
+  readonly alias = undefined
+
   getType(runtime: TypeRuntime): GetRuntimeResult<Types.ObjectType> {
     return getChildType(this, this.value, runtime).map(type => {
       if (!(type instanceof Types.ObjectType)) {
@@ -1705,8 +1654,13 @@ export class SpreadObjectArgument extends SpreadArgument {
  * A spread argument passed to an array
  */
 export class SpreadArrayArgument extends SpreadArgument {
+  readonly alias = undefined
+
   getType(runtime: TypeRuntime): GetRuntimeResult<Types.ArrayType> {
     return getChildType(this, this.value, runtime).map(type => {
+      // TODO: could support Set here - better to show an error message about how to turn
+      // a Set into an Array. Similar for Dict - could show how to extract the values
+      // into an Array/Set.
       if (!(type instanceof Types.ArrayType)) {
         return err(new RuntimeError(this, 'Expected a Array, found ' + type.constructor.name))
       }
@@ -1730,6 +1684,8 @@ export class SpreadArrayArgument extends SpreadArgument {
  * A spread argument passed to an dict
  */
 export class SpreadDictArgument extends SpreadArgument {
+  readonly alias = undefined
+
   getType(runtime: TypeRuntime): GetRuntimeResult<Types.DictType> {
     return getChildType(this, this.value, runtime).map(type => {
       if (!(type instanceof Types.DictType)) {
@@ -1755,8 +1711,13 @@ export class SpreadDictArgument extends SpreadArgument {
  * A spread argument passed to an set
  */
 export class SpreadSetArgument extends SpreadArgument {
+  readonly alias = undefined
+
   getType(runtime: TypeRuntime): GetRuntimeResult<Types.SetType> {
     return getChildType(this, this.value, runtime).map(type => {
+      // TODO: could support Array here - better to show an error message about how to turn
+      // a Array into an Set. Similar for Dict - could show how to extract the values
+      // into an Array/Set.
       if (!(type instanceof Types.SetType)) {
         return err(new RuntimeError(this, 'Expected a Set, found ' + type.constructor.name))
       }
@@ -1777,47 +1738,56 @@ export class SpreadSetArgument extends SpreadArgument {
 }
 
 /**
- * Dice rolling expression.
- *
- *     d6       => roll 1 six-sided die
- *     1d6      => same
- *     2d8      => roll 2 eight-sided dice and add them
- *     (return sum: int)
- *
- *     4d6d1    => roll 4 six-sided dice, drop the lowest value, add the rest
- *     4d6k3    => roll 4 six-sided dice, keep only the highest 3 values and add them
- *     (return sum: int)
- *
- *     3d20>10  => roll 3 twenty-sided dice, count how many were greater than 10
- *     3d20<=10 => roll 3 twenty-sided dice, count how many were less than or equal to 10
- *     (return count: int)
- *
- *     6d6>4f<3 => roll 6 dice, count how many were greater than 4 as successes, and less than 3 as failures
- *     (return {successes: int, failures: int})
+ * A spread argument passed to a function.
+ *     foo(...values) -- can be an object, or array if foo accepts spread args
+ *     foo(...name: values) -- must be an array, and foo must accept repeated-named-arg 'name'
+ *     foo(*kwargs) -- must be a Dict and foo must accept keyword-args-list
  */
-export class DiceExpression extends Expression {
+export class SpreadFunctionArgument extends SpreadArgument {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly value: string,
+    readonly alias: string | undefined,
+    value: Expression,
+    readonly spread: 'spread' | 'kwargs' | undefined,
   ) {
-    super(range, precedingComments)
+    super(range, precedingComments, value)
   }
 
-  getType() {
-    return err(new RuntimeError(this, 'not sure yet'))
+  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ObjectType> {
+    return getChildType(this, this.value, runtime).map(type => {
+      if (type instanceof Types.ObjectType) {
+        return type
+      }
+
+      if (type instanceof Types.ArrayType) {
+        return type
+      }
+
+      return err(
+        new RuntimeError(this, 'Expected an Object or Array, found ' + type.constructor.name),
+      )
+    })
   }
 
-  toLisp() {
-    return `(roll ${this.value})`
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ObjectValue> {
+    return this.value.eval(runtime).map(value => {
+      if (value instanceof Values.ObjectValue) {
+        return value
+      }
+
+      if (value instanceof Values.ArrayValue) {
+        return value
+      }
+
+      return err(
+        new RuntimeError(this, 'Expected an Object or Array, found ' + value.constructor.name),
+      )
+    })
   }
 
-  toCode() {
-    return this.value
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'TODO: parse dice expressions'))
+  evalToArguments(runtime: ValueRuntime): GetRuntimeResult<[string | undefined, Values.Value][]> {
+    return super.evalToArguments(runtime, this.spread)
   }
 }
 
@@ -1980,6 +1950,7 @@ export class IfExpression extends ReservedWord {
             Types.namedArgument({name: 'else', type: T, isRequired: false}),
           ],
           T,
+          [T],
         ),
       ),
     )
@@ -2006,6 +1977,7 @@ export class ElseIfExpression extends ReservedWord {
               Types.tuple([Types.LiteralFalseType, Types.NullType]),
             ]),
           ),
+          [T],
         ),
       ),
     )
@@ -2535,11 +2507,9 @@ export class ArgumentsList extends Expression {
   }
 
   formulaArgs(runtime: ValueRuntime): GetRuntimeResult<Values.FormulaArgs> {
-    return mapAll(
-      this.allArgs.map(arg =>
-        arg.eval(runtime).map(value => [arg.alias, value] as [string | undefined, Values.Value]),
-      ),
-    ).map(args => new Values.FormulaArgs(args))
+    return mapAll(this.allArgs.map(arg => arg.evalToArguments(runtime)))
+      .map(arraysOfArgs => arraysOfArgs.flat())
+      .map(args => new Values.FormulaArgs(args))
   }
 }
 
@@ -3131,11 +3101,13 @@ export class FormulaExpression extends Expression {
 
     const returnType = returnTypeResult.get()
 
+    const genericTypes = this.generics.map(name => new Types.GenericType(name))
+
     if (this.nameRef) {
-      return ok(new Types.NamedFormulaType(this.nameRef.name, returnType, args))
+      return ok(new Types.NamedFormulaType(this.nameRef.name, returnType, args, genericTypes))
     }
 
-    return ok(new Types.FormulaType(returnType, args))
+    return ok(new Types.FormulaType(returnType, args, genericTypes))
   }
 
   private reconcileArgs(
@@ -4052,6 +4024,51 @@ export class ViewDefinition extends Expression {
 
   eval<T>(runtime: ApplicationRuntime<T>): GetValueResult {
     return this.value.eval(runtime)
+  }
+}
+
+/**
+ * Dice rolling expression.
+ *
+ *     d6       => roll 1 six-sided die
+ *     1d6      => same
+ *     2d8      => roll 2 eight-sided dice and add them
+ *     (return sum: int)
+ *
+ *     4d6d1    => roll 4 six-sided dice, drop the lowest value, add the rest
+ *     4d6k3    => roll 4 six-sided dice, keep only the highest 3 values and add them
+ *     (return sum: int)
+ *
+ *     3d20>10  => roll 3 twenty-sided dice, count how many were greater than 10
+ *     3d20<=10 => roll 3 twenty-sided dice, count how many were less than or equal to 10
+ *     (return count: int)
+ *
+ *     6d6>4f<3 => roll 6 dice, count how many were greater than 4 as successes, and less than 3 as failures
+ *     (return {successes: int, failures: int})
+ */
+export class DiceExpression extends Expression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly value: string,
+  ) {
+    super(range, precedingComments)
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'not sure yet'))
+  }
+
+  toLisp() {
+    return `(roll ${this.value})`
+  }
+
+  toCode() {
+    return this.value
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'TODO: parse dice expressions'))
   }
 }
 
