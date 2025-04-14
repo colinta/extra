@@ -1525,7 +1525,7 @@ export abstract class Argument extends Expression {
     }
 
     if (value instanceof Values.ArrayValue) {
-      return value.values.map(value => [undefined, value] as [string | undefined, Values.Value])
+      return value.values.map(value => [this.alias, value] as [string | undefined, Values.Value])
     }
 
     return err(new RuntimeError(this, 'Expected an Object, found ' + value.constructor.name))
@@ -1749,7 +1749,7 @@ export class SpreadFunctionArgument extends SpreadArgument {
     precedingComments: Comment[],
     readonly alias: string | undefined,
     value: Expression,
-    readonly spread: 'spread' | 'kwargs' | undefined,
+    readonly spread: 'spread' | 'kwargs',
   ) {
     super(range, precedingComments, value)
   }

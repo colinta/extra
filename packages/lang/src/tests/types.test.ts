@@ -170,12 +170,16 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
       it(`successfully derives ${expected.toCode()}`, () => {
         const genericResolution = new Map([[genericTypeT, Types.generic('T')]])
         const errorMessage = Types.checkFormulaArguments(
+          formula,
           args.length,
           [],
-          formula,
           position => args[position],
-          position => undefined,
+          position => [],
           // spreadPositionalArguments:
+          [],
+          // spreadDictArguments:
+          new Map(),
+          // keywordListArguments:
           [],
           genericResolution,
         )
@@ -249,12 +253,16 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
         ])
 
         const errorMessage = Types.checkFormulaArguments(
+          mapFormula,
           args.length,
           [],
-          mapFormula,
           position => args[position],
-          position => undefined,
+          position => [],
           // spreadPositionalArguments:
+          [],
+          // spreadDictArguments:
+          new Map(),
+          // keywordListArguments:
           [],
           genericResolution,
         )
@@ -326,12 +334,16 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
         [genericTypeU, genericTypeU.copy()],
       ])
       const errorMessage = Types.checkFormulaArguments(
+        compactMapFormula,
         args.length,
         [],
-        compactMapFormula,
         position => args[position],
-        _name => undefined,
+        _name => [],
         // spreadPositionalArguments:
+        [],
+        // spreadDictArguments:
+        new Map(),
+        // keywordListArguments:
         [],
         genericResolution,
       )

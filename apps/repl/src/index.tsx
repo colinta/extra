@@ -122,26 +122,24 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
     const {text, type} = calc()
 
     setMainText(text)
-    if (type === 'success' || type === 'formula-error') {
-      writeFileSync(
-        STATE_FILE,
-        JSON.stringify(
-          {
-            desc: saveDesc,
-            only,
-            skip,
-            formula,
-            vars: inputs.map(({name, value}) => ({
-              name: name.trim(),
-              value: value.trim(),
-            })),
-          },
-          null,
-          2,
-        ),
-        {encoding: 'utf8'},
-      )
-    }
+    writeFileSync(
+      STATE_FILE,
+      JSON.stringify(
+        {
+          desc: saveDesc,
+          only,
+          skip,
+          formula,
+          vars: inputs.map(({name, value}) => ({
+            name: name.trim(),
+            value: value.trim(),
+          })),
+        },
+        null,
+        2,
+      ),
+      {encoding: 'utf8'},
+    )
   }, [formula, inputs])
 
   function updateInputName(inputIndex: number, name: string) {

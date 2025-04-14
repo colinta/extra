@@ -3119,11 +3119,11 @@ export function canBeAssignedTo(
     return why(false, `Encountered unexpected type 'never'`)
   }
 
-  if (testType === AnyType) {
+  if (assignTo === AnyType) {
     return why(false, `Encountered unexpected type 'any'`)
   }
 
-  if (assignTo === AnyType) {
+  if (testType === AnyType) {
     return true
   }
 
@@ -3433,21 +3433,26 @@ function canBeAssignedToSet(testType: SetType, assignTo: SetType) {
  * The next argument, `#arg: T`, will resolve T to something concrete.
  */
 export function checkFormulaArguments(
+  assignToFormula: FormulaType,
   positionsLength: number,
   names: string[],
-  assignToFormula: FormulaType,
   argumentAt: (position: number) => Type | undefined,
-  argumentNamed: (name: string) => Type | undefined,
-  spreadPositionalArguments: ArrayType[],
+  argumentsNamed: (name: string) => Type[],
+  // array of arguments passed in via `...spread`
+  spreadPositionalArguments: Type[],
+  spreadDictArguments: Map<string, Type[]>,
+  keywordListArguments: Type[],
   resolvedGenerics?: Map<GenericType, GenericType>,
 ) {
   const errorMessages = _checkFormulaArguments(
+    assignToFormula,
     positionsLength,
     names,
-    assignToFormula,
     argumentAt,
-    argumentNamed,
+    argumentsNamed,
     spreadPositionalArguments,
+    spreadDictArguments,
+    keywordListArguments,
     () => true,
     resolvedGenerics,
     true,
@@ -3464,6 +3469,7 @@ export function checkFormulaArguments(
 
   return combineErrorMessages(errorMessages)
 }
+
 /**
  * Checks that the formula *implementation* is compatible with a formula *definition*.
  *
@@ -3493,16 +3499,21 @@ function canBeAssignedToFormula(
   )
   const names = formulaType.args.flatMap(arg => (arg.is === 'named-argument' ? [arg.alias] : []))
   const errorMessages = _checkFormulaArguments(
+    formulaArgument,
     positionsLength,
     names,
-    formulaArgument,
     function argumentAt(position: number) {
       return formulaType.positionalArg(position)?.type
     },
-    function argumentNamed(name: string) {
-      return formulaType.namedArg(name)?.type
+    function argumentsNamed(name: string) {
+      const type = formulaType.namedArg(name)?.type
+      return type ? [type] : []
     },
     // spreadPositionalArguments:
+    [],
+    // spreadDictArguments:
+    new Map(),
+    // keywordListArguments
     [],
     function isRequired(id: string | number) {
       if (typeof id === 'number') {
@@ -3564,12 +3575,14 @@ function canBeAssignedToFormula(
  * *treated like* positional arguments.
  */
 function _checkFormulaArguments(
+  formulaBeingCalled: FormulaType,
   positionsLength: number,
   namedArgs: string[],
-  formulaBeingCalled: FormulaType,
   argumentAt: (position: number) => Type | undefined,
-  argumentNamed: (name: string) => Type | undefined,
-  spreadPositionalArguments: ArrayType[],
+  argumentsNamed: (name: string) => Type[],
+  spreadPositionalArguments: Type[],
+  spreadDictArguments: Map<string, Type[]>,
+  keywordListArguments: Type[],
   isRequired: (id: string | number) => boolean,
   resolvedGenerics: Map<GenericType, GenericType> | undefined,
   useHints: boolean,
@@ -3584,17 +3597,20 @@ function _checkFormulaArguments(
   ) {
     const expectedNames = formulaBeingCalled.args.map(({alias}) => alias)
     return _checkFormulaArguments(
+      formulaBeingCalled,
       0,
       expectedNames,
-      formulaBeingCalled,
       function argumentAt_(position) {
         return undefined
       },
-      function argumentNamed(name) {
+      function argumentsNamed(name) {
         const index = expectedNames.indexOf(name)
-        return argumentAt(index)
+        const argument = argumentAt(index)
+        return argument ? [argument] : []
       },
       spreadPositionalArguments,
+      spreadDictArguments,
+      keywordListArguments,
       function isRequired_(id) {
         if (typeof id === 'number') {
           return false
@@ -3610,7 +3626,7 @@ function _checkFormulaArguments(
   const errors: string[] = []
   const reason = {reason: ''}
   let position = 0
-  const remaininedNames = new Set<string>(namedArgs)
+  const remainingNames: Set<string> = new Set(namedArgs)
 
   for (const formulaArgument of formulaBeingCalled.args) {
     let argumentType: Type | undefined
@@ -3620,30 +3636,36 @@ function _checkFormulaArguments(
       argumentIsRequired = isRequired(position)
       position += 1
     } else if (formulaArgument.is === 'named-argument') {
-      argumentType = argumentNamed(formulaArgument.alias)
-      argumentIsRequired = isRequired(formulaArgument.alias)
-      remaininedNames.delete(formulaArgument.alias)
-    } else if (formulaArgument.is === 'spread-positional-argument') {
-      // all remaining positional args need to be of type formulaArgument.type
-      let type: Type = AnyType
-      argumentIsRequired = true
-      for (let positionIndex = position; positionIndex < positionsLength; ++positionIndex) {
-        const argTypeAtIndex = argumentAt(positionIndex)
-        if (!argTypeAtIndex) {
-          throw `Weird, positionsLength is ${positionsLength}, but no argument at position ${positionIndex}`
-        }
-        type = compatibleWithBothTypes(type, argTypeAtIndex)
-        argumentIsRequired = argumentIsRequired && isRequired(positionIndex)
-      }
+      const {argumentType: argumentType_, argumentIsRequired: argumentIsRequired_} =
+        namedArgumentType(argumentsNamed, isRequired, formulaArgument.alias, errors, remainingNames)
 
-      for (const spreadPositionalArgument of spreadPositionalArguments) {
-        type = compatibleWithBothTypes(type, spreadPositionalArgument.of)
-      }
+      argumentType = argumentType_
+      argumentIsRequired = argumentIsRequired_
+    } else if (formulaArgument.is === 'spread-positional-argument') {
+      const {type, argumentIsRequired: argumentIsRequired_} = spreadPositionalArgumentType(
+        position,
+        positionsLength,
+        argumentAt,
+        isRequired,
+        spreadPositionalArguments,
+      )
 
       position = positionsLength
-      argumentType = new ArrayType(type)
+      argumentType = type
+      argumentIsRequired = argumentIsRequired_
+    } else if (formulaArgument.is === 'repeated-named-argument') {
+      argumentType = repeatedNamedArgumentType(argumentsNamed, formulaArgument, remainingNames)
+      argumentIsRequired = isRequired(formulaArgument.alias)
+    } else if (formulaArgument.is === 'kwarg-list-argument') {
+      argumentType = kwargListArgumentType(
+        argumentsNamed,
+        errors,
+        keywordListArguments,
+        remainingNames,
+      )
+      argumentIsRequired = false
     } else {
-      throw formulaArgument.is
+      throw formulaArgument
     }
 
     if (!argumentType) {
@@ -3693,6 +3715,94 @@ function _checkFormulaArguments(
   }
 
   return errors
+}
+
+function namedArgumentType(
+  argumentsNamed: (name: string) => Type[],
+  isRequired: (id: string | number) => boolean,
+  alias: string,
+  errors: string[],
+  remainingNames: Set<string>,
+) {
+  const argumentTypes = argumentsNamed(alias)
+  if (argumentTypes.length > 1) {
+    errors.push(`Multiple arguments named '${alias}' provided. Only one is expected.`)
+    return {argumentType: undefined, argumentIsRequired: false}
+  } else {
+    const argumentType = argumentTypes[0]
+    const argumentIsRequired = isRequired(alias)
+    remainingNames.delete(alias)
+    return {argumentType, argumentIsRequired}
+  }
+}
+
+function spreadPositionalArgumentType(
+  position: number,
+  positionsLength: number,
+  argumentAt: (position: number) => Type | undefined,
+  isRequired: (id: string | number) => boolean,
+  spreadPositionalArguments: Type[],
+) {
+  // all remaining positional args need to be of type formulaArgument.type
+  let type: Type = AnyType
+  let argumentIsRequired = true
+  for (let positionIndex = position; positionIndex < positionsLength; ++positionIndex) {
+    const argTypeAtIndex = argumentAt(positionIndex)
+    if (!argTypeAtIndex) {
+      throw `Weird, positionsLength is ${positionsLength}, but no argument at position ${positionIndex}`
+    }
+    type = compatibleWithBothTypes(type, argTypeAtIndex)
+    argumentIsRequired = argumentIsRequired && isRequired(positionIndex)
+  }
+
+  for (const spreadPositionalType of spreadPositionalArguments) {
+    type = compatibleWithBothTypes(type, spreadPositionalType)
+  }
+  return {type: new ArrayType(type), argumentIsRequired}
+}
+
+function repeatedNamedArgumentType(
+  argumentsNamed: (name: string) => Type[],
+  formulaArgument: RepeatedNamedArgument,
+  remainingNames: Set<string>,
+) {
+  remainingNames.delete(formulaArgument.alias)
+  const argumentTypes = argumentsNamed(formulaArgument.alias)
+  if (!argumentTypes.length) {
+    return undefined
+  }
+
+  let type: Type = AnyType
+  for (const argType of argumentTypes) {
+    type = compatibleWithBothTypes(type, argType)
+  }
+  return new ArrayType(type)
+}
+
+function kwargListArgumentType(
+  argumentsNamed: (name: string) => Type[],
+  errors: string[],
+  keywordListArguments: Type[],
+  remainingNames: Set<string>,
+) {
+  let type: Type = AnyType
+  for (const argName of remainingNames) {
+    remainingNames.delete(argName)
+    const argTypes = argumentsNamed(argName)
+    if (argTypes.length > 1) {
+      errors.push(`Multiple arguments named '${argName}' provided. Only one is expected.`)
+      break
+    } else if (argTypes.length === 0) {
+      throw 'impossible'
+    }
+    type = compatibleWithBothTypes(type, argTypes[0])
+  }
+
+  for (const keywordListType of keywordListArguments) {
+    type = compatibleWithBothTypes(type, keywordListType)
+  }
+
+  return new DictType(type)
 }
 
 export function combineErrorMessages(errorMessages: string[]) {

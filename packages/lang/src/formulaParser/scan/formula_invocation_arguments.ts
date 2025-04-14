@@ -106,7 +106,7 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
           scanner.flushComments(),
           argName?.name,
           expression,
-          isSpreadArg ? 'spread' : isKwarg ? 'kwargs' : undefined,
+          isSpreadArg ? 'spread' : 'kwargs',
         )
       } else if (argName) {
         arg = new Expressions.NamedArgument(

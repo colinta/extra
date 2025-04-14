@@ -2821,8 +2821,8 @@ export class FunctionInvocationOperator extends BinaryOperator {
       )
     }
 
-    return rhArgsExpression.formulaArgs(runtime).map(args =>
-      lhFormula.call(args).mapResult(result => {
+    return rhArgsExpression.formulaArgs(runtime).map(args => {
+      return lhFormula.call(args).mapResult(result => {
         if (result.isOk()) {
           return ok(result.get())
         } else {
@@ -2832,8 +2832,8 @@ export class FunctionInvocationOperator extends BinaryOperator {
 
           return err(new RuntimeError(lhFormulaExpression, result.error))
         }
-      }),
-    )
+      })
+    })
   }
 }
 
@@ -3824,6 +3824,13 @@ function expectedNumberMessage(found: Expression) {
   return expectedType('int or float', found)
 }
 
+type _IntermediateArgs =
+  | ['positional', undefined, Types.Type]
+  | ['named', string, Types.Type]
+  | ['spread-array', undefined, Types.Type]
+  | ['spread-dict', string, Types.Type]
+  | ['keyword-list', undefined, Types.Type]
+
 function functionInvocationOperatorType(
   runtime: TypeRuntime,
   formulaType: Types.Type,
@@ -3854,94 +3861,98 @@ function functionInvocationOperatorType(
   }
 
   let positionIndex = 0
+  let hasSpreadArrayType = false
+  const hasSpreadDictName: Set<string> = new Set()
   const argsResult = mapAll(
     // argsList.args is an array of:
     // - NamedArgument `foo(bar: bar)`
     // - PositionalArgument `foo(bar)`
-    // - or SpreadFunctionArgument `foo(...bar)`, `bar` must be an Array
+    // - or SpreadFunctionArgument `foo(...bar)`, `bar` must be an Object or Array
     // - TODO: or RepeatedFunctionArgument `foo(...name: bar)`, `bar` must be an Array
     // - TODO: Keyword Argument List `foo(*kwargs)`, `kwargs` must be a Dict
-    argsList.allArgs.map(
-      (
-        providedArg,
-      ): GetRuntimeResult<
-        (
-          | ['positional', undefined, Types.Type]
-          | ['named', string, Types.Type]
-          | ['spread-positional', undefined, Types.ArrayType]
-        )[]
-      > => {
-        // this is a buried bit of magic:
-        //
-        // to derive the type of a Formula argument, we should hand it the
-        // argument (also a formula) that is invoking the formula
-        if (providedArg.value instanceof FormulaExpression) {
-          // if providedArg is a FormulaExpression and doesn't declare its argument types, we
-          // need to hand it a formula that it can use to derive its argument types.
-          let defaultType: Types.Type | undefined
+    argsList.allArgs.map((providedArg): GetRuntimeResult<_IntermediateArgs[]> => {
+      // this is a buried bit of magic:
+      //
+      // to derive the type of a Formula argument, we should hand it the
+      // argument (also a formula) that is invoking the formula
+      if (providedArg.value instanceof FormulaExpression) {
+        // if providedArg is a FormulaExpression and doesn't declare its argument types, we
+        // need to hand it a formula that it can use to derive its argument types.
+        let defaultType: Types.Type | undefined
 
+        if (providedArg instanceof NamedArgument) {
+          defaultType = formulaType.namedArg(providedArg.alias)?.type
+        } else {
+          defaultType = formulaType.positionalArg(positionIndex)?.type
+          positionIndex += 1
+        }
+
+        if (!defaultType) {
+          let message = 'No default type for argument '
           if (providedArg instanceof NamedArgument) {
-            defaultType = formulaType.namedArg(providedArg.alias)?.type
-          } else {
-            defaultType = formulaType.positionalArg(positionIndex)?.type
-            positionIndex += 1
+            message += `'${providedArg.alias}'`
+          } else if (providedArg instanceof PositionalArgument) {
+            message += `at position #${positionIndex + 1}`
           }
 
-          if (!defaultType) {
-            let message = 'No default type for argument '
-            if (providedArg instanceof NamedArgument) {
-              message += `'${providedArg.alias}'`
-            } else if (providedArg instanceof PositionalArgument) {
-              message += `at position #${positionIndex + 1}`
-            }
-
-            return err(new RuntimeError(providedArg, message))
-          } else if (!(defaultType instanceof Types.FormulaType)) {
-            let message = 'Expected argument of type Formula for argument'
-            if (providedArg instanceof NamedArgument) {
-              message += `'${providedArg.alias}'`
-            } else if (providedArg instanceof PositionalArgument) {
-              message += `at position #${positionIndex + 1}`
-            }
-
-            return err(new RuntimeError(providedArg, message))
+          return err(new RuntimeError(providedArg, message))
+        } else if (!(defaultType instanceof Types.FormulaType)) {
+          let message = 'Expected argument of type Formula for argument'
+          if (providedArg instanceof NamedArgument) {
+            message += `'${providedArg.alias}'`
+          } else if (providedArg instanceof PositionalArgument) {
+            message += `at position #${positionIndex + 1}`
           }
 
-          return providedArg.value
-            .getType(runtime, defaultType)
-            .mapResult(decorateError(formulaExpression))
-            .map(type => [
-              providedArg.alias
-                ? ['named', providedArg.alias, type]
-                : ['positional', undefined, type],
-            ])
+          return err(new RuntimeError(providedArg, message))
         }
 
-        if (providedArg instanceof SpreadFunctionArgument) {
-          return getChildType(formulaExpression, providedArg.value, runtime).map(type => {
-            if (type instanceof Types.ObjectType) {
-              return ok(
-                type.props.map(prop =>
-                  prop.name
-                    ? ['named', prop.name, prop.type]
-                    : ['positional', undefined, prop.type],
-                ),
-              )
-            } else if (type instanceof Types.ArrayType) {
-              return ok([['spread-positional', undefined, type]])
+        return providedArg.value
+          .getType(runtime, defaultType)
+          .mapResult(decorateError(formulaExpression))
+          .map(type => [
+            providedArg.alias
+              ? ['named', providedArg.alias, type]
+              : ['positional', undefined, type],
+          ])
+      }
+
+      if (providedArg instanceof SpreadFunctionArgument) {
+        return getChildType(formulaExpression, providedArg.value, runtime).map(type => {
+          const [foundSpreadArrayType, foundSpreadDictName, result] = (() => {
+            if (providedArg.spread === 'spread' && providedArg.alias === undefined) {
+              return spreadArrayArg(providedArg, type)
+            } else if (providedArg.spread === 'spread' && providedArg.alias) {
+              return spreadDictArg(providedArg.alias, providedArg, type)
             } else {
-              return err(
-                new RuntimeError(providedArg, `Cannot use spread operator '...' on type ${type}`),
-              )
+              return spreadKeywordArg(providedArg, type)
             }
-          })
-        }
+          })()
+          hasSpreadArrayType = hasSpreadArrayType || foundSpreadArrayType
 
-        return getChildType(formulaExpression, providedArg.value, runtime).map(type => [
-          providedArg.alias ? ['named', providedArg.alias, type] : ['positional', undefined, type],
-        ])
-      },
-    ),
+          if (foundSpreadDictName) {
+            hasSpreadDictName.add(foundSpreadDictName)
+          }
+
+          return result
+        })
+      }
+
+      return getChildType(formulaExpression, providedArg.value, runtime).map(type => {
+        if (providedArg.alias && hasSpreadDictName.has(providedArg.alias)) {
+          return [['spread-dict', providedArg.alias, type]]
+        } else if (providedArg.alias) {
+          return [['named', providedArg.alias, type]]
+        } else if (hasSpreadArrayType) {
+          // a = [1,2,3]
+          // foo(...a, 5) ->
+          // foo(...[1,2,3], ...[5])
+          return [['spread-array', undefined, type]]
+        } else {
+          return [['positional', undefined, type]]
+        }
+      })
+    }),
   ).map(args => args.flat())
 
   if (argsResult.isErr()) {
@@ -3949,15 +3960,27 @@ function functionInvocationOperatorType(
   }
 
   const positional: Types.Type[] = []
-  const named: Map<string, Types.Type> = new Map()
+  const named: Map<string, Types.Type[]> = new Map()
   const names: string[] = []
-  const spreadPositionalArguments: Types.ArrayType[] = []
+  const spreadPositionalArguments: Types.Type[] = []
+  const spreadDictArguments: Map<string, Types.Type[]> = new Map()
+  const keywordListArguments: Types.Type[] = []
 
   for (const [is, alias, type] of argsResult.value) {
-    if (is === 'spread-positional') {
+    if (is === 'spread-array') {
       spreadPositionalArguments.push(type)
+    } else if (is === 'spread-dict') {
+      if (spreadDictArguments.has(alias)) {
+        spreadDictArguments.get(alias)!.push(type)
+      } else {
+        spreadDictArguments.set(alias, [type])
+      }
     } else if (alias) {
-      named.set(alias, type)
+      if (named.has(alias)) {
+        named.get(alias)!.push(type)
+      } else {
+        named.set(alias, [type])
+      }
       names.push(alias)
     } else {
       positional.push(type)
@@ -3969,16 +3992,18 @@ function functionInvocationOperatorType(
   )
 
   const errorMessage = Types.checkFormulaArguments(
+    formulaType,
     positional.length,
     names,
-    formulaType,
     function argumentAt(position: number) {
       return positional[position]
     },
-    function argumentNamed(name: string) {
-      return named.get(name)
+    function argumentsNamed(name: string) {
+      return named.get(name) ?? []
     },
     spreadPositionalArguments,
+    spreadDictArguments,
+    keywordListArguments,
     resolvedGenerics,
   )
 
@@ -3992,6 +4017,70 @@ function functionInvocationOperatorType(
   }
 
   return ok(resolved.get())
+}
+
+// hasSpreadArrayType, spreadDictName, Result
+type SpreadContext = [boolean, string | undefined, GetRuntimeResult<_IntermediateArgs[]>]
+
+// what to do with foo(...value)
+function spreadArrayArg(providedArg: SpreadFunctionArgument, type: Types.Type): SpreadContext {
+  if (type instanceof Types.ObjectType) {
+    return [
+      false,
+      undefined,
+      ok(
+        type.props.map(prop =>
+          prop.name ? ['named', prop.name, prop.type] : ['positional', undefined, prop.type],
+        ),
+      ),
+    ]
+  } else if (type instanceof Types.ArrayType) {
+    // TODO: if ArrayType has known/constant min length == max length,
+    // we could instead insert those as 'positional' types
+    return [true, undefined, ok([['spread-array', undefined, type.of]])]
+  } else {
+    return [
+      false,
+      undefined,
+      err(new RuntimeError(providedArg, `Cannot use spread operator '...' on type ${type}`)),
+    ]
+  }
+}
+
+// what to do with foo(...name: value)
+function spreadDictArg(
+  alias: string,
+  providedArg: SpreadFunctionArgument,
+  type: Types.Type,
+): SpreadContext {
+  if (type instanceof Types.ArrayType) {
+    return [false, alias, ok([['spread-dict', alias, type.of]])]
+  } else {
+    return [
+      false,
+      undefined,
+      err(
+        new RuntimeError(
+          providedArg,
+          `Cannot use named spread operator '...${alias}' on type ${type}`,
+        ),
+      ),
+    ]
+  }
+}
+
+function spreadKeywordArg(providedArg: SpreadFunctionArgument, type: Types.Type): SpreadContext {
+  if (type instanceof Types.DictType) {
+    // TODO: if ArrayType has known/constant min length == max length,
+    // we could instead insert those as 'positional' types
+    return [false, undefined, ok([['keyword-list', undefined, type.of]])]
+  } else {
+    return [
+      false,
+      undefined,
+      err(new RuntimeError(providedArg, `Cannot use keyword list operator '*' on type ${type}`)),
+    ]
+  }
 }
 
 function expectedType(expected: string, expr: Expression, type?: Types.Type | Values.Value) {

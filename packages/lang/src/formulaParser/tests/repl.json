@@ -227,6 +227,17 @@
         ["foo", "fn(...#numbers: Array(Int)) => (numbers[0] ?? 0) + (numbers[1] ?? 0)"],
         ["values", "[10, 2]"]
       ]
+    },
+    {
+      "desc": "repeated named arguments",
+      "formula": "foo(...values: values) -- values is an array",
+      "expectedCode": "foo(...name: values)",
+      "expectedType": "Int",
+      "expectedValue": "12",
+      "variables": [
+        ["foo", "fn(...values: Array(Int)) => (values[0] ?? 0) + (values[1] ?? 0)"],
+        ["values", "[10, 2]"]
+      ]
     }
   ]
 }
