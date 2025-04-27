@@ -190,6 +190,24 @@ describe('function parser', () => {
     )
   })
 
+  describe('emoji refs', () => {
+    cases<[string, string]>(
+      c(['a_🙂', 'a_🙂']),
+      c(['a-🙂', 'a-🙂']),
+      c(['a -🙂', 'a - 🙂']),
+      c(['😁+😁', '😁 + 😁']),
+    ).run(([formula, expected], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`should allow trailing comma in ${formula}`, () => {
+        let expression: Expression
+        expect(() => {
+          expression = parse(formula).get()
+
+          expect(expression.toCode()).toEqual(expected)
+        }).not.toThrow()
+      }),
+    )
+  })
+
   describe('invalid', () => {
     cases<[string, string]>(
       c(['# |> foo()', "Unexpected token '#'"]),

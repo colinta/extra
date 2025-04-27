@@ -2778,7 +2778,7 @@ export class FunctionInvocationOperator extends BinaryOperator {
 
   // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
   rhsType(): GetTypeResult {
-    return ok(Types.AnyType)
+    return ok(Types.NeverType)
   }
 
   operatorType(
@@ -2874,7 +2874,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 
   // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
   rhsType(): GetTypeResult {
-    return ok(Types.AnyType)
+    return ok(Types.NeverType)
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
@@ -3238,6 +3238,11 @@ addBinaryOperator({
 class PropertyAccessOperator extends BinaryOperator {
   symbol = '.'
 
+  /**
+   * Unlike most operators, the rhs is not a dependency
+   *
+   *     foo.bar <-- 'bar' is not a reference
+   */
   dependencies() {
     return this.args[0].dependencies()
   }
@@ -3291,7 +3296,7 @@ class PropertyAccessOperator extends BinaryOperator {
   }
 
   rhsType(): GetTypeResult {
-    return ok(Types.AnyType)
+    return ok(Types.NeverType)
   }
 
   operatorType(
@@ -3751,7 +3756,7 @@ class EnumLookupOperator extends UnaryOperator {
 
   operatorType(_runtime: TypeRuntime, _: Types.Type, arg: Expression) {
     if (!(arg instanceof Reference)) {
-      return ok(Types.AnyType)
+      return ok(Types.NeverType)
     }
 
     return err(new RuntimeError(arg, `No enum value named ${this.symbol}${arg.name}`))

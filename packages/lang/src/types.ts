@@ -20,8 +20,12 @@ export function never() {
   return NeverType
 }
 
-export function any() {
-  return AnyType
+export function all() {
+  return AllType
+}
+
+export function always() {
+  return AlwaysType
 }
 
 export function nullType() {
@@ -1077,6 +1081,24 @@ export class OptionalType extends OneOfType {
 
 export class TypeError extends Error {}
 
+/**
+ * The type of an impossible value; aka the empty set / the set of types that has
+ * no members.
+ *
+ * For instance, what is the type of 'a' in the final 'else' here:
+ *
+ *     let
+ *       a: Int
+ *     in
+ *       if (a < 0) {
+ *         then: …
+ *         elseif(a >= 0): …
+ *         else:
+ *           -- what is 'a' here?
+ *           never
+ *           -- the if and elseif are exhaustive.
+ *       }
+ */
 export const NeverType = new (class NeverType extends Type {
   readonly is = 'never'
 
@@ -1085,11 +1107,43 @@ export const NeverType = new (class NeverType extends Type {
   }
 })()
 
-export const AnyType = new (class AnyType extends Type {
-  readonly is = 'any'
+/**
+ * The set of all possible types. Because it includes all types, it's pretty much
+ * *as useful* as the NeverType, except that it can be narrowed.
+ *
+ *     let
+ *       a: all
+ *     in
+ *       if (a is Int, then: a, else: 0)
+ */
+export const AllType = new (class AllType extends Type {
+  readonly is = 'all'
 
   typeConstructor(): TypeConstructor {
-    return new TypeConstructor('any', this, this, [])
+    return new TypeConstructor('all', this, this, [])
+  }
+})()
+
+/**
+ * 'never/NeverType' is the empty set, and 'all/AllType' is the set of all types.
+ *
+ * What is the type of 'a' here?
+ *
+ *     let
+ *       a = []
+ *       b = [1] ++ a  -- b: Array(1)
+ *       c = [''] ++ a  -- c: Array('')
+ *       names = a.join('')  -- join typically expects Array(String)
+ *     in …
+ *
+ * 'a' can by... anything! This is the role of the 'always/AlwaysType'. It usually
+ * shows up when dealing with empty container types, like above.
+ */
+export const AlwaysType = new (class AlwaysType extends Type {
+  readonly is = 'always'
+
+  typeConstructor(): TypeConstructor {
+    return new TypeConstructor('always', this, this, [])
   }
 })()
 
@@ -1137,7 +1191,7 @@ export const BooleanType = new (class BooleanType extends Type {
 
   typeConstructor(): TypeConstructor {
     return new TypeConstructor('boolean', this, this, [
-      positionalArgument({name: 'input', type: AnyType, isRequired: true}),
+      positionalArgument({name: 'input', type: AllType, isRequired: true}),
     ])
   }
 
@@ -1469,12 +1523,12 @@ class MetaStringType extends Type {
       !Narrowed.isDefaultNarrowedLength(this.narrowedString.length)
     ) {
       return new TypeConstructor('string', this, optional(this), [
-        positionalArgument({name: 'input', type: AnyType, isRequired: true}),
+        positionalArgument({name: 'input', type: AllType, isRequired: true}),
       ])
     }
 
     return new TypeConstructor('string', this, this, [
-      positionalArgument({name: 'input', type: AnyType, isRequired: true}),
+      positionalArgument({name: 'input', type: AllType, isRequired: true}),
     ])
   }
 
@@ -1808,13 +1862,19 @@ export abstract class LiteralBooleanType extends LiteralType {
 
   typeConstructor(): TypeConstructor {
     return new TypeConstructor(`${this.value}`, this, optional(this), [
-      positionalArgument({name: 'input', type: AnyType, isRequired: true}),
+      positionalArgument({name: 'input', type: AllType, isRequired: true}),
     ])
   }
 
-  isOnlyFalseyType(): boolean {
-    return this === LiteralFalseType
-  }
+  // `true` literal type is allowed in `if(false)` so that you can debug
+  // isOnlyTruthyType(): boolean {
+  //   return this === LiteralTrueType || this === LiteralFalseType
+  // }
+
+  // `false` literal type is allowed in `if(false)` so that you can debug
+  // isOnlyFalseyType(): boolean {
+  //   return this === LiteralTrueType || this === LiteralFalseType
+  // }
 
   toFalseyType(): Type {
     return LiteralFalseType
@@ -1920,7 +1980,7 @@ export class LiteralStringType extends LiteralType {
 
   typeConstructor(): TypeConstructor {
     return new TypeConstructor(JSON.stringify(this.value), this, optional(this), [
-      positionalArgument({name: 'input', type: AnyType, isRequired: true}),
+      positionalArgument({name: 'input', type: AllType, isRequired: true}),
     ])
   }
 
@@ -2316,6 +2376,14 @@ export class ArrayType extends ContainerType<ArrayType> {
   }
 
   propAccessType(name: string) {
+    if (name === 'length') {
+      if (this.narrowedLength.min === this.narrowedLength.max) {
+        return new LiteralIntType(this.narrowedLength.min)
+      }
+
+      return new MetaIntType(this.narrowedLength)
+    }
+
     return ArrayType.types[name]?.(this)
   }
 }
@@ -2717,10 +2785,11 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
  * includes both types.
  *
  * - NeverType never merges - nothing is compatible with it.
- * - AnyType always returns the other type
+ * - if either type is AllType, return AllType
+ * - if either type is AlwaysType, return the other type
  * - Identical types are easy, return the type
  * - OneOf types will be merged item by item, merging when possible. At most you'll
- *   have all the elements from both types.
+ *   have all the elements from both types, or they may be combined into generic types.
  * - String and String return String
  *   - If the type is narrowed to a range, the smallest range that includes both will
  *     be used.
@@ -2731,8 +2800,8 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
  * - Arrays return another Array type, combining the two types of each array
  * - Dicts: ditto
  * - Objects return a type with all the properties from both objects, with each prop being compatible.
- * - LiteralTypes with the same value and type
  * - LiteralTypes will combine with their value-type, e.g. literal(1) & Int => Int
+ * - otherwise LiteralTypes will be preserved in a OneOfType
  */
 export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
   if (lhs === rhs) {
@@ -2743,11 +2812,15 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     return NeverType
   }
 
-  if (lhs === AnyType) {
+  if (lhs === AllType || rhs === AllType) {
+    return AllType
+  }
+
+  if (lhs === AlwaysType) {
     return rhs
   }
 
-  if (rhs === AnyType) {
+  if (rhs === AlwaysType) {
     return lhs
   }
 
@@ -3088,12 +3161,18 @@ function compatibleWithBothFormulas(lhs: FormulaType, rhs: FormulaType) {
 }
 
 /**
- * Determines if a type can be assigned to another type, for instance if an ClassType
+ * Determines if a type can be assigned to another type, for instance if a ClassType
  * overrides a property of another ClassType, the child property must be
- * assignable to the parent class. Example: if a parent type defines 'foo: Int |
- * String', a child type could narrow it to 'foo: Int' or 'foo: String', but not
- * 'foo: Float' or 'foo: Int | String | Boolean' (Float isn't assignable to Int,
- * Boolean isn't assignable to Int | String)
+ * assignable to the parent class.
+ *
+ * Example: if a parent type defines
+ *     foo: Int | String
+ * a child type could narrow it to
+ *     foo: Int -- or foo: String
+ *
+ * but not:
+ *     foo: Float -- or foo: Int | String | Boolean
+ * (Float isn't assignable to Int, Boolean isn't assignable to Int | String)
  */
 export function canBeAssignedTo(
   testType: Type,
@@ -3119,12 +3198,20 @@ export function canBeAssignedTo(
     return why(false, `Encountered unexpected type 'never'`)
   }
 
-  if (assignTo === AnyType) {
+  if (assignTo === AllType) {
+    return true
+  }
+
+  if (testType === AllType) {
     return why(false, `Encountered unexpected type 'any'`)
   }
 
-  if (testType === AnyType) {
+  if (testType === AlwaysType) {
     return true
+  }
+
+  if (assignTo === AlwaysType) {
+    return why(false, `Encountered unexpected type 'always'`)
   }
 
   if (assignTo.isGeneric()) {
@@ -3744,7 +3831,7 @@ function spreadPositionalArgumentType(
   spreadPositionalArguments: Type[],
 ) {
   // all remaining positional args need to be of type formulaArgument.type
-  let type: Type = AnyType
+  let type: Type = AlwaysType
   let argumentIsRequired = true
   for (let positionIndex = position; positionIndex < positionsLength; ++positionIndex) {
     const argTypeAtIndex = argumentAt(positionIndex)
@@ -3772,7 +3859,7 @@ function repeatedNamedArgumentType(
     return undefined
   }
 
-  let type: Type = AnyType
+  let type: Type = AlwaysType
   for (const argType of argumentTypes) {
     type = compatibleWithBothTypes(type, argType)
   }
@@ -3785,7 +3872,7 @@ function kwargListArgumentType(
   keywordListArguments: Type[],
   remainingNames: Set<string>,
 ) {
-  let type: Type = AnyType
+  let type: Type = AlwaysType
   for (const argName of remainingNames) {
     remainingNames.delete(argName)
     const argTypes = argumentsNamed(argName)

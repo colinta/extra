@@ -87,7 +87,7 @@
       "desc": "formula4",
       "formula": "formula4(1)",
       "expectedCode": "formula4(1)",
-      "expectedType": "Int",
+      "expectedType": "Int(>=0)",
       "expectedValue": "1",
       "variables": [["formula4", "fn(...#ints: Array(Int)) => ints.length"]]
     },
@@ -95,7 +95,7 @@
       "desc": "formula4",
       "formula": "formula4(1, 2)",
       "expectedCode": "formula4(1, 2)",
-      "expectedType": "Int",
+      "expectedType": "Int(>=0)",
       "expectedValue": "2",
       "variables": [["formula4", "fn(...#ints: Array(Int)) => ints.length"]]
     },
@@ -103,7 +103,7 @@
       "desc": "formula4",
       "formula": "formula4(1, 2, 2)",
       "expectedCode": "formula4(1, 2, 2)",
-      "expectedType": "Int",
+      "expectedType": "Int(>=0)",
       "expectedValue": "3",
       "variables": [["formula4", "fn(...#ints: Array(Int)) => ints.length"]]
     },

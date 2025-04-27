@@ -118,7 +118,13 @@ export function isNamedArg(scanner: Scanner) {
 }
 
 export function isRefChar(scanner: Scanner) {
-  return /^[a-zA-Z0-9_-]/.test(scanner.char)
+  // if code point of scanner.char is greater than 128, it's probably an emoji
+  const code = scanner.char?.codePointAt(0) ?? 0
+  if (code > 128) {
+    return true
+  }
+
+  return /^([a-zA-Z0-9_-]|\p{Extended_Pictographic})/u.test(scanner.remainingInput)
 }
 
 // & and @ are valid start-of-reference characters
@@ -128,7 +134,7 @@ export function isRefStartChar(scanner: Scanner) {
 
 // isArgumentStartChar doesn't allow [&@-] or [0-9]
 export function isArgumentStartChar(scanner: Scanner) {
-  return /^[a-zA-Z_]/.test(scanner.char)
+  return /^([a-zA-Z_]|\p{Extended_Pictographic})/u.test(scanner.remainingInput)
 }
 
 export function isViewStart(input: string) {
@@ -142,7 +148,9 @@ export function isViewStart(input: string) {
  * But not as the first character, because -like-this --> -(like-this)
  */
 export function isRef(input: string) {
-  return /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(input)
+  return /^([a-zA-Z_]|\p{Extended_Pictographic})([a-zA-Z0-9_-]|\p{Extended_Pictographic})*$/u.test(
+    input,
+  )
 }
 
 export function isScanningType(expressionType: ExpressionType): expressionType is ArgumentType {

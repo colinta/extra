@@ -921,7 +921,7 @@ export class ArrayValue extends Value {
     super()
 
     if (this.values.length === 0) {
-      this.runtimeType = new Types.ArrayType(Types.any(), {min: 0, max: 0})
+      this.runtimeType = new Types.ArrayType(Types.always(), {min: 0, max: 0})
     } else {
       const first = this.values[0].getType()
       const valueType: Types.Type = this.values.reduce((memo, rhValue, index) => {
@@ -1044,7 +1044,7 @@ export class DictValue extends Value {
     super()
 
     if (this.values.size === 0) {
-      this._runtimeType = Types.dict(Types.any())
+      this._runtimeType = Types.dict(Types.always())
     } else {
       const names = [...this.values.keys()]
       const values = [...this.values.values()]
@@ -1152,7 +1152,7 @@ export class SetValue extends Value {
     super()
 
     if (this.values.length === 0) {
-      this.runtimeType = new Types.SetType(Types.any(), {min: 0, max: 0})
+      this.runtimeType = new Types.SetType(Types.always(), {min: 0, max: 0})
     } else {
       const first = this.values[0].getType()
       const valueType: Types.Type = this.values.reduce((memo, rhValue, index) => {

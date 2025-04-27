@@ -208,7 +208,7 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
   describe(mapFormula.toCode(), () => {
     it(`toCode`, () => {
       expect(mapFormula.toCode()).toEqual(
-        'fn<T, U>(#callback: fn<T, U>(#input: T): U, #values: Array(T)): Array(U)',
+        'fn<T, U>(#callback: fn(#input: T): U, #values: Array(T)): Array(U)',
       )
     })
 

@@ -742,46 +742,9 @@ export class ArrayExpression extends Expression {
 
   // SpreadArgument works pretty easily here, its type signature is an
   // ArrayType so we just need to grab its 'of' property and merge it with the
-  // rest of the types... and merge in the narrowed information
+  // rest of the types... and merge in the narrowed information.
   getType(runtime: TypeRuntime): GetTypeResult {
-    return mapAll(
-      // returns [isSpreadArray, Type][]
-      this.values.map((arg): GetRuntimeResult<[boolean, Types.Type]> => {
-        if (arg instanceof SpreadArrayArgument) {
-          return getChildType(this, arg, runtime).map(type => [true, type])
-        } else {
-          return getChildType(this, arg, runtime).map(type => [false, type])
-        }
-      }),
-    ).map(types => {
-      let returnType: Types.Type | undefined
-      let min = 0,
-        max: number | undefined = 0
-      for (const [isSpread, type] of types) {
-        if (isSpread && type instanceof Types.ArrayType) {
-          min += type.narrowedLength.min
-          max =
-            type.narrowedLength.max === undefined || max === undefined
-              ? undefined
-              : max + type.narrowedLength.max
-          returnType = returnType ? Types.compatibleWithBothTypes(returnType, type.of) : type.of
-        } else {
-          min += 1
-          max = max === undefined ? undefined : max + 1
-          if (returnType === undefined) {
-            returnType = type
-          } else {
-            returnType = Types.compatibleWithBothTypes(returnType, type)
-          }
-        }
-      }
-
-      if (returnType === undefined) {
-        return new Types.ArrayType(Types.AnyType)
-      }
-
-      return new Types.ArrayType(returnType, {min, max})
-    })
+    return combineAllTypesForArray(this, runtime)
   }
 
   // SpreadArgument has to be special cased - it returns an array that should
@@ -850,30 +813,7 @@ export class DictExpression extends Expression {
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
-    return mapAll(
-      this.values.map((entry): GetRuntimeResult<Types.Type> => {
-        if (entry instanceof SpreadDictArgument) {
-          return getChildType(this, entry, runtime).map(dict => dict.of)
-        } else {
-          return getChildType(this, entry.value, runtime)
-        }
-      }),
-    ).map(types => {
-      let returnType: Types.Type | undefined
-      for (const type of types) {
-        if (returnType === undefined) {
-          returnType = type
-        } else {
-          returnType = Types.compatibleWithBothTypes(returnType, type)
-        }
-      }
-
-      if (returnType === undefined) {
-        return new Types.DictType(Types.AnyType)
-      }
-
-      return new Types.DictType(returnType)
-    })
+    return combineAllTypesForDict(this, runtime)
   }
 
   eval(runtime: ValueRuntime) {
@@ -945,46 +885,13 @@ export class SetExpression extends Expression {
     return `set<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
   }
 
-  // Identical to ArrayType.getType
+  // Unlike ArrayType, combining Set is not straighforward. We can only reason about
+  // the min/max values if we know the contents of the expression (literals).
+  // However, we *can* take the max value of set.min
+  //
+  //     set(1, 2, ...setA)  -- we start with min: 2, if setA is min: 3, then we have min3
   getType(runtime: TypeRuntime): GetTypeResult {
-    return mapAll(
-      // returns [isSpreadArray, Type][]
-      this.values.map((arg): GetRuntimeResult<[boolean, Types.Type]> => {
-        if (arg instanceof SpreadSetArgument) {
-          return getChildType(this, arg, runtime).map(type => [true, type])
-        } else {
-          return getChildType(this, arg, runtime).map(type => [false, type])
-        }
-      }),
-    ).map(types => {
-      let returnType: Types.Type | undefined
-      let min = 0,
-        max: number | undefined = 0
-      for (const [isSpread, type] of types) {
-        if (isSpread && type instanceof Types.ArrayType) {
-          min += type.narrowedLength.min
-          max =
-            type.narrowedLength.max === undefined || max === undefined
-              ? undefined
-              : max + type.narrowedLength.max
-          returnType = returnType ? Types.compatibleWithBothTypes(returnType, type.of) : type.of
-        } else {
-          min += 1
-          max = max === undefined ? undefined : max + 1
-          if (returnType === undefined) {
-            returnType = type
-          } else {
-            returnType = Types.compatibleWithBothTypes(returnType, type)
-          }
-        }
-      }
-
-      if (returnType === undefined) {
-        return new Types.SetType(Types.AnyType)
-      }
-
-      return new Types.SetType(returnType, {min, max})
-    })
+    return combineAllTypesForSet(this, runtime)
   }
 
   // Identical to ArrayExpression.eval
@@ -1001,6 +908,169 @@ export class SetExpression extends Expression {
       .map(values => values.flat())
       .map(values => Values.set(values))
   }
+}
+
+function combineAllTypesForArray(expr: ArrayExpression, runtime: TypeRuntime) {
+  return mapAll(
+    // returns [isSpread, Type][]
+    expr.values.map((arg): GetRuntimeResult<[boolean, Types.Type]> => {
+      const isSpread = arg instanceof SpreadArrayArgument
+      return getChildType(expr, arg, runtime).map(type => [isSpread, type])
+    }),
+  ).map(typesInfo => {
+    let returnType: Types.Type = Types.AlwaysType
+    let min = 0,
+      max: number | undefined = 0
+    for (const [isSpread, type] of typesInfo) {
+      if (isSpread && (type instanceof Types.ArrayType || type instanceof Types.SetType)) {
+        // [x, y, ...set]
+        // [x, y, ...array]
+        min += type.narrowedLength.min
+        max =
+          type.narrowedLength.max === undefined || max === undefined
+            ? undefined
+            : max + type.narrowedLength.max
+        returnType = Types.compatibleWithBothTypes(returnType, type.of)
+      } else if (isSpread) {
+        // unreachable
+      } else {
+        // [..., x, ...]
+        min += 1
+        max = max === undefined ? undefined : max + 1
+        returnType = Types.compatibleWithBothTypes(returnType, type)
+      }
+    }
+
+    return new Types.ArrayType(returnType, {min, max})
+  })
+}
+
+// TODO: actually, we should iterate all the values, and group them according to
+// assignability. for instance:
+//
+//     set(1, 2, 3, ...strings)  -- strings; Set(String, length: 2...3)
+//
+// 1,2,3 each form a distinct set (they can't be assigned to each other)
+// `strings: Set<String>` is also distinct (can't be assigned to 1|2|3, and vice
+// versa). So at this point we have min: 5, max: 6
+//
+//     set(1, 2, 3, ...strings, ...ints)  -- ints: Set(Int, length: 1..4)
+//
+// Since 1|2|3 can all be _combined_ into Int, we have to merge all these into one
+// group. When we do, we have `Set(Int, length: 3...7)`. Then we combine that
+// with the `Set(String)` to get `Set(Int|String, length: 5...10)`
+//
+// For now, we only look at literals and treat all ...set as already belonging to
+// the same type as all the literals.
+function combineAllTypesForSet(expr: SetExpression, runtime: TypeRuntime) {
+  return mapAll(
+    // returns [isSpread, Type][]
+    expr.values.map((arg): GetRuntimeResult<[boolean, Types.Type]> => {
+      const isSpread = arg instanceof SpreadArrayArgument || arg instanceof SpreadSetArgument
+      return getChildType(expr, arg, runtime).map(type => [isSpread, type])
+    }),
+  ).map(typesInfo => {
+    let included = new Set<string | number | boolean>()
+    let returnType: Types.Type = Types.AlwaysType
+    let min = 0,
+      max: number | undefined = 0
+    for (const [isSpread, type] of typesInfo) {
+      // set(...set)
+      // set(...array)
+      if (isSpread && (type instanceof Types.ArrayType || type instanceof Types.SetType)) {
+        if (type instanceof Types.ArrayType) {
+          // if the array has at least one item, then we can assume min: 1.
+          // we can't assume more than that; we don't know anything about the contents of the
+          // array, and their uniquness
+          if (type.narrowedLength.min && min === 0) {
+            min = 1
+          }
+        } else if (type instanceof Types.SetType) {
+          // Sets, however, CAN guarantee that their min guarantees that number of unique
+          // elements. But we don't know if they overlap with our values
+          min = Math.max(min, type.narrowedLength.min)
+        }
+        // we do know something about the max, whether it's an array or set, we can't have
+        // more items than the number of items in the array/set (plus the prev max)
+        max =
+          type.narrowedLength.max === undefined || max === undefined
+            ? undefined
+            : max + type.narrowedLength.max
+        returnType = Types.compatibleWithBothTypes(returnType, type.of)
+      } else if (isSpread) {
+        // unreachable
+      } else if (type instanceof Types.LiteralType && !(type.value instanceof RegExp)) {
+        // literal boolean, float, int, or string - we can check for inclusion in the list
+        // of literals
+        if (!included.has(type.value)) {
+          // a new literal value, we can safely say our min increases
+          min += 1
+          max = max === undefined ? undefined : max + 1
+          included.add(type.value)
+        } else {
+          // no affect to min *or* max, we already counted this value.
+        }
+
+        returnType = Types.compatibleWithBothTypes(returnType, type)
+      } else {
+        // cannot assume min += 1, because we don't know whether 'type' is being associated
+        // with a unique entry or not.
+        // but we can reason about max - there can't be more than the number of entries
+        max = max === undefined ? undefined : max + 1
+        returnType = Types.compatibleWithBothTypes(returnType, type)
+      }
+    }
+
+    return new Types.SetType(returnType, {min, max})
+  })
+}
+
+// this is more similar to combineAllTypesForSet - we need to know information
+// about DictEntry in order to increase min/max.
+function combineAllTypesForDict(expr: DictExpression, runtime: TypeRuntime) {
+  return mapAll(
+    expr.values.map(
+      (
+        entry,
+      ): GetRuntimeResult<[true, Types.DictType, undefined] | [false, Types.Type, Types.Type]> => {
+        if (entry instanceof SpreadDictArgument) {
+          return getChildType(expr, entry, runtime).map(dict => [true, dict, undefined])
+        } else {
+          return getChildType(expr, entry.value, runtime).map(valueType =>
+            getChildType(expr, entry.name, runtime).map(keyType => [false, valueType, keyType]),
+          )
+        }
+      },
+    ),
+  ).map(typesInfo => {
+    let keys = new Set<Types.Key>()
+    let returnType: Types.Type = Types.AlwaysType
+    let min = 0,
+      max: number | undefined = 0
+    for (const [isSpread, valueType, keyType] of typesInfo) {
+      if (isSpread) {
+        for (const key of valueType.narrowedNames) {
+          keys.add(key)
+        }
+        min = Math.max(min, valueType.narrowedLength.min)
+        max =
+          valueType.narrowedLength.max === undefined || max === undefined
+            ? undefined
+            : max + valueType.narrowedLength.max
+        returnType = Types.compatibleWithBothTypes(returnType, valueType.of)
+      } else {
+        if (keyType instanceof Types.LiteralType && !(keyType.value instanceof RegExp)) {
+          if (!keys.has(keyType.value)) {
+            max = max === undefined ? undefined : max + 1
+          }
+          keys.add(keyType.value)
+        }
+        returnType = Types.compatibleWithBothTypes(returnType, valueType)
+      }
+    }
+
+    return new Types.DictType(returnType, {min, max}, keys)
+  })
 }
 
 /**
@@ -1129,6 +1199,10 @@ export class OneOfTypeExpression extends TypeExpression {
         return getChildType(this, type, runtime)
       }),
     ).map(types => Types.oneOf(types))
+  }
+
+  getArgType(runtime: TypeRuntime): GetTypeResult {
+    return this.getType(runtime)
   }
 }
 
@@ -1719,7 +1793,7 @@ export class SpreadSetArgument extends SpreadArgument {
       // a Array into an Set. Similar for Dict - could show how to extract the values
       // into an Array/Set.
       if (!(type instanceof Types.SetType)) {
-        return err(new RuntimeError(this, 'Expected a Set, found ' + type.constructor.name))
+        return err(new RuntimeError(this, 'Expected a Set, found ' + type.toCode()))
       }
 
       return type
@@ -1729,7 +1803,7 @@ export class SpreadSetArgument extends SpreadArgument {
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.SetValue> {
     return this.value.eval(runtime).map(value => {
       if (!(value instanceof Values.SetValue)) {
-        return err(new RuntimeError(this, 'Expected a Set, found ' + value.constructor.name))
+        return err(new RuntimeError(this, 'Expected a Set, found ' + value.toCode()))
       }
 
       return value
@@ -2814,10 +2888,8 @@ export class FormulaTypeExpression extends Expression {
 }
 
 /**
- * An instance of a function (named or anonymous function, with explicit types) or
- * a lambda (an argument to a function; the types are defined by the function)
+ * An instance of a function (named or anonymous function, with explicit types)
  *
- * formula:
  *     fn [name](#arg0: type, #arg1: type = value, name: type = value): type => body
  */
 export class FormulaExpression extends Expression {
