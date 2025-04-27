@@ -389,7 +389,7 @@ Words are used for logical operators, but not bitwise operators.
 
 ## String coercion and interpolation
 
-Extra's "coerce to String" (`toString()`) is a unary operator `$`, and it's also the string interpolation delimiter.
+Extra's "coerce to String" function is a unary operator `$`, and it's also the string interpolation delimiter.
 
 ```extra
 -- look at the beautiful similarity between String templates
@@ -929,11 +929,11 @@ If you're thinking "wow these are all supported by JavaScript's `Number()` const
 
 ## Strings
 
-Strings come in a few variants: single-quoted, double-quoted and backticks. Each variant also supports triple-quotes (`'''test'''`).
+Strings come in a few variants: single-quoted, double-quoted, backticks, and atomic. The quoted variants all support triple-quotes (`'''test'''`). Double-quoted and backticks support tagged strings.
 
-All strings can be spread across multiple lines, though I _recommend_ triple-quotes for that. Triple quotes have the added feature of removing preceding indentation, up to the closing quotes (more below).
+Strings can be spread across multiple lines, though I _recommend_ triple-quotes for that. Triple quotes have the added feature of removing preceding indentation, up to the closing quotes (more below).
 
-Single-quoted do not support String interpolation (`${}`).
+Single-quoted do not support String interpolation (`${}`), the `$` character is left intact.
 
 ```extra
 'testing'      --> testing
@@ -946,29 +946,61 @@ test2' --> test1
            test2
 ```
 
-Double-quoted strings: Same as single-quoted, but support _String interpolation_.
-Backticks: An alternative to double-quoted, also supports String interpolation.
+An even simpler string literal is the "atomic" string, so called because in Ruby and Elixir they are a different 'atom' primitive. They can only have letters, numbers, hyphens, underscores, and emojis.
+
+```extra
+:testing     --> "testing"
+:real-money  --> "real-money"
+:$wat        --> ❌ syntax error
+:🤯          --> "🤯"
+```
+
+Double-quoted strings: Same as single-quoted, but support _String interpolation_ and can be tagged. Backticks: An alternative to double-quoted (same support for interpolation and tagging).
 
 ```extra
 "testing"           --> testing
 "$money"            --> replaces $money with the contents of `money` reference
 "${money.currency}" --> replaces ${…} with the contents of `money.currency` reference
+
 `${money.currency}` --> same
 `$money.currency`   --> replaces $money with `money`, but leaves ".currency"
 `\$` / "\$"         --> If you need a dollar sign
-"$123"              --> "$123", no need to escape in this case.
+
+"$123"              --> If '$' isn't followed by a reference, there's no need to escape it.
+```
+
+String tags work similar to how they do in Javascript - the parts of the string are passed to the 'tag', which better be a function capable of handling all the parts.
+
+Unlike in Js, though, each "part" is passed as its own arg (the string literals are not gathered into one array).
+
+```extra
+let
+  calculator = fn(#a: Int, #op: String, #b: Int, #out: String) =>
+    let
+      result =
+        if (#op matches /^\s*\+\s*$/) {
+        then:
+          a + b
+        else:
+          a - b
+        }
+      out = out.replaceAll('?', with: $result)
+    in
+      `$a$op$b$out`
+in
+  calculator`$a + $b = ?`
 ```
 
 Triple quoted strings ignore the first character if it is a newline, and remove the preceding indentation according to the _indentation of the closing quotes_.
 
 If you want to remove the trailing newline, escape it with `\`.
 
-```extra
+````extra
 let
   something-cool: '''
-            this is a String
+            this is a String,
             right?
-            ''' --> "this is a String\nright?\n"
+            ''' --> "this is a String,\nright?\n"
 in …
 
 let
@@ -976,12 +1008,6 @@ let
             remove-trailing-newline\
             ''' --> "remove-trailing-newline"
 in …
-'''
-test1
-test2
-''' --> test1
-        test2
--- ie "test1\ntest2\n" *not* "\ntest1\ntest2\n"
 
 -- this can also be written:
 '''test1
@@ -1001,8 +1027,15 @@ strings
 are
 neat
 """
--- backticks also support triple quotes, but putting triple-backticks in a markdown document? no thank you!
+
 ```
+use
+backticks
+if
+you
+prefer
+```
+````
 
 All strings use backslash to escape special characters:
 
@@ -1055,12 +1088,21 @@ Objects play double duty as the Tuple type, because they can have positional pro
 
 ```extra
 type User = {
-  #name: String -- positional
+  String -- positional
   age: Int(>=0) -- named
 }
 
 a: User = {'Chuck', age: 50}
+-- nice and terse, but there is nothing to indicate that User[0] refers to a 'name'
+a: Point = {0, 0}  -- on the other handm, it is pretty obvious that this is {x,y}
 ```
+
+The container types can be split into two families:
+
+<dl>
+  <dt>Homogenous</dt><dd>All items must have the same type (array, dict, set)</dd>
+  <dt>Heterogenous</dt><dd>All items may have different types (object)</dd>
+</dl>
 
 ### Homogenous types: Array, Dict, Set
 
@@ -1073,76 +1115,48 @@ Set: an unordered collection of homogenous items. Only one of each item will be 
 Syntax:
 
 - Array: `[] [] [1] [1,] [1, 2, 3]`
-- Dict: `Dict() Dict(key: 1) Dict(key: 1,) Dict(1: 1, 'key2': 2, "key$three": 3)`
-  Shorthand:
-  `Dict(foo)` --> `Dict(foo: foo)`, e.g. key is `"foo"` and value is whatever is in the reference `foo`
-- Set: `Set() Set(1) Set(1,) Set(1, 2, 3)`
+- Dict: `dict() dict(key: 1) dict(key: 1,) dict(1: 1, 'key2': 2, "key$three": 3)`
+- Set: `set() set(1) set(1,) set(1, 2, 3)`
 
 ### Heterogenous types: Tuple, Object
 
-Tuple: a list of items with different types.
-Object: a lookup/map/hashmap of different properties.
+Object: a lookup/map/hashmap of different properties. Each key can have a different type.
+Tuple: same as an object, but indexed by number instead of string. Tuples and Objects are just one type that supports *both* string and numeric keys.
 
 Syntax:
 
 - Object: `{} {} {one: 1} {one: 1,} {1: 1, 'two': "two", "$three": [3]}`
-  Shorthand:
-  `{foo}` --> `{foo: foo}`, e.g. key is `"foo"` and value is whatever is in the reference `foo`
-- Tuple: `{[]} {[1]} {[1,]} {[1,"two",[3]]}`
+- Tuple: `{} {1} {1,} {1,"two",[3]}`
 
-| Index-by | Homogeneous | Heterogenous |
-| -------- | ----------- | ------------ |
-| Number   | Array       | Tuple        |
-| String   | Dict        | Object       |
-
-<dl>
-  <dt>Homogenous</dt><dd>All items must have the same type</dd>
-  <dt>Heterogenous</dt><dd>All items may have different types</dd>
-</dl>
-
-Syntax:
+### More examples
 
 ```extra
 -- Arrays
 [1, 2, 3]        --> [Int] ("Int array") with three entries
-[]               --> empty array ([any])
+[]               --> empty array (Array(Always))
 ["one", "two", ] --> [String] with two entries (trailing comma is ok)
 
 -- Dicts
-Dict(one: 1, two: 2, three: 3) --> Dict(Int) (Int dict) with three entries
-Dict()                         --> empty dict (Dict(any))
-Dict(number1: "one", number-two: "two", ) --> Dict(String) with two entries
+dict(one: 1, two: 2, three: 3) --> Dict(Int) with three entries
+dict()                         --> empty dict (Dict(Always))
+dict(number1: "one", number-two: "two", ) --> Dict(String) with two entries
 ✘ {}  --> empty object, not a dict!
 
--- Tuples
-{[1, "two", [3,4,5]]} --> {[Int, String, [Int]]} (3-tuple of Int, String, Int array)
-{[]}                 --> empty tuple
-✘ {}  --> empty object, not a tuple!
+-- Sets
+set(1, 2)     --> Set(Int) (Set of Ints)
+set()         --> empty set
 
 -- Objects
 { age: 1, name: 'foo' } --> {age: Int, name: String}
-{}                      --> empty object
+{}                      --> empty object or tuple
 
--- Sets
-{[ 1, 2 ]}    --> Set(Int) (Set of Ints)
-{[]}          --> empty set
-```
+-- Tuples are just objects with numeric keys
+{1, "two", [3,4,5]} --> {[Int, String, [Int]]} (3-tuple of Int, String, Int array)
+{}                 --> empty object or tuple
 
-Objects and Dicts support a shorthand syntax if the reference name is the same as the key:
-
-```extra
-let
-  foo: 'hello'
-  bar: 1
-in
-  { foo: foo } --> {foo: String}
-  { foo }     --> {foo: String}
-  { foo , bar }     --> {foo: String, bar: Float}
-
--- dict uses the special '@' sigil
-Dict( foo: foo ) --> Dict(String)
-Dict( foo )     --> Dict(String)
-Dict( bar )     --> Dict(Int)
+-- There is no actual Tuple type, objects support number keys, and they can be
+-- mixed and matched.
+{0, 1, last: 10}  -- {Int, Int, last: Int}
 ```
 
 ### Splat operators
@@ -1154,31 +1168,36 @@ All of the container types (Array, Tuple, Object, Dict, and Set) use the `...` u
 let
   a: [1, 2, 3]
   b: [4, 5, 6]
-in [...a, ...b] --> [1, 2, 3, 4, 5, 6]
-
--- tuples
-let
-  a: {[1, "2", 3]}
-  b: {[4, "5", 6]}
-in {[...a, ...b]} --> {[1, "2", 3, 4, "5", 6]}
+in
+  [...a, ...b] --> [1, 2, 3, 4, 5, 6]
 
 -- objects
 let
   a: {a: 1, b: "2", c: 3}
-  b: {d: 4, e: "5", f: 6}
-in Dict(...a, ...b) --> {a: 1, b: "2", c: 3, d: 4, e: "5", f: 6}
+  b: {c: 4, d: "5", e: 6}
+in
+  {...a, ...b} --> {a: 1, b: "2", c: 4, d: "5", e: 6}
+
+-- tuple - notice that the numeric positions _overwrite_, they don't append
+let
+  a: {0, 0, spin: 'up'}
+  b: {c: 4, d: "5", e: 6}
+in
+  {...a, ...b} --> {a: 1, b: "2", c: 4, d: "5", e: 6}
 
 -- dicts
 let
-  a: Dict(a: 1, b: 2, c: 3)
-  b: Dict(d: 4, e: 5, f: 6)
-in Dict(...a, ...b) --> Dict(a: 1, b: "2", c: 3, d: 4, e: "5", f: 6)
+  a: dict(a: 1, b: 2, c: 3)
+  b: dict(d: 4, e: 5, f: 6)
+in
+  dict(...a, ...b) --> dict(a: 1, b: "2", c: 3, d: 4, e: "5", f: 6)
 
 -- sets
 let
-  a: Set(1, 2, 3)
-  b: Set(3, 4, 5)
-in Set(...a, ...b) --> Set(1, 2, 3, 4, 5)
+  a: set(1, 2, 3)
+  b: set(3, 4, 5)
+in
+  set(...a, ...b) --> set(1, 2, 3, 4, 5)
 ```
 
 Objects and Tuples can contain values with different types (this is called a **Product Type**). What happens if you put different types into an array or dict?
