@@ -16,6 +16,7 @@ import {
   Text,
   run,
 } from '@teaui/react'
+import {Socky} from './socky'
 
 const STATE_FILE = (() => {
   // start at process.cwd() and work up until repl exists, use that as "projectRoot"
@@ -119,7 +120,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
 
   useEffect(() => {
     setWarning('')
-    const {text, type} = calc()
+    const {text, type: _type} = calc()
 
     setMainText(text)
     writeFileSync(
@@ -371,5 +372,9 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
 }
 
 interceptConsoleLog()
+
+// Start Socky server for WebSocket console logs
+const socky = new Socky(8080)
+socky.start()
 
 run(<App />)

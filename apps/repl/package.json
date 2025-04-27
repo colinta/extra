@@ -11,7 +11,9 @@
     "@extra-lang/lang": "workspace:*",
     "@teaui/core": "^1.2.5",
     "@teaui/react": "^1.2.5",
-    "react": "^18.3.1"
+    "@types/ws": "^8.18.1",
+    "react": "^18.3.1",
+    "ws": "^8.18.1"
   },
   "devDependencies": {
     "@extra-lang/shared": "workspace:*",
