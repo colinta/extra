@@ -2778,7 +2778,7 @@ export class FunctionInvocationOperator extends BinaryOperator {
 
   // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
   rhsType(): GetTypeResult {
-    return ok(Types.NeverType)
+    return ok(Types.AllType)
   }
 
   operatorType(
@@ -2874,7 +2874,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 
   // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
   rhsType(): GetTypeResult {
-    return ok(Types.NeverType)
+    return ok(Types.AllType)
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
@@ -3296,7 +3296,7 @@ class PropertyAccessOperator extends BinaryOperator {
   }
 
   rhsType(): GetTypeResult {
-    return ok(Types.NeverType)
+    return ok(Types.AllType)
   }
 
   operatorType(

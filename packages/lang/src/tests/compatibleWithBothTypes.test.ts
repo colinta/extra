@@ -19,6 +19,8 @@ describe('compatibleWithBothTypes', () => {
     c([Types.literal(1), Types.literal(1), Types.literal(1)]),
     c([Types.literal(1), Types.literal(2), privateOneOf(Types.literal(1), Types.literal(2))]),
     c([Types.literal(1), Types.int(), Types.int()]),
+    c([Types.literal(true), Types.booleanType(), Types.booleanType()]),
+    c([Types.literal(false), Types.booleanType(), Types.booleanType()]),
     c([
       Types.literal(1),
       Types.int({min: 2, max: undefined}),

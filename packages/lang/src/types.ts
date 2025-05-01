@@ -1203,6 +1203,14 @@ export const BooleanType = new (class BooleanType extends Type {
     return LiteralFalseType
   }
 
+  combineLiteral(literal: LiteralType) {
+    if (!literal.isBoolean()) {
+      return
+    }
+
+    return this
+  }
+
   toCode() {
     return BOOLEAN
   }
@@ -1541,6 +1549,10 @@ class MetaStringType extends Type {
   }
 
   toTruthyType() {
+    if (this.isOnlyFalseyType()) {
+      return NeverType
+    }
+
     return this.lengthGreaterThan(0)
   }
 
@@ -1553,6 +1565,10 @@ class MetaStringType extends Type {
   }
 
   toFalseyType(): Type {
+    if (this.isOnlyTruthyType()) {
+      return NeverType
+    }
+
     return new LiteralStringType('')
   }
 
@@ -1867,14 +1883,14 @@ export abstract class LiteralBooleanType extends LiteralType {
   }
 
   // `true` literal type is allowed in `if(false)` so that you can debug
-  // isOnlyTruthyType(): boolean {
-  //   return this === LiteralTrueType || this === LiteralFalseType
-  // }
+  isOnlyTruthyType(): boolean {
+    return this === LiteralTrueType
+  }
 
   // `false` literal type is allowed in `if(false)` so that you can debug
-  // isOnlyFalseyType(): boolean {
-  //   return this === LiteralTrueType || this === LiteralFalseType
-  // }
+  isOnlyFalseyType(): boolean {
+    return this === LiteralFalseType
+  }
 
   toFalseyType(): Type {
     return LiteralFalseType
