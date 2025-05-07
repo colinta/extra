@@ -12,8 +12,8 @@
       "dependencies": {
         "@extra-lang/inspect": "workspace:*",
         "@extra-lang/lang": "workspace:*",
-        "@teaui/core": "latest",
-        "@teaui/react": "latest",
+        "@teaui/core": "^1.11.8",
+        "@teaui/react": "^1.11.8",
         "@types/ws": "^8.18.1",
         "react": "^18.3.1",
         "ws": "^8.18.1",
@@ -153,9 +153,11 @@
 
     "@oxfmt/binding-win32-x64-msvc": ["@oxfmt/binding-win32-x64-msvc@0.41.0", "", { "os": "win32", "cpu": "x64" }, "sha512-49ZSpbZ1noozyPapE8SUOSm3IN0Ze4b5nkO+4+7fq6oEYQQJFhE0saj5k/Gg4oewVPdjn0L3ZFeWk2Vehjcw7A=="],
 
-    "@teaui/core": ["@teaui/core@1.3.7", "", {}, "sha512-UzAP27HzeOzBy0CyG7wKNfXZiGlZvG7xNC1L0b0We//nESsb5miDsftMwux791Vrpvj4/mgLiW57km+IG2GtUg=="],
+    "@teaui/core": ["@teaui/core@1.11.8", "", { "dependencies": { "@teaui/term": "1.11.8" } }, "sha512-k6+WK2XvLAMGXqHM4V5vSkxV3+40B1udqQUZmXgDflDC0rgqD22Dd8EvP0lc3hXopnTKq+ZK4F7vHlCKX/Rd/g=="],
 
-    "@teaui/react": ["@teaui/react@1.3.7", "", { "dependencies": { "@teaui/core": "1.3.7" }, "peerDependencies": { "react": "^18.2.0", "react-reconciler": "^0.29.0" } }, "sha512-BgAZTAGAOsyaRkqXeAe1ip6c80U+2ov9SSY4m7znm5VGAq3V2ofE9sLnSHZ3ioMWmG6Xz1n0qWi2JwsUvu5JVQ=="],
+    "@teaui/react": ["@teaui/react@1.11.8", "", { "dependencies": { "@teaui/core": "1.11.8" }, "peerDependencies": { "react": "^18.2.0", "react-reconciler": "^0.29.0" } }, "sha512-r3sYOxxOnlYl+PUPiTW37ls3pKOQAq1WIiWfzmlsdB2Jp1MNN8oJKfuxXpqrro8vOcUlRiG1oGfAxS16jmJdtQ=="],
+
+    "@teaui/term": ["@teaui/term@1.11.8", "", {}, "sha512-GfhtwsLBrN3p33N9kJ7ZyRk2uqzC8/fVFuLOnl/vaCtQ8wrDksexhWp+UTRiU5z75j2+Oc9hBRyp3uoyY4BWXw=="],
 
     "@types/bun": ["@types/bun@1.3.10", "", { "dependencies": { "bun-types": "1.3.10" } }, "sha512-0+rlrUrOrTSskibryHbvQkDOWRJwJZqZlxrUs1u4oOoTln8+WIXBPmAuCF35SWB2z4Zl3E84Nl/D0P7803nigQ=="],
 
