@@ -1,4 +1,19 @@
 import {err, mapAll, ok} from '@extra-lang/result'
+import * as Types from '~/types'
+import * as Values from '~/values'
+import {
+  MutableTypeRuntime,
+  MutableValueRuntime,
+  type TypeRuntime,
+  type ValueRuntime,
+} from '~/runtime'
+import {combineConcatLengths} from '~/narrowed'
+import {
+  assignNextRuntime,
+  relationshipFormula,
+  type RelationshipComparision,
+  type RelationshipFormula,
+} from '~/relationship'
 import {
   ArgumentsList,
   ElseIfExpression,
@@ -11,8 +26,8 @@ import {
   SpreadFunctionArgument,
   type Expression,
   type Range,
-} from './expressions'
-import {stringSort} from './stringSort'
+} from '~/formulaParser/expressions'
+import {stringSort} from '~/formulaParser/stringSort'
 import {
   type AbstractOperator,
   RuntimeError,
@@ -20,14 +35,8 @@ import {
   type GetRuntimeResult,
   type GetTypeResult,
   type GetValueResult,
-  type NarrowedTypes,
   type Operator,
-} from './types'
-
-import {type TypeRuntime, type ValueRuntime} from '../runtime'
-import * as Types from '../types'
-import * as Values from '../values'
-import {combineConcatLengths} from '../narrowed'
+} from '~/formulaParser/types'
 
 export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
 export const NAMED_BINARY_ALIAS = {
@@ -674,11 +683,9 @@ class LogicalOrOperator extends BinaryOperator {
   symbol = 'or'
 
   rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
-    return lhsExpr.narrowedTypes(runtime).map(({falsey}) => {
-      return lhsExpr
-        .replaceWithType(runtime, falsey)
-        .map(falseyRuntime => getChildType(this, rhsExpr, falseyRuntime))
-    })
+    return lhsExpr
+      .assumeFalse(runtime)
+      .map(falseyRuntime => getChildType(this, rhsExpr, falseyRuntime))
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
@@ -732,10 +739,9 @@ class LogicalAndOperator extends BinaryOperator {
   symbol = 'and'
 
   rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
-    return lhsExpr.narrowedTypes(runtime).map(({truthy}) => {
-      const truthyRuntime = lhsExpr.replaceWithType(runtime, truthy)
-      return truthyRuntime.map(truthyRuntime => getChildType(this, rhsExpr, truthyRuntime))
-    })
+    return lhsExpr
+      .assumeTrue(runtime)
+      .map(truthyRuntime => getChildType(this, rhsExpr, truthyRuntime))
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
@@ -954,140 +960,21 @@ addBinaryOperator({
   },
 })
 
-abstract class ComparisonOperator extends BinaryOperator {
-  abstract narrowedComparison(
-    assertionType: Types.Type,
-    lengthType: Types.LiteralFloatType,
-  ): NarrowedTypes
-
-  abstract reverseNarrowedComparison(
-    assertionType: Types.Type,
-    lengthType: Types.LiteralFloatType,
-  ): NarrowedTypes
-
-  // str.length >= 5 and foo(str) -- foo(#s: String(5))
-  // lhsExpr.narrowedTypes(runtime) -->
-  //     {
-  //       truthy: str --> String(>=5)
-  //       falsey: str --> String(<4)
-  //     }
-  narrowedTypes(runtime: TypeRuntime): GetRuntimeResult<NarrowedTypes> {
-    const evalLengthExpr = (
-      lengthExpr: Expression,
-      assertionExpr: Expression,
-      isReversed: boolean,
-    ) =>
-      getChildType(this, lengthExpr, runtime)
-        .map(lengthType =>
-          getChildType(this, assertionExpr, runtime).map(
-            assertionType => [lengthType, assertionType] as const,
-          ),
-        )
-        .map(([lengthType, assertionType]) => {
-          if (!assertionType.isLiteral('float')) {
-            return super.narrowedTypes(runtime)
-          }
-
-          if (isReversed) {
-            return this.reverseNarrowedComparison(lengthType, assertionType)
-          }
-          return this.narrowedComparison(lengthType, assertionType)
-        })
-
-    const [lhsExpr, rhsExpr] = this.args
-    return lhsExpr.isLengthExpression(runtime).map(lhsIsLength => {
-      if (lhsIsLength) {
-        return evalLengthExpr(lhsExpr, rhsExpr, false)
-      } else {
-        return rhsExpr.isLengthExpression(runtime).map(rhsIsLength => {
-          if (rhsIsLength) {
-            return evalLengthExpr(rhsExpr, lhsExpr, true)
-          } else {
-            return super.narrowedTypes(runtime)
-          }
-        })
-      }
-    })
-  }
-
-  replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
-    const [lhsExpr, rhsExpr] = this.args
-    return lhsExpr.isLengthExpression(runtime).map(lhsIsLength => {
-      if (lhsIsLength) {
-        return lhsExpr.replaceWithType(runtime, withType)
-      } else {
-        return rhsExpr.isLengthExpression(runtime).map(rhsIsLength => {
-          if (rhsIsLength) {
-            return rhsExpr.replaceWithType(runtime, withType)
-          } else {
-            return super.replaceWithType(runtime, withType)
-          }
-        })
-      }
-    })
-  }
-}
-
-class AssignmentOperator extends BinaryOperator {
-  symbol = '='
-
-  operatorType(
-    _runtime: TypeRuntime,
-    _lhs: Types.Type,
-    _rhs: Types.Type,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ): GetTypeResult {
-    return err(new RuntimeError(lhsExpr, `Still working on assignment ${lhsExpr} = ${rhsExpr}`))
-  }
-
-  operatorEval(
-    _runtime: ValueRuntime,
-    _lhs: Values.Value,
-    _rhs: () => GetValueResult,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ): GetRuntimeResult<Values.BooleanValue> {
-    return err(new RuntimeError(lhsExpr, `Still working on assignment ${lhsExpr} = ${rhsExpr}`))
-  }
-}
-
-addBinaryOperator({
-  name: 'assignment',
-  symbol: '=',
-  precedence: -1,
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new AssignmentOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
+abstract class ComparisonOperator extends BinaryOperator {}
 
 class EqualsOperator extends ComparisonOperator {
   symbol = '=='
 
-  narrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType): NarrowedTypes {
-    const truthy = assertionType.lengthIs(lengthType.value)
-    const falsey = assertionType.lengthIsNot(lengthType.value)
-    return {
-      truthy,
-      falsey,
-    }
+  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    const [lhs, rhs] = this.args
+
+    let nextRuntime = runtime
+
+    return ok(nextRuntime)
   }
 
-  reverseNarrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType) {
-    return this.narrowedComparison(assertionType, lengthType)
+  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    return ok(runtime)
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type): GetTypeResult {
@@ -1130,15 +1017,6 @@ addBinaryOperator({
 class NotEqualsOperator extends EqualsOperator {
   symbol = '!='
 
-  narrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType): NarrowedTypes {
-    const {truthy, falsey} = super.narrowedComparison(assertionType, lengthType)
-    return {truthy: falsey, falsey: truthy}
-  }
-
-  reverseNarrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType) {
-    return this.narrowedComparison(assertionType, lengthType)
-  }
-
   operatorType(runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     return super.operatorType(runtime, lhs, rhs).map(type => {
       if (type.isLiteral()) {
@@ -1179,24 +1057,6 @@ addBinaryOperator({
 class GreaterThanOperator extends ComparisonOperator {
   symbol = '>'
 
-  narrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType): NarrowedTypes {
-    const truthy = assertionType.lengthGreaterThan(lengthType.value)
-    const falsey = assertionType.lengthLessOrEqual(lengthType.value)
-    return {
-      truthy,
-      falsey,
-    }
-  }
-
-  reverseNarrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType) {
-    const truthy = assertionType.lengthLessThan(lengthType.value)
-    const falsey = assertionType.lengthGreaterOrEqual(lengthType.value)
-    return {
-      truthy,
-      falsey,
-    }
-  }
-
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
       return ok(Types.literal(lhs.value > rhs.value))
@@ -1234,24 +1094,6 @@ addBinaryOperator({
 
 class GreaterOrEqualOperator extends ComparisonOperator {
   symbol = '>='
-
-  narrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType): NarrowedTypes {
-    const truthy = assertionType.lengthGreaterOrEqual(lengthType.value)
-    const falsey = assertionType.lengthLessThan(lengthType.value)
-    return {
-      truthy,
-      falsey,
-    }
-  }
-
-  reverseNarrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType) {
-    const truthy = assertionType.lengthLessOrEqual(lengthType.value)
-    const falsey = assertionType.lengthGreaterThan(lengthType.value)
-    return {
-      truthy,
-      falsey,
-    }
-  }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
@@ -1291,24 +1133,6 @@ addBinaryOperator({
 class LessThanOperator extends ComparisonOperator {
   symbol = '<'
 
-  narrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType): NarrowedTypes {
-    const truthy = assertionType.lengthLessThan(lengthType.value)
-    const falsey = assertionType.lengthGreaterOrEqual(lengthType.value)
-    return {
-      truthy,
-      falsey,
-    }
-  }
-
-  reverseNarrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType) {
-    const truthy = assertionType.lengthGreaterThan(lengthType.value)
-    const falsey = assertionType.lengthLessOrEqual(lengthType.value)
-    return {
-      truthy,
-      falsey,
-    }
-  }
-
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
       return ok(Types.literal(lhs.value < rhs.value))
@@ -1340,24 +1164,6 @@ addBinaryOperator({
 
 class LessOrEqualOperator extends ComparisonOperator {
   symbol = '<='
-
-  narrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType): NarrowedTypes {
-    const truthy = assertionType.lengthLessOrEqual(lengthType.value)
-    const falsey = assertionType.lengthGreaterThan(lengthType.value)
-    return {
-      truthy,
-      falsey,
-    }
-  }
-
-  reverseNarrowedComparison(assertionType: Types.Type, lengthType: Types.LiteralFloatType) {
-    const truthy = assertionType.lengthGreaterOrEqual(lengthType.value)
-    const falsey = assertionType.lengthLessThan(lengthType.value)
-    return {
-      truthy,
-      falsey,
-    }
-  }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
@@ -1448,44 +1254,6 @@ addBinaryOperator({
  */
 class PropertyExistsOperator extends BinaryOperator {
   symbol = 'has'
-
-  // dict has 'key' && foo(dict) -- dict: T[key:]
-  // lhsExpr.narrowedTypes(runtime) -->
-  //     {
-  //       truthy: dict --> dict[key:]
-  //       falsey: dict --> TBD
-  //     }
-  narrowedTypes(runtime: TypeRuntime): GetRuntimeResult<NarrowedTypes> {
-    const [lhsExpr, rhsExpr] = this.args
-    return getChildType(this, lhsExpr, runtime).map(lhsType =>
-      getChildType(this, rhsExpr, runtime).map(rhsType => {
-        if (
-          rhsType.isLiteral() &&
-          !(rhsType.value instanceof RegExp) &&
-          lhsType instanceof Types.DictType
-        ) {
-          const truthy = lhsType.narrowName(rhsType.value)
-          // TODO narrowNotName on DictType
-          const falsey = lhsType
-          return {
-            truthy,
-            falsey,
-          }
-        } else if (rhsType.isLiteral('int') && lhsType instanceof Types.ArrayType) {
-          // 4 in array (true) --> array.length >= 5
-          const truthy = lhsType.narrowLength(rhsType.value + 1, undefined)
-          // 4 in array (false) --> array.length <= 4
-          const falsey = lhsType.narrowLength(0, rhsType.value)
-          return {
-            truthy,
-            falsey,
-          }
-        }
-
-        return super.narrowedTypes(runtime)
-      }),
-    )
-  }
 
   operatorType(
     _runtime: TypeRuntime,
@@ -1611,13 +1379,6 @@ addBinaryOperator({
 class PropertyMissingOperator extends PropertyExistsOperator {
   symbol = '!has'
 
-  narrowedTypes(runtime: TypeRuntime): GetRuntimeResult<NarrowedTypes> {
-    return super.narrowedTypes(runtime).map(({truthy, falsey}) => ({
-      truthy: falsey,
-      falsey: truthy,
-    }))
-  }
-
   operatorType(
     runtime: TypeRuntime,
     lhs: Types.Type,
@@ -1672,23 +1433,6 @@ addBinaryOperator({
 class TypeIsAssertionOperator extends BinaryOperator {
   symbol = 'is'
 
-  narrowedTypes(runtime: TypeRuntime): GetRuntimeResult<NarrowedTypes> {
-    const [lhsExpr, rhsExpr] = this.args
-    return rhsExpr
-      .typeAssertion(runtime)
-      .map(rhsTypeAssertion =>
-        getChildType(this, lhsExpr, runtime).map(lhsType => [lhsType, rhsTypeAssertion]),
-      )
-      .map(([lhsType, rhsTypeAssertion]) => {
-        const truthy = Types.narrowTypeIs(lhsType, rhsTypeAssertion)
-        const falsey = Types.narrowTypeIsNot(lhsType, rhsTypeAssertion)
-        return {
-          truthy,
-          falsey,
-        }
-      })
-  }
-
   operatorType(
     runtime: TypeRuntime,
     _lhs: Types.Type,
@@ -1736,13 +1480,6 @@ addBinaryOperator({
 
 class TypeIsRefutationOperator extends TypeIsAssertionOperator {
   symbol = '!is'
-
-  narrowedTypes(runtime: TypeRuntime): GetRuntimeResult<NarrowedTypes> {
-    return super.narrowedTypes(runtime).map(({truthy, falsey}) => ({
-      truthy: falsey,
-      falsey: truthy,
-    }))
-  }
 
   operatorEval(
     runtime: ValueRuntime,
@@ -2919,23 +2656,21 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
       //
 
       // Evaluate 'then' as if conditionExpr is true
-      const truthyType = conditionType.toTruthyType()
       const returnResult = conditionExpr
-        .replaceWithType(runtime, truthyType)
+        .assumeTrue(runtime)
         .map(truthyRuntime => getChildType(this, thenExpr, truthyRuntime))
       if (returnResult.isErr()) {
         return err(returnResult.error)
       }
 
       let returnType = returnResult.value
-      // quick exit if there are no elseif or else expressions
       const elseifExprs = argList.allPositionalArgs(1)
 
       // Evaluate 'elseif' conditions as if conditionExpr is false.
       // merge the results of the 'then' and 'elseif' expressions into one type
       // returnType = Types.compatibleWithBothTypes(returnType, elseifThenType)
       // falseyType then becomes the toFalseyType of the elseif conditionType.
-      const nextRuntimeResult = conditionExpr.replaceWithType(runtime, conditionType.toFalseyType())
+      const nextRuntimeResult = conditionExpr.assumeFalse(runtime)
       if (nextRuntimeResult.isErr()) {
         return err(nextRuntimeResult.error)
       }
@@ -2943,8 +2678,15 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 
       for (const elseif of elseifExprs) {
         if (!(elseif instanceof ElseIfExpressionInvocation)) {
-          return err(new RuntimeError(elseif, expectedElseifCondition(elseif)))
+          return err(new RuntimeError(elseif, expectedElseifConditionExpression(elseif)))
         }
+
+        const elseifThenType = elseif.getReturnType(nextRuntime)
+        if (elseifThenType.isErr()) {
+          return err(elseifThenType.error)
+        }
+
+        returnType = Types.compatibleWithBothTypes(returnType, elseifThenType.value)
 
         const elseifArgList = elseif.argList
         if (!(elseifArgList instanceof ArgumentsList)) {
@@ -2953,37 +2695,14 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 
         const elseifConditionExpr = elseifArgList.positionalArg(0)
         if (!elseifConditionExpr) {
-          return err(new RuntimeError(elseif, expectedElseifResult()))
+          return err(new RuntimeError(elseif, expectedElseifConditionArgument()))
         }
 
-        const elseifThen = elseifArgList.positionalArg(1)
-        if (!elseifThen) {
-          return err(new RuntimeError(elseif, `Missing result in 'elseif()' expression`))
-        }
-
-        const elseifConditionType = getChildType(this, elseifConditionExpr, nextRuntime)
-        if (elseifConditionType.isErr()) {
-          return err(elseifConditionType.error)
-        }
-
-        const elseifTruthyType = elseifConditionType.value.toTruthyType()
-        const elseifThenType = elseifConditionExpr
-          .replaceWithType(runtime, elseifTruthyType)
-          .map(elseifRuntime => getChildType(this, elseifThen, elseifRuntime))
-        if (elseifThenType.isErr()) {
-          return err(elseifThenType.error)
-        }
-
-        const nextRuntimeResult = elseifConditionExpr.replaceWithType(
-          nextRuntime,
-          elseifConditionType.value.toFalseyType(),
-        )
+        const nextRuntimeResult = elseifConditionExpr.assumeFalse(nextRuntime)
         if (nextRuntimeResult.isErr()) {
           return err(nextRuntimeResult.error)
         }
         nextRuntime = nextRuntimeResult.value
-
-        returnType = Types.compatibleWithBothTypes(returnType, elseifThenType.value)
       }
 
       const elseExpr = argList.namedArg('else')
@@ -3028,7 +2747,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 
       for (const elseif of elseifExprs) {
         if (!(elseif instanceof ElseIfExpressionInvocation)) {
-          return err(new RuntimeError(elseif, expectedElseifCondition(elseif)))
+          return err(new RuntimeError(elseif, expectedElseifConditionExpression(elseif)))
         }
 
         const elseifArgList = elseif.argList
@@ -3038,12 +2757,12 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 
         const elseifConditionExpr = elseifArgList.positionalArg(0)
         if (!elseifConditionExpr) {
-          return err(new RuntimeError(elseif, expectedElseifResult()))
+          return err(new RuntimeError(elseif, expectedElseifConditionArgument()))
         }
 
         const elseifThen = elseifArgList.positionalArg(1)
         if (!elseifThen) {
-          return err(new RuntimeError(elseif, `Missing result in 'elseif()' expression`))
+          return err(new RuntimeError(elseif, expectedElseifConditionResult()))
         }
 
         const elseifCondition = elseifConditionExpr.eval(runtime)
@@ -3124,9 +2843,8 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
       //
 
       // Evaluate 'then' as if conditionExpr is true
-      const truthyType = conditionType.toTruthyType()
       const returnResult = conditionExpr
-        .replaceWithType(runtime, truthyType)
+        .assumeTrue(runtime)
         .map(truthyRuntime => getChildType(this, thenExpr, truthyRuntime))
       if (returnResult.isErr()) {
         return err(returnResult.error)
@@ -3431,13 +3149,6 @@ addBinaryOperator({
 
 class LogicalNotOperator extends UnaryOperator {
   symbol = 'not'
-
-  narrowedTypes(runtime: TypeRuntime): GetRuntimeResult<NarrowedTypes> {
-    return this.args[0].narrowedTypes(runtime).map(({truthy, falsey}) => ({
-      truthy: falsey,
-      falsey: truthy,
-    }))
-  }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
     if (lhs.isLiteral()) {
@@ -4106,12 +3817,16 @@ function expectedIfThenResult() {
   return "Missing 'then: T' in 'if()' expression"
 }
 
-function expectedElseifCondition(found: Expression) {
+function expectedElseifConditionExpression(found: Expression) {
   return `Expected 'elseif(condition): then' expression, found '${found}'`
 }
 
-function expectedElseifResult() {
-  return "Missing '#condition: Condition' in 'elseif()' expression"
+function expectedElseifConditionArgument() {
+  return "Missing condition in 'elseif(<condition>)' expression"
+}
+
+function expectedElseifConditionResult() {
+  return `Missing result in 'elseif(): <result>' expression`
 }
 
 // yup, that's what I named this function. At me in the comments.

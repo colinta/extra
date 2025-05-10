@@ -1,9 +1,10 @@
-import * as Expressions from '../expressions'
-import {type Expression} from '../expressions'
-import {isViewStart, isWhitespaceChar} from '../grammars'
+import * as Expressions from '~/formulaParser/expressions'
+import {type Expression} from '~/formulaParser/expressions'
+import {isViewStart, isWhitespaceChar} from '~/formulaParser/grammars'
 
-import {type Scanner} from '../scanner'
-import {ParseError, type ParseNext} from '../types'
+import {type Scanner} from '~/formulaParser/scanner'
+import {ParseError, type ParseNext} from '~/formulaParser/types'
+
 import {unexpectedToken} from './basics'
 import {scanValidName} from './identifier'
 

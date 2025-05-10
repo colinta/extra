@@ -1,6 +1,6 @@
 import {cases, c} from '@extra-lang/cases'
-import {type Expression} from '../expressions'
-import {parse} from '../'
+import {type Expression} from '~/formulaParser/expressions'
+import {parse} from '~/formulaParser'
 
 describe('regex', () => {
   cases(

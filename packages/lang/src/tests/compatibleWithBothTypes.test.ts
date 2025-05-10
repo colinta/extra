@@ -1,9 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
 import * as Types from '../types'
-
-function privateOneOf(...types: Types.Type[]) {
-  return Types._privateOneOf(types)
-}
+import {privateOneOf} from './privateOneOf'
 
 describe('compatibleWithBothTypes', () => {
   const human = Types.namedClass('human', new Map([['foo', Types.string()]]))

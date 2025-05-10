@@ -1,6 +1,6 @@
 import {type GetRuntimeResult} from './formulaParser/types'
-import type {Type} from './types'
-import type {Value, ObjectValue} from './values'
+import {type Type} from './types'
+import {type Value, type ObjectValue} from './values'
 
 export interface Runtime {
   getLocale(): Intl.Locale

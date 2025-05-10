@@ -1,8 +1,9 @@
-import * as Expressions from '../expressions'
-import {type Expression} from '../expressions'
-import {ARGS_CLOSE, ARGS_OPEN, isArgumentStartChar} from '../grammars'
-import {type Scanner} from '../scanner'
-import {type ExpressionType, ParseError, type ParseNext} from '../types'
+import * as Expressions from '~/formulaParser/expressions'
+import {type Expression} from '~/formulaParser/expressions'
+import {ARGS_CLOSE, ARGS_OPEN, isArgumentStartChar} from '~/formulaParser/grammars'
+import {type Scanner} from '~/formulaParser/scanner'
+import {type ExpressionType, ParseError, type ParseNext} from '~/formulaParser/types'
+
 import {scanArgumentType} from './scanArgumentType'
 import {scanValidName} from './identifier'
 

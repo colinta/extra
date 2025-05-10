@@ -1,9 +1,9 @@
 import {cases, c} from '@extra-lang/cases'
-import {type Expression} from '../expressions'
-import {parse} from '../'
-import {mockValueRuntime} from './mockValueRuntime'
-import * as Types from '../../types'
-import * as Values from '../../values'
+import * as Types from '~/types'
+import * as Values from '~/values'
+import {parse} from '~/formulaParser'
+import {type Expression} from '~/formulaParser/expressions'
+import {mockValueRuntime} from '~/tests/mockValueRuntime'
 
 describe('range', () => {
   describe('parsing', () => {

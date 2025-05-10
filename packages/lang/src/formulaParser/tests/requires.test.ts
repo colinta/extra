@@ -1,6 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
-import {type Expression} from '../expressions'
-import {parseInternalTest} from '../'
+import {type Expression} from '~/formulaParser/expressions'
+import {parseInternalTest} from '~/formulaParser'
 
 describe('requires', () => {
   cases<[string] | [string, string]>(c(['requires A']), c(['requires A, B'])).run(args =>

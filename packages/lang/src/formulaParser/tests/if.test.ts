@@ -1,11 +1,11 @@
 import {c, cases} from '@extra-lang/cases'
-import {parse} from '../'
-import {type Expression} from '../expressions'
-import * as Types from '../../types'
-import {TypeRuntime, ValueRuntime} from '../../runtime'
-import * as Values from '../../values'
-import {mockTypeRuntime} from './mockTypeRuntime'
-import {mockValueRuntime} from './mockValueRuntime'
+import {parse} from '~/formulaParser'
+import {type Expression} from '~/formulaParser/expressions'
+import * as Types from '~/types'
+import {TypeRuntime, ValueRuntime} from '~/runtime'
+import * as Values from '~/values'
+import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
+import {mockValueRuntime} from '~/tests/mockValueRuntime'
 
 let runtimeTypes: {[K in string]: [Types.Type, Values.Value]}
 

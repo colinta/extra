@@ -15,13 +15,13 @@ import {dependencySort} from './dependencySort'
 import {difference, union} from './set'
 import {
   RuntimeError,
-  type NarrowedTypes,
   type Comment,
   type Operator,
   type GetTypeResult,
   type GetValueResult,
   type GetRuntimeResult,
 } from './types'
+import {relationshipFormula, type RelationshipFormula} from '~/relationship'
 
 export type Range = [number, number]
 export const INDENT = '  '
@@ -141,16 +141,12 @@ export abstract class Expression {
     return ok(runtime)
   }
 
-  /**
-   * In a conditional expression, the true branch should assume the types in
-   * narrowedTypes().truthy, and the false branch should assume the types in
-   * narrowedTypes().falsey
-   */
-  narrowedTypes(runtime: TypeRuntime): GetRuntimeResult<NarrowedTypes> {
-    return this.getType(runtime).map(type => ({
-      truthy: type.toTruthyType(),
-      falsey: type.toFalseyType(),
-    }))
+  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    return ok(runtime)
+  }
+
+  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    return ok(runtime)
   }
 
   /**

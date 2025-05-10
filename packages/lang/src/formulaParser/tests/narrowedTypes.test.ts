@@ -1,10 +1,11 @@
 import {c, cases} from '@extra-lang/cases'
-import * as Types from '../../types'
-import {TypeRuntime} from '../../runtime'
-import {parse} from '../'
-import * as Values from '../../values'
-import {mockTypeRuntime} from './mockTypeRuntime'
-import {type TestingTypes} from '../operators'
+import * as Types from '~/types'
+import {TypeRuntime} from '~/runtime'
+import * as Values from '~/values'
+import {parse} from '~/formulaParser'
+import {type Expression} from '~/formulaParser/expressions'
+import {type TestingTypes} from '~/formulaParser/operators'
+import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
 
 let runtimeTypes: {[K in string]: [Types.Type, Values.Value]}
 
@@ -15,11 +16,17 @@ beforeEach(() => {
   typeRuntime = mockTypeRuntime(runtimeTypes)
 })
 
+function truthyFalsey(expression: Expression, runtime: TypeRuntime) {
+  const truthy = expression.assumeTrue(runtime).get()
+  const falsey = expression.assumeFalse(runtime).get()
+  return {truthy, falsey}
+}
+
 describe('narrowed types', () => {
   it('(foo: String | Int) is Int => truthy: Int, falsey: String', () => {
     runtimeTypes['foo'] = [Types.oneOf([Types.string(), Types.int()]), Values.string('')]
     const expression = parse('foo is Int').get()
-    const {truthy, falsey} = expression.narrowedTypes(typeRuntime).get()
+    const {truthy, falsey} = truthyFalsey(expression, typeRuntime)
     expect(truthy).toEqual(Types.int())
     expect(falsey).toEqual(Types.string())
   })
@@ -27,7 +34,7 @@ describe('narrowed types', () => {
   it('(foo: String?) is String => truthy: String, falsey: null', () => {
     runtimeTypes['foo'] = [Types.optional(Types.string()), Values.string('')]
     const expression = parse('foo is String').get()
-    const {truthy, falsey} = expression.narrowedTypes(typeRuntime).get()
+    const {truthy, falsey} = truthyFalsey(expression, typeRuntime)
     expect(truthy).toEqual(Types.string())
     expect(falsey).toEqual(Types.nullType())
   })
@@ -38,7 +45,7 @@ describe('narrowed types', () => {
       Values.string(''),
     ]
     const expression = parse('foo is Array(Int)').get()
-    const {truthy, falsey} = expression.narrowedTypes(typeRuntime).get()
+    const {truthy, falsey} = truthyFalsey(expression, typeRuntime)
     expect(truthy).toEqual(Types.array(Types.int()))
     expect(falsey).toEqual(Types.array(Types.oneOf([Types.string(), Types.int()])))
   })
@@ -49,7 +56,7 @@ describe('narrowed types', () => {
       Values.string(''),
     ]
     const expression = parse('foo is Array(Int)').get()
-    const {truthy, falsey} = expression.narrowedTypes(typeRuntime).get()
+    const {truthy, falsey} = truthyFalsey(expression, typeRuntime)
     expect(truthy).toEqual(Types.array(Types.int()))
     expect(falsey).toEqual(Types.array(Types.string()))
   })

@@ -1,9 +1,8 @@
-import * as Values from '../../values'
-
-import {isRegexFlag} from '../grammars'
-import {type Scanner} from '../scanner'
-import {ParseError} from '../types'
-import * as Expressions from '../expressions'
+import * as Values from '~/values'
+import {isRegexFlag} from '~/formulaParser/grammars'
+import {type Scanner} from '~/formulaParser/scanner'
+import {ParseError} from '~/formulaParser/types'
+import * as Expressions from '~/formulaParser/expressions'
 
 export function scanRegex(scanner: Scanner) {
   scanner.whereAmI('scanRegex')
