@@ -1,7 +1,7 @@
 import {c, cases} from '@extra-lang/cases'
-import {Literal} from '../expressions'
-import {parse} from '../'
-import * as Values from '../../values'
+import {Literal} from '~/formulaParser/expressions'
+import {parse} from '~/formulaParser'
+import * as Values from '~/values'
 
 describe('valid numbers', () => {
   cases<[string, Values.Value] | [string, Values.Value, string]>(
