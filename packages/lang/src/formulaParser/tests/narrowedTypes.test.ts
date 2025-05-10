@@ -16,17 +16,17 @@ beforeEach(() => {
   typeRuntime = mockTypeRuntime(runtimeTypes)
 })
 
-function truthyFalsey(expression: Expression, runtime: TypeRuntime) {
+function truthyFalsey(name: string, expression: Expression, runtime: TypeRuntime) {
   const truthy = expression.assumeTrue(runtime).get()
   const falsey = expression.assumeFalse(runtime).get()
-  return {truthy, falsey}
+  return {truthy: truthy.getLocalType(name), falsey: falsey.getLocalType(name)}
 }
 
 describe('narrowed types', () => {
-  it('(foo: String | Int) is Int => truthy: Int, falsey: String', () => {
+  it.only('(foo: String | Int) is Int => truthy: Int, falsey: String', () => {
     runtimeTypes['foo'] = [Types.oneOf([Types.string(), Types.int()]), Values.string('')]
     const expression = parse('foo is Int').get()
-    const {truthy, falsey} = truthyFalsey(expression, typeRuntime)
+    const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
     expect(truthy).toEqual(Types.int())
     expect(falsey).toEqual(Types.string())
   })
@@ -34,7 +34,7 @@ describe('narrowed types', () => {
   it('(foo: String?) is String => truthy: String, falsey: null', () => {
     runtimeTypes['foo'] = [Types.optional(Types.string()), Values.string('')]
     const expression = parse('foo is String').get()
-    const {truthy, falsey} = truthyFalsey(expression, typeRuntime)
+    const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
     expect(truthy).toEqual(Types.string())
     expect(falsey).toEqual(Types.nullType())
   })
@@ -45,7 +45,7 @@ describe('narrowed types', () => {
       Values.string(''),
     ]
     const expression = parse('foo is Array(Int)').get()
-    const {truthy, falsey} = truthyFalsey(expression, typeRuntime)
+    const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
     expect(truthy).toEqual(Types.array(Types.int()))
     expect(falsey).toEqual(Types.array(Types.oneOf([Types.string(), Types.int()])))
   })
@@ -56,62 +56,89 @@ describe('narrowed types', () => {
       Values.string(''),
     ]
     const expression = parse('foo is Array(Int)').get()
-    const {truthy, falsey} = truthyFalsey(expression, typeRuntime)
+    const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
     expect(truthy).toEqual(Types.array(Types.int()))
     expect(falsey).toEqual(Types.array(Types.string()))
   })
 
-  cases<['foo', [Types.Type, Values.Value], string, Types.Type, Types.Type]>(
+  cases<['foo', Types.Type, string, Types.Type, Types.Type]>(
+    //|
+    //|  Int checks
+    //|
     c([
       'foo',
-      [Types.int(), Values.int(0)],
+      Types.int(),
       'foo >= 5',
       Types.int({min: 5, max: undefined}),
       Types.int({min: undefined, max: 4}),
     ]),
     c([
       'foo',
-      [Types.string(), Values.string('')],
-      'foo.length >= 10',
-      Types.string({min: 10}),
-      Types.string({max: 9}),
+      Types.int({min: 6, max: undefined}),
+      'foo >= 5',
+      Types.int({min: 6, max: undefined}),
+      Types.never(),
+    ]),
+    //|
+    //|  Float checks
+    //|
+    c([
+      'foo',
+      Types.float(),
+      'foo >= 5',
+      Types.float({min: 5, max: undefined}),
+      Types.float({min: undefined, max: [5]}),
     ]),
     c([
       'foo',
-      [Types.string(), Values.string('')],
-      'foo.length > 10',
-      Types.string({min: 11}),
-      Types.string({max: 10}),
+      Types.float(),
+      'foo > 5',
+      Types.float({min: [5], max: undefined}),
+      Types.float({min: undefined, max: 5}),
     ]),
     c([
       'foo',
-      [Types.string(), Values.string('')],
+      Types.float({min: 6, max: undefined}),
+      'foo > 6',
+      Types.float({min: [6], max: undefined}),
+      Types.literal(6, 'float'),
+    ]),
+    c([
+      'foo',
+      Types.float({min: 7, max: undefined}),
+      'foo > 6',
+      Types.float({min: 7, max: undefined}),
+      Types.never(),
+    ]),
+    //|
+    //|  String.length checks
+    //|
+    c(['foo', Types.string(), 'foo.length >= 10', Types.string({min: 10}), Types.string({max: 9})]),
+    c(['foo', Types.string(), 'foo.length > 10', Types.string({min: 11}), Types.string({max: 10})]),
+    c([
+      'foo',
+      Types.string(),
       'foo.length == 10',
       Types.string({min: 10, max: 10}),
       Types.string(),
     ]),
+    c(['foo', Types.string(), 'foo.length < 10', Types.string({max: 9}), Types.string({min: 10})]),
     c([
       'foo',
-      [Types.string(), Values.string('')],
-      'foo.length < 10',
-      Types.string({max: 9}),
-      Types.string({min: 10}),
-    ]),
-    c([
-      'foo',
-      [Types.string(), Values.string('')],
+      Types.string(),
       'foo.length <= 10',
       Types.string({max: 10}),
       Types.string({min: 11}),
     ]),
-  ).run(([name, [type, value], formula, truthyType, falseyType], {only, skip}) => {
-    describe(`${name} => ${formula}`, () => {
+    //|
+    //|  Array.length checks
+    //|
+  ).run(([name, type, formula, truthyType, falseyType], {only, skip}) => {
+    describe(`${name}: ${type}, ${formula}`, () => {
       beforeEach(() => {
-        // throws without the type guard
-        runtimeTypes[name] = [type, value]
+        runtimeTypes[name] = [type, Values.nullValue()]
       })
-
-      it(`truthy: ${truthyType}`, () => {
+      ;(only ? it.only : skip ? it.skip : it)(`truthy: ${truthyType}`, () => {
         // returns false (foo is null) or Int (foo is String)
         const expression = parse(`(${formula}) and foo`).get()
         const andExpression = expression as TestingTypes.LogicalAndOperator
@@ -120,8 +147,7 @@ describe('narrowed types', () => {
         const andType = andExpression.rhsType(typeRuntime, lhsType, lhsExpr, rhsExpr)
         expect(andType.get()).toEqual(truthyType)
       })
-
-      it(`falsey: ${falseyType}`, () => {
+      ;(only ? it.only : skip ? it.skip : it)(`falsey: ${falseyType}`, () => {
         // returns false (foo is null) or Int (foo is String)
         const expression = parse(`(${formula}) or foo`).get()
         const orExpression = expression as TestingTypes.LogicalAndOperator

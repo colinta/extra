@@ -141,6 +141,10 @@ export abstract class Expression {
     return ok(runtime)
   }
 
+  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
+    return undefined
+  }
+
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
     return ok(runtime)
   }
@@ -246,6 +250,26 @@ export class Literal extends Expression {
     readonly value: Values.BasicValue | typeof Values.NullValue,
   ) {
     super(range, precedingComments)
+  }
+
+  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
+    if (this.value.isNull()) {
+      return relationshipFormula.null()
+    }
+    if (this.value.isBoolean()) {
+      return relationshipFormula.boolean(this.value.value)
+    }
+    if (this.value.isInt()) {
+      return relationshipFormula.int(this.value.value)
+    }
+    if (this.value.isFloat()) {
+      return relationshipFormula.float(this.value.value)
+    }
+    if (this.value.isString()) {
+      return relationshipFormula.string(this.value.value)
+    }
+
+    return undefined
   }
 
   toLisp() {
@@ -370,6 +394,15 @@ export class Reference extends Identifier {
 
   dependencies() {
     return new Set([this.name])
+  }
+
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    const id = runtime.refId(this.name)
+    if (!id) {
+      return
+    }
+
+    return relationshipFormula.reference(this.name, id)
   }
 
   toLisp() {
@@ -2101,6 +2134,10 @@ export class NullExpression extends TypeIdentifier {
     return 'null'
   }
 
+  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
+    return relationshipFormula.null()
+  }
+
   typeAssertion(): GetTypeResult {
     return ok(Types.NullType)
   }
@@ -2116,6 +2153,10 @@ export class NullExpression extends TypeIdentifier {
 
 export class TrueExpression extends TypeIdentifier {
   readonly name = 'true'
+
+  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
+    return relationshipFormula.boolean(true)
+  }
 
   toLisp() {
     return '`true`'
@@ -2136,6 +2177,10 @@ export class TrueExpression extends TypeIdentifier {
 
 export class FalseExpression extends TypeIdentifier {
   readonly name = 'false'
+
+  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
+    return relationshipFormula.boolean(false)
+  }
 
   toLisp() {
     return '`false`'

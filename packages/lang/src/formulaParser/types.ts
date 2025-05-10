@@ -98,11 +98,6 @@ export function isRuntimeError(error: any): error is RuntimeError {
   return error instanceof RuntimeError
 }
 
-export type NarrowedTypes = {
-  truthy: Type
-  falsey: Type
-}
-
 export type ExpressionType =
   | 'expression' // default
   | 'let' // let ... in

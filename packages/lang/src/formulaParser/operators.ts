@@ -394,6 +394,17 @@ abstract class BinaryOperator extends OperatorOperation {
     return this.toCode(HIGHEST_PRECEDENCE)
   }
 
+  getRelationshipFormulas(runtime: TypeRuntime) {
+    const [lhs, rhs] = this.args
+    const lhsFormula = lhs.relationshipFormula(runtime)
+    const rhsFormula = rhs.relationshipFormula(runtime)
+    if (!lhsFormula || !rhsFormula) {
+      return []
+    }
+
+    return [lhsFormula, rhsFormula]
+  }
+
   /**
    * The RHS type can be affected in many ways by the evaluation of the LHS.
    * - |>/?|> pipe operators provide the LHS type as the # type
@@ -948,22 +959,32 @@ addBinaryOperator({
   },
 })
 
-abstract class ComparisonOperator extends BinaryOperator {}
-
-class EqualsOperator extends ComparisonOperator {
-  symbol = '=='
+abstract class ComparisonOperator extends BinaryOperator {
+  abstract symbol: RelationshipComparision
+  abstract inverseSymbol: RelationshipComparision
 
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    const [lhs, rhs] = this.args
+    const [lhsFormula, rhsFormula] = this.getRelationshipFormulas(runtime)
+    if (!lhsFormula || !rhsFormula) {
+      return ok(runtime)
+    }
 
-    let nextRuntime = runtime
-
-    return ok(nextRuntime)
+    return assignNextRuntime(runtime, lhsFormula, this.symbol, rhsFormula)
   }
 
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return ok(runtime)
+    const [lhsFormula, rhsFormula] = this.getRelationshipFormulas(runtime)
+    if (!lhsFormula || !rhsFormula) {
+      return ok(runtime)
+    }
+
+    return assignNextRuntime(runtime, lhsFormula, this.inverseSymbol, rhsFormula)
   }
+}
+
+abstract class EqualityOperator extends ComparisonOperator {
+  abstract symbol: '==' | '!='
+  abstract inverseSymbol: '==' | '!='
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type): GetTypeResult {
     if (lhs.isLiteral() && rhs.isLiteral()) {
@@ -986,6 +1007,11 @@ class EqualsOperator extends ComparisonOperator {
   }
 }
 
+class EqualsOperator extends EqualityOperator {
+  readonly symbol = '=='
+  readonly inverseSymbol = '!='
+}
+
 addBinaryOperator({
   name: 'equals',
   symbol: '==',
@@ -1002,8 +1028,9 @@ addBinaryOperator({
   },
 })
 
-class NotEqualsOperator extends EqualsOperator {
-  symbol = '!='
+class NotEqualsOperator extends EqualityOperator {
+  readonly symbol = '!='
+  readonly inverseSymbol = '=='
 
   operatorType(runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     return super.operatorType(runtime, lhs, rhs).map(type => {
@@ -1043,7 +1070,8 @@ addBinaryOperator({
 })
 
 class GreaterThanOperator extends ComparisonOperator {
-  symbol = '>'
+  readonly symbol = '>'
+  readonly inverseSymbol = '<='
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
@@ -1081,7 +1109,8 @@ addBinaryOperator({
 })
 
 class GreaterOrEqualOperator extends ComparisonOperator {
-  symbol = '>='
+  readonly symbol = '>='
+  readonly inverseSymbol = '<'
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
@@ -1119,7 +1148,8 @@ addBinaryOperator({
 })
 
 class LessThanOperator extends ComparisonOperator {
-  symbol = '<'
+  readonly symbol = '<'
+  readonly inverseSymbol = '>='
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
@@ -1151,7 +1181,8 @@ addBinaryOperator({
 })
 
 class LessOrEqualOperator extends ComparisonOperator {
-  symbol = '<='
+  readonly symbol = '<='
+  readonly inverseSymbol = '>'
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
@@ -1418,8 +1449,9 @@ addBinaryOperator({
   },
 })
 
-class TypeIsAssertionOperator extends BinaryOperator {
-  symbol = 'is'
+abstract class TypeAssertionOperator extends BinaryOperator {
+  abstract symbol: 'is' | '!is'
+  abstract inverseSymbol: 'is' | '!is'
 
   operatorType(
     runtime: TypeRuntime,
@@ -1444,6 +1476,11 @@ class TypeIsAssertionOperator extends BinaryOperator {
   }
 }
 
+class TypeIsAssertionOperator extends TypeAssertionOperator {
+  readonly symbol = 'is'
+  readonly inverseSymbol = '!is'
+}
+
 addBinaryOperator({
   name: 'type is assertion',
   symbol: 'is',
@@ -1466,8 +1503,9 @@ addBinaryOperator({
   },
 })
 
-class TypeIsRefutationOperator extends TypeIsAssertionOperator {
-  symbol = '!is'
+class TypeIsRefutationOperator extends TypeAssertionOperator {
+  readonly symbol = '!is'
+  readonly inverseSymbol = 'is'
 
   operatorEval(
     runtime: ValueRuntime,
@@ -1588,6 +1626,14 @@ addBinaryOperator({
 class AdditionOperator extends BinaryOperator {
   symbol = '+'
 
+  // relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+  //   const lhsFormula = this.args[0].relationshipFormula(runtime)
+  //   const rhsFormula = this.args[1].relationshipFormula(runtime)
+  //   if (lhsFormula && rhsFormula) {
+  //     return relationshipFormula.addition(lhsFormula, rhsFormula)
+  //   }
+  // }
+
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
       return ok(Types.literal(lhs.value + rhs.value, anyFloaters(lhs, rhs)))
@@ -1619,6 +1665,14 @@ addBinaryOperator({
 
 class SubtractionOperator extends BinaryOperator {
   symbol = '-'
+
+  // relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+  //   const lhsFormula = this.args[0].relationshipFormula(runtime)
+  //   const rhsFormula = this.args[1].relationshipFormula(runtime)
+  //   if (lhsFormula && rhsFormula) {
+  //     return relationshipFormula.subtraction(lhsFormula, rhsFormula)
+  //   }
+  // }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
@@ -1718,6 +1772,14 @@ addBinaryOperator({
 
 class StringConcatenationOperator extends BinaryOperator {
   symbol = '<>'
+
+  // relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+  //   const lhsFormula = this.args[0].relationshipFormula(runtime)
+  //   const rhsFormula = this.args[1].relationshipFormula(runtime)
+  //   if (lhsFormula && rhsFormula) {
+  //     return relationshipFormula.stringConcat(lhsFormula, rhsFormula)
+  //   }
+  // }
 
   operatorType(
     _runtime: TypeRuntime,
@@ -2300,6 +2362,14 @@ class ArrayAccessOperator extends BinaryOperator {
 
     const [lhsExpr, rhsExpr] = this.args
     return `${lhsExpr.toCode(prevPrecedence)}[${rhsExpr}]`
+  }
+
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    const lhsFormula = this.args[0].relationshipFormula(runtime)
+    const rhsFormula = this.args[1].relationshipFormula(runtime)
+    if (lhsFormula && rhsFormula) {
+      return relationshipFormula.arrayAccess(lhsFormula, rhsFormula)
+    }
   }
 
   operatorType(
@@ -2962,6 +3032,18 @@ class PropertyAccessOperator extends BinaryOperator {
 
   joiner() {
     return this.symbol
+  }
+
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    const rhs = this.args[1]
+    if (!(rhs instanceof Reference)) {
+      return
+    }
+
+    const lhsFormula = this.args[0].relationshipFormula(runtime)
+    if (lhsFormula) {
+      return relationshipFormula.propertyAccess(lhsFormula, rhs.name)
+    }
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {

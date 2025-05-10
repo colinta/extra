@@ -406,53 +406,6 @@ export abstract class Type {
     return err(`Type ${this.toCode()} does not have property ${propName}`)
   }
 
-  // length assertions are called from comparison operators and can narrow a type
-  // from, say `String` to `String(>1)`
-  //     if (str.length > 1)
-  //     then … <-- str will be String(>1) here
-  // It's also possible for these to result in a 'never' type
-  //     if (str.length > 4)
-  //     then <-- str: String(>4)
-  //       if (str.length < 3)
-  //       then  <-- str: never
-
-  /**
-   * if (v.length < x) then …
-   */
-  lengthLessThan(_value: number): Type {
-    return this
-  }
-  /**
-   * if (v.length <= x) then …
-   */
-  lengthLessOrEqual(_value: number): Type {
-    return this
-  }
-  /**
-   * if (v.length > x) then …
-   */
-  lengthGreaterThan(_value: number): Type {
-    return this
-  }
-  /**
-   * if (v.length >= x) then …
-   */
-  lengthGreaterOrEqual(_value: number): Type {
-    return this
-  }
-  /**
-   * if (v.length == x) then …
-   */
-  lengthIs(_value: number): Type {
-    return this
-  }
-  /**
-   * if (v.length != x) then …
-   */
-  lengthIsNot(_value: number): Type {
-    return this
-  }
-
   /**
    * The PropertyAccessOperator '.' calls this method to get properties.
    */
@@ -1348,39 +1301,6 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
     return new MetaFloatType(next)
   }
 
-  lengthLessThan(value: number): Type {
-    return this.narrow(this.narrowed.min, [value])
-  }
-  lengthLessOrEqual(value: number): Type {
-    return this.narrow(this.narrowed.min, value)
-  }
-  lengthGreaterThan(value: number): Type {
-    return this.narrow([value], this.narrowed.max)
-  }
-  lengthGreaterOrEqual(value: number): Type {
-    return this.narrow(value, this.narrowed.max)
-  }
-  lengthIs(value: number): Type {
-    return this.narrow(value, value)
-  }
-  lengthIsNot(value: number): Type {
-    let min: number | [number] | undefined
-    let max: number | [number] | undefined
-    if (!Array.isArray(this.narrowed.min) && this.narrowed.min === value) {
-      min = [value] // x >= 5, x != 5 --> x > 5
-    } else {
-      min = this.narrowed.min
-    }
-
-    if (!Array.isArray(this.narrowed.max) && this.narrowed.max === value) {
-      max = [value] // x <= 5, x != 5 --> x < 5
-    } else {
-      max = this.narrowed.max
-    }
-
-    return this.narrow(min, max)
-  }
-
   propAccessType(name: string) {
     return MetaFloatType.types[name]?.(this)
   }
@@ -1464,41 +1384,6 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
     }
 
     return new MetaIntType(next)
-  }
-
-  lengthLessThan(value: number): Type {
-    // working with ints, never bother with open ranges
-    return this.narrow(this.narrowed.min, value - 1)
-  }
-  lengthLessOrEqual(value: number): Type {
-    return this.narrow(this.narrowed.min, value)
-  }
-  lengthGreaterThan(value: number): Type {
-    // working with ints, never bother with open ranges
-    return this.narrow(value + 1, this.narrowed.max)
-  }
-  lengthGreaterOrEqual(value: number): Type {
-    return this.narrow(value, this.narrowed.max)
-  }
-  lengthIs(value: number): Type {
-    return this.narrow(value, value)
-  }
-  lengthIsNot(value: number): Type {
-    let min: number | undefined
-    let max: number | undefined
-    if (this.narrowed.min === value) {
-      min = value + 1 // x >= 5, x != 5 --> x >= 6
-    } else {
-      min = this.narrowed.min
-    }
-
-    if (this.narrowed.max === value) {
-      max = value - 1 // x <= 5, x != 5 --> x <= 6
-    } else {
-      max = this.narrowed.max
-    }
-
-    return this.narrow(min, max)
   }
 
   propAccessType(name: string) {
@@ -1636,43 +1521,6 @@ export class MetaStringType extends Type {
 
   narrowLength(minLength: number, maxLength: number | undefined): Type {
     return this.narrowString({length: {min: minLength, max: maxLength}, regex: []})
-  }
-
-  lengthLessThan(value: number): Type {
-    return this.narrowLength(this.narrowedString.length.min, value - 1)
-  }
-  lengthLessOrEqual(value: number): Type {
-    return this.narrowLength(this.narrowedString.length.min, value)
-  }
-  lengthGreaterThan(value: number): Type {
-    return this.narrowLength(value + 1, this.narrowedString.length.max)
-  }
-  lengthGreaterOrEqual(value: number): Type {
-    return this.narrowLength(value, this.narrowedString.length.max)
-  }
-  lengthIs(value: number): Type {
-    const min = this.narrowedString.length.min
-    if (value < min) {
-      return NeverType
-    }
-
-    if (this.narrowedString.length.max !== undefined && value > this.narrowedString.length.max) {
-      return NeverType
-    }
-
-    return this.narrowLength(value, value)
-  }
-  lengthIsNot(value: number): Type {
-    const min = this.narrowedString.length.min
-    if (min === value) {
-      return this.narrowLength(min + 1, this.narrowedString.length.max)
-    } else if (this.narrowedString.length.max === value) {
-      return this.narrowLength(min, this.narrowedString.length.max - 1)
-    } else if (value === 0) {
-      return this.narrowLength(1, undefined)
-    } else {
-      return this
-    }
   }
 
   toCode() {
