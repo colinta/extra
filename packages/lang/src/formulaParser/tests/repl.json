@@ -238,6 +238,16 @@
         ["foo", "fn(...values: Array(Int)) => (values[0] ?? 0) + (values[1] ?? 0)"],
         ["values", "[10, 2]"]
       ]
+    },
+    {
+      "desc": "weird",
+      "formula": "let\n  num = fn(): Int => 2\n  x = num()\nin\n  x == 5 and x or 0\n",
+      "only": true,
+      "skip": false,
+      "expectedCode": "let\n  num = fn(): Int => 2\n  x = num()\nin\n  x == 5 and x or 0\n",
+      "expectedType": "0 | 5",
+      "expectedValue": "0",
+      "variables": []
     }
   ]
 }

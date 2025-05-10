@@ -39,6 +39,7 @@ describe('repl tests', () => {
           expression = parse(test.formula).get()
         }).not.toThrow()
 
+        expect(expression!.toCode()).toEqual(test.expectedCode)
         expect(expression!.getType(valueRuntime).get()?.toCode()).toEqual(test.expectedType)
         expect(expression!.eval(valueRuntime).get()?.toCode()).toEqual(test.expectedValue)
       })
