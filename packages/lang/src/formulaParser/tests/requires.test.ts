@@ -3,16 +3,17 @@ import {type Expression} from '~/formulaParser/expressions'
 import {parseInternalTest} from '~/formulaParser'
 
 describe('requires', () => {
-  cases<[string] | [string, string]>(c(['requires A']), c(['requires A, B'])).run(args =>
-    it(`should parse '${args[0]}'`, () => {
-      const [formula, expectedCode] = args
-      let expression: Expression
-      expect(() => {
-        ;[expression] = parseInternalTest(formula, 'app_requires_definition').get()
-      }).not.toThrow()
+  cases<[string] | [string, string]>(c(['requires A']), c(['requires A, B'])).run(
+    (args, {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`should parse '${args[0]}'`, () => {
+        const [formula, expectedCode] = args
+        let expression: Expression
+        expect(() => {
+          ;[expression] = parseInternalTest(formula, 'app_requires_definition').get()
+        }).not.toThrow()
 
-      expect(expression!.toCode()).toEqual(expectedCode ?? formula)
-    }),
+        expect(expression!.toCode()).toEqual(expectedCode ?? formula)
+      }),
   )
 })
 

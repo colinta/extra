@@ -69,8 +69,8 @@ describe('array', () => {
 
   describe('trailing commas', () => {
     cases<[string, string]>(c(['[1,2,3,]', '[1, 2, 3]']), c(['[1,2,3 , ]', '[1, 2, 3]'])).run(
-      ([formula, expected]) =>
-        it(`should allow trailing comma in ${formula}`, () => {
+      ([formula, expected], {only, skip}) =>
+        (only ? it.only : skip ? it.skip : it)(`should allow trailing comma in ${formula}`, () => {
           let expression: Expression
           expect(() => {
             expression = parse(formula).get()

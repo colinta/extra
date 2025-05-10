@@ -14,8 +14,8 @@ describe('state', () => {
       '(state public @jkl {(a: 5) (b: 1)})',
       'public @jkl = {a: 5, b: 1}',
     ]),
-  ).run(args =>
-    it(`should parse state definition '${args[0]}'`, () => {
+  ).run((args, {only, skip}) =>
+    (only ? it.only : skip ? it.skip : it)(`should parse state definition '${args[0]}'`, () => {
       const [formula, expected, expectedFormula] = args
       let expression: Expression
       expect(() => {

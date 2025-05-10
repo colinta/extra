@@ -856,11 +856,9 @@ foo --comment1
 `
       let fnExpr: Expressions.Expression
       expect(() => {
-        fnExpr = parse(formula, 1).get()
+        fnExpr = parse(formula).get()
       }).not.toThrow()
 
-      console.log('=========== comments.test.ts at line 712 ===========')
-      console.log({fnExpr: fnExpr!})
       expect(fnExpr!).toBeInstanceOf(Expressions.Operation)
       if (!(fnExpr! instanceof Expressions.Operation)) {
         return

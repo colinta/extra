@@ -164,7 +164,7 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
       // fn(1): 1
       c([[Types.literal(1)], Types.literal(1)]),
     ).run(([args, expected], {only, skip}) => {
-      it(`successfully derives ${expected.toCode()}`, () => {
+      ;(only ? it.only : skip ? it.skip : it)(`successfully derives ${expected.toCode()}`, () => {
         const genericResolution = new Map([[genericTypeT, Types.generic('T')]])
         const errorMessage = Types.checkFormulaArguments(
           formula,
@@ -243,7 +243,7 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
         desc = `successfully derives T: ${expectedT.toCode()} and U: ${expectedU.toCode()}`
       }
 
-      it(desc, () => {
+      ;(only ? it.only : skip ? it.skip : it)(desc, () => {
         const genericResolution = new Map([
           [genericTypeT, Types.generic('T')],
           [genericTypeU, Types.generic('U')],
