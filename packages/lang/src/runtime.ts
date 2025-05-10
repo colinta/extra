@@ -20,24 +20,49 @@ export interface Renderer<T> {
   addNodeTo(parentNode: T, childNode: T): void
 }
 
-export class TypeRuntime {
+export type TypeRuntime = Omit<
+  MutableTypeRuntime,
+  | 'setLocale'
+  | 'addLocalType'
+  | 'addStateType'
+  | 'addThisType'
+  | 'addActionType'
+  | 'addId'
+  | 'setPipeType'
+  | 'addNamespaceTypes'
+>
+
+export type ValueRuntime = Omit<
+  MutableValueRuntime,
+  | 'setLocale'
+  | 'addLocalType'
+  | 'addStateType'
+  | 'addThisType'
+  | 'addActionType'
+  | 'addId'
+  | 'setPipeType'
+  | 'addNamespaceTypes'
+  | 'addLocalValue'
+  | 'addStateValue'
+  | 'addThisValue'
+  | 'addActionValue'
+  | 'setPipeValue'
+>
+
+export class MutableTypeRuntime {
   localTypes: Map<string, Type> = new Map()
   localNamespaces: Map<string, Map<string, Type>> = new Map()
   stateTypes: Map<string, Type> = new Map()
   thisTypes: Map<string, Type> = new Map()
   actionTypes: Map<string, Type> = new Map()
+  ids: Map<string, string> = new Map()
   pipeType: Type | undefined
+  locale: Intl.Locale | undefined
 
-  constructor(
-    readonly provider: Partial<TypeRuntime> = {},
-    readonly parent?: TypeRuntime,
-  ) {}
+  constructor(readonly parent?: TypeRuntime) {}
 
   resolved(): Set<string> {
-    const resolved = new Set<string>([
-      ...(this.provider.resolved?.() ?? []),
-      ...(this.parent?.resolved() ?? []),
-    ])
+    const resolved = new Set<string>([...(this.parent?.resolved() ?? [])])
     for (const key of this.localTypes.keys()) {
       resolved.add(key)
     }
@@ -45,7 +70,7 @@ export class TypeRuntime {
       resolved.add('@' + key)
     }
     for (const key of this.thisTypes.keys()) {
-      resolved.add('.' + key)
+      resolved.add('this.' + key)
     }
     for (const key of this.actionTypes.keys()) {
       resolved.add('&' + key)
@@ -57,6 +82,10 @@ export class TypeRuntime {
     return resolved
   }
 
+  refId(name: string): string | undefined {
+    return this.ids.get(name) ?? this.parent?.refId(name)
+  }
+
   /**
    * References an entity from the local scope
    *
@@ -65,22 +94,17 @@ export class TypeRuntime {
    *     <row>{user.name}</row>
    */
   getLocalType(name: string): Type | undefined {
-    const type = this.localTypes.get(name) ?? this.provider.getLocalType?.(name)
+    const type = this.localTypes.get(name)
     return type ?? this.parent?.getLocalType(name)
   }
 
   hasNamespace(namespace: string): boolean {
-    return (
-      this.localNamespaces.has(namespace) ||
-      this.provider.hasNamespace?.(namespace) ||
-      this.parent?.hasNamespace(namespace) ||
-      false
-    )
+    return this.localNamespaces.has(namespace) || this.parent?.hasNamespace(namespace) || false
   }
 
   getNamespaceType(namespace: string, name: string): Type | undefined {
     const localNamespace = this.localNamespaces.get(namespace)?.get(name)
-    const type = localNamespace ?? this.provider.getNamespaceType?.(namespace, name)
+    const type = localNamespace
     return type ?? this.parent?.getNamespaceType(namespace, name)
   }
 
@@ -92,7 +116,7 @@ export class TypeRuntime {
    *     <row>{@user.name}</row>
    */
   getStateType(name: string): Type | undefined {
-    const type = this.stateTypes.get(name) ?? this.provider.getStateType?.(name)
+    const type = this.stateTypes.get(name)
     return type ?? this.parent?.getStateType(name)
   }
 
@@ -109,7 +133,7 @@ export class TypeRuntime {
    *     }
    */
   getThisType(name: string): Type | undefined {
-    const type = this.thisTypes.get(name) ?? this.provider.getThisType?.(name)
+    const type = this.thisTypes.get(name)
     return type ?? this.parent?.getThisType(name)
   }
 
@@ -120,7 +144,7 @@ export class TypeRuntime {
    *     &createFoo(…)
    */
   getActionType(name: string): Type | undefined {
-    const type = this.actionTypes.get(name) ?? this.provider.getActionType?.(name)
+    const type = this.actionTypes.get(name)
     return type ?? this.parent?.getActionType(name)
   }
 
@@ -131,22 +155,39 @@ export class TypeRuntime {
    *     foo |> #
    */
   getPipeType(): Type | undefined {
-    this.pipeType ??= this.provider.getPipeType?.()
     return this.pipeType ?? this.parent?.getPipeType()
   }
 
   getLocale(): Intl.Locale {
-    return this.provider.getLocale?.() ?? defaultLocale()
+    return this.locale ?? defaultLocale()
   }
 
-  pushRuntime(nextProvider: Partial<TypeRuntime>) {
-    return new TypeRuntime(nextProvider, this)
-  }
-}
-
-export class MutableTypeRuntime extends TypeRuntime {
   addLocalType(name: string, type: Type) {
     this.localTypes.set(name, type)
+    this.addId(name)
+  }
+
+  addStateType(name: string, type: Type) {
+    this.stateTypes.set(name, type)
+    this.addId('@' + name)
+  }
+
+  addThisType(name: string, type: Type) {
+    this.thisTypes.set(name, type)
+    this.addId('this.' + name)
+  }
+
+  addActionType(name: string, type: Type) {
+    this.actionTypes.set(name, type)
+    this.addId('&' + name)
+  }
+
+  addId(name: string) {
+    return this.ids.set(name, uid(name))
+  }
+
+  setPipeType(type: Type) {
+    this.pipeType = type
   }
 
   addNamespaceTypes(namespace: string, types: Map<string, Type>) {
@@ -159,9 +200,13 @@ export class MutableTypeRuntime extends TypeRuntime {
       this.localNamespaces.set(namespace, types)
     }
   }
+
+  setLocale(value: Intl.Locale) {
+    this.locale = value
+  }
 }
 
-export class ValueRuntime extends TypeRuntime {
+export class MutableValueRuntime extends MutableTypeRuntime {
   localValues: Map<string, Value> = new Map()
   stateValues: Map<string, Value> = new Map()
   thisValues: Map<string, Value> = new Map()
@@ -169,11 +214,8 @@ export class ValueRuntime extends TypeRuntime {
   viewValues: Map<string, Value> = new Map()
   pipeValue: Value | undefined
 
-  constructor(
-    readonly provider: Partial<ValueRuntime>,
-    readonly parent?: ValueRuntime,
-  ) {
-    super(provider, parent)
+  constructor(readonly parent?: ValueRuntime) {
+    super(parent)
   }
 
   resolved(): Set<string> {
@@ -201,62 +243,68 @@ export class ValueRuntime extends TypeRuntime {
   }
 
   getLocalValue(name: string): Value | undefined {
-    const value = this.localValues.get(name) ?? this.provider.getLocalValue?.(name)
+    const value = this.localValues.get(name)
     return value ?? this.parent?.getLocalValue(name)
   }
 
   getStateValue(name: string): Value | undefined {
-    const value = this.stateValues.get(name) ?? this.provider.getStateValue?.(name)
+    const value = this.stateValues.get(name)
     return value ?? this.parent?.getStateValue(name)
   }
 
   getThisValue(name: string): Value | undefined {
-    const value = this.thisValues.get(name) ?? this.provider.getThisValue?.(name)
+    const value = this.thisValues.get(name)
     return value ?? this.parent?.getThisValue(name)
   }
 
   getActionValue(name: string): Value | undefined {
-    const value = this.actionValues.get(name) ?? this.provider.getActionValue?.(name)
+    const value = this.actionValues.get(name)
     return value ?? this.parent?.getActionValue(name)
   }
 
   getPipeValue(): Value | undefined {
-    this.pipeValue ??= this.provider.getPipeValue?.()
     return this.pipeValue ?? this.parent?.getPipeValue()
-  }
-
-  pushRuntime(nextProvider: Partial<ValueRuntime>) {
-    return new ValueRuntime(nextProvider, this)
-  }
-}
-
-export class MutableValueRuntime extends ValueRuntime {
-  addLocalType(name: string, type: Type) {
-    this.localTypes.set(name, type)
   }
 
   addLocalValue(name: string, value: Value) {
     this.localValues.set(name, value)
   }
+
+  addStateValue(name: string, value: Value) {
+    this.stateValues.set(name, value)
+  }
+
+  addThisValue(name: string, value: Value) {
+    this.thisValues.set(name, value)
+  }
+
+  addActionValue(name: string, value: Value) {
+    this.actionValues.set(name, value)
+  }
+
+  setPipeValue(value: Value) {
+    this.pipeValue = value
+  }
 }
 
-export class ApplicationRuntime<T> extends ValueRuntime {
+export class ApplicationRuntime<T> extends MutableValueRuntime {
   constructor(
     readonly runtime: ValueRuntime,
     readonly renderer: Renderer<T>,
   ) {
-    super({}, runtime)
+    super(runtime)
   }
 
   getRenderer(): Renderer<T> {
     return this.renderer
   }
-
-  pushRuntime(nextProvider: Partial<ValueRuntime>) {
-    return new ApplicationRuntime(this.runtime.pushRuntime(nextProvider), this.renderer)
-  }
 }
 
 function defaultLocale() {
   return new Intl.Locale('en-ca')
+}
+
+function uid(name: string) {
+  const uid = Math.floor(Math.random() * 1000000)
+  return `${name}-${uid.toString(16)}`
 }

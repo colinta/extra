@@ -509,12 +509,9 @@ abstract class BinaryOperator extends OperatorOperation {
 class PipeOperator extends BinaryOperator {
   symbol = '|>'
 
-  rhsType(runtime: TypeRuntime, lhsType: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
-    const myRuntime = runtime.pushRuntime({
-      getPipeType() {
-        return lhsType
-      },
-    })
+  rhsType(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
+    let myRuntime = new MutableTypeRuntime(runtime)
+    myRuntime.setPipeType(lhs)
 
     return getChildType(this, rhsExpr, myRuntime)
   }
@@ -524,11 +521,8 @@ class PipeOperator extends BinaryOperator {
   }
 
   rhsEval(runtime: ValueRuntime, lhs: Values.Value, _lhsExpr: Expression, rhsExpr: Expression) {
-    const myRuntime = runtime.pushRuntime({
-      getPipeValue() {
-        return lhs
-      },
-    })
+    let myRuntime = new MutableValueRuntime(runtime)
+    myRuntime.setPipeValue(lhs)
 
     return rhsExpr.eval(myRuntime)
   }
@@ -562,11 +556,8 @@ class NullColescingPipeOperator extends BinaryOperator {
       return ok(Types.NullType)
     }
 
-    const myRuntime = runtime.pushRuntime({
-      getPipeType() {
-        return lhs
-      },
-    })
+    let myRuntime = new MutableTypeRuntime(runtime)
+    myRuntime.setPipeType(lhs)
 
     return getChildType(this, rhsExpr, myRuntime)
   }
@@ -598,11 +589,8 @@ class NullColescingPipeOperator extends BinaryOperator {
       return ok(Values.NullValue)
     }
 
-    const myRuntime = runtime.pushRuntime({
-      getPipeValue() {
-        return lhs
-      },
-    })
+    let myRuntime = new MutableValueRuntime(runtime)
+    myRuntime.setPipeValue(lhs)
 
     return rhsExpr.eval(myRuntime)
   }
@@ -2315,7 +2303,7 @@ class ArrayAccessOperator extends BinaryOperator {
   }
 
   operatorType(
-    runtime: TypeRuntime,
+    _runtime: TypeRuntime,
     lhs: Types.Type,
     rhs: Types.Type,
     lhsExpr: Expression,

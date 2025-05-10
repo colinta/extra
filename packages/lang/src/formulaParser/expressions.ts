@@ -415,16 +415,9 @@ export class Reference extends Identifier {
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
-    const name = this.name
-    return ok(
-      runtime.pushRuntime({
-        getLocalType(path: string) {
-          if (path === name) {
-            return withType
-          }
-        },
-      }),
-    )
+    let nextRuntime = new MutableTypeRuntime(runtime)
+    nextRuntime.addLocalType(this.name, withType)
+    return ok(nextRuntime)
   }
 }
 
@@ -461,16 +454,9 @@ export class StateReference extends Reference {
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
-    const name = this.name
-    return ok(
-      runtime.pushRuntime({
-        getStateType(path: string) {
-          if (path === name) {
-            return withType
-          }
-        },
-      }),
-    )
+    let nextRuntime = new MutableTypeRuntime(runtime)
+    nextRuntime.addStateType(this.name, withType)
+    return ok(nextRuntime)
   }
 }
 
@@ -507,16 +493,9 @@ export class ActionReference extends Reference {
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
-    const name = this.name
-    return ok(
-      runtime.pushRuntime({
-        getActionType(path: string) {
-          if (path === name) {
-            return withType
-          }
-        },
-      }),
-    )
+    let nextRuntime = new MutableTypeRuntime(runtime)
+    nextRuntime.addActionType(this.name, withType)
+    return ok(nextRuntime)
   }
 }
 
@@ -3114,24 +3093,19 @@ export class FormulaExpression extends Expression {
     runtime: TypeRuntime,
     formulaType?: Types.FormulaType | undefined,
   ): GetRuntimeResult<Types.FormulaType> {
-    const argumentTypes = new Map<string, Types.Type>()
     const argResults = this.argumentTypes(runtime, formulaType)
 
     if (argResults.isErr()) {
       return err(argResults.error)
     }
 
+    let bodyRuntime = new MutableTypeRuntime(runtime)
     const args = argResults.get()
     args.forEach(arg => {
-      argumentTypes.set(arg.name, arg.type)
+      bodyRuntime.addLocalType(arg.name, arg.type)
     })
 
     let returnTypeResult: GetTypeResult
-    const bodyRuntime = runtime.pushRuntime({
-      getLocalType(path: string) {
-        return argumentTypes.get(path)
-      },
-    })
     const bodyReturnType = this.body.getType(bodyRuntime)
     if (this.returnType instanceof InferIdentifier) {
       returnTypeResult = bodyReturnType
@@ -3273,14 +3247,11 @@ export class FormulaExpression extends Expression {
     ).map(entries => new Map(entries))
 
     return resolvedValues.map(argValues => {
-      return runtime.pushRuntime({
-        getLocalType(path: string) {
-          return argValues.get(path)?.getType()
-        },
-        getLocalValue(path: string) {
-          return argValues.get(path)
-        },
-      })
+      let nextRuntime = new MutableValueRuntime(runtime)
+      for (const [name, value] of argValues) {
+        nextRuntime.addLocalValue(name, value)
+      }
+      return nextRuntime
     })
   }
 
