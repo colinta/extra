@@ -220,7 +220,7 @@ function floatIsNever(narrowed: NarrowedFloat) {
   return min > max
 }
 
-export function combineInts(
+export function narrowInts(
   narrowed: NarrowedInt,
   nextNarrowed: NarrowedInt,
 ): NarrowedInt | undefined {

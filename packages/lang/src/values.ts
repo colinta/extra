@@ -527,20 +527,26 @@ export class StringValue extends BasicValue {
     [
       'mapChars',
       value =>
-        new NamedFormulaValue('mapChars', Types.StringType.types.mapChars, (args: FormulaArgs) => {
-          return args
-            .at(0, FormulaValue)
-            .map(mapFn => mapFn.fn(new FormulaArgs([[undefined, value]])))
-        }),
+        new NamedFormulaValue(
+          'mapChars',
+          Types.MetaStringType.types.mapChars?.(Types.StringType)! as Types.FormulaType,
+          (args: FormulaArgs) => {
+            return args
+              .at(0, FormulaValue)
+              .map(mapFn => mapFn.fn(new FormulaArgs([[undefined, value]])))
+          },
+        ),
     ],
     [
       'repeat',
       value =>
-        new NamedFormulaValue('repeat', Types.StringType.types.repeat, function repeat(
-          args: FormulaArgs,
-        ) {
-          return args.at(0, IntValue).map(times => string(value.value.repeat(times.value)))
-        }),
+        new NamedFormulaValue(
+          'repeat',
+          Types.MetaStringType.types.repeat?.(Types.StringType)! as Types.FormulaType,
+          function repeat(args: FormulaArgs) {
+            return args.at(0, IntValue).map(times => string(value.value.repeat(times.value)))
+          },
+        ),
     ],
   ])
 

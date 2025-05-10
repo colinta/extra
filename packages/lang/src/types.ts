@@ -203,6 +203,7 @@ export function namedArgument(args: {
 export type BuiltinTypeNames = 'boolean' | 'float' | 'int' | 'null' | 'string' | 'regex'
 export type Key = string | number | boolean | null
 export type KeyType = 'string' | 'int' | 'boolean' | 'null'
+type Literals = 'boolean' | 'float' | 'int' | 'string' | 'regex'
 
 export abstract class Type {
   abstract readonly is: string
@@ -280,7 +281,7 @@ export abstract class Type {
     return false
   }
 
-  isBoolean() {
+  isBoolean(): this is MetaBooleanType | LiteralBooleanType {
     return false
   }
 
@@ -288,7 +289,7 @@ export abstract class Type {
     return this.isInt()
   }
 
-  isInt(): this is MetaIntType | LiteralFloatType {
+  isInt(): this is MetaIntType | LiteralIntType {
     return false
   }
 
@@ -452,23 +453,10 @@ export abstract class Type {
     return this
   }
 
-  #props = new Map<string, Type>()
-
-  /**
-   * Registers a property on this type. Meant to be called internally. Override
-   * 'propAccessType' to implement custom property access behaviour (see
-   * ThisIdentifier for example).
-   */
-  _registerPropType(name: string, type: Type) {
-    this.#props.set(name, type)
-  }
-
   /**
    * The PropertyAccessOperator '.' calls this method to get properties.
    */
-  propAccessType(name: string): Type | undefined {
-    return this.#props.get(name)
-  }
+  abstract propAccessType(name: string): Type | undefined
 }
 
 export class GenericType extends Type {
@@ -603,6 +591,10 @@ export class GenericType extends Type {
 
   toCode() {
     return `${this.name}${this.resolvedType ? ' = ' + this.resolvedType.toCode() : ''}`
+  }
+
+  propAccessType(name: string): Type | undefined {
+    return undefined
   }
 }
 
@@ -839,6 +831,10 @@ export class FormulaType extends Type {
 
     return embedded ? `(${desc})` : desc
   }
+
+  propAccessType(name: string) {
+    return undefined
+  }
 }
 
 export class ViewFormulaType extends FormulaType {
@@ -1039,6 +1035,10 @@ class __OneOfType extends OneOfType {
   constructor(types: Type[]) {
     super(types)
   }
+
+  propAccessType(name: string) {
+    return undefined
+  }
 }
 Object.defineProperty(__OneOfType, 'name', {value: 'OneOfType'})
 
@@ -1077,6 +1077,10 @@ export class OptionalType extends OneOfType {
     const type = this.of[0].toCode(true)
     return `${type}?`
   }
+
+  propAccessType(name: string) {
+    return undefined
+  }
 }
 
 export class TypeError extends Error {}
@@ -1105,6 +1109,10 @@ export const NeverType = new (class NeverType extends Type {
   typeConstructor(): TypeConstructor {
     return new TypeConstructor('never', this, this, [])
   }
+
+  propAccessType(name: string) {
+    return undefined
+  }
 })()
 
 /**
@@ -1122,6 +1130,10 @@ export const AllType = new (class AllType extends Type {
   typeConstructor(): TypeConstructor {
     return new TypeConstructor('all', this, this, [])
   }
+
+  propAccessType(name: string) {
+    return undefined
+  }
 })()
 
 /**
@@ -1136,7 +1148,7 @@ export const AllType = new (class AllType extends Type {
  *       names = a.join('')  -- join typically expects Array(String)
  *     in …
  *
- * 'a' can by... anything! This is the role of the 'always/AlwaysType'. It usually
+ * 'a' can be... anything! This is the role of the 'always/AlwaysType'. It usually
  * shows up when dealing with empty container types, like above.
  */
 export const AlwaysType = new (class AlwaysType extends Type {
@@ -1145,6 +1157,10 @@ export const AlwaysType = new (class AlwaysType extends Type {
   typeConstructor(): TypeConstructor {
     return new TypeConstructor('always', this, this, [])
   }
+
+  propAccessType(name: string) {
+    return undefined
+  }
 })()
 
 class MetaNullType extends Type {
@@ -1152,12 +1168,10 @@ class MetaNullType extends Type {
   // gives NullType LiteralType behaviour
   readonly value = null
 
-  declare types: Record<string, Type>
+  declare static types: Record<string, (() => Type) | undefined>
 
   constructor() {
     super()
-
-    Object.defineProperty(this, 'types', {enumerable: false, writable: true})
   }
 
   typeConstructor(): TypeConstructor {
@@ -1175,14 +1189,16 @@ class MetaNullType extends Type {
   isNull(): this is MetaNullType {
     return true
   }
+
+  propAccessType(name: string) {
+    return MetaNullType.types[name]?.()
+  }
 }
 
-export const NullType = new MetaNullType()
-
-export const BooleanType = new (class BooleanType extends Type {
+class MetaBooleanType extends Type {
   readonly is = 'boolean'
 
-  declare types: Record<string, Type>
+  declare static types: Record<string, ((object: MetaBooleanType) => Type) | undefined>
 
   constructor() {
     super()
@@ -1195,7 +1211,7 @@ export const BooleanType = new (class BooleanType extends Type {
     ])
   }
 
-  isBoolean() {
+  isBoolean(): this is MetaBooleanType {
     return true
   }
 
@@ -1214,7 +1230,11 @@ export const BooleanType = new (class BooleanType extends Type {
   toCode() {
     return BOOLEAN
   }
-})()
+
+  propAccessType(name: string) {
+    return MetaBooleanType.types[name]?.(this)
+  }
+}
 
 export const ConditionType = new (class ConditionType extends Type {
   readonly is = 'condition'
@@ -1229,6 +1249,10 @@ export const ConditionType = new (class ConditionType extends Type {
 
   toCode() {
     return ''
+  }
+
+  propAccessType(_name: string) {
+    return undefined
   }
 })()
 
@@ -1252,10 +1276,10 @@ abstract class NumberType<T extends Narrowed.NarrowedInt | Narrowed.NarrowedFloa
   abstract narrow(min: T['min'], max: T['max']): Type
 }
 
-class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
+export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
   readonly is = 'float'
 
-  declare types: {round: FormulaType}
+  declare static types: Record<string, ((object: MetaFloatType) => Type) | undefined>
 
   constructor(narrowed: Narrowed.NarrowedFloat = Narrowed.DEFAULT_NARROWED_NUMBER) {
     super(narrowed)
@@ -1356,15 +1380,19 @@ class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
 
     return this.narrow(min, max)
   }
+
+  propAccessType(name: string) {
+    return MetaFloatType.types[name]?.(this)
+  }
 }
 
 /**
  * Handles narrowed Int types like `Int(>=5)`
  */
-class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
+export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
   readonly is = 'int'
 
-  declare types: {round: FormulaType; times: FormulaType}
+  declare static types: Record<string, ((object: MetaIntType) => Type) | undefined>
 
   constructor(narrowed: Narrowed.NarrowedInt = Narrowed.DEFAULT_NARROWED_NUMBER) {
     super(narrowed)
@@ -1376,7 +1404,7 @@ class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
     ])
   }
 
-  isInt(): this is MetaIntType | LiteralFloatType {
+  isInt(): this is MetaIntType | LiteralIntType {
     return true
   }
 
@@ -1421,7 +1449,7 @@ class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
   }
 
   narrow(min: number | undefined, max: number | undefined) {
-    const next = Narrowed.combineInts(this.narrowed, {min, max})
+    const next = Narrowed.narrowInts(this.narrowed, {min, max})
 
     if (next === undefined) {
       return NeverType
@@ -1472,27 +1500,16 @@ class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
 
     return this.narrow(min, max)
   }
+
+  propAccessType(name: string) {
+    return MetaIntType.types[name]?.(this)
+  }
 }
 
-class MetaStringType extends Type {
+export class MetaStringType extends Type {
   readonly is = 'string'
 
-  declare types: {
-    length: MetaIntType
-    mapChars: FormulaType
-    flatMapChars: FormulaType
-    compactMapChars: FormulaType
-    indexOf: FormulaType
-    repeat: FormulaType
-    prepend: FormulaType
-    insert: FormulaType
-    replace: FormulaType
-    substr: FormulaType
-    split: FormulaType
-    hasPrefix: FormulaType
-    hasSuffix: FormulaType
-    hasSubstr: FormulaType
-  }
+  declare static types: Record<string, ((object: MetaStringType) => Type) | undefined>
 
   constructor(
     readonly narrowedString: Narrowed.NarrowedString = {
@@ -1501,10 +1518,6 @@ class MetaStringType extends Type {
     },
   ) {
     super()
-
-    // StringType is an instanceof of MetaStringType, so this property allows for
-    // StringType.types.
-    Object.defineProperty(this, 'types', {enumerable: false, writable: true})
   }
 
   compatibleWithBothNarrowed(rhs: MetaStringType) {
@@ -1553,7 +1566,7 @@ class MetaStringType extends Type {
       return NeverType
     }
 
-    return this.lengthGreaterThan(0)
+    return this.narrowLength(1, this.narrowedString.length.max)
   }
 
   /**
@@ -1592,34 +1605,6 @@ class MetaStringType extends Type {
     }
 
     return this
-  }
-
-  /**
-   * If propName is length and type is MetaIntType (with narrowedLength), return a
-   * new MetaStringType.
-   */
-  replacingProp(propName: string, type: Type): Result<Type, string> {
-    if (propName === 'length') {
-      if (type instanceof LiteralIntType) {
-        return ok(this.narrowLength(Math.max(type.value, 0), type.value))
-      }
-
-      if (type instanceof MetaIntType) {
-        return ok(this.narrowLength(Math.max(type.narrowed.min ?? 0, 0), type.narrowed.max))
-      }
-
-      return err(`Type ${type.toCode()} is not a valid length type for string. Expected Range`)
-    }
-
-    return super.replacingProp(propName, type)
-  }
-
-  propAccessType(name: string): Type | undefined {
-    if (this === StringType) {
-      return super.propAccessType(name)
-    }
-
-    return StringType.propAccessType(name)
   }
 
   narrowString(narrowed: Narrowed.NarrowedString) {
@@ -1724,21 +1709,46 @@ class MetaStringType extends Type {
 
     return code
   }
+
+  /**
+   * If propName is length and type is MetaIntType (with narrowedLength), return a
+   * new MetaStringType.
+   */
+  replacingProp(propName: string, type: Type): Result<Type, string> {
+    if (propName === 'length') {
+      if (type instanceof LiteralIntType) {
+        return ok(this.narrowLength(Math.max(type.value, 0), type.value))
+      }
+
+      if (type instanceof MetaIntType) {
+        return ok(this.narrowLength(Math.max(type.narrowed.min ?? 0, 0), type.narrowed.max))
+      }
+
+      return err(
+        `Type ${type.toCode()} is not a valid length type for string. Expected Range or Int`,
+      )
+    }
+
+    return super.replacingProp(propName, type)
+  }
+
+  propAccessType(name: string): Type | undefined {
+    if (name === 'length') {
+      if (this.narrowedString.length.min === this.narrowedString.length.max) {
+        return new LiteralIntType(this.narrowedString.length.min)
+      }
+
+      return new MetaIntType(this.narrowedString.length)
+    }
+
+    return MetaStringType.types[name]?.(this)
+  }
 }
 
-export const FloatType = new MetaFloatType()
-export const IntType = new MetaIntType()
-export const StringType = new MetaStringType()
-
-export const RegexType = new (class RegexType extends Type {
+class MetaRegexType extends Type {
   readonly is = 'regex'
 
-  declare types: {
-    pattern: typeof StringType
-    match: FormulaType
-    allMatches: FormulaType
-    matchGroup: FormulaType
-  }
+  declare static types: Record<string, ((object: MetaRegexType) => Type) | undefined>
 
   typeConstructor(): TypeConstructor {
     return new TypeConstructor('regex', this, this, [
@@ -1756,12 +1766,16 @@ export const RegexType = new (class RegexType extends Type {
   isOnlyTruthyType() {
     return true
   }
-})()
+
+  propAccessType(name: string) {
+    return MetaRegexType.types[name]?.(this)
+  }
+}
 
 class RangeType extends Type {
   readonly is = 'range'
 
-  // declare types: {}
+  declare static types: Record<string, ((object: RangeType) => Type) | undefined>
 
   constructor(readonly type: Type) {
     super()
@@ -1774,15 +1788,16 @@ class RangeType extends Type {
   isRange() {
     return true
   }
-}
 
-export const IntRangeType = new RangeType(IntType)
-export const FloatRangeType = new RangeType(FloatType)
+  propAccessType(name: string) {
+    return RangeType.types[name]?.(this)
+  }
+}
 
 class ViewType extends Type {
   readonly is = VIEW
 
-  declare types: Record<string, Type>
+  declare static types: Record<string, ((object: ViewType) => Type) | undefined>
 
   typeConstructor(): TypeConstructor {
     return new TypeConstructor(VIEW, this, this, [])
@@ -1798,13 +1813,11 @@ class ViewType extends Type {
   isOnlyTruthyType(): boolean {
     return true
   }
+
+  propAccessType(name: string) {
+    return ViewType.types[name]?.(this)
+  }
 }
-
-export const AnyViewType = new (class AnyViewType extends ViewType {})()
-export const UserViewType = new (class UserViewType extends ViewType {})()
-export const FragmentViewType = new (class FragmentViewType extends ViewType {})()
-
-type Literals = 'boolean' | 'float' | 'int' | 'string' | 'regex'
 
 export abstract class LiteralType extends Type {
   abstract readonly is: `literal-${Literals}`
@@ -1909,14 +1922,6 @@ export abstract class LiteralBooleanType extends LiteralType {
   }
 }
 
-export const LiteralTrueType = new (class LiteralTrueType extends LiteralBooleanType {
-  readonly value: boolean = true
-})()
-
-export const LiteralFalseType = new (class LiteralFalseType extends LiteralBooleanType {
-  readonly value: boolean = false
-})()
-
 export class LiteralFloatType extends LiteralType {
   readonly is: 'literal-float' | 'literal-int' = 'literal-float'
 
@@ -1985,8 +1990,9 @@ export class LiteralStringType extends LiteralType {
   readonly is = 'literal-string'
 
   readonly length: number
+  readonly value: string
 
-  constructor(readonly value: string) {
+  constructor(value: string) {
     super()
 
     this.value = value
@@ -2007,8 +2013,19 @@ export class LiteralStringType extends LiteralType {
   toFalseyType(): Type {
     return new LiteralStringType('')
   }
+  /**
+   * If propName is length and type is MetaIntType (with narrowedLength), return a
+   * new MetaStringType.
+   */
+  replacingProp(propName: string, type: Type): Result<Type, string> {
+    return err(`I didn't bother implementing replacingProp on ${type.toCode()}`)
+  }
 
   propAccessType(name: string): Type | undefined {
+    if (name === 'length') {
+      return new LiteralIntType(this.length)
+    }
+
     return StringType.propAccessType(name)
   }
 }
@@ -2083,7 +2100,7 @@ abstract class ContainerType<T extends ContainerType<T>> extends Type {
   }
 
   toTruthyType() {
-    return this.lengthGreaterThan(0)
+    return this.narrowLengthGuard(1, this.narrowedLength.max)
   }
 
   /**
@@ -2095,7 +2112,15 @@ abstract class ContainerType<T extends ContainerType<T>> extends Type {
   }
 
   toFalseyType() {
-    return this.lengthIs(0)
+    if (0 < this.narrowedLength.min) {
+      return NeverType
+    }
+
+    if (this.narrowedLength.max !== undefined && 0 > this.narrowedLength.max) {
+      return NeverType
+    }
+
+    return this.narrowLengthGuard(0, 0)
   }
 
   /**
@@ -2117,42 +2142,27 @@ abstract class ContainerType<T extends ContainerType<T>> extends Type {
 
     return this.narrowLengthSafe(minLength, maxLength)
   }
-
-  lengthLessThan(value: number): Type {
-    return this.narrowLengthGuard(this.narrowedLength.min, value - 1)
-  }
-  lengthLessOrEqual(value: number): Type {
-    return this.narrowLengthGuard(this.narrowedLength.min, value)
-  }
-  lengthGreaterThan(value: number): Type {
-    return this.narrowLengthGuard(value + 1, this.narrowedLength.max)
-  }
-  lengthGreaterOrEqual(value: number): Type {
-    return this.narrowLengthGuard(value, this.narrowedLength.max)
-  }
-  lengthIs(value: number): Type {
-    if (value < this.narrowedLength.min) {
-      return NeverType
-    }
-
-    if (this.narrowedLength.max !== undefined && value > this.narrowedLength.max) {
-      return NeverType
-    }
-
-    return this.narrowLengthGuard(value, value)
-  }
-  lengthIsNot(value: number): Type {
-    if (this.narrowedLength.min === value) {
-      return this.narrowLengthGuard(this.narrowedLength.min + 1, this.narrowedLength.max)
-    } else if (this.narrowedLength.max === value) {
-      return this.narrowLengthGuard(this.narrowedLength.min, this.narrowedLength.max - 1)
-    } else if (value === 0) {
-      return this.narrowLengthGuard(1, undefined)
-    } else {
-      return this
-    }
-  }
 }
+
+export const AnyViewType = new (class AnyViewType extends ViewType {})()
+export const UserViewType = new (class UserViewType extends ViewType {})()
+export const FragmentViewType = new (class FragmentViewType extends ViewType {})()
+export const NullType = new MetaNullType()
+export const BooleanType = new MetaBooleanType()
+export const FloatType = new MetaFloatType()
+export const IntType = new MetaIntType()
+export const StringType = new MetaStringType()
+export const RegexType = new MetaRegexType()
+export const IntRangeType = new RangeType(IntType)
+export const FloatRangeType = new RangeType(FloatType)
+
+export const LiteralTrueType = new (class LiteralTrueType extends LiteralBooleanType {
+  readonly value: boolean = true
+})()
+
+export const LiteralFalseType = new (class LiteralFalseType extends LiteralBooleanType {
+  readonly value: boolean = false
+})()
 
 export type PositionalProp = {is: 'positional'; name?: undefined; type: Type}
 export type NamedProp = {is: 'named'; name: string; type: Type}
@@ -2170,6 +2180,10 @@ export class NamespaceType extends Type {
 
   typeConstructor(): TypeConstructor {
     throw 'Cannot construct Namespace instances'
+  }
+
+  propAccessType(_name: string) {
+    return undefined
   }
 }
 
@@ -2198,24 +2212,6 @@ export class ObjectType extends Type {
     }
 
     return new ObjectType(props)
-  }
-
-  /**
-   * Returns a copy of the ObjectType, replacing the type of one property. This is
-   * used by the type narrowing code to return a more specific type.
-   */
-  replacingProp(propName: string, type: Type): Result<ObjectType, string> {
-    return ok(
-      new ObjectType(
-        this.props.map(prop => {
-          if (prop.name !== propName) {
-            return prop
-          }
-
-          return {...prop, type}
-        }),
-      ),
-    )
   }
 
   typeConstructor(): TypeConstructor {
@@ -2320,6 +2316,24 @@ export class ObjectType extends Type {
     return undefined
   }
 
+  /**
+   * Returns a copy of the ObjectType, replacing the type of one property. This is
+   * used by the type narrowing code to return a more specific type.
+   */
+  replacingProp(propName: string, type: Type): Result<ObjectType, string> {
+    return ok(
+      new ObjectType(
+        this.props.map(prop => {
+          if (prop.name !== propName) {
+            return prop
+          }
+
+          return {...prop, type}
+        }),
+      ),
+    )
+  }
+
   propAccessType(prop: string): Type | undefined {
     return ObjectType.types[prop]?.(this) ?? this.literalAccessType(prop)
   }
@@ -2389,6 +2403,28 @@ export class ArrayType extends ContainerType<ArrayType> {
     }
 
     return optional(this.of)
+  }
+
+  /**
+   * If propName is length and type is MetaIntType (with narrowedLength), return a
+   * new ArrayType with that length.
+   */
+  replacingProp(propName: string, type: Type): Result<Type, string> {
+    if (propName === 'length') {
+      if (type instanceof LiteralIntType) {
+        return ok(this.narrowLength(Math.max(type.value, 0), type.value))
+      }
+
+      if (type instanceof MetaIntType) {
+        return ok(this.narrowLength(Math.max(type.narrowed.min ?? 0, 0), type.narrowed.max))
+      }
+
+      return err(
+        `Type ${type.toCode()} is not a valid length type for array. Expected Range or Int`,
+      )
+    }
+
+    return super.replacingProp(propName, type)
   }
 
   propAccessType(name: string) {
@@ -2603,16 +2639,6 @@ export class ClassType extends Type {
     return new ClassType(props)
   }
 
-  /**
-   * Returns a copy of the ClassType, replacing the type of one property. This is
-   * used by the type narrowing code to return a more specific type.
-   */
-  replacingProp(prop: string, type: Type): Result<ClassType, string> {
-    const props = new Map(this.props)
-    props.set(prop, type)
-    return ok(new ClassType(props, this.parent))
-  }
-
   typeConstructor(): TypeConstructor {
     return new TypeConstructor('class', this, this, [
       positionalArgument({name: 'input', type: this, isRequired: true}),
@@ -2658,6 +2684,16 @@ export class ClassType extends Type {
     const props = [...this.props.entries()]
     const propDesc = props.map(([name, type]) => `${name}: ${type.toCode()}`).join(', ')
     return `{${propDesc}}`
+  }
+
+  /**
+   * Returns a copy of the ClassType, replacing the type of one property. This is
+   * used by the type narrowing code to return a more specific type.
+   */
+  replacingProp(prop: string, type: Type): Result<ClassType, string> {
+    const props = new Map(this.props)
+    props.set(prop, type)
+    return ok(new ClassType(props, this.parent))
   }
 
   propAccessType(prop: string): Type | undefined {
@@ -4020,11 +4056,7 @@ function addRequirement(
   /*            */
   /* NullType */
   /*            */
-  NullType.types = {}
-
-  for (const [prop, type] of Object.entries(NullType.types)) {
-    NullType._registerPropType(prop, type)
-  }
+  MetaNullType.types = {}
 
   /*           */
   /* ArrayType */
@@ -4095,11 +4127,7 @@ function addRequirement(
   /*            */
   /* BooleanType */
   /*            */
-  BooleanType.types = {}
-
-  for (const [prop, type] of Object.entries(BooleanType.types)) {
-    BooleanType._registerPropType(prop, type)
-  }
+  MetaBooleanType.types = {}
 
   /*            */
   /* NumberType */
@@ -4114,181 +4142,188 @@ function addRequirement(
     literal('odd'), // 0.5 rounds to nearest odd number
   ])
 
-  FloatType.types = {
-    round: namedFormula(
-      'round',
-      [positionalArgument({name: 'strategy', type: roundStrategy, isRequired: true})],
-      IntType,
-    ),
-  }
-  for (const [prop, type] of Object.entries(FloatType.types)) {
-    FloatType._registerPropType(prop, type)
+  MetaFloatType.types = {
+    round: () =>
+      namedFormula(
+        'round',
+        [positionalArgument({name: 'strategy', type: roundStrategy, isRequired: true})],
+        IntType,
+      ),
   }
 
-  IntType.types = {
-    round: namedFormula(
-      'round',
-      [positionalArgument({name: 'strategy', type: roundStrategy, isRequired: true})],
-      IntType,
-    ),
-    // 5.times(fn(Int): T): T[]
-    times: withGenericT(genericT =>
-      formula(
-        [
-          positionalArgument({
-            name: 'do',
-            type: formula(
-              [positionalArgument({name: 'index', type: IntType, isRequired: true})],
-              genericT,
-            ),
-            isRequired: true,
-          }),
-        ],
-        array(genericT),
-        [genericT],
+  MetaIntType.types = {
+    round: () =>
+      namedFormula(
+        'round',
+        [positionalArgument({name: 'strategy', type: roundStrategy, isRequired: true})],
+        IntType,
       ),
-    ),
-  }
-  for (const [prop, type] of Object.entries(IntType.types)) {
-    IntType._registerPropType(prop, type)
+    // 5.times(fn(Int): T): T[]
+    times: () =>
+      withGenericT(genericT =>
+        formula(
+          [
+            positionalArgument({
+              name: 'do',
+              type: formula(
+                [positionalArgument({name: 'index', type: IntType, isRequired: true})],
+                genericT,
+              ),
+              isRequired: true,
+            }),
+          ],
+          array(genericT),
+          [genericT],
+        ),
+      ),
   }
 
   /*            */
   /* StringType */
   /*            */
-  StringType.types = {
+  MetaStringType.types = {
     // length: Int
-    length: IntType,
+    length: () => IntType,
     // mapChars(fn: fn(input: String): T): T[]
-    mapChars: withGenericT(genericT =>
-      formula(
-        [
-          positionalArgument({
-            name: FN,
-            type: formula(
-              [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-              genericT,
-            ),
-            isRequired: true,
-          }),
-        ],
-        genericT,
-        [genericT],
+    mapChars: () =>
+      withGenericT(genericT =>
+        formula(
+          [
+            positionalArgument({
+              name: FN,
+              type: formula(
+                [positionalArgument({name: 'input', type: StringType, isRequired: true})],
+                genericT,
+              ),
+              isRequired: true,
+            }),
+          ],
+          genericT,
+          [genericT],
+        ),
       ),
-    ),
     // flatMapChars(fn: fn(input: String): T[]): T[]
-    flatMapChars: withGenericT(genericT =>
-      formula(
-        [
-          positionalArgument({
-            name: FN,
-            type: formula(
-              [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-              genericT,
-            ),
-            isRequired: true,
-          }),
-        ],
-        genericT,
-        [genericT],
+    flatMapChars: () =>
+      withGenericT(genericT =>
+        formula(
+          [
+            positionalArgument({
+              name: FN,
+              type: formula(
+                [positionalArgument({name: 'input', type: StringType, isRequired: true})],
+                genericT,
+              ),
+              isRequired: true,
+            }),
+          ],
+          genericT,
+          [genericT],
+        ),
       ),
-    ),
     // compactMapChars(fn: fn(input: String): T | null): T[]
-    compactMapChars: withGenericT(genericT =>
-      formula(
+    compactMapChars: () =>
+      withGenericT(genericT =>
+        formula(
+          [
+            positionalArgument({
+              name: FN,
+              type: formula(
+                [positionalArgument({name: 'input', type: StringType, isRequired: true})],
+                oneOf([genericT, NullType]),
+              ),
+              isRequired: true,
+            }),
+          ],
+          genericT,
+          [genericT],
+        ),
+      ),
+    // indexOf(String): Int | null
+    indexOf: () =>
+      namedFormula(
+        'indexOf',
+        [positionalArgument({name: 'input', type: StringType, isRequired: true})],
+        oneOf([IntType, NullType]),
+      ),
+    // repeat(number): String
+    repeat: () =>
+      namedFormula(
+        'repeat',
+        [positionalArgument({name: 'times', type: IntType, isRequired: true})],
+        StringType,
+      ),
+    // prepend(String): String
+    prepend: () =>
+      namedFormula(
+        'prepend',
+        [positionalArgument({name: 'input', type: StringType, isRequired: true})],
+        StringType,
+      ),
+    // insert(String, at: Int): String
+    insert: () =>
+      namedFormula(
+        'insert',
+        [
+          positionalArgument({name: 'input', type: StringType, isRequired: true}),
+          namedArgument({name: 'at', type: IntType, isRequired: true}),
+        ],
+        StringType,
+      ),
+    // replace(String, with: String): String
+    replace: () =>
+      namedFormula(
+        'replace',
+        [
+          positionalArgument({name: 'input', type: StringType, isRequired: true}),
+          namedArgument({name: 'with', type: StringType, isRequired: true}),
+        ],
+        StringType,
+      ),
+    // substr(Int, length?: Int): String
+    substr: () =>
+      namedFormula(
+        'substr',
+        [
+          positionalArgument({name: 'start', type: StringType, isRequired: true}),
+          namedArgument({name: 'length', type: optional(IntType), isRequired: false}),
+        ],
+        StringType,
+      ),
+    // split(pattern, max?: Int): [String]
+    split: () =>
+      namedFormula(
+        'split',
         [
           positionalArgument({
-            name: FN,
-            type: formula(
-              [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-              oneOf([genericT, NullType]),
-            ),
+            name: 'pattern',
+            type: oneOf([StringType, RegexType]),
             isRequired: true,
           }),
+          namedArgument({name: 'max', type: optional(IntType), isRequired: false}),
         ],
-        genericT,
-        [genericT],
+        array(StringType),
       ),
-    ),
-    // indexOf(String): Int | null
-    indexOf: namedFormula(
-      'indexOf',
-      [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-      oneOf([IntType, NullType]),
-    ),
-    // repeat(number): String
-    repeat: namedFormula(
-      'repeat',
-      [positionalArgument({name: 'times', type: IntType, isRequired: true})],
-      StringType,
-    ),
-    // prepend(String): String
-    prepend: namedFormula(
-      'prepend',
-      [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-      StringType,
-    ),
-    // insert(String, at: Int): String
-    insert: namedFormula(
-      'insert',
-      [
-        positionalArgument({name: 'input', type: StringType, isRequired: true}),
-        namedArgument({name: 'at', type: IntType, isRequired: true}),
-      ],
-      StringType,
-    ),
-    // replace(String, with: String): String
-    replace: namedFormula(
-      'replace',
-      [
-        positionalArgument({name: 'input', type: StringType, isRequired: true}),
-        namedArgument({name: 'with', type: StringType, isRequired: true}),
-      ],
-      StringType,
-    ),
-    // substr(Int, length?: Int): String
-    substr: namedFormula(
-      'substr',
-      [
-        positionalArgument({name: 'start', type: StringType, isRequired: true}),
-        namedArgument({name: 'length', type: optional(IntType), isRequired: false}),
-      ],
-      StringType,
-    ),
-    // split(pattern, max?: Int): [String]
-    split: namedFormula(
-      'split',
-      [
-        positionalArgument({
-          name: 'pattern',
-          type: oneOf([StringType, RegexType]),
-          isRequired: true,
-        }),
-        namedArgument({name: 'max', type: optional(IntType), isRequired: false}),
-      ],
-      array(StringType),
-    ),
     // hasPrefix(String): Boolean
-    hasPrefix: namedFormula(
-      'hasPrefix',
-      [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-      BooleanType,
-    ),
+    hasPrefix: () =>
+      namedFormula(
+        'hasPrefix',
+        [positionalArgument({name: 'input', type: StringType, isRequired: true})],
+        BooleanType,
+      ),
     // hasSuffix(String): Boolean
-    hasSuffix: namedFormula(
-      'hasSuffix',
-      [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-      BooleanType,
-    ),
+    hasSuffix: () =>
+      namedFormula(
+        'hasSuffix',
+        [positionalArgument({name: 'input', type: StringType, isRequired: true})],
+        BooleanType,
+      ),
     // hasSubstr(String): Boolean
-    hasSubstr: namedFormula(
-      'hasSubstr',
-      [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-      BooleanType,
-    ),
-  }
-  for (const [prop, type] of Object.entries(StringType.types)) {
-    StringType._registerPropType(prop, type)
+    hasSubstr: () =>
+      namedFormula(
+        'hasSubstr',
+        [positionalArgument({name: 'input', type: StringType, isRequired: true})],
+        BooleanType,
+      ),
   }
 
   /*           */
@@ -4320,32 +4355,32 @@ function addRequirement(
     ]),
   )
 
-  RegexType.types = {
+  MetaRegexType.types = {
     // pattern: String
-    pattern: StringType,
+    pattern: () => StringType,
     // runs a regex against a String, returning a RegexMatch or null
-    match: namedFormula(
-      'match',
-      [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-      optional(RegexMatch),
-    ),
+    match: () =>
+      namedFormula(
+        'match',
+        [positionalArgument({name: 'input', type: StringType, isRequired: true})],
+        optional(RegexMatch),
+      ),
     // runs a regex against a String, using global regex, and returning a list of matches (no groups)
-    allMatches: namedFormula(
-      'allMatches',
-      [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-      array(StringType),
-    ),
+    allMatches: () =>
+      namedFormula(
+        'allMatches',
+        [positionalArgument({name: 'input', type: StringType, isRequired: true})],
+        array(StringType),
+      ),
     // runs a regex against a String, if if finds a match, it runs the named or indexed group
-    matchGroup: namedFormula(
-      'matchGroup',
-      [
-        positionalArgument({name: 'input', type: StringType, isRequired: true}),
-        positionalArgument({name: 'group', type: oneOf([IntType, StringType]), isRequired: true}),
-      ],
-      optional(StringType),
-    ),
-  }
-  for (const [prop, type] of Object.entries(RegexType.types)) {
-    RegexType._registerPropType(prop, type)
+    matchGroup: () =>
+      namedFormula(
+        'matchGroup',
+        [
+          positionalArgument({name: 'input', type: StringType, isRequired: true}),
+          positionalArgument({name: 'group', type: oneOf([IntType, StringType]), isRequired: true}),
+        ],
+        optional(StringType),
+      ),
   }
 })()
