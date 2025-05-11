@@ -143,6 +143,7 @@ export abstract class Value {
 
 class MetaNullValue extends Value {
   readonly is = 'null'
+  readonly value = null
 
   getType(): Types.Type {
     return Types.NullType
