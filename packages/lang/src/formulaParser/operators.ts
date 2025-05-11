@@ -14,19 +14,8 @@ import {
   type RelationshipComparision,
   type RelationshipFormula,
 } from '~/relationship'
-import {
-  ArgumentsList,
-  ElseIfExpression,
-  FormulaExpression,
-  IfExpression,
-  Operation,
-  NamedArgument,
-  PositionalArgument,
-  Reference,
-  SpreadFunctionArgument,
-  type Expression,
-  type Range,
-} from '~/formulaParser/expressions'
+import * as Expressions from '~/formulaParser/expressions'
+import {Operation, type Expression, type Range} from '~/formulaParser/expressions'
 import {stringSort} from '~/formulaParser/stringSort'
 import {
   type AbstractOperator,
@@ -2693,7 +2682,7 @@ export class FunctionInvocationOperator extends BinaryOperator {
       return err(new RuntimeError(lhFormulaExpression, `Expected a Formula, found '${lhFormula}'`))
     }
 
-    if (!(rhArgsExpression instanceof ArgumentsList)) {
+    if (!(rhArgsExpression instanceof Expressions.ArgumentsList)) {
       return err(
         new RuntimeError(
           rhArgsExpression,
@@ -2760,7 +2749,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 
   getType(runtime: TypeRuntime): GetTypeResult {
     const argList = this.argList
-    if (!(argList instanceof ArgumentsList)) {
+    if (!(argList instanceof Expressions.ArgumentsList)) {
       return err(new RuntimeError(this, expectedType('arguments list', argList)))
     }
 
@@ -2833,7 +2822,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
         returnType = Types.compatibleWithBothTypes(returnType, elseifThenType.value)
 
         const elseifArgList = elseif.argList
-        if (!(elseifArgList instanceof ArgumentsList)) {
+        if (!(elseifArgList instanceof Expressions.ArgumentsList)) {
           return err(new RuntimeError(this, expectedType('arguments list', elseifArgList)))
         }
 
@@ -2868,7 +2857,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 
   eval(runtime: ValueRuntime): GetValueResult {
     const argList = this.argList
-    if (!(argList instanceof ArgumentsList)) {
+    if (!(argList instanceof Expressions.ArgumentsList)) {
       return err(new RuntimeError(this, expectedType('arguments list', argList)))
     }
 
@@ -2895,7 +2884,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
         }
 
         const elseifArgList = elseif.argList
-        if (!(elseifArgList instanceof ArgumentsList)) {
+        if (!(elseifArgList instanceof Expressions.ArgumentsList)) {
           return err(new RuntimeError(this, expectedType('arguments list', elseifArgList)))
         }
 
@@ -2947,7 +2936,7 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
 
   getReturnType(runtime: TypeRuntime): GetTypeResult {
     const argList = this.argList
-    if (!(argList instanceof ArgumentsList)) {
+    if (!(argList instanceof Expressions.ArgumentsList)) {
       return err(new RuntimeError(this, expectedType('arguments list', argList)))
     }
 
@@ -3018,7 +3007,7 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
     }
 
     const argList = this.argList
-    if (!(argList instanceof ArgumentsList)) {
+    if (!(argList instanceof Expressions.ArgumentsList)) {
       return err(new RuntimeError(this, expectedType('arguments list', argList)))
     }
 
@@ -3067,7 +3056,7 @@ addBinaryOperator({
     operator: Operator,
     args: Expression[],
   ) {
-    if (args[0] instanceof IfExpression) {
+    if (args[0] instanceof Expressions.IfExpression) {
       return new IfExpressionInvocation(
         range,
         precedingComments,
@@ -3077,7 +3066,7 @@ addBinaryOperator({
       )
     }
 
-    if (args[0] instanceof ElseIfExpression) {
+    if (args[0] instanceof Expressions.ElseIfExpression) {
       return new ElseIfExpressionInvocation(
         range,
         precedingComments,
@@ -3122,7 +3111,7 @@ class PropertyAccessOperator extends BinaryOperator {
 
   relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
     const rhs = this.args[1]
-    if (!(rhs instanceof Reference)) {
+    if (!(rhs instanceof Expressions.Reference)) {
       return
     }
 
@@ -3134,7 +3123,7 @@ class PropertyAccessOperator extends BinaryOperator {
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
     const [lhsExpr, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Reference)) {
+    if (!(rhsExpr instanceof Expressions.Reference)) {
       return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
     }
 
@@ -3151,7 +3140,7 @@ class PropertyAccessOperator extends BinaryOperator {
 
   isLengthExpression(runtime: TypeRuntime): GetRuntimeResult<boolean> {
     const [lhs, rhs] = this.args
-    if (!(rhs instanceof Reference) || rhs.name !== 'length') {
+    if (!(rhs instanceof Expressions.Reference) || rhs.name !== 'length') {
       return ok(false)
     }
 
@@ -3180,7 +3169,7 @@ class PropertyAccessOperator extends BinaryOperator {
     lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
-    if (!(rhsExpr instanceof Reference)) {
+    if (!(rhsExpr instanceof Expressions.Reference)) {
       return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
     }
 
@@ -3205,7 +3194,7 @@ class PropertyAccessOperator extends BinaryOperator {
     lhsExpr: Expression,
     rhsExpr: Expression,
   ): GetValueResult {
-    if (!(rhsExpr instanceof Reference)) {
+    if (!(rhsExpr instanceof Expressions.Reference)) {
       return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
     }
 
@@ -3264,7 +3253,7 @@ class NullablePropertyAccessOperator extends PropertyAccessOperator {
     lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
-    if (!(rhsExpr instanceof Reference)) {
+    if (!(rhsExpr instanceof Expressions.Reference)) {
       return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
     }
 
@@ -3622,7 +3611,7 @@ class EnumLookupOperator extends UnaryOperator {
   symbol = '.'
 
   operatorType(_runtime: TypeRuntime, _: Types.Type, arg: Expression) {
-    if (!(arg instanceof Reference)) {
+    if (!(arg instanceof Expressions.Reference)) {
       return ok(Types.NeverType)
     }
 
@@ -3630,7 +3619,7 @@ class EnumLookupOperator extends UnaryOperator {
   }
 
   operatorEval(_runtime: ValueRuntime, _: Values.Value, arg: Expression) {
-    if (!(arg instanceof Reference)) {
+    if (!(arg instanceof Expressions.Reference)) {
       return err(new RuntimeError(arg, `Expected a variable name`))
     }
 
@@ -3723,7 +3712,7 @@ function functionInvocationOperatorType(
     )
   }
 
-  if (!(argsList instanceof ArgumentsList)) {
+  if (!(argsList instanceof Expressions.ArgumentsList)) {
     return err(
       new RuntimeError(
         argsList,
@@ -3747,12 +3736,12 @@ function functionInvocationOperatorType(
       //
       // to derive the type of a Formula argument, we should hand it the
       // argument (also a formula) that is invoking the formula
-      if (providedArg.value instanceof FormulaExpression) {
+      if (providedArg.value instanceof Expressions.FormulaExpression) {
         // if providedArg is a FormulaExpression and doesn't declare its argument types, we
         // need to hand it a formula that it can use to derive its argument types.
         let defaultType: Types.Type | undefined
 
-        if (providedArg instanceof NamedArgument) {
+        if (providedArg instanceof Expressions.NamedArgument) {
           defaultType = formulaType.namedArg(providedArg.alias)?.type
         } else {
           defaultType = formulaType.positionalArg(positionIndex)?.type
@@ -3761,18 +3750,18 @@ function functionInvocationOperatorType(
 
         if (!defaultType) {
           let message = 'No default type for argument '
-          if (providedArg instanceof NamedArgument) {
+          if (providedArg instanceof Expressions.NamedArgument) {
             message += `'${providedArg.alias}'`
-          } else if (providedArg instanceof PositionalArgument) {
+          } else if (providedArg instanceof Expressions.PositionalArgument) {
             message += `at position #${positionIndex + 1}`
           }
 
           return err(new RuntimeError(providedArg, message))
         } else if (!(defaultType instanceof Types.FormulaType)) {
           let message = 'Expected argument of type Formula for argument'
-          if (providedArg instanceof NamedArgument) {
+          if (providedArg instanceof Expressions.NamedArgument) {
             message += `'${providedArg.alias}'`
-          } else if (providedArg instanceof PositionalArgument) {
+          } else if (providedArg instanceof Expressions.PositionalArgument) {
             message += `at position #${positionIndex + 1}`
           }
 
@@ -3789,7 +3778,7 @@ function functionInvocationOperatorType(
           ])
       }
 
-      if (providedArg instanceof SpreadFunctionArgument) {
+      if (providedArg instanceof Expressions.SpreadFunctionArgument) {
         return getChildType(formulaExpression, providedArg.value, runtime).map(type => {
           const [foundSpreadArrayType, foundSpreadDictName, result] = (() => {
             if (providedArg.spread === 'spread' && providedArg.alias === undefined) {
@@ -3895,7 +3884,10 @@ function functionInvocationOperatorType(
 type SpreadContext = [boolean, string | undefined, GetRuntimeResult<_IntermediateArgs[]>]
 
 // what to do with foo(...value)
-function spreadArrayArg(providedArg: SpreadFunctionArgument, type: Types.Type): SpreadContext {
+function spreadArrayArg(
+  providedArg: Expressions.SpreadFunctionArgument,
+  type: Types.Type,
+): SpreadContext {
   if (type instanceof Types.ObjectType) {
     return [
       false,
@@ -3922,7 +3914,7 @@ function spreadArrayArg(providedArg: SpreadFunctionArgument, type: Types.Type): 
 // what to do with foo(...name: value)
 function spreadDictArg(
   alias: string,
-  providedArg: SpreadFunctionArgument,
+  providedArg: Expressions.SpreadFunctionArgument,
   type: Types.Type,
 ): SpreadContext {
   if (type instanceof Types.ArrayType) {
@@ -3941,7 +3933,10 @@ function spreadDictArg(
   }
 }
 
-function spreadKeywordArg(providedArg: SpreadFunctionArgument, type: Types.Type): SpreadContext {
+function spreadKeywordArg(
+  providedArg: Expressions.SpreadFunctionArgument,
+  type: Types.Type,
+): SpreadContext {
   if (type instanceof Types.DictType) {
     // TODO: if ArrayType has known/constant min length == max length,
     // we could instead insert those as 'positional' types
