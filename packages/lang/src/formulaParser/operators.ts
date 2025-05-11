@@ -2764,29 +2764,20 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
     }
 
     return conditionExpr.getType(runtime).map(conditionType => {
-      //
-      // <Boring type checks>
-      //
-      if (conditionType.isOnlyTruthyType()) {
-        return err(
-          new RuntimeError(
-            this,
-            `Type '${conditionType}' is invalid as an if condition, because it is always true.`,
-          ),
-        )
-      }
+      // allow literal 'true/false' expressions (for testing)
+      // todo: disallow for "production" builds
+      if (
+        !(conditionExpr instanceof Expressions.TrueExpression) &&
+        !(conditionExpr instanceof Expressions.FalseExpression)
+      ) {
+        if (conditionType.isOnlyTruthyType()) {
+          return err(new RuntimeError(this, unexpectedOnlyType(conditionType, true)))
+        }
 
-      if (conditionType.isOnlyFalseyType()) {
-        return err(
-          new RuntimeError(
-            this,
-            `Type '${conditionType}' is invalid as an if condition, because it is never true.`,
-          ),
-        )
+        if (conditionType.isOnlyFalseyType()) {
+          return err(new RuntimeError(this, unexpectedOnlyType(conditionType, false)))
+        }
       }
-      //
-      // </Boring type checks>
-      //
 
       // Evaluate 'then' as if conditionExpr is true
       const returnResult = conditionExpr
@@ -2951,29 +2942,20 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
     }
 
     return conditionExpr.getType(runtime).map(conditionType => {
-      //
-      // <Boring type checks>
-      //
-      if (conditionType.isOnlyTruthyType()) {
-        return err(
-          new RuntimeError(
-            this,
-            `Type '${conditionType}' is invalid as an if condition, because it is always true.`,
-          ),
-        )
-      }
+      // allow literal 'true/false' expressions (for testing)
+      // todo: disallow for "production" builds
+      if (
+        !(conditionExpr instanceof Expressions.TrueExpression) &&
+        !(conditionExpr instanceof Expressions.FalseExpression)
+      ) {
+        if (conditionType.isOnlyTruthyType()) {
+          return err(new RuntimeError(this, unexpectedOnlyType(conditionType, true)))
+        }
 
-      if (conditionType.isOnlyFalseyType()) {
-        return err(
-          new RuntimeError(
-            this,
-            `Type '${conditionType}' is invalid as an if condition, because it is never true.`,
-          ),
-        )
+        if (conditionType.isOnlyFalseyType()) {
+          return err(new RuntimeError(this, unexpectedOnlyType(conditionType, false)))
+        }
       }
-      //
-      // </Boring type checks>
-      //
 
       // Evaluate 'then' as if conditionExpr is true
       const returnResult = conditionExpr
@@ -3676,6 +3658,10 @@ addUnaryOperator({
     return new TypeofOperator(range, precedingComments, followingOperatorComments, operator, args)
   },
 })
+
+function unexpectedOnlyType(conditionType: Types.Type, only: boolean): string {
+  return `Type '${conditionType}' is invalid as an if condition, because it is always ${only ? 'true' : 'false'}.`
+}
 
 function expectedPropertyName(found: Expression) {
   return expectedType('property name', found)
