@@ -17,7 +17,7 @@ beforeEach(() => {
   typeRuntime = mockTypeRuntime(runtimeTypes)
 })
 
-describe('assignNextRuntime', () => {
+describe('comparisons', () => {
   //|
   //|  STRING
   //|
