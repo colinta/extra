@@ -17,16 +17,15 @@ export type RelationshipLiteral =
   | RelationshipNumeric
 
 export type RelationshipOperation =
-  | {type: 'addition'; lhs: RelationshipFormula; rhs: RelationshipFormula}
-  | {type: 'string-concat'; lhs: RelationshipFormula; rhs: RelationshipFormula}
+  // | {type: 'addition'; lhs: RelationshipFormula; rhs: RelationshipFormula}
+  {type: 'string-concat'; lhs: RelationshipFormula; rhs: RelationshipFormula}
 
 export type RelationshipAssign =
   | {type: 'reference'; name: string; id: string}
   | {type: 'array-access'; of: RelationshipFormula; index: RelationshipFormula}
   | {type: 'property-access'; of: RelationshipFormula; name: string}
 
-export type RelationshipFormula = RelationshipLiteral | RelationshipAssign
-// | RelationshipOperation
+export type RelationshipFormula = RelationshipLiteral | RelationshipAssign | RelationshipOperation
 
 export type Relationship = {
   type: RelationshipComparision
@@ -62,9 +61,9 @@ export const relationshipFormula = {
   // addition(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
   //   return {type: 'addition', lhs, rhs}
   // },
-  // stringConcat(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
-  //   return {type: 'string-concat', lhs, rhs}
-  // },
+  stringConcat(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
+    return {type: 'string-concat', lhs, rhs}
+  },
 } as const
 
 /**
@@ -141,9 +140,12 @@ function mergeAssignableType(
   comparison: RelationshipComparision,
   formula: RelationshipFormula,
 ): Types.Type {
+  if (formula.type === 'string-concat') {
+    throw 'todo: formula is string-concat'
+  }
+
   if (!isLiteral(formula)) {
     throw 'todo: formula is a relationship, not a literal'
-    return assignableType
   }
 
   if (assignableType.isBoolean()) {

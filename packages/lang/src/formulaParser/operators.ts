@@ -1848,13 +1848,13 @@ addBinaryOperator({
 class StringConcatenationOperator extends BinaryOperator {
   symbol = '<>'
 
-  // relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
-  //   const lhsFormula = this.args[0].relationshipFormula(runtime)
-  //   const rhsFormula = this.args[1].relationshipFormula(runtime)
-  //   if (lhsFormula && rhsFormula) {
-  //     return relationshipFormula.stringConcat(lhsFormula, rhsFormula)
-  //   }
-  // }
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    const lhsFormula = this.args[0].relationshipFormula(runtime)
+    const rhsFormula = this.args[1].relationshipFormula(runtime)
+    if (lhsFormula && rhsFormula) {
+      return relationshipFormula.stringConcat(lhsFormula, rhsFormula)
+    }
+  }
 
   operatorType(
     _runtime: TypeRuntime,
