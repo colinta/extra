@@ -60,9 +60,9 @@ describe('formulas', () => {
       c(['(fn(a: Int): Int => a)(a: 1)', Values.int(1)]),
       c(['(fn(#a: Int, b: Int): Int => a + b)(1, b: 2)', Values.int(3)]),
       c(['(fn(#a: Int, b: Int): Int => a + b)(b: 2, 1)', Values.int(3)]),
-      c.skip(['(fn(...#a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))()', Values.int(-2)]),
-      c.skip(['(fn(...#a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))(1)', Values.int(0)]),
-      c.skip(['(fn(...#a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))(1, 2)', Values.int(3)]),
+      c(['(fn(...#a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))()', Values.int(-2)]),
+      c(['(fn(...#a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))(1)', Values.int(0)]),
+      c(['(fn(...#a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))(1, 2)', Values.int(3)]),
     ).run(([formula, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         let expression: Expression
