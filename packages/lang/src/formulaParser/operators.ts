@@ -1219,6 +1219,52 @@ addBinaryOperator({
   },
 })
 
+class AssignmentOperator extends BinaryOperator {
+  symbol = '='
+
+  operatorType(
+    _runtime: TypeRuntime,
+    _lhs: Types.Type,
+    _rhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetTypeResult {
+    return err(new RuntimeError(lhsExpr, `Still working on assignment ${lhsExpr} = ${rhsExpr}`))
+  }
+
+  operatorEval(
+    _runtime: ValueRuntime,
+    _lhs: Values.Value,
+    _rhs: () => GetValueResult,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetRuntimeResult<Values.BooleanValue> {
+    return err(new RuntimeError(lhsExpr, `Still working on assignment ${lhsExpr} = ${rhsExpr}`))
+  }
+}
+
+addBinaryOperator({
+  name: 'assignment',
+  symbol: '=',
+  precedence: -1,
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new AssignmentOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
 class SortOperator extends BinaryOperator {
   symbol = '<=>'
 
