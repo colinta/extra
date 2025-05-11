@@ -18,34 +18,22 @@ describe('compatibleWithBothTypes', () => {
     c([Types.literal(1), Types.int(), Types.int()]),
     c([Types.literal(true), Types.booleanType(), Types.booleanType()]),
     c([Types.literal(false), Types.booleanType(), Types.booleanType()]),
-    c([
-      Types.literal(1),
-      Types.int({min: 2, max: undefined}),
-      privateOneOf(Types.literal(1), Types.int({min: 2, max: undefined})),
-    ]),
+    c([Types.literal(1), Types.int({min: 2}), privateOneOf(Types.literal(1), Types.int({min: 2}))]),
     c([
       privateOneOf(Types.literal(0), Types.literal(1), Types.literal(2)),
-      Types.int({min: 2, max: undefined}),
-      privateOneOf(Types.literal(0), Types.literal(1), Types.int({min: 2, max: undefined})),
+      Types.int({min: 2}),
+      privateOneOf(Types.literal(0), Types.literal(1), Types.int({min: 2})),
     ]),
-    c([Types.literal(3), Types.int({min: 2, max: undefined}), Types.int({min: 2, max: undefined})]),
+    c([Types.literal(3), Types.int({min: 2}), Types.int({min: 2})]),
     c([Types.literal(1.1), Types.int(), Types.float()]),
     c([Types.literal('test'), Types.literal('test'), Types.literal('test')]),
     c([Types.literal('test'), Types.string(), Types.string()]),
     // numbers
     c([Types.float(), Types.int(), Types.float()]),
-    c([Types.int({min: 1, max: undefined}), Types.int(), Types.int()]),
-    c([
-      Types.int({min: 1, max: undefined}),
-      Types.int({min: 2, max: undefined}),
-      Types.int({min: 1, max: undefined}),
-    ]),
+    c([Types.int({min: 1}), Types.int(), Types.int()]),
+    c([Types.int({min: 1}), Types.int({min: 2}), Types.int({min: 1})]),
     c([Types.int({min: 1, max: 9}), Types.int({min: 2, max: 10}), Types.int({min: 1, max: 10})]),
-    c([
-      Types.int({min: 1, max: 9}),
-      Types.int({min: 2, max: undefined}),
-      Types.int({min: 1, max: undefined}),
-    ]),
+    c([Types.int({min: 1, max: 9}), Types.int({min: 2}), Types.int({min: 1})]),
     c([
       Types.float({min: [1], max: 9}),
       Types.float({min: 2, max: 10}),
@@ -86,14 +74,14 @@ describe('compatibleWithBothTypes', () => {
       Types.dict(Types.string(), {min: 1, max: 10}),
     ]),
     c([
-      Types.dict(Types.string(), {min: 1, max: undefined}),
+      Types.dict(Types.string(), {min: 1}),
       Types.dict(Types.string(), {min: 2, max: 10}),
-      Types.dict(Types.string(), {min: 1, max: undefined}),
+      Types.dict(Types.string(), {min: 1}),
     ]),
     c([
-      Types.dict(Types.string(), {min: 2, max: undefined}, new Set(['a', 'b'])),
-      Types.dict(Types.string(), {min: 2, max: undefined}, new Set(['a', 'c'])),
-      Types.dict(Types.string(), {min: 2, max: undefined}, new Set(['a'])),
+      Types.dict(Types.string(), {min: 2}, new Set(['a', 'b'])),
+      Types.dict(Types.string(), {min: 2}, new Set(['a', 'c'])),
+      Types.dict(Types.string(), {min: 2}, new Set(['a'])),
     ]),
     // dict/array
     c([
@@ -108,19 +96,19 @@ describe('compatibleWithBothTypes', () => {
       Types.set(Types.string(), {min: 1, max: 10}),
     ]),
     c([
-      Types.set(Types.string(), {min: 1, max: undefined}),
-      Types.set(Types.string(), {min: 2, max: undefined}),
-      Types.set(Types.string(), {min: 1, max: undefined}),
+      Types.set(Types.string(), {min: 1}),
+      Types.set(Types.string(), {min: 2}),
+      Types.set(Types.string(), {min: 1}),
     ]),
     c([
-      Types.set(Types.string(), {min: 1, max: undefined}),
+      Types.set(Types.string(), {min: 1}),
       Types.set(Types.string(), {min: 2, max: 10}),
-      Types.set(Types.string(), {min: 1, max: undefined}),
+      Types.set(Types.string(), {min: 1}),
     ]),
     c([
-      Types.set(Types.string({min: 11}), {min: 11, max: undefined}),
-      Types.set(Types.string({min: 22}), {min: 22, max: undefined}),
-      Types.set(Types.string({min: 11}), {min: 11, max: undefined}),
+      Types.set(Types.string({min: 11}), {min: 11}),
+      Types.set(Types.string({min: 22}), {min: 22}),
+      Types.set(Types.string({min: 11}), {min: 11}),
     ]),
     // TODO: object/tuple
     c([

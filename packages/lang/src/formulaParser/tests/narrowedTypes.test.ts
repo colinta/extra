@@ -23,7 +23,7 @@ function truthyFalsey(name: string, expression: Expression, runtime: TypeRuntime
 }
 
 describe('narrowed types', () => {
-  it.only('(foo: String | Int) is Int => truthy: Int, falsey: String', () => {
+  it('(foo: String | Int) is Int => truthy: Int, falsey: String', () => {
     runtimeTypes['foo'] = [Types.oneOf([Types.string(), Types.int()]), Values.string('')]
     const expression = parse('foo is Int').get()
     const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
@@ -65,51 +65,21 @@ describe('narrowed types', () => {
     //|
     //|  Int checks
     //|
-    c([
-      'foo',
-      Types.int(),
-      'foo >= 5',
-      Types.int({min: 5, max: undefined}),
-      Types.int({min: undefined, max: 4}),
-    ]),
-    c([
-      'foo',
-      Types.int({min: 6, max: undefined}),
-      'foo >= 5',
-      Types.int({min: 6, max: undefined}),
-      Types.never(),
-    ]),
+    c(['foo', Types.int(), 'foo >= 5', Types.int({min: 5}), Types.int({max: 4})]),
+    c(['foo', Types.int({min: 6}), 'foo >= 5', Types.int({min: 6}), Types.never()]),
     //|
     //|  Float checks
     //|
+    c(['foo', Types.float(), 'foo >= 5', Types.float({min: 5}), Types.float({max: [5]})]),
+    c(['foo', Types.float(), 'foo > 5', Types.float({min: [5]}), Types.float({max: 5})]),
     c([
       'foo',
-      Types.float(),
-      'foo >= 5',
-      Types.float({min: 5, max: undefined}),
-      Types.float({min: undefined, max: [5]}),
-    ]),
-    c([
-      'foo',
-      Types.float(),
-      'foo > 5',
-      Types.float({min: [5], max: undefined}),
-      Types.float({min: undefined, max: 5}),
-    ]),
-    c([
-      'foo',
-      Types.float({min: 6, max: undefined}),
+      Types.float({min: 6}),
       'foo > 6',
-      Types.float({min: [6], max: undefined}),
+      Types.float({min: [6]}),
       Types.literal(6, 'float'),
     ]),
-    c([
-      'foo',
-      Types.float({min: 7, max: undefined}),
-      'foo > 6',
-      Types.float({min: 7, max: undefined}),
-      Types.never(),
-    ]),
+    c(['foo', Types.float({min: 7}), 'foo > 6', Types.float({min: 7}), Types.never()]),
     //|
     //|  String.length checks
     //|
@@ -167,7 +137,7 @@ describe('narrowed types', () => {
     // returns false (foo is null) or Int (foo is String)
     const expression = parse('foo is String and foo.length').get()
     const type = expression.getType(typeRuntime).get()
-    expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int()]))
+    expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int({min: 0})]))
   })
 
   it('foo: {bar: String | Int} => foo.bar is String and foo.bar.length => false | Int', () => {
@@ -179,7 +149,7 @@ describe('narrowed types', () => {
 
     const expression = parse('foo.bar is String and foo.bar.length').get()
     const type = expression.getType(typeRuntime).get()
-    expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int()]))
+    expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int({min: 0})]))
   })
 
   it('foo: {bar: {baz: String | Int}} => foo.bar.baz is String and foo.bar.baz.length => false | Int', () => {
@@ -196,7 +166,7 @@ describe('narrowed types', () => {
 
     const expression = parse('foo.bar.baz is String and foo.bar.baz.length').get()
     const type = expression.getType(typeRuntime).get()
-    expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int()]))
+    expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int({min: 0})]))
   })
 
   it('infers return type', () => {

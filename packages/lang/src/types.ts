@@ -36,17 +36,25 @@ export function booleanType() {
   return BooleanType
 }
 
-export function int(narrowed?: Narrowed.NarrowedInt) {
+export function int(narrowed?: Partial<Narrowed.NarrowedInt>) {
   if (narrowed) {
-    return new MetaIntType(narrowed)
+    return new MetaIntType(
+      narrowed
+        ? {...Narrowed.DEFAULT_NARROWED_NUMBER, ...narrowed}
+        : Narrowed.DEFAULT_NARROWED_NUMBER,
+    )
   }
 
   return IntType
 }
 
-export function float(narrowed?: Narrowed.NarrowedFloat) {
+export function float(narrowed?: Partial<Narrowed.NarrowedFloat>) {
   if (narrowed) {
-    return new MetaFloatType(narrowed)
+    return new MetaFloatType(
+      narrowed
+        ? {...Narrowed.DEFAULT_NARROWED_NUMBER, ...narrowed}
+        : Narrowed.DEFAULT_NARROWED_NUMBER,
+    )
   }
 
   return FloatType
@@ -96,12 +104,23 @@ export function array(type: Type, narrowedLength?: Narrowed.NarrowedLength) {
   return new ArrayType(type, narrowedLength)
 }
 
-export function dict(type: Type, narrowed?: Narrowed.NarrowedLength, names?: Set<Key>) {
-  return new DictType(type, narrowed, names)
+export function dict(type: Type, narrowed?: Partial<Narrowed.NarrowedLength>, names?: Set<Key>) {
+  return new DictType(
+    type,
+    narrowed
+      ? {...Narrowed.DEFAULT_NARROWED_LENGTH, ...narrowed}
+      : Narrowed.DEFAULT_NARROWED_LENGTH,
+    names,
+  )
 }
 
-export function set(type: Type, narrowed?: Narrowed.NarrowedLength) {
-  return new SetType(type, narrowed)
+export function set(type: Type, narrowed?: Partial<Narrowed.NarrowedLength>) {
+  return new SetType(
+    type,
+    narrowed
+      ? {...Narrowed.DEFAULT_NARROWED_LENGTH, ...narrowed}
+      : Narrowed.DEFAULT_NARROWED_LENGTH,
+  )
 }
 
 export function range(type: Type) {
@@ -2634,7 +2653,7 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
   // covers type narrowing, e.g. "(human) is student --> student"
   // these types are only used _when the eval() value is true,
   // so in this case we got the runtime type of the value,
-  // it's hypotheticall "student", and so the is assertion will be true
+  // it's hypothetically "student", and so the 'is' assertion will be true
   if (canBeAssignedTo(typeAssertion, lhsType)) {
     return typeAssertion
   }
