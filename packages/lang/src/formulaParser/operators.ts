@@ -1453,6 +1453,22 @@ abstract class TypeAssertionOperator extends BinaryOperator {
   abstract symbol: 'is' | '!is'
   abstract inverseSymbol: 'is' | '!is'
 
+  assumeTypeAssertion(
+    runtime: TypeRuntime,
+    fn: (lhsType: Types.Type, rhsType: Types.Type) => Types.Type,
+  ): GetRuntimeResult<TypeRuntime> {
+    const [lhsExpr, rhsExpr] = this.args
+    return rhsExpr
+      .typeAssertion(runtime)
+      .map(rhsTypeAssertion =>
+        getChildType(this, lhsExpr, runtime).map(lhsType => [lhsType, rhsTypeAssertion]),
+      )
+      .map(([lhsType, rhsTypeAssertion]) => {
+        const assertType = fn(lhsType, rhsTypeAssertion)
+        return lhsExpr.replaceWithType(runtime, assertType)
+      })
+  }
+
   operatorType(
     runtime: TypeRuntime,
     _lhs: Types.Type,
@@ -1479,6 +1495,18 @@ abstract class TypeAssertionOperator extends BinaryOperator {
 class TypeIsAssertionOperator extends TypeAssertionOperator {
   readonly symbol = 'is'
   readonly inverseSymbol = '!is'
+
+  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    return this.assumeTypeAssertion(runtime, (lhsType, rhsTypeAssertion) =>
+      Types.narrowTypeIs(lhsType, rhsTypeAssertion),
+    )
+  }
+
+  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    return this.assumeTypeAssertion(runtime, (lhsType, rhsTypeAssertion) =>
+      Types.narrowTypeIsNot(lhsType, rhsTypeAssertion),
+    )
+  }
 }
 
 addBinaryOperator({
@@ -1506,6 +1534,18 @@ addBinaryOperator({
 class TypeIsRefutationOperator extends TypeAssertionOperator {
   readonly symbol = '!is'
   readonly inverseSymbol = 'is'
+
+  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    return this.assumeTypeAssertion(runtime, (lhsType, rhsTypeAssertion) =>
+      Types.narrowTypeIsNot(lhsType, rhsTypeAssertion),
+    )
+  }
+
+  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    return this.assumeTypeAssertion(runtime, (lhsType, rhsTypeAssertion) =>
+      Types.narrowTypeIs(lhsType, rhsTypeAssertion),
+    )
+  }
 
   operatorEval(
     runtime: ValueRuntime,
