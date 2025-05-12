@@ -100,8 +100,13 @@ export function klass(props: Map<string, Type>, parent?: ClassType) {
   return new ClassType(props, parent)
 }
 
-export function array(type: Type, narrowedLength?: Narrowed.NarrowedLength) {
-  return new ArrayType(type, narrowedLength)
+export function array(type: Type, narrowed?: Partial<Narrowed.NarrowedLength>) {
+  return new ArrayType(
+    type,
+    narrowed
+      ? {...Narrowed.DEFAULT_NARROWED_LENGTH, ...narrowed}
+      : Narrowed.DEFAULT_NARROWED_LENGTH,
+  )
 }
 
 export function dict(type: Type, narrowed?: Partial<Narrowed.NarrowedLength>, names?: Set<Key>) {
