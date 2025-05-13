@@ -17,8 +17,10 @@ export type RelationshipLiteral =
   | RelationshipNumeric
 
 export type RelationshipOperation =
-  // | {type: 'addition'; lhs: RelationshipFormula; rhs: RelationshipFormula}
-  {type: 'string-concat'; lhs: RelationshipFormula; rhs: RelationshipFormula}
+  | {type: 'addition'; lhs: RelationshipFormula; rhs: RelationshipFormula}
+  | {type: 'negate'; arg: RelationshipFormula}
+  | {type: 'string-concat'; lhs: RelationshipFormula; rhs: RelationshipFormula}
+  | {type: 'array-concat'; lhs: RelationshipFormula; rhs: RelationshipFormula}
 
 export type RelationshipAssign =
   | {type: 'reference'; name: string; id: string}
@@ -58,11 +60,17 @@ export const relationshipFormula = {
   propertyAccess(of: RelationshipFormula, name: string): RelationshipAssign {
     return {type: 'property-access', of, name}
   },
-  // addition(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
-  //   return {type: 'addition', lhs, rhs}
-  // },
+  addition(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
+    return {type: 'addition', lhs, rhs}
+  },
+  subtraction(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
+    return {type: 'addition', lhs, rhs: {type: 'negate', arg: rhs}}
+  },
   stringConcat(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
     return {type: 'string-concat', lhs, rhs}
+  },
+  arrayConcat(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
+    return {type: 'array-concat', lhs, rhs}
   },
 } as const
 
@@ -140,7 +148,12 @@ function mergeAssignableType(
   comparison: RelationshipComparision,
   formula: RelationshipFormula,
 ): Types.Type {
-  if (formula.type === 'string-concat') {
+  if (
+    formula.type === 'addition' ||
+    formula.type === 'negate' ||
+    formula.type === 'string-concat' ||
+    formula.type === 'array-concat'
+  ) {
     throw 'todo: formula is string-concat'
   }
 

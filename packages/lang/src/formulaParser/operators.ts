@@ -1701,13 +1701,13 @@ addBinaryOperator({
 class AdditionOperator extends BinaryOperator {
   symbol = '+'
 
-  // relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
-  //   const lhsFormula = this.args[0].relationshipFormula(runtime)
-  //   const rhsFormula = this.args[1].relationshipFormula(runtime)
-  //   if (lhsFormula && rhsFormula) {
-  //     return relationshipFormula.addition(lhsFormula, rhsFormula)
-  //   }
-  // }
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    const lhsFormula = this.args[0].relationshipFormula(runtime)
+    const rhsFormula = this.args[1].relationshipFormula(runtime)
+    if (lhsFormula && rhsFormula) {
+      return relationshipFormula.addition(lhsFormula, rhsFormula)
+    }
+  }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
@@ -1741,13 +1741,13 @@ addBinaryOperator({
 class SubtractionOperator extends BinaryOperator {
   symbol = '-'
 
-  // relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
-  //   const lhsFormula = this.args[0].relationshipFormula(runtime)
-  //   const rhsFormula = this.args[1].relationshipFormula(runtime)
-  //   if (lhsFormula && rhsFormula) {
-  //     return relationshipFormula.subtraction(lhsFormula, rhsFormula)
-  //   }
-  // }
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    const lhsFormula = this.args[0].relationshipFormula(runtime)
+    const rhsFormula = this.args[1].relationshipFormula(runtime)
+    if (lhsFormula && rhsFormula) {
+      return relationshipFormula.subtraction(lhsFormula, rhsFormula)
+    }
+  }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
