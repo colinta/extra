@@ -6,6 +6,9 @@ import {
   relationshipFormula,
 } from '~/relationship'
 import * as Types from '~/types'
+import * as Values from '~/values'
+import {parse} from '~/formulaParser'
+import {type Expression} from '~/formulaParser/expressions'
 import {TypeRuntime} from '~/runtime'
 import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
 
@@ -15,6 +18,57 @@ let runtimeTypes: {[K in string]: [Types.Type, any]}
 beforeEach(() => {
   runtimeTypes = {}
   typeRuntime = mockTypeRuntime(runtimeTypes)
+})
+
+describe('let … in', () => {
+  beforeEach(() => {
+    runtimeTypes['intValue'] = [Types.int({min: 1, max: 10}), Values.int(1)]
+    runtimeTypes['floatValue'] = [Types.float({min: 2, max: [9]}), Values.float(2)]
+  })
+
+  cases<[string, Types.Type]>(
+    c(['intValue', Types.int({min: 1, max: 10})]),
+    c(['intValue + 1', Types.int({min: 2, max: 11})]),
+    c(['1 + intValue', Types.int({min: 2, max: 11})]),
+    c(['intValue - 1', Types.int({min: 0, max: 9})]),
+    c(['1 - intValue', Types.int({min: -9, max: 0})]),
+    c(['-intValue', Types.int({min: -10, max: -1})]),
+  ).run(([formula, expectedType], {only, skip}) =>
+    (only ? it.only : skip ? it.skip : it)(
+      `let intValue: Int(1...10), value = ${formula} should assign ${expectedType}`,
+      () => {
+        let valueType: Types.Type
+        expect(() => {
+          const currentExpression = parse(`let value = ${formula} in value`).get()
+          valueType = currentExpression.getType(typeRuntime).get()
+        }).not.toThrow()
+
+        expect(valueType!).toEqual(expectedType)
+      },
+    ),
+  )
+
+  cases<[string, Types.Type]>(
+    c(['floatValue', Types.float({min: 2, max: [9]})]),
+    c(['floatValue + 1', Types.float({min: 3, max: [10]})]),
+    c(['1 + floatValue', Types.float({min: 3, max: [10]})]),
+    c(['floatValue - 1', Types.float({min: 1, max: [8]})]),
+    c(['1 - floatValue', Types.float({min: [-8], max: -1})]),
+    c(['-floatValue', Types.float({min: [-9], max: -2})]),
+  ).run(([formula, expectedType], {only, skip}) =>
+    (only ? it.only : skip ? it.skip : it)(
+      `let floatValue: Int(2..<9), value = ${formula} should assign ${expectedType}`,
+      () => {
+        let valueType: Types.Type
+        expect(() => {
+          const currentExpression = parse(`let value = ${formula} in value`).get()
+          valueType = currentExpression.getType(typeRuntime).get()
+        }).not.toThrow()
+
+        expect(valueType!).toEqual(expectedType)
+      },
+    ),
+  )
 })
 
 describe('comparisons', () => {
@@ -73,7 +127,7 @@ describe('comparisons', () => {
       c([Types.float(), '!=', relationshipFormula.int(1)]),
       c([Types.float(), '!=', relationshipFormula.string('1')]),
       c([Types.literal(1, 'float'), '!=', relationshipFormula.int(1), Types.never()]),
-      c([Types.literal(1, 'float'), '!=', relationshipFormula.int(2), Types.literal(1, 'float')]),
+      c([Types.literal(1, 'float'), '!=', relationshipFormula.int(2)]),
       c([Types.float(), '<', relationshipFormula.int(1), Types.float({max: [1]})]),
       c([Types.float(), '<=', relationshipFormula.int(1), Types.float({max: 1})]),
       c([Types.float(), '>', relationshipFormula.int(1), Types.float({min: [1]})]),

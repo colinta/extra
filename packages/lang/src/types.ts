@@ -1233,7 +1233,9 @@ export const ConditionType = new (class ConditionType extends Type {
   }
 })()
 
-abstract class NumberType<T extends Narrowed.NarrowedInt | Narrowed.NarrowedFloat> extends Type {
+export abstract class NumberType<
+  T extends Narrowed.NarrowedInt | Narrowed.NarrowedFloat,
+> extends Type {
   readonly narrowed: T
 
   constructor(narrowed: T) {
@@ -1251,6 +1253,8 @@ abstract class NumberType<T extends Narrowed.NarrowedInt | Narrowed.NarrowedFloa
   }
 
   abstract narrow(min: T['min'], max: T['max']): Type
+  abstract adjustNarrow(amount: number): Type
+  abstract negateNarrow(amount: number): Type
 }
 
 export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
@@ -1320,6 +1324,54 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
 
     if (typeof next.max === 'number' && typeof next.min === 'number' && next.min === next.max) {
       return new LiteralFloatType(next.min)
+    }
+
+    return new MetaFloatType(next)
+  }
+
+  adjustNarrow(amount: number) {
+    if (amount === 0 || Narrowed.isDefaultNarrowedNumber(this.narrowed)) {
+      return this
+    }
+
+    const next = {...this.narrowed}
+
+    if (Array.isArray(next.min)) {
+      next.min = [next.min[0] + amount]
+    } else if (next.min !== undefined) {
+      next.min += amount
+    }
+
+    if (Array.isArray(next.max)) {
+      next.max = [next.max[0] + amount]
+    } else if (next.max !== undefined) {
+      next.max += amount
+    }
+
+    return new MetaFloatType(next)
+  }
+
+  /**
+   * Used with SubtractionOperation
+   * 1 - x => negateNarrow(1)
+   */
+  negateNarrow(amount: number) {
+    if (Narrowed.isDefaultNarrowedNumber(this.narrowed)) {
+      return this
+    }
+
+    const next: Narrowed.NarrowedFloat = {min: undefined, max: undefined}
+
+    if (Array.isArray(this.narrowed.min)) {
+      next.max = [amount - this.narrowed.min[0]]
+    } else if (this.narrowed.min !== undefined) {
+      next.max = amount - this.narrowed.min
+    }
+
+    if (Array.isArray(this.narrowed.max)) {
+      next.min = [amount - this.narrowed.max[0]]
+    } else if (this.narrowed.max !== undefined) {
+      next.min = amount - this.narrowed.max
     }
 
     return new MetaFloatType(next)
@@ -1405,6 +1457,46 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
 
     if (next.max !== undefined && next.min !== undefined && next.min === next.max) {
       return new LiteralIntType(next.min)
+    }
+
+    return new MetaIntType(next)
+  }
+
+  adjustNarrow(amount: number) {
+    if (amount === 0 || Narrowed.isDefaultNarrowedNumber(this.narrowed)) {
+      return this
+    }
+
+    const next = {...this.narrowed}
+
+    if (next.min !== undefined) {
+      next.min += amount
+    }
+
+    if (next.max !== undefined) {
+      next.max += amount
+    }
+
+    return new MetaIntType(next)
+  }
+
+  /**
+   * Used with SubtractionOperation
+   * 1 - x => negateNarrow(1)
+   */
+  negateNarrow(amount: number) {
+    if (Narrowed.isDefaultNarrowedNumber(this.narrowed)) {
+      return this
+    }
+
+    const next: Narrowed.NarrowedInt = {min: undefined, max: undefined}
+
+    if (this.narrowed.min !== undefined) {
+      next.max = amount - this.narrowed.min
+    }
+
+    if (this.narrowed.max !== undefined) {
+      next.min = amount - this.narrowed.max
     }
 
     return new MetaIntType(next)

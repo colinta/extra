@@ -624,7 +624,7 @@ function mergeAssignableTypeFloat(
           // min can be `[number]` (exclusive) or `number` (inclusive)
           // nextType.narrowed.min === literal.value check ensures it is `number` (inclusive)
           const narrowedType = nextType.narrow([literal.value], nextType.narrowed.max)
-          if (narrowedType instanceof Types.MetaIntType) {
+          if (narrowedType instanceof Types.MetaFloatType) {
             nextType = narrowedType
           } else {
             // NeverType (MetaFloatType is not possible here, afaik)
@@ -636,7 +636,7 @@ function mergeAssignableTypeFloat(
           // max can be `[number]` (exclusive) or `number` (inclusive)
           // nextType.narrowed.max === literal.value check ensures it is `number` (inclusive)
           const narrowedType = nextType.narrow(nextType.narrowed.min, [literal.value])
-          if (narrowedType instanceof Types.MetaIntType) {
+          if (narrowedType instanceof Types.MetaFloatType) {
             nextType = narrowedType
           } else {
             // NeverType (MetaFloatType is not possible here, afaik)

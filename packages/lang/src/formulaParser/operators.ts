@@ -1714,6 +1714,16 @@ class AdditionOperator extends BinaryOperator {
       return ok(Types.literal(lhs.value + rhs.value, anyFloaters(lhs, rhs)))
     }
 
+    // x: Int(>=1), x + 1 => Int(>=2)
+    if (lhs instanceof Types.NumberType && rhs.isLiteral('float')) {
+      return ok(lhs.adjustNarrow(rhs.value))
+    }
+
+    // x: Int(>=1), 1 + x => x + 1 => Int(>=2)
+    if (lhs.isLiteral('float') && rhs instanceof Types.NumberType) {
+      return ok(rhs.adjustNarrow(lhs.value))
+    }
+
     return numericType(this, lhs, rhs)
   }
 
@@ -1752,6 +1762,16 @@ class SubtractionOperator extends BinaryOperator {
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
       return ok(Types.literal(lhs.value - rhs.value, anyFloaters(lhs, rhs)))
+    }
+
+    // x: Int(>=1), x - 1 => Int(>=0)
+    if (lhs instanceof Types.NumberType && rhs.isLiteral('float')) {
+      return ok(lhs.adjustNarrow(-rhs.value))
+    }
+
+    // x: Int(>=1), 1 - x => Int(>=0)
+    if (lhs.isLiteral('float') && rhs instanceof Types.NumberType) {
+      return ok(rhs.negateNarrow(lhs.value))
     }
 
     return numericType(this, lhs, rhs)
@@ -3318,6 +3338,11 @@ class NegateOperator extends UnaryOperator {
   operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
     if (lhs.isLiteral('float')) {
       return ok(Types.literal(-lhs.value, lhs.is === 'literal-float' ? 'float' : undefined))
+    }
+
+    // x: Int(>=1), x - 1 => Int(>=0)
+    if (lhs instanceof Types.NumberType) {
+      return ok(lhs.negateNarrow(0))
     }
 
     return numericType(this, lhs)
