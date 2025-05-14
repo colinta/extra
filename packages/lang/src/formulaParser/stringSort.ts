@@ -19,7 +19,7 @@ export function stringSort(lhs: string, rhs: string) {
     return 1
   }
 
-  return lhs.localeCompare(rhs)
+  return lhs.localeCompare(rhs, 'en', {usage: 'sort'})
 }
 
 function precedingNumber(str: string): {number: number; rest: string} | undefined {

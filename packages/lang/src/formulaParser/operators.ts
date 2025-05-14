@@ -10,8 +10,10 @@ import {
 import {combineConcatLengths} from '~/narrowed'
 import {
   assignNextRuntime,
+  findEventualRef,
   relationshipFormula,
-  type RelationshipComparision,
+  relationshipReducer,
+  type RelationshipComparison,
   type RelationshipFormula,
 } from '~/relationship'
 import * as Expressions from '~/formulaParser/expressions'
@@ -384,9 +386,9 @@ abstract class BinaryOperator extends OperatorOperation {
   }
 
   getRelationshipFormulas(runtime: TypeRuntime) {
-    const [lhs, rhs] = this.args
-    const lhsFormula = lhs.relationshipFormula(runtime)
-    const rhsFormula = rhs.relationshipFormula(runtime)
+    const [lhsExpr, rhsExpr] = this.args
+    const lhsFormula = lhsExpr.relationshipFormula(runtime)
+    const rhsFormula = rhsExpr.relationshipFormula(runtime)
     if (!lhsFormula || !rhsFormula) {
       return []
     }
@@ -726,6 +728,13 @@ addBinaryOperator({
 class LogicalAndOperator extends BinaryOperator {
   symbol = 'and'
 
+  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    const [lhsExpr, rhsExpr] = this.args
+    return lhsExpr
+      .assumeTrue(runtime)
+      .map(truthyRuntime => rhsExpr.assumeTrue(truthyRuntime).map(finalRuntime => finalRuntime))
+  }
+
   rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
     return lhsExpr
       .assumeTrue(runtime)
@@ -949,8 +958,8 @@ addBinaryOperator({
 })
 
 abstract class ComparisonOperator extends BinaryOperator {
-  abstract symbol: RelationshipComparision
-  abstract inverseSymbol: RelationshipComparision
+  abstract symbol: RelationshipComparison
+  abstract inverseSymbol: RelationshipComparison
 
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
     const [lhsFormula, rhsFormula] = this.getRelationshipFormulas(runtime)
@@ -958,7 +967,11 @@ abstract class ComparisonOperator extends BinaryOperator {
       return ok(runtime)
     }
 
-    return assignNextRuntime(runtime, lhsFormula, this.symbol, rhsFormula)
+    return assignNextRuntime(runtime, lhsFormula, this.symbol, rhsFormula).map(nextRuntime => {
+      // try to reduce nextRuntime's relationships that are based on lhsFormula/rhsFormula
+      relationshipReducer(nextRuntime, lhsFormula, this.symbol, rhsFormula)
+      return nextRuntime
+    })
   }
 
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
@@ -967,7 +980,12 @@ abstract class ComparisonOperator extends BinaryOperator {
       return ok(runtime)
     }
 
-    return assignNextRuntime(runtime, lhsFormula, this.inverseSymbol, rhsFormula)
+    return assignNextRuntime(runtime, lhsFormula, this.inverseSymbol, rhsFormula).map(
+      nextRuntime => {
+        relationshipReducer(nextRuntime, lhsFormula, this.inverseSymbol, rhsFormula)
+        return nextRuntime
+      },
+    )
   }
 }
 
@@ -2468,12 +2486,20 @@ class ArrayAccessOperator extends BinaryOperator {
   }
 
   operatorType(
-    _runtime: TypeRuntime,
+    runtime: TypeRuntime,
     lhs: Types.Type,
     rhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
+    const lhsRel = lhsExpr.relationshipFormula(runtime)
+    if (lhsRel) {
+      const lhsRef = findEventualRef(lhsRel)
+      const relationships = runtime.getRelationships(lhsRef)
+      console.log('=========== operators.ts at line 2484 ===========')
+      console.log({lhsRef, relationships})
+    }
+
     if (lhs instanceof Types.ArrayType) {
       return this.accessInArrayType(lhs, rhs, rhsExpr)
     }
@@ -2493,13 +2519,7 @@ class ArrayAccessOperator extends BinaryOperator {
     if (rhs.isLiteral('int')) {
       return ok(lhs.literalAccessType(rhs.value) ?? Types.NullType)
     } else if (rhs.isInt()) {
-      return ok(lhs.arrayAccessType('int') ?? Types.NullType)
-    } else if (rhs.isString()) {
-      return ok(lhs.arrayAccessType('string') ?? Types.NullType)
-    } else if (rhs.isBoolean()) {
-      return ok(lhs.arrayAccessType('boolean') ?? Types.NullType)
-    } else if (rhs.isNull()) {
-      return ok(lhs.arrayAccessType('null') ?? Types.NullType)
+      return ok(lhs.arrayAccessType('int', rhs) ?? Types.NullType)
     }
 
     return err(
@@ -2511,13 +2531,13 @@ class ArrayAccessOperator extends BinaryOperator {
     if (rhs.isLiteral('key')) {
       return ok(lhs.literalAccessType(rhs.value))
     } else if (rhs.isInt()) {
-      return ok(lhs.arrayAccessType('int'))
+      return ok(lhs.arrayAccessType('int', rhs))
     } else if (rhs.isString()) {
-      return ok(lhs.arrayAccessType('string'))
+      return ok(lhs.arrayAccessType('string', rhs))
     } else if (rhs.isBoolean()) {
-      return ok(lhs.arrayAccessType('boolean'))
+      return ok(lhs.arrayAccessType('boolean', rhs))
     } else if (rhs.isNull()) {
-      return ok(lhs.arrayAccessType('null'))
+      return ok(lhs.arrayAccessType('null', rhs))
     }
 
     return err(
@@ -2534,7 +2554,7 @@ class ArrayAccessOperator extends BinaryOperator {
 
       return ok(propType)
     } else if (rhs.isInt() || rhs.isString()) {
-      const propType = lhs.arrayAccessType(rhs.isInt() ? 'int' : 'string')
+      const propType = lhs.arrayAccessType(rhs.isInt() ? 'int' : 'string', rhs)
       return ok(propType ?? Types.NullType)
     }
 

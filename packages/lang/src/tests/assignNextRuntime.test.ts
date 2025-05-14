@@ -2,14 +2,13 @@ import {c, cases} from '@extra-lang/cases'
 import {
   assignNextRuntime,
   type RelationshipLiteral,
-  type RelationshipComparision,
+  type RelationshipComparison,
   relationshipFormula,
 } from '~/relationship'
 import * as Types from '~/types'
 import * as Values from '~/values'
 import {parse} from '~/formulaParser'
-import {type Expression} from '~/formulaParser/expressions'
-import {TypeRuntime} from '~/runtime'
+import {type TypeRuntime} from '~/runtime'
 import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
 
 let typeRuntime: TypeRuntime
@@ -37,13 +36,13 @@ describe('let … in', () => {
     (only ? it.only : skip ? it.skip : it)(
       `let intValue: Int(1...10), value = ${formula} should assign ${expectedType}`,
       () => {
-        let valueType: Types.Type
+        let resolvedType: Types.Type
         expect(() => {
           const currentExpression = parse(`let value = ${formula} in value`).get()
-          valueType = currentExpression.getType(typeRuntime).get()
+          resolvedType = currentExpression.getType(typeRuntime).get()
         }).not.toThrow()
 
-        expect(valueType!).toEqual(expectedType)
+        expect(resolvedType!).toEqual(expectedType)
       },
     ),
   )
@@ -59,13 +58,13 @@ describe('let … in', () => {
     (only ? it.only : skip ? it.skip : it)(
       `let floatValue: Int(2..<9), value = ${formula} should assign ${expectedType}`,
       () => {
-        let valueType: Types.Type
+        let resolvedType: Types.Type
         expect(() => {
           const currentExpression = parse(`let value = ${formula} in value`).get()
-          valueType = currentExpression.getType(typeRuntime).get()
+          resolvedType = currentExpression.getType(typeRuntime).get()
         }).not.toThrow()
 
-        expect(valueType!).toEqual(expectedType)
+        expect(resolvedType!).toEqual(expectedType)
       },
     ),
   )
@@ -77,8 +76,8 @@ describe('comparisons', () => {
   //|
   describe('strings', () => {
     cases<
-      | [Types.Type, RelationshipComparision, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparision, RelationshipLiteral]
+      | [Types.Type, RelationshipComparison, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipComparison, RelationshipLiteral]
     >(
       c([Types.string(), '==', relationshipFormula.string('a'), Types.literal('a')]),
       c([Types.string({min: 10}), '==', relationshipFormula.string('a'), Types.never()]),
@@ -115,8 +114,8 @@ describe('comparisons', () => {
   //|
   describe('floats', () => {
     cases<
-      | [Types.Type, RelationshipComparision, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparision, RelationshipLiteral]
+      | [Types.Type, RelationshipComparison, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipComparison, RelationshipLiteral]
     >(
       //|
       //|  Float
@@ -226,8 +225,8 @@ describe('comparisons', () => {
   //|
   describe('ints', () => {
     cases<
-      | [Types.Type, RelationshipComparision, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparision, RelationshipLiteral]
+      | [Types.Type, RelationshipComparison, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipComparison, RelationshipLiteral]
     >(
       //|
       //|  Int
@@ -343,8 +342,8 @@ describe('comparisons', () => {
   //|
   describe('booleans', () => {
     cases<
-      | [Types.Type, RelationshipComparision, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparision, RelationshipLiteral]
+      | [Types.Type, RelationshipComparison, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipComparison, RelationshipLiteral]
     >(
       c([Types.booleanType(), '==', relationshipFormula.boolean(true), Types.literal(true)]),
       c([Types.booleanType(), '!=', relationshipFormula.boolean(true), Types.literal(false)]),
@@ -377,8 +376,8 @@ describe('comparisons', () => {
   //|
   describe('null', () => {
     cases<
-      | [Types.Type, RelationshipComparision, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparision, RelationshipLiteral]
+      | [Types.Type, RelationshipComparison, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipComparison, RelationshipLiteral]
     >(
       c([Types.nullType(), '==', relationshipFormula.null()]),
       c([Types.nullType(), '==', relationshipFormula.int(1), Types.never()]),

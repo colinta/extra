@@ -2230,7 +2230,7 @@ export class ObjectType extends Type {
     return `{${propDesc}}`
   }
 
-  arrayAccessType(propType: KeyType): Type | undefined {
+  arrayAccessType(propType: KeyType, _rhs: Type): Type | undefined {
     if (propType === 'null' || propType === 'boolean') {
       return NeverType
     }
@@ -2344,12 +2344,23 @@ export class ArrayType extends ContainerType<ArrayType> {
     return new ArrayType(this.of, length)
   }
 
-  arrayAccessType(propType: KeyType): Type | undefined {
+  arrayAccessType(propType: KeyType, rhs: Type): Type | undefined {
     if (propType === 'string') {
       return NeverType
     }
 
-    return this.of
+    if (
+      rhs instanceof MetaIntType &&
+      rhs.narrowed.min !== undefined &&
+      rhs.narrowed.min >= 0 &&
+      rhs.narrowed.max !== undefined &&
+      this.narrowedLength.max !== undefined &&
+      rhs.narrowed.max <= this.narrowedLength.max
+    ) {
+      return this.of
+    }
+
+    return optional(this.of)
   }
 
   literalAccessType(propName: Key): Type | undefined {
@@ -2490,8 +2501,8 @@ export class DictType extends ContainerType<DictType> {
     return new DictType(this.of, length, names)
   }
 
-  arrayAccessType(_type: KeyType) {
-    return this.of
+  arrayAccessType(_type: KeyType, _rhs: Type) {
+    return optional(this.of)
   }
 
   literalAccessType(name: Key) {

@@ -1,6 +1,7 @@
-import {type GetRuntimeResult} from './formulaParser/types'
-import {type Type} from './types'
-import {type Value, type ObjectValue} from './values'
+import {type GetRuntimeResult} from '~/formulaParser/types'
+import {findRefs, type RelationshipFormula} from '~/relationship'
+import {type Type} from '~/types'
+import {type Value, type ObjectValue} from '~/values'
 
 export interface Runtime {
   getLocale(): Intl.Locale
@@ -30,6 +31,7 @@ export type TypeRuntime = Omit<
   | 'addId'
   | 'setPipeType'
   | 'addNamespaceTypes'
+  | 'addRelationship'
 >
 
 export type ValueRuntime = Omit<
@@ -51,6 +53,7 @@ export type ValueRuntime = Omit<
 
 export class MutableTypeRuntime {
   localTypes: Map<string, Type> = new Map()
+  relationships: Map<string, RelationshipFormula[]> = new Map()
   localNamespaces: Map<string, Map<string, Type>> = new Map()
   stateTypes: Map<string, Type> = new Map()
   thisTypes: Map<string, Type> = new Map()
@@ -165,6 +168,42 @@ export class MutableTypeRuntime {
   addLocalType(name: string, type: Type) {
     this.localTypes.set(name, type)
     this.addId(name)
+  }
+
+  addRelationship(name: string, rel: RelationshipFormula) {
+    const id = this.refId(name)
+    if (!id) {
+      return
+    }
+
+    const relationships = this.relationships.get(id) ?? []
+    relationships.push(rel)
+    this.relationships.set(id, relationships)
+  }
+
+  getRelationships(name: string) {
+    return this.relationships.get(name) ?? []
+  }
+
+  getAllRelationships(name: string): RelationshipFormula[] {
+    const id = this.refId(name)
+    if (!id) {
+      return []
+    }
+
+    const relationships = [...this.relationships]
+    relationships.push(...(this.parent?.relationships ?? []))
+
+    return Array.from(relationships).flatMap(([key, relationships]) => {
+      return relationships.flatMap(relationship => {
+        const refs = findRefs(relationship)
+        if (refs.some(rel => rel.id === id)) {
+          return [relationship]
+        } else {
+          return []
+        }
+      })
+    })
   }
 
   addStateType(name: string, type: Type) {

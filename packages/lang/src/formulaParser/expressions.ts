@@ -1587,6 +1587,10 @@ export abstract class Argument extends Expression {
     return `${this.alias}: ${this.value.toCode()}`
   }
 
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    return this.value.relationshipFormula(runtime)
+  }
+
   getType(runtime: TypeRuntime): GetTypeResult {
     return getChildType(this, this.value, runtime)
   }
@@ -1939,6 +1943,11 @@ export class LetExpression extends Expression {
           deps.map(([alias, dep]) =>
             dep.getType(nextRuntime).map(type => {
               nextRuntime.addLocalType(alias, type)
+
+              const depRel = dep.relationshipFormula(runtime)
+              if (depRel) {
+                nextRuntime.addRelationship(alias, depRel)
+              }
               return ok()
             }),
           ),

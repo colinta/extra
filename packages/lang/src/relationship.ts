@@ -4,7 +4,7 @@ import * as Types from '~/types'
 import {type NarrowedInt, type NarrowedFloat, type NarrowedString} from '~/narrowed'
 import {type GetRuntimeResult} from '~/formulaParser/types'
 
-export type RelationshipComparision = '==' | '!=' | '>' | '>=' | '<' | '<='
+export type RelationshipComparison = '==' | '!=' | '>' | '>=' | '<' | '<='
 
 export type RelationshipNull = {type: 'null'; value: null}
 export type RelationshipBoolean = {type: 'boolean'; value: boolean}
@@ -22,15 +22,16 @@ export type RelationshipOperation =
   | {type: 'string-concat'; lhs: RelationshipFormula; rhs: RelationshipFormula}
   | {type: 'array-concat'; lhs: RelationshipFormula; rhs: RelationshipFormula}
 
+export type RelationshipReference = {type: 'reference'; name: string; id: string}
 export type RelationshipAssign =
-  | {type: 'reference'; name: string; id: string}
+  | RelationshipReference
   | {type: 'array-access'; of: RelationshipFormula; index: RelationshipFormula}
   | {type: 'property-access'; of: RelationshipFormula; name: string}
 
 export type RelationshipFormula = RelationshipLiteral | RelationshipAssign | RelationshipOperation
 
 export type Relationship = {
-  type: RelationshipComparision
+  type: RelationshipComparison
   left: RelationshipFormula
   right: RelationshipFormula
 }
@@ -88,9 +89,9 @@ export const relationshipFormula = {
 export function assignNextRuntime(
   runtime: TypeRuntime,
   lhs: RelationshipFormula,
-  lhsComparison: RelationshipComparision,
+  lhsComparison: RelationshipComparison,
   rhs: RelationshipFormula,
-): GetRuntimeResult<TypeRuntime> {
+): GetRuntimeResult<MutableTypeRuntime> {
   let nextRuntime = new MutableTypeRuntime(runtime)
 
   for (const [assignable, comparison, formula] of assignables(lhs, lhsComparison, rhs)) {
@@ -145,7 +146,7 @@ function runtimeLookup(
 
 function mergeAssignableType(
   assignableType: Types.Type,
-  comparison: RelationshipComparision,
+  comparison: RelationshipComparison,
   formula: RelationshipFormula,
 ): Types.Type {
   if (
@@ -154,7 +155,7 @@ function mergeAssignableType(
     formula.type === 'string-concat' ||
     formula.type === 'array-concat'
   ) {
-    throw 'todo: formula is string-concat'
+    throw `todo: formula is ${formula.type}`
   }
 
   if (!isLiteral(formula)) {
@@ -220,6 +221,22 @@ function mutateRuntime(
   }
 }
 
+export function findEventualRef(lhs: RelationshipFormula): RelationshipReference | undefined {
+  if (lhs.type === 'reference') {
+    return lhs
+  }
+
+  if (lhs.type === 'array-access') {
+    return findEventualRef(lhs.of)
+  }
+
+  if (lhs.type === 'property-access') {
+    return findEventualRef(lhs.of)
+  }
+
+  return undefined
+}
+
 function isAssign(formula: RelationshipFormula): formula is RelationshipAssign {
   return (
     formula.type === 'reference' ||
@@ -252,14 +269,14 @@ function isString(formula: RelationshipFormula): formula is RelationshipString {
 
 function assignables(
   lhs: RelationshipFormula,
-  lhsComparison: RelationshipComparision,
+  lhsComparison: RelationshipComparison,
   rhs: RelationshipFormula,
-): [RelationshipAssign, RelationshipComparision, RelationshipFormula][] {
+): [RelationshipAssign, RelationshipComparison, RelationshipFormula][] {
   if (isInvalidRefs(lhs, rhs)) {
     return []
   }
 
-  let rhsComparison: RelationshipComparision
+  let rhsComparison: RelationshipComparison
   switch (lhsComparison) {
     case '==':
     case '!=':
@@ -284,9 +301,9 @@ function assignables(
 
 function _assignables(
   formula: RelationshipFormula,
-  comparison: RelationshipComparision,
+  comparison: RelationshipComparison,
   rhs: RelationshipFormula,
-): [RelationshipAssign, RelationshipComparision, RelationshipFormula][] {
+): [RelationshipAssign, RelationshipComparison, RelationshipFormula][] {
   if (formula.type === 'reference') {
     return [[formula, comparison, rhs]]
   }
@@ -307,7 +324,7 @@ function isInvalidRefs(lhs: RelationshipFormula, rhs: RelationshipFormula) {
   const foundRefs = new Set<string>()
   const lhsRefs = findRefs(lhs)
   const rhsRefs = findRefs(rhs)
-  for (const id of lhsRefs.concat(rhsRefs)) {
+  for (const {id} of lhsRefs.concat(rhsRefs)) {
     if (foundRefs.has(id)) {
       return true
     }
@@ -317,20 +334,27 @@ function isInvalidRefs(lhs: RelationshipFormula, rhs: RelationshipFormula) {
   return false
 }
 
-function findRefs(lhs: RelationshipFormula): string[] {
-  if (lhs.type === 'reference') {
-    return [lhs.id]
+export function findRefs(lhs: RelationshipFormula): RelationshipReference[] {
+  switch (lhs.type) {
+    case 'reference':
+      return [lhs]
+    case 'array-access':
+      return findRefs(lhs.of).concat(findRefs(lhs.index))
+    case 'property-access':
+      return findRefs(lhs.of)
+    case 'addition':
+    case 'string-concat':
+    case 'array-concat':
+      return findRefs(lhs.lhs).concat(findRefs(lhs.rhs))
+    case 'negate':
+      return findRefs(lhs.arg)
+    case 'null':
+    case 'boolean':
+    case 'int':
+    case 'float':
+    case 'string':
+      return []
   }
-
-  if (lhs.type === 'array-access') {
-    return findRefs(lhs.of).concat(findRefs(lhs.index))
-  }
-
-  if (lhs.type === 'property-access') {
-    return findRefs(lhs.of)
-  }
-
-  return []
 }
 
 /**
@@ -341,7 +365,7 @@ function findRefs(lhs: RelationshipFormula): string[] {
 function mergeAssignableTypeNull(
   // assignableType is LiteralTrueType | LiteralFalseType | BooleanType
   assignableType: Types.Type,
-  comparison: RelationshipComparision,
+  comparison: RelationshipComparison,
   literal: RelationshipLiteral,
 ): Types.Type {
   if (literal.type !== 'null') {
@@ -367,7 +391,7 @@ function mergeAssignableTypeNull(
 function mergeAssignableTypeBoolean(
   // assignableType is LiteralTrueType | LiteralFalseType | BooleanType
   assignableType: Types.Type,
-  comparison: RelationshipComparision,
+  comparison: RelationshipComparison,
   literal: RelationshipLiteral,
 ): Types.Type {
   if (!isBoolean(literal)) {
@@ -429,7 +453,7 @@ function mergeAssignableTypeBoolean(
 function mergeAssignableTypeInt(
   // assignableType is LiteralIntType | MetaIntType
   assignableType: Types.Type,
-  comparison: RelationshipComparision,
+  comparison: RelationshipComparison,
   literal: RelationshipLiteral,
 ): Types.Type {
   if (!isNumeric(literal)) {
@@ -568,7 +592,7 @@ function mergeAssignableTypeInt(
 function mergeAssignableTypeFloat(
   // assignableType is LiteralFloatType | MetaFloatType
   assignableType: Types.Type,
-  comparison: RelationshipComparision,
+  comparison: RelationshipComparison,
   literal: RelationshipLiteral,
 ): Types.Type {
   if (!isNumeric(literal)) {
@@ -695,7 +719,7 @@ function mergeAssignableTypeFloat(
 function mergeAssignableTypeString(
   // assignableType is LiteralStringType | MetaStringType
   assignableType: Types.Type,
-  comparison: RelationshipComparision,
+  comparison: RelationshipComparison,
   literal: RelationshipLiteral,
 ): Types.Type {
   if (!isString(literal)) {
@@ -757,7 +781,7 @@ function mergeAssignableTypeString(
   }
 }
 
-function isTrueNumericComparison(lhs: number, comparison: RelationshipComparision, rhs: number) {
+function isTrueNumericComparison(lhs: number, comparison: RelationshipComparison, rhs: number) {
   switch (comparison) {
     case '==':
       return lhs === rhs
@@ -816,4 +840,31 @@ function isOutsideOfNarrowedString(narrowedString: NarrowedString, value: string
       return true
     }
   }
+}
+
+export function relationshipReducer(
+  runtime: MutableTypeRuntime,
+  lhs: RelationshipFormula,
+  lhsComparison: RelationshipComparison,
+  rhs: RelationshipFormula,
+) {
+  const lhsRef = findEventualRef(lhs)
+  if (!lhsRef) {
+    return
+  }
+  const lhsRelationships = _relationshipReducer(runtime, lhs)
+  const rhsRelationships = _relationshipReducer(runtime, rhs)
+  const allRelationships = lhsRelationships.concat(rhsRelationships)
+  console.log('=========== relationship.ts at line 850 ===========')
+  console.log({lhs, rhs, allRelationships})
+}
+
+function _relationshipReducer(runtime: MutableTypeRuntime, arg: RelationshipFormula) {
+  const ref = findEventualRef(arg)
+  if (!ref) {
+    return []
+  }
+
+  const relationships = runtime.getAllRelationships(ref.name)
+  return relationships
 }
