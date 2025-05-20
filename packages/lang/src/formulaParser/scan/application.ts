@@ -106,7 +106,7 @@ export function scanImportStatement(scanner: Scanner) {
 
   const importSpecifiers: Expressions.ImportSpecific[] = []
   let aliasRef: Expressions.Reference | undefined
-  if (scanner.is('as') || scanner.lookAhead(':')) {
+  if (scanner.isWord('as') || scanner.lookAhead(':')) {
     if (scanner.scanIfWord('as')) {
       scanner.scanAllWhitespace()
       aliasRef = scanValidName(scanner)
@@ -203,7 +203,7 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
     scanner.expectString('type', 'Types must be preceded by the "type" keyword.')
     scanner.expectWhitespace()
 
-    if (scanner.is('public')) {
+    if (scanner.isWord('public')) {
       isPublic = true
       scanner.expectWhitespace()
     }

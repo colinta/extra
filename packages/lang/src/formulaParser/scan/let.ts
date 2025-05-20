@@ -25,7 +25,7 @@ export function scanLet(
 
   const bindings: Expressions.NamedArgument[] = []
   for (;;) {
-    if (scanner.scanIfString('in')) {
+    if (scanner.scanIfWord('in')) {
       break
     }
 
@@ -58,7 +58,7 @@ export function scanLet(
   }
 
   const precedingInBodyComments = scanner.flushComments()
-  scanner.whereAmI(`scanLet: next, body`)
+  scanner.whereAmI(`scanLet: body`)
   const body = parseNext(outerExpressionType)
 
   scanner.whereAmI(`scanLet: body = ${body}`)

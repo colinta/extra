@@ -1,4 +1,4 @@
-import {isCommentStart, isSpacesChar, isWhitespaceChar} from './grammars'
+import {isCommentStart, isSpacesChar, isWhitespaceChar, isWord} from './grammars'
 import {unexpectedToken} from './scan/basics'
 import {ParseError, type Options, type CommentType, type Comment} from './types'
 
@@ -243,7 +243,7 @@ export class Scanner {
       if (
         this.test(() => {
           this.scanAllWhitespace()
-          return this.is(closer)
+          return isWord(closer) ? this.isWord(closer) : this.is(closer)
         })
       ) {
         this.scanAllWhitespace()

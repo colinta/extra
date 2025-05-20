@@ -20,6 +20,10 @@ export function isWhitespaceChar(char: string): boolean {
   return /^\s/.test(char)
 }
 
+export function isWord(input: string): boolean {
+  return /^\b\w+\b$/.test(input)
+}
+
 export function isBinaryOperatorChar(char: string) {
   return /^[~?.&|!<=>≤≥≠*+#%/^-]/.test(char)
 }
