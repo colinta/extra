@@ -449,7 +449,7 @@ export class Reference extends Identifier {
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
     let nextRuntime = new MutableTypeRuntime(runtime)
-    nextRuntime.addLocalType(this.name, withType)
+    nextRuntime.replaceTypeByName(this.name, withType)
     return ok(nextRuntime)
   }
 }
@@ -1946,7 +1946,7 @@ export class LetExpression extends Expression {
 
               const depRel = dep.relationshipFormula(runtime)
               if (depRel) {
-                nextRuntime.addRelationship(alias, depRel)
+                nextRuntime.addRelationship(alias, '==', depRel)
               }
               return ok()
             }),

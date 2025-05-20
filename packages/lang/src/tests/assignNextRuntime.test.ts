@@ -97,8 +97,8 @@ describe('comparisons', () => {
       (only ? it.only : skip ? it.skip : it)(
         `after (x: ${lhs}) ${lhsComparison} ${rhs.value}, typeof x should be '${expected ?? lhs}'`,
         () => {
-          const xRef = relationshipFormula.reference('x', 'x-abc123')
           runtimeTypes['x'] = [lhs, '']
+          const xRef = relationshipFormula.reference('x', typeRuntime.refId('x')!)
           const nextRuntimeResult = assignNextRuntime(typeRuntime, xRef, lhsComparison, rhs)
           expect(nextRuntimeResult.isOk()).toBe(true)
           let nextRuntime = nextRuntimeResult.get()
@@ -208,8 +208,8 @@ describe('comparisons', () => {
       (only ? it.only : skip ? it.skip : it)(
         `after (x: ${lhs}) ${lhsComparison} ${rhs.value}, typeof x should be '${expected ?? lhs}'`,
         () => {
-          const xRef = relationshipFormula.reference('x', 'x-abc123')
           runtimeTypes['x'] = [lhs, '']
+          const xRef = relationshipFormula.reference('x', typeRuntime.refId('x')!)
           const nextRuntimeResult = assignNextRuntime(typeRuntime, xRef, lhsComparison, rhs)
           expect(nextRuntimeResult.isOk()).toBe(true)
           let nextRuntime = nextRuntimeResult.get()
@@ -325,8 +325,8 @@ describe('comparisons', () => {
       (only ? it.only : skip ? it.skip : it)(
         `after (x: ${lhs}) ${lhsComparison} ${rhs.value}, typeof x should be '${expected ?? lhs}'`,
         () => {
-          const xRef = relationshipFormula.reference('x', 'x-abc123')
           runtimeTypes['x'] = [lhs, '']
+          const xRef = relationshipFormula.reference('x', typeRuntime.refId('x')!)
           const nextRuntimeResult = assignNextRuntime(typeRuntime, xRef, lhsComparison, rhs)
           expect(nextRuntimeResult.isOk()).toBe(true)
           let nextRuntime = nextRuntimeResult.get()
@@ -359,8 +359,8 @@ describe('comparisons', () => {
       (only ? it.only : skip ? it.skip : it)(
         `after (x: ${lhs}) ${lhsComparison} ${rhs.value}, typeof x should be '${expected ?? lhs}'`,
         () => {
-          const xRef = relationshipFormula.reference('x', 'x-abc123')
           runtimeTypes['x'] = [lhs, '']
+          const xRef = relationshipFormula.reference('x', typeRuntime.refId('x')!)
           const nextRuntimeResult = assignNextRuntime(typeRuntime, xRef, lhsComparison, rhs)
           expect(nextRuntimeResult.isOk()).toBe(true)
           let nextRuntime = nextRuntimeResult.get()
@@ -385,8 +385,8 @@ describe('comparisons', () => {
       (only ? it.only : skip ? it.skip : it)(
         `after (x: ${lhs}) ${lhsComparison} ${rhs.value}, typeof x should be '${expected ?? lhs}'`,
         () => {
-          const xRef = relationshipFormula.reference('x', 'x-abc123')
           runtimeTypes['x'] = [lhs, '']
+          const xRef = relationshipFormula.reference('x', typeRuntime.refId('x')!)
           const nextRuntimeResult = assignNextRuntime(typeRuntime, xRef, lhsComparison, rhs)
           expect(nextRuntimeResult.isOk()).toBe(true)
           let nextRuntime = nextRuntimeResult.get()

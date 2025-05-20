@@ -8,50 +8,26 @@ class MockValueRuntime extends MutableValueRuntime {
   }
 
   refId(name: string): string | undefined {
-    if (!this.ids.has(name) && this.runtimeTypes[name]) {
+    if (!super.refId(name) && this.runtimeTypes[name]) {
       this.addId(name)
     }
     return super.refId(name)
   }
 
   getLocalType(name: string) {
-    const key = name
-    return this.runtimeTypes[key]?.[0] ?? super.getLocalType(name)
-  }
+    if (this.runtimeTypes[name] && !super.getLocalType(name)) {
+      this.addLocalType(name, this.runtimeTypes[name][0])
+    }
 
-  getStateType(name: string) {
-    const key = `@${name}`
-    return this.runtimeTypes[key]?.[0] ?? super.getStateType(name)
-  }
-
-  getThisType(name: string) {
-    const key = `this.${name}`
-    return this.runtimeTypes[key]?.[0] ?? super.getThisType(name)
-  }
-
-  getActionType(name: string) {
-    const key = `&${name}`
-    return this.runtimeTypes[key]?.[0] ?? super.getActionType(name)
+    return super.getLocalType(name)
   }
 
   getLocalValue(name: string) {
-    const key = name
-    return this.runtimeTypes[key]?.[1] ?? super.getLocalValue(name)
-  }
+    if (this.runtimeTypes[name] && !super.getLocalValue(name)) {
+      this.addLocalValue(name, this.runtimeTypes[name][1])
+    }
 
-  getStateValue(name: string) {
-    const key = `@${name}`
-    return this.runtimeTypes[key]?.[1] ?? super.getStateValue(name)
-  }
-
-  getThisValue(name: string) {
-    const key = `this.${name}`
-    return this.runtimeTypes[key]?.[1] ?? super.getThisValue(name)
-  }
-
-  getActionValue(name: string) {
-    const key = `&${name}`
-    return this.runtimeTypes[key]?.[1] ?? super.getActionValue(name)
+    return super.getLocalValue(name)
   }
 }
 

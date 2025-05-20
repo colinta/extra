@@ -1,5 +1,11 @@
 import {type GetRuntimeResult} from '~/formulaParser/types'
-import {findRefs, type RelationshipFormula} from '~/relationship'
+import {
+  findEventualRef,
+  findRefs,
+  type RelationshipFormula,
+  type AssignedRelationship,
+  type RelationshipComparison,
+} from '~/relationship'
 import {type Type} from '~/types'
 import {type Value, type ObjectValue} from '~/values'
 
@@ -24,6 +30,7 @@ export interface Renderer<T> {
 export type TypeRuntime = Omit<
   MutableTypeRuntime,
   | 'setLocale'
+  | 'replaceType'
   | 'addLocalType'
   | 'addStateType'
   | 'addThisType'
@@ -52,34 +59,33 @@ export type ValueRuntime = Omit<
 >
 
 export class MutableTypeRuntime {
-  localTypes: Map<string, Type> = new Map()
-  relationships: Map<string, RelationshipFormula[]> = new Map()
-  localNamespaces: Map<string, Map<string, Type>> = new Map()
-  stateTypes: Map<string, Type> = new Map()
-  thisTypes: Map<string, Type> = new Map()
-  actionTypes: Map<string, Type> = new Map()
-  ids: Map<string, string> = new Map()
-  pipeType: Type | undefined
-  locale: Intl.Locale | undefined
+  /**
+   * Maps id to type
+   */
+  private types: Map<string, Type> = new Map()
+  /**
+   * Maps name to id
+   */
+  private ids: Map<string, string> = new Map()
+  /**
+   * Maps id to name
+   */
+  private names: Map<string, string> = new Map()
+  /**
+   * Maps id to relationships
+   */
+  private relationships: AssignedRelationship[] = []
+  // namespaces is only half-baked so far
+  private namespaces: Map<string, Map<string, Type>> = new Map()
+  private locale: Intl.Locale | undefined
 
   constructor(readonly parent?: TypeRuntime) {}
 
   resolved(): Set<string> {
     const resolved = new Set<string>([...(this.parent?.resolved() ?? [])])
-    for (const key of this.localTypes.keys()) {
-      resolved.add(key)
-    }
-    for (const key of this.stateTypes.keys()) {
-      resolved.add('@' + key)
-    }
-    for (const key of this.thisTypes.keys()) {
-      resolved.add('this.' + key)
-    }
-    for (const key of this.actionTypes.keys()) {
-      resolved.add('&' + key)
-    }
-    if (this.pipeType) {
-      resolved.add('#')
+    for (const id of this.types.keys()) {
+      const name = this.refName(id)!
+      resolved.add(name)
     }
 
     return resolved
@@ -87,6 +93,17 @@ export class MutableTypeRuntime {
 
   refId(name: string): string | undefined {
     return this.ids.get(name) ?? this.parent?.refId(name)
+  }
+
+  refName(id: string): string | undefined {
+    return this.names.get(id) ?? this.parent?.refName(id)
+  }
+
+  /**
+   * References an entity by id, used mostly in relationship building.
+   */
+  getTypeById(id: string): Type | undefined {
+    return this.types.get(id) ?? this.parent?.getTypeById(id)
   }
 
   /**
@@ -97,18 +114,12 @@ export class MutableTypeRuntime {
    *     <row>{user.name}</row>
    */
   getLocalType(name: string): Type | undefined {
-    const type = this.localTypes.get(name)
-    return type ?? this.parent?.getLocalType(name)
-  }
+    const id = this.refId(name)
+    if (id) {
+      return this.types.get(id) ?? this.parent?.getLocalType(name)
+    }
 
-  hasNamespace(namespace: string): boolean {
-    return this.localNamespaces.has(namespace) || this.parent?.hasNamespace(namespace) || false
-  }
-
-  getNamespaceType(namespace: string, name: string): Type | undefined {
-    const localNamespace = this.localNamespaces.get(namespace)?.get(name)
-    const type = localNamespace
-    return type ?? this.parent?.getNamespaceType(namespace, name)
+    return this.parent?.getLocalType(name)
   }
 
   /**
@@ -119,8 +130,7 @@ export class MutableTypeRuntime {
    *     <row>{@user.name}</row>
    */
   getStateType(name: string): Type | undefined {
-    const type = this.stateTypes.get(name)
-    return type ?? this.parent?.getStateType(name)
+    return this.getLocalType('@' + name)
   }
 
   /**
@@ -136,8 +146,7 @@ export class MutableTypeRuntime {
    *     }
    */
   getThisType(name: string): Type | undefined {
-    const type = this.thisTypes.get(name)
-    return type ?? this.parent?.getThisType(name)
+    return this.getLocalType('.' + name)
   }
 
   /**
@@ -147,8 +156,7 @@ export class MutableTypeRuntime {
    *     &createFoo(…)
    */
   getActionType(name: string): Type | undefined {
-    const type = this.actionTypes.get(name)
-    return type ?? this.parent?.getActionType(name)
+    return this.getLocalType('&' + name)
   }
 
   /**
@@ -158,85 +166,108 @@ export class MutableTypeRuntime {
    *     foo |> #
    */
   getPipeType(): Type | undefined {
-    return this.pipeType ?? this.parent?.getPipeType()
+    return this.getLocalType('#')
+  }
+
+  hasNamespace(namespace: string): boolean {
+    return this.namespaces.has(namespace) || this.parent?.hasNamespace(namespace) || false
+  }
+
+  getNamespaceType(namespace: string, name: string): Type | undefined {
+    const localNamespace = this.namespaces.get(namespace)?.get(name)
+    const type = localNamespace
+    return type ?? this.parent?.getNamespaceType(namespace, name)
   }
 
   getLocale(): Intl.Locale {
-    return this.locale ?? defaultLocale()
+    return this.locale ?? (this.parent ? this.parent.getLocale() : defaultLocale())
+  }
+
+  getRelationships(id: string) {
+    return this.relationships.filter(({formula}) => findEventualRef(formula).id === id)
+  }
+
+  /**
+   * Returns all the relationships that reference 'referencingId'.
+   */
+  relationshipsThatReference(referencingId: string): AssignedRelationship[] {
+    const fromParent = this.parent?.relationshipsThatReference(referencingId) ?? []
+    if (this.relationships.length === 0) {
+      return fromParent
+    }
+
+    return this.relationships
+      .filter(relationship => {
+        const refs = findRefs(relationship.right).concat(findRefs(relationship.formula))
+        return refs.some(rel => rel.id === referencingId)
+      })
+      .concat(fromParent)
   }
 
   addLocalType(name: string, type: Type) {
-    this.localTypes.set(name, type)
-    this.addId(name)
+    const id = this.addId(name)
+    this.types.set(id, type)
   }
 
-  addRelationship(name: string, rel: RelationshipFormula) {
+  replaceTypeByName(name: string, type: Type) {
+    const id = this.refId(name)
+    if (id) {
+      this.types.set(id, type)
+    }
+  }
+
+  replaceTypeById(id: string, type: Type) {
+    this.types.set(id, type)
+  }
+
+  addStateType(name: string, type: Type) {
+    this.addLocalType('@' + name, type)
+  }
+
+  addThisType(name: string, type: Type) {
+    this.addLocalType('.' + name, type)
+  }
+
+  addActionType(name: string, type: Type) {
+    this.addLocalType('&' + name, type)
+  }
+
+  setPipeType(type: Type) {
+    this.addLocalType('#', type)
+  }
+
+  addRelationship(name: string, type: RelationshipComparison, rel: RelationshipFormula) {
     const id = this.refId(name)
     if (!id) {
       return
     }
 
-    const relationships = this.relationships.get(id) ?? []
-    relationships.push(rel)
-    this.relationships.set(id, relationships)
-  }
-
-  getRelationships(name: string) {
-    return this.relationships.get(name) ?? []
-  }
-
-  getAllRelationships(name: string): RelationshipFormula[] {
-    const id = this.refId(name)
-    if (!id) {
-      return []
-    }
-
-    const relationships = [...this.relationships]
-    relationships.push(...(this.parent?.relationships ?? []))
-
-    return Array.from(relationships).flatMap(([key, relationships]) => {
-      return relationships.flatMap(relationship => {
-        const refs = findRefs(relationship)
-        if (refs.some(rel => rel.id === id)) {
-          return [relationship]
-        } else {
-          return []
-        }
-      })
+    this.relationships.push({
+      formula: {type: 'reference', name, id},
+      type,
+      right: rel,
     })
   }
 
-  addStateType(name: string, type: Type) {
-    this.stateTypes.set(name, type)
-    this.addId('@' + name)
-  }
-
-  addThisType(name: string, type: Type) {
-    this.thisTypes.set(name, type)
-    this.addId('this.' + name)
-  }
-
-  addActionType(name: string, type: Type) {
-    this.actionTypes.set(name, type)
-    this.addId('&' + name)
-  }
-
+  /**
+   * Creates a new id, even if the 'name' is already in ids - the name shadows the
+   * previous reference.
+   */
   addId(name: string) {
-    return this.ids.set(name, uid(name))
-  }
-
-  setPipeType(type: Type) {
-    this.pipeType = type
+    const id = uid(name)
+    this.ids.set(name, id)
+    this.names.set(id, name)
+    return id
   }
 
   addNamespaceTypes(namespace: string, types: Map<string, Type>) {
-    const existing = this.localNamespaces.get(namespace)
+    const existing = this.namespaces.get(namespace)
     if (existing) {
       for (const [name, type] of types.entries()) {
         existing.set(name, type)
       }
     } else {
-      this.localNamespaces.set(namespace, types)
+      this.namespaces.set(namespace, types)
     }
   }
 
@@ -246,12 +277,7 @@ export class MutableTypeRuntime {
 }
 
 export class MutableValueRuntime extends MutableTypeRuntime {
-  localValues: Map<string, Value> = new Map()
-  stateValues: Map<string, Value> = new Map()
-  thisValues: Map<string, Value> = new Map()
-  actionValues: Map<string, Value> = new Map()
-  viewValues: Map<string, Value> = new Map()
-  pipeValue: Value | undefined
+  values: Map<string, Value> = new Map()
 
   constructor(readonly parent?: ValueRuntime) {
     super(parent)
@@ -259,70 +285,58 @@ export class MutableValueRuntime extends MutableTypeRuntime {
 
   resolved(): Set<string> {
     const resolved = super.resolved()
-    for (const key of this.localValues.keys()) {
-      resolved.add(key)
-    }
-    for (const key of this.stateValues.keys()) {
-      resolved.add('@' + key)
-    }
-    for (const key of this.thisValues.keys()) {
-      resolved.add('.' + key)
-    }
-    for (const key of this.actionValues.keys()) {
-      resolved.add('&' + key)
-    }
-    for (const key of this.viewValues.keys()) {
-      resolved.add(key)
-    }
-    if (this.pipeValue) {
-      resolved.add('#')
+    for (const id of this.values.keys()) {
+      const name = this.refName(id)!
+      resolved.add(name)
     }
 
     return resolved
   }
 
   getLocalValue(name: string): Value | undefined {
-    const value = this.localValues.get(name)
-    return value ?? this.parent?.getLocalValue(name)
+    const id = this.refId(name)
+    if (id) {
+      return this.values.get(id) ?? this.parent?.getLocalValue(name)
+    }
+
+    return this.parent?.getLocalValue(name)
   }
 
   getStateValue(name: string): Value | undefined {
-    const value = this.stateValues.get(name)
-    return value ?? this.parent?.getStateValue(name)
+    return this.getLocalValue('@' + name)
   }
 
   getThisValue(name: string): Value | undefined {
-    const value = this.thisValues.get(name)
-    return value ?? this.parent?.getThisValue(name)
+    return this.getLocalValue('.' + name)
   }
 
   getActionValue(name: string): Value | undefined {
-    const value = this.actionValues.get(name)
-    return value ?? this.parent?.getActionValue(name)
+    return this.getLocalValue('&' + name)
   }
 
   getPipeValue(): Value | undefined {
-    return this.pipeValue ?? this.parent?.getPipeValue()
+    return this.getLocalValue('#')
   }
 
   addLocalValue(name: string, value: Value) {
-    this.localValues.set(name, value)
+    const id = this.addId(name)
+    this.values.set(id, value)
   }
 
   addStateValue(name: string, value: Value) {
-    this.stateValues.set(name, value)
+    this.addLocalValue('@' + name, value)
   }
 
   addThisValue(name: string, value: Value) {
-    this.thisValues.set(name, value)
+    this.addLocalValue('.' + name, value)
   }
 
   addActionValue(name: string, value: Value) {
-    this.actionValues.set(name, value)
+    this.addLocalValue('&' + name, value)
   }
 
   setPipeValue(value: Value) {
-    this.pipeValue = value
+    this.addLocalValue('#', value)
   }
 }
 

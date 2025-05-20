@@ -8,30 +8,28 @@ class MockTypeRuntime extends MutableTypeRuntime {
   }
 
   refId(name: string): string | undefined {
-    if (!this.ids.has(name) && this.runtimeTypes[name]) {
+    if (!super.refId(name) && this.runtimeTypes[name]) {
       this.addId(name)
     }
     return super.refId(name)
   }
 
+  getTypeById(id: string) {
+    const sup = super.getLocalType(id)
+    const name = super.refName(id)
+    if (!sup && name) {
+      const type = this.runtimeTypes[name]?.[0]
+      return type
+    }
+    return sup
+  }
+
   getLocalType(name: string) {
-    const key = name
-    return this.runtimeTypes[key]?.[0] ?? super.getLocalType(name)
-  }
+    if (this.runtimeTypes[name] && !super.getLocalType(name)) {
+      this.addLocalType(name, this.runtimeTypes[name][0])
+    }
 
-  getStateType(name: string) {
-    const key = `@${name}`
-    return this.runtimeTypes[key]?.[0] ?? super.getStateType(name)
-  }
-
-  getThisType(name: string) {
-    const key = `this.${name}`
-    return this.runtimeTypes[key]?.[0] ?? super.getThisType(name)
-  }
-
-  getActionType(name: string) {
-    const key = `&${name}`
-    return this.runtimeTypes[key]?.[0] ?? super.getActionType(name)
+    return super.getLocalType(name)
   }
 }
 

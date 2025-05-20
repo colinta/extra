@@ -1,10 +1,9 @@
-// import {c, cases} from '@extra-lang/cases'
 import * as Types from '~/types'
 import * as Values from '~/values'
 import {parse} from '~/formulaParser'
 import {type TypeRuntime, type ValueRuntime} from '~/runtime'
 import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
-import {mockValueRuntime} from './mockValueRuntime'
+import {mockValueRuntime} from '~/tests/mockValueRuntime'
 
 let typeRuntime: TypeRuntime
 let valueRuntime: ValueRuntime
@@ -17,7 +16,7 @@ beforeEach(() => {
 })
 
 describe('let … in', () => {
-  it.only('can infer the relationships of numbers', () => {
+  it('can infer the relationships of numbers', () => {
     runtimeTypes['index'] = [Types.int(), Values.int(1)]
     const code = `
       let
@@ -39,8 +38,6 @@ describe('let … in', () => {
       resolvedValue = currentExpression.eval(valueRuntime).get()
     }).not.toThrow()
 
-    console.log('=========== complicatedRelationships.test.ts at line 48 ===========')
-    console.log({resolvedType})
     expect(resolvedType!).toEqual(
       Types.oneOf([
         Types.tuple([
@@ -51,7 +48,50 @@ describe('let … in', () => {
         Types.nullType(),
       ]),
     )
-    expect(resolvedValue!).toEqual(Values.tuple([Values.int(-1), Values.int(1), Values.int(3)]))
+    expect(resolvedValue!).toEqual(Values.tuple([Values.int(0), Values.int(1), Values.int(2)]))
+  })
+
+  it.only('can infer the relationships of shadowed numbers', () => {
+    runtimeTypes['index'] = [Types.int(), Values.int(1)]
+    const code = `
+      let
+        prev = index - 1
+        next = prev + 2
+        _index = index
+      in
+        if (_index > 0 and _index < 10) {
+          then: {
+            prev
+            _index
+            next
+          }
+        }`
+    let resolvedType: Types.Type
+    let resolvedValue: Values.Value
+    expect(() => {
+      const currentExpression = parse(code)
+        .mapResult(r => {
+          if (r.isErr()) {
+            console.log(r.error.message)
+          }
+          return r
+        })
+        .get()
+      resolvedType = currentExpression.getType(typeRuntime).get()
+      resolvedValue = currentExpression.eval(valueRuntime).get()
+    }).not.toThrow()
+
+    expect(resolvedType!).toEqual(
+      Types.oneOf([
+        Types.tuple([
+          Types.int({min: 0, max: 8}),
+          Types.int({min: 1, max: 9}),
+          Types.int({min: 2, max: 10}),
+        ]),
+        Types.nullType(),
+      ]),
+    )
+    expect(resolvedValue!).toEqual(Values.tuple([Values.int(0), Values.int(1), Values.int(2)]))
   })
 
   it('can infer array access', () => {
@@ -82,8 +122,6 @@ describe('let … in', () => {
       resolvedValue = currentExpression.eval(valueRuntime).get()
     }).not.toThrow()
 
-    console.log('=========== complicatedRelationships.test.ts at line 48 ===========')
-    console.log({resolvedType})
     expect(resolvedType!).toEqual(
       Types.oneOf([
         Types.tuple([Types.string(), Types.string(), Types.string()]),
@@ -121,8 +159,6 @@ describe('let … in', () => {
       resolvedValue = currentExpression.eval(valueRuntime).get()
     }).not.toThrow()
 
-    console.log('=========== complicatedRelationships.test.ts at line 48 ===========')
-    console.log({resolvedType})
     expect(resolvedType!).toEqual(
       Types.oneOf([Types.tuple([Types.int(), Types.int(), Types.int()]), Types.nullType()]),
     )

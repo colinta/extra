@@ -12,7 +12,7 @@ import {
   assignNextRuntime,
   findEventualRef,
   relationshipFormula,
-  relationshipReducer,
+  relationshipDeducer,
   type RelationshipComparison,
   type RelationshipFormula,
 } from '~/relationship'
@@ -961,31 +961,25 @@ abstract class ComparisonOperator extends BinaryOperator {
   abstract symbol: RelationshipComparison
   abstract inverseSymbol: RelationshipComparison
 
-  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+  assumeSymbolIsTrue(runtime: TypeRuntime, symbol: RelationshipComparison) {
     const [lhsFormula, rhsFormula] = this.getRelationshipFormulas(runtime)
     if (!lhsFormula || !rhsFormula) {
       return ok(runtime)
     }
 
-    return assignNextRuntime(runtime, lhsFormula, this.symbol, rhsFormula).map(nextRuntime => {
+    return assignNextRuntime(runtime, lhsFormula, symbol, rhsFormula).map(nextRuntime => {
       // try to reduce nextRuntime's relationships that are based on lhsFormula/rhsFormula
-      relationshipReducer(nextRuntime, lhsFormula, this.symbol, rhsFormula)
+      relationshipDeducer(nextRuntime, lhsFormula, symbol, rhsFormula)
       return nextRuntime
     })
   }
 
-  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    const [lhsFormula, rhsFormula] = this.getRelationshipFormulas(runtime)
-    if (!lhsFormula || !rhsFormula) {
-      return ok(runtime)
-    }
+  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    return this.assumeSymbolIsTrue(runtime, this.symbol)
+  }
 
-    return assignNextRuntime(runtime, lhsFormula, this.inverseSymbol, rhsFormula).map(
-      nextRuntime => {
-        relationshipReducer(nextRuntime, lhsFormula, this.inverseSymbol, rhsFormula)
-        return nextRuntime
-      },
-    )
+  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    return this.assumeSymbolIsTrue(runtime, this.inverseSymbol)
   }
 }
 
@@ -2495,9 +2489,11 @@ class ArrayAccessOperator extends BinaryOperator {
     const lhsRel = lhsExpr.relationshipFormula(runtime)
     if (lhsRel) {
       const lhsRef = findEventualRef(lhsRel)
-      const relationships = runtime.getRelationships(lhsRef)
-      console.log('=========== operators.ts at line 2484 ===========')
-      console.log({lhsRef, relationships})
+      if (lhsRef) {
+        const relationships = runtime.getRelationships(lhsRef.id)
+        console.log('=========== operators.ts at line 2495 ===========')
+        console.log({lhsRef, relationships})
+      }
     }
 
     if (lhs instanceof Types.ArrayType) {

@@ -1,5 +1,5 @@
 import {type Result, err, mapAll, ok} from '@extra-lang/result'
-import {ApplicationRuntime, type TypeRuntime, type ValueRuntime} from '../runtime'
+import {ApplicationRuntime, MutableTypeRuntime, type ValueRuntime} from '../runtime'
 
 import * as Expressions from './expressions'
 import * as Types from '../types'
@@ -148,14 +148,14 @@ export class Application extends Expression {
   }
 
   resolveTypesAndMerge(
-    mutableRuntime: TypeRuntime,
+    mutableRuntime: MutableTypeRuntime,
     expressions: [string, Expression][],
   ): GetRuntimeResult<Map<string, Types.Type>> {
     return mapAll(
       expressions.map(
         ([name, expr]): Result<[string, Types.Type], RuntimeError> =>
           expr.getType(mutableRuntime).map(type => {
-            mutableRuntime.localTypes.set(name, type)
+            mutableRuntime.addLocalType(name, type)
             return [name, type]
           }),
       ),
@@ -163,28 +163,28 @@ export class Application extends Expression {
   }
 
   resolveTypesOfTypes(
-    mutableRuntime: TypeRuntime,
+    mutableRuntime: MutableTypeRuntime,
     orderedTypes: [string, Expressions.TypeDefinition][],
   ) {
     return this.resolveTypesAndMerge(mutableRuntime, orderedTypes)
   }
 
   resolveTypesOfHelpers(
-    mutableRuntime: TypeRuntime,
+    mutableRuntime: MutableTypeRuntime,
     orderedHelpers: [string, Expressions.HelperDefinition][],
   ) {
     return this.resolveTypesAndMerge(mutableRuntime, orderedHelpers)
   }
 
   resolveTypesOfViews(
-    mutableRuntime: TypeRuntime,
+    mutableRuntime: MutableTypeRuntime,
     orderedViews: [string, Expressions.ViewDefinition][],
   ) {
     return this.resolveTypesAndMerge(mutableRuntime, orderedViews)
   }
 
   resolveAndMergeTypes(
-    mutableRuntime: TypeRuntime,
+    mutableRuntime: MutableTypeRuntime,
     ordered: {
       orderedTypes: [string, Expressions.TypeDefinition][]
       orderedHelpers: [string, Expressions.HelperDefinition][]
@@ -217,7 +217,7 @@ export class Application extends Expression {
       expressions.map(
         ([name, expr]): Result<[string, Values.Value], RuntimeError> =>
           expr.eval(mutableRuntime).map(type => {
-            mutableRuntime.localValues.set(name, type)
+            mutableRuntime.values.set(name, type)
             return [name, type]
           }),
       ),
@@ -277,7 +277,7 @@ export class Application extends Expression {
     return ok(undefined)
   }
 
-  getType(_runtime: TypeRuntime): GetTypeResult {
+  getType(_mutableRuntime: MutableTypeRuntime): GetTypeResult {
     return err(new RuntimeError(this, 'Application does not have a type'))
   }
 
