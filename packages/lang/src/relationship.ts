@@ -876,16 +876,16 @@ function isOutsideOfNarrowedString(narrowedString: NarrowedString, value: string
 }
 
 export function relationshipDeducer(
-  runtime: MutableTypeRuntime,
+  mutateRuntime: MutableTypeRuntime,
   lhs: RelationshipFormula,
   lhsComparison: RelationshipComparison,
   rhs: RelationshipFormula,
 ) {
-  return _relationshipDeducer(runtime, lhs, lhsComparison, rhs, new Set())
+  return _relationshipDeducer(mutateRuntime, lhs, lhsComparison, rhs, new Set())
 }
 
 function _relationshipDeducer(
-  runtime: MutableTypeRuntime,
+  mutableRuntime: MutableTypeRuntime,
   lhs: RelationshipFormula,
   lhsComparison: RelationshipComparison,
   rhs: RelationshipFormula,
@@ -896,49 +896,37 @@ function _relationshipDeducer(
     type: lhsComparison,
     right: rhs,
   })
-  const refs = findRefs(lhs)
-  const refsThatRef = refs.flatMap(ref => runtime.relationshipsThatReference(ref.id))
-  console.log('=========== relationship.ts at line 899 ===========')
-  console.log({newRelationships, refs, refsThatRef})
   if (newRelationships.length === 0) {
     return
   }
-  const lhsRelationships = _relationshipSearch(runtime, lhs)
-  const rhsRelationships = _relationshipSearch(runtime, rhs)
-  const allRelationships = lhsRelationships.concat(rhsRelationships)
 
+  // const lhsRelationships = _relationshipSearch(mutableRuntime, lhs)
+  // const rhsRelationships = _relationshipSearch(mutableRuntime, rhs)
+  // const allRelationships = lhsRelationships.concat(rhsRelationships)
+  const nextRelationships: AssignedRelationship[] = []
   for (const newRelationship of newRelationships) {
+    const allRelationships = _relationshipSearch(mutableRuntime, newRelationship.formula)
     for (const prevRelationship of allRelationships) {
-      handleRelationship(runtime, prevRelationship, newRelationship)
+      nextRelationships.push(
+        ...handleRelationship(mutableRuntime, prevRelationship, newRelationship),
+      )
     }
+  }
+
+  for (const {formula, type, right} of nextRelationships) {
+    const ref = findEventualRef(formula)
+    if (visited.has(ref.id)) {
+      continue
+    }
+    visited.add(ref.id)
+
+    _relationshipDeducer(mutableRuntime, formula, type, right, visited)
   }
 }
 
-/**
- * Looks for relationships that reference 'arg' (if it is a ref), and rewrites them
- * (if possible) so that they are in terms of 'arg'.
- *
- * relationshipsThatReference(ref.id) will always have 'ref' on the RHS.
- */
 function _relationshipSearch(runtime: MutableTypeRuntime, arg: RelationshipFormula) {
-  const ref = findEventualRef(arg)
-  if (!ref) {
-    return []
-  }
-
-  const found = runtime.relationshipsThatReference(ref.id)
-  return found
-    .flatMap(({formula, type, right}) =>
-      _simplifyRelationships({
-        formula: right,
-        type: reverseComparison(type),
-        right: formula,
-      }),
-    )
-    .filter(rel => {
-      const foundRef = findEventualRef(rel.formula)
-      return foundRef?.id === ref.id
-    })
+  const refs = findRefs(arg)
+  return refs.flatMap(ref => runtime.getRelationships(ref.id))
 }
 
 /**
@@ -953,8 +941,14 @@ function handleRelationship(
   mutateRuntime: MutableTypeRuntime,
   prevRelationship: AssignedRelationship,
   newRelationship: AssignedRelationship,
-): Relationship[] {
+) {
   if (prevRelationship.type === '==') {
+    const assertRef1 = findEventualRef(prevRelationship.formula)
+    const assertRef2 = findEventualRef(newRelationship.formula)
+    if (assertRef1.id !== assertRef2.id) {
+      throw `unexpected: ${assertRef1.id} !== ${assertRef2.id}`
+    }
+
     const updatedRelationships = _simplifyRelationships({
       formula: prevRelationship.right,
       type: newRelationship.type,
@@ -970,11 +964,10 @@ function handleRelationship(
       const nextType = mergeAssignableType(prevType, relationship.type, relationship.right)
       mutateRuntime.replaceTypeById(prevRef.id, nextType)
     }
+    return updatedRelationships
   } else {
     throw 'todo'
   }
-
-  return []
 }
 
 /**

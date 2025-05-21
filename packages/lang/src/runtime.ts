@@ -5,6 +5,7 @@ import {
   type RelationshipFormula,
   type AssignedRelationship,
   type RelationshipComparison,
+  simplifyRelationships,
 } from '~/relationship'
 import {type Type} from '~/types'
 import {type Value, type ObjectValue} from '~/values'
@@ -74,7 +75,7 @@ export class MutableTypeRuntime {
   /**
    * Maps id to relationships
    */
-  private relationships: AssignedRelationship[] = []
+  private relationships: Map<string, AssignedRelationship[]> = new Map()
   // namespaces is only half-baked so far
   private namespaces: Map<string, Map<string, Type>> = new Map()
   private locale: Intl.Locale | undefined
@@ -183,8 +184,10 @@ export class MutableTypeRuntime {
     return this.locale ?? (this.parent ? this.parent.getLocale() : defaultLocale())
   }
 
-  getRelationships(id: string) {
-    return this.relationships.filter(({formula}) => findEventualRef(formula).id === id)
+  getRelationships(id: string): AssignedRelationship[] {
+    const fromParent = this.parent?.getRelationships(id) ?? []
+    const fromSelf = this.relationships.get(id) ?? []
+    return fromSelf.concat(fromParent)
   }
 
   /**
@@ -192,16 +195,11 @@ export class MutableTypeRuntime {
    */
   relationshipsThatReference(referencingId: string): AssignedRelationship[] {
     const fromParent = this.parent?.relationshipsThatReference(referencingId) ?? []
-    if (this.relationships.length === 0) {
+    if (!this.relationships.has(referencingId)) {
       return fromParent
     }
 
-    return this.relationships
-      .filter(relationship => {
-        const refs = findRefs(relationship.right).concat(findRefs(relationship.formula))
-        return refs.some(rel => rel.id === referencingId)
-      })
-      .concat(fromParent)
+    return this.relationships.get(referencingId)!.concat(fromParent)
   }
 
   addLocalType(name: string, type: Type) {
@@ -242,11 +240,16 @@ export class MutableTypeRuntime {
       return
     }
 
-    this.relationships.push({
+    for (const relationship of simplifyRelationships({
       formula: {type: 'reference', name, id},
       type,
       right: rel,
-    })
+    })) {
+      const rel = findEventualRef(relationship.formula)
+      const relationships = this.relationships.get(rel.id) ?? []
+      relationships.push(relationship)
+      this.relationships.set(rel.id, relationships)
+    }
   }
 
   /**

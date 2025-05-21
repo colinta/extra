@@ -59,7 +59,7 @@ describe('let … in', () => {
         next = prev + 2
         _index = index
       in
-        if (_index > 0 and _index < 10) {
+        if (_index > 0 and 10 > _index) {
           then: {
             prev
             _index

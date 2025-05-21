@@ -18,14 +18,14 @@ describe('relationshipsThatReference', () => {
     expect(runtime.relationshipsThatReference(aId)).toEqual([
       {
         formula: {
-          id: bId,
-          name: 'b',
+          id: aId,
+          name: 'a',
           type: 'reference',
         },
         type: '==',
         right: {
-          id: aId,
-          name: 'a',
+          id: bId,
+          name: 'b',
           type: 'reference',
         },
       },

@@ -1944,7 +1944,7 @@ export class LetExpression extends Expression {
             dep.getType(nextRuntime).map(type => {
               nextRuntime.addLocalType(alias, type)
 
-              const depRel = dep.relationshipFormula(runtime)
+              const depRel = dep.value.relationshipFormula(nextRuntime)
               if (depRel) {
                 nextRuntime.addRelationship(alias, '==', depRel)
               }
