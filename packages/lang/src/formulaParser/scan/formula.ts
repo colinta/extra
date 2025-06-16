@@ -17,28 +17,37 @@ export function scanFormula(
   scanner: Scanner,
   expressionType: ExpressionType,
   parseNext: ParseNext,
+  bodyExpressionType?: ExpressionType,
 ) {
   return _scanFormula(scanner, expressionType, parseNext, {
     type: 'fn',
     isNamedFn: false,
-    bodyExpressionType: undefined,
+    bodyExpressionType,
   })
 }
 
-export function scanNamedFormula(scanner: Scanner, parseNext: ParseNext) {
+export function scanNamedFormula(
+  scanner: Scanner,
+  parseNext: ParseNext,
+  bodyExpressionType?: ExpressionType,
+) {
   return _scanFormula(scanner, 'expression', parseNext, {
     type: 'fn',
     isNamedFn: true,
-    bodyExpressionType: undefined,
+    bodyExpressionType,
   }) as Expressions.NamedFormulaExpression
 }
 
-export function scanActionFormula(scanner: Scanner, parseNext: ParseNext) {
+export function scanActionFormula(
+  scanner: Scanner,
+  parseNext: ParseNext,
+  bodyExpressionType?: ExpressionType,
+) {
   scanner.whereAmI('scanActionFormula')
   return _scanFormula(scanner, 'expression', parseNext, {
     type: '&fn',
     isNamedFn: true,
-    bodyExpressionType: undefined,
+    bodyExpressionType,
   }) as Expressions.NamedFormulaExpression
 }
 
@@ -46,19 +55,24 @@ export function scanViewFormula(
   scanner: Scanner,
   expressionType: ExpressionType,
   parseNext: ParseNext,
+  bodyExpressionType?: ExpressionType,
 ) {
   return _scanFormula(scanner, expressionType, parseNext, {
     type: 'view',
     isNamedFn: true,
-    bodyExpressionType: undefined,
+    bodyExpressionType,
   }) as Expressions.ViewFormulaExpression
 }
 
-export function scanMainFormula(scanner: Scanner, parseNext: ParseNext) {
+export function scanMainFormula(
+  scanner: Scanner,
+  parseNext: ParseNext,
+  bodyExpressionType?: ExpressionType,
+) {
   return _scanFormula(scanner, 'expression', parseNext, {
     type: 'Main',
     isNamedFn: false,
-    bodyExpressionType: undefined,
+    bodyExpressionType,
   }) as Expressions.MainFormulaExpression
 }
 

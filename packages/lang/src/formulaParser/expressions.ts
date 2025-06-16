@@ -1879,7 +1879,7 @@ export class SpreadFunctionArgument extends SpreadArgument {
 
 export class LetExpression extends Expression {
   readonly name = 'let'
-  readonly bindings: [string, NamedArgument][]
+  readonly bindings: [string, NamedArgument | NamedFormulaExpression][]
   private isSorted: boolean
 
   constructor(
@@ -1890,18 +1890,32 @@ export class LetExpression extends Expression {
      * - precedingInBodyComments: before 'in'
      */
     public precedingInBodyComments: Comment[],
-    bindings: NamedArgument[],
+    bindings: (NamedArgument | NamedFormulaExpression)[],
     readonly body: Expression,
   ) {
     super(range, precedingComments)
 
     const sorted = dependencySort(
-      bindings.map(arg => [arg.alias, arg]),
+      bindings.map((arg): [string, NamedArgument | NamedFormulaExpression] => {
+        if (arg instanceof NamedFormulaExpression) {
+          return [arg.nameRef.name, arg]
+        }
+
+        return [arg.alias, arg]
+      }),
       new Set(),
       true,
     )
     this.isSorted = sorted.isOk()
-    this.bindings = sorted.safeGet() ?? bindings.map(arg => [arg.alias, arg])
+    this.bindings =
+      sorted.safeGet() ??
+      bindings.map(arg => {
+        if (arg instanceof NamedFormulaExpression) {
+          return [arg.nameRef.name, arg]
+        }
+
+        return [arg.alias, arg]
+      })
   }
 
   private sortedBindings() {
@@ -1913,15 +1927,31 @@ export class LetExpression extends Expression {
   }
 
   toLisp() {
-    const bindings = this.bindings.map(it => `(${it[0] + ': ' + it[1].value.toLisp()})`).join(' ')
+    const bindings = this.bindings
+      .map(([alias, arg]) => {
+        if (arg instanceof NamedFormulaExpression) {
+          return `${arg.toLisp()}`
+        }
+
+        return `(${alias + ': ' + arg.value.toLisp()})`
+      })
+      .join(' ')
     return `(let ${bindings} ${this.body.toLisp()})`
   }
 
   toCode() {
     let code = 'let\n'
     for (const [alias, arg] of this.bindings) {
-      let line = alias + ' = '
-      const exprCode = arg.value.toCode()
+      let line: string
+      let exprCode: string
+      if (arg instanceof NamedFormulaExpression) {
+        line = ''
+        exprCode = arg.toCode()
+      } else {
+        line = alias + ' = '
+        exprCode = arg.value.toCode()
+      }
+
       if (exprCode.includes('\n') || line.length + exprCode.length > MAX_INNER_LEN) {
         line += '\n' + indent(exprCode)
       } else {
@@ -1944,10 +1974,17 @@ export class LetExpression extends Expression {
             dep.getType(nextRuntime).map(type => {
               nextRuntime.addLocalType(alias, type)
 
-              const depRel = dep.value.relationshipFormula(nextRuntime)
+              let depRel: RelationshipFormula | undefined
+              if (dep instanceof NamedFormulaExpression) {
+                depRel = dep.relationshipFormula(nextRuntime)
+              } else {
+                depRel = dep.value.relationshipFormula(nextRuntime)
+              }
+
               if (depRel) {
                 nextRuntime.addRelationship(alias, '==', depRel)
               }
+
               return ok()
             }),
           ),

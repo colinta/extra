@@ -1,6 +1,7 @@
 import * as Expressions from '../expressions'
 import {type Scanner} from '../scanner'
 import {type ExpressionType, type ParseNext} from '../types'
+import {scanNamedFormula} from './formula'
 import {scanValidName} from './identifier'
 
 /**
@@ -23,27 +24,32 @@ export function scanLet(
   scanner.expectString('let')
   scanner.scanAllWhitespace()
 
-  const bindings: Expressions.NamedArgument[] = []
+  const bindings: (Expressions.NamedArgument | Expressions.NamedFormulaExpression)[] = []
   for (;;) {
     if (scanner.scanIfWord('in')) {
       break
     }
 
-    const name = scanValidName(scanner)
-    scanner.scanAllWhitespace()
-    const followingAliasComments = scanner.flushComments()
-    scanner.expectString('=')
-    scanner.scanAllWhitespace()
-    const value = parseNext('let')
+    let entry: Expressions.NamedArgument | Expressions.NamedFormulaExpression
+    if (scanner.isWord('fn')) {
+      entry = scanNamedFormula(scanner, parseNext, 'let')
+    } else {
+      const name = scanValidName(scanner)
+      scanner.scanAllWhitespace()
+      const followingAliasComments = scanner.flushComments()
+      scanner.expectString('=')
+      scanner.scanAllWhitespace()
+      const value = parseNext('let')
 
-    scanner.whereAmI(`scanLet: ${name} = ${value}`)
-    const entry = new Expressions.NamedArgument(
-      [name.range[0], value.range[1]],
-      name.precedingComments,
-      name.name,
-      value,
-    )
-    entry.followingAliasComments = followingAliasComments
+      scanner.whereAmI(`scanLet: ${name} = ${value}`)
+      entry = new Expressions.NamedArgument(
+        [name.range[0], value.range[1]],
+        name.precedingComments,
+        name.name,
+        value,
+      )
+      entry.followingAliasComments = followingAliasComments
+    }
     bindings.push(entry)
 
     const shouldBreak = scanner.scanCommaOrBreak('in', `Expected ',' separating items in let`)

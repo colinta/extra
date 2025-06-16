@@ -108,6 +108,15 @@ in
     a + b
 `,
       ]),
+      c([
+        `\
+let
+  fn a() => 1
+in
+  a() + 1
+`,
+        '(let (fn a() => 1) (+ (fn a ()) 1))',
+      ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) => {
       ;(only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         expectedCode ??= formula
