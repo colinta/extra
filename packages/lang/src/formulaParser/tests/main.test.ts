@@ -4,8 +4,8 @@ import {parseInternalTest} from '~/formulaParser'
 
 describe('Main', () => {
   cases<[string, string] | [string, string, string]>(
-    c(['Main() => null', '( Main() (=> `null`))']),
-    c(['Main(a: A) => @a ++ a', '( Main((a: A)) (=> (++ @a a)))']),
+    c(['Main() => null', '( Main() => `null`)']),
+    c(['Main(a: A) => @a ++ a', '( Main((a: A)) => (++ @a a))']),
   ).run(args =>
     it(`should parse Main definition '${args[0]}'`, () => {
       const [formula, expected, expectedFormula] = args

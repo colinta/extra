@@ -3009,7 +3009,7 @@ export class FormulaExpression extends Expression {
     if (!(this.returnType instanceof InferIdentifier)) {
       code += ' : ' + this.returnType.toLisp()
     }
-    code += ' (=> ' + this.body.toLisp() + ')'
+    code += ' => ' + this.body.toLisp()
     code += prefixed ? ')' : ''
     return code
   }

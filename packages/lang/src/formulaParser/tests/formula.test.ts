@@ -14,30 +14,30 @@ beforeEach(() => {
 describe('formulas', () => {
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
-      c(['fn(): Int => 0', '(fn () : `Int` (=> 0))']),
-      c(['fn(): {foo: Int} => 0', '(fn () : {(foo: `Int`)} (=> 0))']),
-      c(['fn(#a: Int): Int => 0', '(fn ((#a: `Int`)) : `Int` (=> 0))']),
-      c(['fn(#a: Int = 0): Int => 0', '(fn ((#a: `Int` 0)) : `Int` (=> 0))']),
-      c(['fn(#a: Int, a b: Int): Int => 0', '(fn ((#a: `Int`) (a b: `Int`)) : `Int` (=> 0))']),
+      c(['fn(): Int => 0', '(fn () : `Int` => 0)']),
+      c(['fn(): {foo: Int} => 0', '(fn () : {(foo: `Int`)} => 0)']),
+      c(['fn(#a: Int): Int => 0', '(fn ((#a: `Int`)) : `Int` => 0)']),
+      c(['fn(#a: Int = 0): Int => 0', '(fn ((#a: `Int` 0)) : `Int` => 0)']),
+      c(['fn(#a: Int, a b: Int): Int => 0', '(fn ((#a: `Int`) (a b: `Int`)) : `Int` => 0)']),
       c([
         'fn(name: String?, age: Int?) => 0',
-        '(fn ((name: (`String` | `null`)) (age: (`Int` | `null`))) (=> 0))',
+        '(fn ((name: (`String` | `null`)) (age: (`Int` | `null`))) => 0)',
       ]),
       c([
         'fn(#a: Int, ...#as: Array(Int)): Int => 0',
-        '(fn ((#a: `Int`) (...#as: Array(`Int`))) : `Int` (=> 0))',
+        '(fn ((#a: `Int`) (...#as: Array(`Int`))) : `Int` => 0)',
       ]),
       c([
         'fn(#a: Int, *as: Dict(Int)): Int => 0',
-        '(fn ((#a: `Int`) (*as: Dict(`Int`))) : `Int` (=> 0))',
+        '(fn ((#a: `Int`) (*as: Dict(`Int`))) : `Int` => 0)',
       ]),
       c([
         'fn(#a: Int, ...a as: Array(Int)): Int => 0',
-        '(fn ((#a: `Int`) (...a as: Array(`Int`))) : `Int` (=> 0))',
+        '(fn ((#a: `Int`) (...a as: Array(`Int`))) : `Int` => 0)',
       ]),
-      c(['fn(...a: Array(Int)): Int => 0', '(fn ((...a: Array(`Int`))) : `Int` (=> 0))']),
-      c(['fn(a: Int): Int => 0', '(fn ((a: `Int`)) : `Int` (=> 0))']),
-      c(['fn(a: Int, #b: Int): Int => 0', '(fn ((a: `Int`) (#b: `Int`)) : `Int` (=> 0))']),
+      c(['fn(...a: Array(Int)): Int => 0', '(fn ((...a: Array(`Int`))) : `Int` => 0)']),
+      c(['fn(a: Int): Int => 0', '(fn ((a: `Int`)) : `Int` => 0)']),
+      c(['fn(a: Int, #b: Int): Int => 0', '(fn ((a: `Int`) (#b: `Int`)) : `Int` => 0)']),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         expectedCode ??= formula

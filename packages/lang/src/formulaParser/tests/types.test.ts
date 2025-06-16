@@ -111,7 +111,7 @@ class User() {
     else
       this.first-name or this.last-name or '<no name>'
 }`,
-      "(type User {(first-name: `String` = '') (last-name: (`String(length: >=1)` | `null`)) (age: `Int(>=0)` = 0) (fn fullname(() : (`String`) (=> (fn if ((&& (. this first-name) (. this last-name)) (then (++ (. this first-name) (. this last-name))) (else (|| (|| (. this first-name) (. this last-name)) '<no name>')))))))})",
+      "(type User {(first-name: `String` = '') (last-name: (`String(length: >=1)` | `null`)) (age: `Int(>=0)` = 0) (fn fullname(() : (`String`) => (fn if ((&& (. this first-name) (. this last-name)) (then (++ (. this first-name) (. this last-name))) (else (|| (|| (. this first-name) (. this last-name)) '<no name>'))))))})",
       `\
 class User() {
   first-name: String = ''

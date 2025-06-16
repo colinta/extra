@@ -259,7 +259,7 @@ elseif(a): a
 if(a) {
 then:
   1
-`,
+}`,
         Types.string({min: 1}),
         "Type 'String(length: >=1)' is invalid as an if condition, because it is always true.",
       ]),
@@ -268,7 +268,7 @@ then:
 if(a) {
 then:
   1
-`,
+}`,
         Types.string({max: 0}),
         'Type \'""\' is invalid as an if condition, because it is always false.',
       ]),

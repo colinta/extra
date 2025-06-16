@@ -4,26 +4,26 @@ import {parseInternalTest} from '~/formulaParser'
 
 describe('view', () => {
   cases<[string, string] | [string, string, string]>(
-    c(['view Asdf() => <></>', '(view Asdf() (=> <></>))']),
-    c(['view Asdf() => <>{a}</>', '(view Asdf() (=> <> a </>))', 'view Asdf() => <>{a}</>']),
+    c(['view Asdf() => <></>', '(view Asdf() => <></>)']),
+    c(['view Asdf() => <>{a}</>', '(view Asdf() => <> a </>)', 'view Asdf() => <>{a}</>']),
     c([
       `view AnyView() => <>{- comments? {- more comments wow -} -}</>`,
-      '(view AnyView() (=> <></>))',
+      '(view AnyView() => <></>)',
       'view AnyView() => <></>',
     ]),
     c([
       'view Asdf() => <>a{a}b</>',
-      "(view Asdf() (=> <> 'a' a 'b' </>))",
+      "(view Asdf() => <> 'a' a 'b' </>)",
       'view Asdf() => <>a{a}b</>',
     ]),
     c([
       'view Asdf() => <>a {a} b</>',
-      "(view Asdf() (=> <> 'a ' a ' b' </>))",
+      "(view Asdf() => <> 'a ' a ' b' </>)",
       'view Asdf() => <>a {a} b</>',
     ]),
     c([
       'view Asdf() => <>a\\{a\\}b<\\<\\></>',
-      "(view Asdf() (=> <> 'a{a}b<<>' </>))",
+      "(view Asdf() => <> 'a{a}b<<>' </>)",
       'view Asdf() => <>a\\{a\\}b<<></>',
     ]),
     c([
@@ -33,9 +33,9 @@ describe('view', () => {
     {a}
     b<
   </>`,
-      "(view Asdf() (=> <> '\\n  a\\n  ' a '\\n  b<\\n' </>))",
+      "(view Asdf() => <> '\\n  a\\n  ' a '\\n  b<\\n' </>)",
     ]),
-    c(['view Foo(a: User) => <User user=a />', '(view Foo((a: User)) (=> <User user=a />))']),
+    c(['view Foo(a: User) => <User user=a />', '(view Foo((a: User)) => <User user=a />)']),
     c([
       `view AnyView() =>
   <>
@@ -46,7 +46,7 @@ describe('view', () => {
     </Row>
   </>
     `,
-      `(view AnyView() (=> <> '\\n  ' <Row height=8 width='auto'> '\\n  ' <Header style=@style> 'Welcome!' </Header> '\\n  ' <Text isBold !isFancy> 'Hello, ' name </Text> '\\n  ' <Button title=foo.bar onPress=&action testFn=foo('bar') testArray=foo[0] testOp=(1 + 1) testSafe=foo?.bar /> '\\n' </Row> '\\n' </>))`,
+      `(view AnyView() => <> '\\n  ' <Row height=8 width='auto'> '\\n  ' <Header style=@style> 'Welcome!' </Header> '\\n  ' <Text isBold !isFancy> 'Hello, ' name </Text> '\\n  ' <Button title=foo.bar onPress=&action testFn=foo('bar') testArray=foo[0] testOp=(1 + 1) testSafe=foo?.bar /> '\\n' </Row> '\\n' </>)`,
       `view AnyView() =>
   <>
     <Row height=8 width='auto'>
