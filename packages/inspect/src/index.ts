@@ -199,13 +199,15 @@ for (const logLevel of ['log', 'warn', 'debug', 'info', 'error'] as const) {
       return
     }
 
-    for (const message of messages) {
-      if (typeof message === 'string') {
-        logFn(message)
-      } else {
-        logFn(inspect(message, true))
-      }
-    }
+    logFn(
+      ...messages.map(message => {
+        if (typeof message === 'string') {
+          return message
+        } else {
+          return inspect(message, true)
+        }
+      }),
+    )
   }
 }
 
