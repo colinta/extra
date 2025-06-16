@@ -1,11 +1,5 @@
 import * as Types from '~/types'
-import * as Values from '~/values'
-import {
-  type TypeRuntime,
-  type ValueRuntime,
-  MutableTypeRuntime,
-  MutableValueRuntime,
-} from '~/runtime'
+import {MutableTypeRuntime} from '~/runtime'
 
 describe('relationshipsThatReference', () => {
   it('a == b', () => {
@@ -15,7 +9,7 @@ describe('relationshipsThatReference', () => {
     const aId = runtime.refId('a')!
     const bId = runtime.refId('b')!
     runtime.addRelationship('b', '==', {type: 'reference', name: 'a', id: aId})
-    expect(runtime.relationshipsThatReference(aId)).toEqual([
+    expect(runtime.getRelationships(aId)).toEqual([
       {
         formula: {
           id: aId,
@@ -30,7 +24,7 @@ describe('relationshipsThatReference', () => {
         },
       },
     ])
-    expect(runtime.relationshipsThatReference(bId)).toEqual([
+    expect(runtime.getRelationships(bId)).toEqual([
       {
         formula: {
           id: bId,

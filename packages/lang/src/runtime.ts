@@ -1,11 +1,12 @@
 import {type GetRuntimeResult} from '~/formulaParser/types'
 import {
   findEventualRef,
-  findRefs,
   type RelationshipFormula,
   type AssignedRelationship,
   type RelationshipComparison,
   simplifyRelationships,
+  isEqualRelationship,
+  RelationshipAssign,
 } from '~/relationship'
 import {type Type} from '~/types'
 import {type Value, type ObjectValue} from '~/values'
@@ -60,6 +61,13 @@ export type ValueRuntime = Omit<
 >
 
 export class MutableTypeRuntime {
+  readonly _id = uid()
+  get id(): string {
+    if (this.parent) {
+      return `${this.parent.id}-${this._id}`
+    }
+    return `runtime-${this._id}`
+  }
   /**
    * Maps id to type
    */
@@ -190,18 +198,6 @@ export class MutableTypeRuntime {
     return fromSelf.concat(fromParent)
   }
 
-  /**
-   * Returns all the relationships that reference 'referencingId'.
-   */
-  relationshipsThatReference(referencingId: string): AssignedRelationship[] {
-    const fromParent = this.parent?.relationshipsThatReference(referencingId) ?? []
-    if (!this.relationships.has(referencingId)) {
-      return fromParent
-    }
-
-    return this.relationships.get(referencingId)!.concat(fromParent)
-  }
-
   addLocalType(name: string, type: Type) {
     const id = this.addId(name)
     this.types.set(id, type)
@@ -239,16 +235,26 @@ export class MutableTypeRuntime {
     if (!id) {
       return
     }
+    this.addRelationshipFormula({type: 'reference', name, id}, type, rel)
+  }
 
+  addRelationshipFormula(
+    formula: RelationshipAssign,
+    type: RelationshipComparison,
+    rel: RelationshipFormula,
+  ) {
     for (const relationship of simplifyRelationships({
-      formula: {type: 'reference', name, id},
+      formula,
       type,
       right: rel,
     })) {
-      const rel = findEventualRef(relationship.formula)
-      const relationships = this.relationships.get(rel.id) ?? []
-      relationships.push(relationship)
-      this.relationships.set(rel.id, relationships)
+      const ref = findEventualRef(relationship.formula)
+      const prevRelationships = this.relationships.get(ref.id) ?? []
+
+      if (!prevRelationships.some(prevRel => isEqualRelationship(prevRel, relationship))) {
+        prevRelationships.push(relationship)
+        this.relationships.set(ref.id, prevRelationships)
+      }
     }
   }
 
@@ -360,7 +366,7 @@ function defaultLocale() {
   return new Intl.Locale('en-ca')
 }
 
-function uid(name: string) {
-  const uid = Math.floor(Math.random() * 1000000)
-  return `${name}-${uid.toString(16)}`
+function uid(name: string = '') {
+  const uid = Math.floor(Math.random() * 1000000).toString(16)
+  return name ? `${name}-${uid}` : uid
 }

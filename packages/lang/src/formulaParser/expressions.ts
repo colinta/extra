@@ -4205,7 +4205,7 @@ function getChildType<T extends Expression>(
 
 function decorateError(expr: Expression) {
   return function mapError(result: GetTypeResult): GetTypeResult {
-    if (result.isErr()) {
+    if (result.isErr() && result.error instanceof RuntimeError) {
       result.error.pushParent(expr)
     }
     return result

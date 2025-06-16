@@ -2282,7 +2282,7 @@ export class ObjectType extends Type {
 
   /**
    * Returns a copy of the ObjectType, replacing the type of one property. This is
-   * used by the type narrowing code to return a more specific type.
+   * used by the type narrowing and relationship code.
    */
   replacingProp(propName: string, type: Type): Result<ObjectType, string> {
     return ok(

@@ -61,10 +61,16 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
     for (;;) {
       if (scanner.isEOF()) {
         if (what === 'block') {
-          break
+          throw new ParseError(
+            scanner,
+            `Expected '}' to close block arguments list, but reached end of input.`,
+          )
         }
 
-        throw new ParseError(scanner, `Unexpected end of input while scanning arguments.`)
+        throw new ParseError(
+          scanner,
+          `Expected ')' to close arguments list, but reached end of input.`,
+        )
       }
 
       const argRange0 = scanner.charIndex

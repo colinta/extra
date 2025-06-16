@@ -35,7 +35,13 @@ function rel(
   return rel
 }
 
-describe('simpleRelationships', () => {
+function splitFormula(formula: string) {
+  const symbol = formula.match(/([<=>]+)/)![1] as Relationship.RelationshipComparison
+  const [lhs, rhs] = formula.split(symbol, 2).map(s => s.trim())
+  return {lhs, rhs, symbol}
+}
+
+describe('simplifyRelationships', () => {
   beforeEach(() => {
     runtimeTypes['x'] = [Types.int(), Values.int(1)]
     runtimeTypes['y'] = [Types.int(), Values.int(1)]
@@ -82,9 +88,7 @@ describe('simpleRelationships', () => {
       ],
     ]),
   ).run(([formula, expectedRelationships], {only, skip}) => {
-    const symbol = formula.match(/([<=>]+)/)![1] as Relationship.RelationshipComparison
-    const [lhs, rhs] = formula.split(symbol, 2).map(s => s.trim())
-
+    const {lhs, rhs, symbol} = splitFormula(formula)
     ;(only ? it.only : skip ? it.skip : it)(
       `${formula} should simplify to [${expectedRelationships.map(([code]) => code).join(', ')}]`,
       () => {
@@ -108,10 +112,7 @@ describe('simpleRelationships', () => {
 
         const missingRelationships: Relationship.Relationship[] = []
         for (const [relCode, expectedFormula] of expectedRelationships) {
-          const expectedSymbol = relCode.match(
-            /([<=>]+)/,
-          )![1] as Relationship.RelationshipComparison
-          const ref = relCode.split(expectedSymbol)[0].trim()
+          const {symbol: expectedSymbol, lhs: ref} = splitFormula(relCode)
           const expected = expectedFormula()
           const expectedRelationship = rel(ref, expectedSymbol, expected)
           if (
@@ -132,4 +133,45 @@ describe('simpleRelationships', () => {
       },
     )
   })
+})
+
+describe('isEqualRelationship', () => {
+  beforeEach(() => {
+    runtimeTypes['x'] = [Types.int(), Values.int(1)]
+    runtimeTypes['y'] = [Types.int(), Values.int(1)]
+    runtimeTypes['z'] = [Types.int(), Values.int(1)]
+  })
+
+  cases<[string, string, boolean]>(
+    c(['x < y', 'x < y', true]),
+    c(['x < y + 1', 'x < y + 1', true]),
+    c(['x < y + 1', 'x < y + 2', false]),
+    c(['x < y + 1', 'x < y + z', false]),
+    c(['x < 1', 'x < 1', true]),
+    c(['x < 1', 'x <= 1', false]),
+  ).run(([lhs, rhs, expectedEqual], {only, skip}) =>
+    (only ? it.only : skip ? it.skip : it)(`${lhs} == ${rhs} should be ${expectedEqual}`, () => {
+      const lhsRel = splitFormula(lhs)
+      const rhsRel = splitFormula(rhs)
+      const lhsFormula = parse(lhsRel.lhs).get().relationshipFormula(typeRuntime)
+      const lhsRight = parse(lhsRel.rhs).get().relationshipFormula(typeRuntime)
+      const rhsFormula = parse(rhsRel.lhs).get().relationshipFormula(typeRuntime)
+      const rhsRight = parse(rhsRel.rhs).get().relationshipFormula(typeRuntime)
+
+      expect(
+        Relationship.isEqualRelationship(
+          {
+            formula: lhsFormula!,
+            type: lhsRel.symbol,
+            right: lhsRight!,
+          },
+          {
+            formula: rhsFormula!,
+            type: rhsRel.symbol,
+            right: rhsRight!,
+          },
+        ),
+      ).toBe(expectedEqual)
+    }),
+  )
 })

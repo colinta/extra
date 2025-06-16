@@ -12,7 +12,6 @@ import {
   assignNextRuntime,
   findEventualRef,
   relationshipFormula,
-  relationshipDeducer,
   type RelationshipComparison,
   type RelationshipFormula,
 } from '~/relationship'
@@ -967,11 +966,7 @@ abstract class ComparisonOperator extends BinaryOperator {
       return ok(runtime)
     }
 
-    return assignNextRuntime(runtime, lhsFormula, symbol, rhsFormula).map(nextRuntime => {
-      // try to reduce nextRuntime's relationships that are based on lhsFormula/rhsFormula
-      relationshipDeducer(nextRuntime, lhsFormula, symbol, rhsFormula)
-      return nextRuntime
-    })
+    return assignNextRuntime(runtime, lhsFormula, symbol, rhsFormula)
   }
 
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
@@ -4034,7 +4029,7 @@ function getChildType<T extends Expression>(
 
 function decorateError(expr: Expression) {
   return function mapError(result: GetTypeResult): GetTypeResult {
-    if (result.isErr()) {
+    if (result.isErr() && result.error instanceof RuntimeError) {
       result.error.pushParent(expr)
     }
     return result

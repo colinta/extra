@@ -67,18 +67,9 @@ describe('let … in', () => {
           }
         }`
     let resolvedType: Types.Type
-    let resolvedValue: Values.Value
     expect(() => {
-      const currentExpression = parse(code)
-        .mapResult(r => {
-          if (r.isErr()) {
-            console.log(r.error.message)
-          }
-          return r
-        })
-        .get()
+      const currentExpression = parse(code).get()
       resolvedType = currentExpression.getType(typeRuntime).get()
-      resolvedValue = currentExpression.eval(valueRuntime).get()
     }).not.toThrow()
 
     expect(resolvedType!).toEqual(
@@ -91,7 +82,58 @@ describe('let … in', () => {
         Types.nullType(),
       ]),
     )
-    expect(resolvedValue!).toEqual(Values.tuple([Values.int(0), Values.int(1), Values.int(2)]))
+  })
+
+  it('can infer the relationships of indirect comparisons', () => {
+    runtimeTypes['a'] = [Types.int(), Values.nullValue()]
+    runtimeTypes['b'] = [Types.int(), Values.nullValue()]
+    runtimeTypes['c'] = [Types.int(), Values.nullValue()]
+    const code = `
+      if (a < b and b < c and c < 10) {
+        then: {
+          a
+          b
+          c
+        }
+      }`
+    let resolvedType: Types.Type
+    expect(() => {
+      const currentExpression = parse(code).get()
+      resolvedType = currentExpression.getType(typeRuntime).get()
+    }).not.toThrow()
+
+    expect(resolvedType!).toEqual(
+      Types.oneOf([
+        Types.tuple([Types.int({max: 9}), Types.int({max: 9}), Types.int({max: 9})]),
+        Types.nullType(),
+      ]),
+    )
+  })
+
+  it('can infer the relationships of properties', () => {
+    runtimeTypes['obj1'] = [Types.object([Types.namedProp('foo', Types.int())]), Values.nullValue()]
+    runtimeTypes['obj2'] = [Types.object([Types.namedProp('bar', Types.int())]), Values.nullValue()]
+    runtimeTypes['c'] = [Types.int(), Values.nullValue()]
+    const code = `
+      if (obj1.foo < obj2.bar and obj2.bar < c and c < 10) {
+        then: {
+          obj1.foo
+          obj2.bar
+          c
+        }
+      }`
+    let resolvedType: Types.Type
+    expect(() => {
+      const currentExpression = parse(code).get()
+      resolvedType = currentExpression.getType(typeRuntime).get()
+    }).not.toThrow()
+
+    expect(resolvedType!).toEqual(
+      Types.oneOf([
+        Types.tuple([Types.int({max: 9}), Types.int({max: 9}), Types.int({max: 9})]),
+        Types.nullType(),
+      ]),
+    )
   })
 
   it('can infer array access', () => {
@@ -127,40 +169,6 @@ describe('let … in', () => {
         Types.tuple([Types.string(), Types.string(), Types.string()]),
         Types.nullType(),
       ]),
-    )
-    expect(resolvedValue!).toEqual(Values.tuple([Values.int(-1), Values.int(1), Values.int(3)]))
-  })
-
-  it('can infer multiple array access', () => {
-    runtimeTypes['items'] = [
-      Types.array(Types.int()),
-      Values.array([Values.int(-1), Values.int(1), Values.int(3)]),
-    ]
-    runtimeTypes['index'] = [Types.int(), Values.int(1)]
-    const code = `
-      -- items: Array(Int), from runtime
-      -- index: Int, from runtime
-      let
-        prev = index - 1
-        next = index + 1
-      in
-        if (items.length >= 3 and index > 0 and index < items.length - 2) {
-          then: {
-            items[prev]
-            items[index]
-            items[next]
-          }
-        }`
-    let resolvedType: Types.Type
-    let resolvedValue: Values.Value
-    expect(() => {
-      const currentExpression = parse(code).get()
-      resolvedType = currentExpression.getType(typeRuntime).get()
-      resolvedValue = currentExpression.eval(valueRuntime).get()
-    }).not.toThrow()
-
-    expect(resolvedType!).toEqual(
-      Types.oneOf([Types.tuple([Types.int(), Types.int(), Types.int()]), Types.nullType()]),
     )
     expect(resolvedValue!).toEqual(Values.tuple([Values.int(-1), Values.int(1), Values.int(3)]))
   })

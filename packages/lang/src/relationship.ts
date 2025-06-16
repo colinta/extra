@@ -36,8 +36,8 @@ export type RelationshipArrayConcat = {
 }
 
 export type RelationshipOperation =
-  | RelationshipAddition
   | RelationshipNegate
+  | RelationshipAddition
   | RelationshipStringConcat
   | RelationshipArrayConcat
 
@@ -123,7 +123,7 @@ export const relationshipFormula = {
       return `${this.toString(rel.of)}[${this.toString(rel.index)}]`
     }
     if (rel.type === 'property-access') {
-      return `${this.toString(rel.of)}[${rel.name}]`
+      return `${this.toString(rel.of)}.${rel.name}`
     }
 
     const x: never = rel
@@ -132,15 +132,15 @@ export const relationshipFormula = {
 } as const
 
 /**
- * Adjust the runtime, assuming that lhs - lhsComparison - rhs is true.
+ * Adjust the runtime, assuming that `lhs <lhsComparison> rhs` is true.
  *
  * For instance:
  *
  *     lhs => x: Int
  *     lhsComparison => '=='
- *     rhs => 5: Literal
+ *     rhs => 5: Literal-Int
  *
- *     nextRuntime => {x: 5}
+ *     nextRuntime => {x: literal(5)}
  */
 export function assignNextRuntime(
   runtime: TypeRuntime,
@@ -148,17 +148,24 @@ export function assignNextRuntime(
   lhsComparison: RelationshipComparison,
   rhs: RelationshipFormula,
 ): GetRuntimeResult<MutableTypeRuntime> {
+  lhs = normalize(lhs)
+  rhs = normalize(rhs)
+
   let nextRuntime = new MutableTypeRuntime(runtime)
 
   for (const [assignable, comparison, formula] of assignables(lhs, lhsComparison, rhs)) {
-    const assignableType = runtimeLookup(nextRuntime, assignable)
-    if (!assignableType) {
+    const prevType = runtimeLookup(nextRuntime, assignable)
+    if (!prevType) {
       continue
     }
 
-    const nextType = mergeAssignableType(assignableType, comparison, formula)
-    mutateRuntime(nextRuntime, assignable, nextType)
+    const nextType = mergeAssignableType(prevType, comparison, formula)
+    if (nextType !== prevType) {
+      mutateRuntime(nextRuntime, assignable, nextType)
+    }
   }
+
+  relationshipDeducer(nextRuntime, lhs, lhsComparison, rhs)
 
   return ok(nextRuntime)
 }
@@ -181,7 +188,7 @@ function runtimeLookup(
       return undefined
     }
 
-    throw 'todo'
+    throw 'todo - runtimeLookup on array-access'
   }
 
   if (assignable.type === 'property-access') {
@@ -205,17 +212,9 @@ function mergeAssignableType(
   comparison: RelationshipComparison,
   formula: RelationshipFormula,
 ): Types.Type {
-  if (
-    isNegate(formula) ||
-    isAddition(formula) ||
-    formula.type === 'string-concat' ||
-    formula.type === 'array-concat'
-  ) {
-    throw `todo: formula is ${formula.type}`
-  }
-
   if (!isLiteral(formula)) {
-    throw 'todo: formula is a relationship, not a literal'
+    // throw `todo: formula is ${formula.type}`
+    return assignableType
   }
 
   if (assignableType.isBoolean()) {
@@ -258,7 +257,7 @@ function mutateRuntime(
       return
     }
 
-    throw 'todo'
+    throw 'todo - assign array access type'
   } else if (assignable.type === 'property-access') {
     if (!isAssign(assignable.of)) {
       return
@@ -271,8 +270,9 @@ function mutateRuntime(
 
     const nextAssignableType = type.replacingProp(assignable.name, nextType)
     if (nextAssignableType.isErr()) {
-      throw 'todo'
+      throw `todo - error assigning property-access type '${assignable.name}' to '${nextType}': ${nextAssignableType.error}`
     }
+
     mutateRuntime(runtime, assignable.of, nextAssignableType.get())
   }
 }
@@ -876,12 +876,12 @@ function isOutsideOfNarrowedString(narrowedString: NarrowedString, value: string
 }
 
 export function relationshipDeducer(
-  mutateRuntime: MutableTypeRuntime,
+  mutableRuntime: MutableTypeRuntime,
   lhs: RelationshipFormula,
   lhsComparison: RelationshipComparison,
   rhs: RelationshipFormula,
 ) {
-  return _relationshipDeducer(mutateRuntime, lhs, lhsComparison, rhs, new Set())
+  _relationshipDeducer(mutableRuntime, lhs, lhsComparison, rhs, new Set())
 }
 
 function _relationshipDeducer(
@@ -889,7 +889,7 @@ function _relationshipDeducer(
   lhs: RelationshipFormula,
   lhsComparison: RelationshipComparison,
   rhs: RelationshipFormula,
-  visited: Set<string>,
+  visited: Set<string | AssignedRelationship>,
 ) {
   const newRelationships = simplifyRelationships({
     formula: lhs,
@@ -900,32 +900,45 @@ function _relationshipDeducer(
     return
   }
 
-  // const lhsRelationships = _relationshipSearch(mutableRuntime, lhs)
-  // const rhsRelationships = _relationshipSearch(mutableRuntime, rhs)
-  // const allRelationships = lhsRelationships.concat(rhsRelationships)
   const nextRelationships: AssignedRelationship[] = []
   for (const newRelationship of newRelationships) {
-    const allRelationships = _relationshipSearch(mutableRuntime, newRelationship.formula)
-    for (const prevRelationship of allRelationships) {
-      nextRelationships.push(
-        ...handleRelationship(mutableRuntime, prevRelationship, newRelationship),
+    const newId = findEventualRef(newRelationship.formula).id
+    if (!visited.has(newId)) {
+      visited.add(newId)
+
+      const allRelationships = _relationshipSearch(mutableRuntime, newRelationship.formula)
+      for (const prevRelationship of allRelationships) {
+        if (isEqualRelationship(newRelationship, prevRelationship)) {
+          continue
+        }
+
+        if (visited.has(prevRelationship)) {
+          continue
+        }
+        visited.add(prevRelationship)
+
+        nextRelationships.push(
+          ...handleRelationship(mutableRuntime, prevRelationship, newRelationship),
+        )
+      }
+    }
+
+    if (isAssign(newRelationship.formula)) {
+      mutableRuntime.addRelationshipFormula(
+        newRelationship.formula,
+        newRelationship.type,
+        newRelationship.right,
       )
     }
   }
 
   for (const {formula, type, right} of nextRelationships) {
-    const ref = findEventualRef(formula)
-    if (visited.has(ref.id)) {
-      continue
-    }
-    visited.add(ref.id)
-
     _relationshipDeducer(mutableRuntime, formula, type, right, visited)
   }
 }
 
-function _relationshipSearch(runtime: MutableTypeRuntime, arg: RelationshipFormula) {
-  const refs = findRefs(arg)
+function _relationshipSearch(runtime: MutableTypeRuntime, formula: RelationshipFormula) {
+  const refs = findRefs(formula)
   return refs.flatMap(ref => runtime.getRelationships(ref.id))
 }
 
@@ -938,36 +951,144 @@ function _relationshipSearch(runtime: MutableTypeRuntime, arg: RelationshipFormu
  * (relationship.formula is the same reference).
  */
 function handleRelationship(
-  mutateRuntime: MutableTypeRuntime,
+  mutableRuntime: MutableTypeRuntime,
   prevRelationship: AssignedRelationship,
   newRelationship: AssignedRelationship,
 ) {
-  if (prevRelationship.type === '==') {
-    const assertRef1 = findEventualRef(prevRelationship.formula)
-    const assertRef2 = findEventualRef(newRelationship.formula)
-    if (assertRef1.id !== assertRef2.id) {
-      throw `unexpected: ${assertRef1.id} !== ${assertRef2.id}`
-    }
+  const assertRef1 = findEventualRef(prevRelationship.formula)
+  const assertRef2 = findEventualRef(newRelationship.formula)
+  if (assertRef1.id !== assertRef2.id) {
+    throw `handleRelationship() - unexpected: ${assertRef1.id} !== ${assertRef2.id}`
+  }
 
-    const updatedRelationships = _simplifyRelationships({
+  if (prevRelationship.type === '==') {
+    //|
+    //|  a == b
+    //|  b ? c
+    //|
+    const updatedRelationships = simplifyRelationships({
       formula: prevRelationship.right,
       type: newRelationship.type,
       right: newRelationship.right,
     })
     for (const relationship of updatedRelationships) {
-      const prevRef = findEventualRef(relationship.formula)
-      const prevType = runtimeLookup(mutateRuntime, relationship.formula)
+      const prevType = runtimeLookup(mutableRuntime, relationship.formula)
       if (!prevType) {
         continue
       }
 
       const nextType = mergeAssignableType(prevType, relationship.type, relationship.right)
-      mutateRuntime.replaceTypeById(prevRef.id, nextType)
+      if (nextType !== prevType) {
+        replaceType(mutableRuntime, relationship.formula, nextType)
+      }
     }
+
     return updatedRelationships
+  } else if (
+    (prevRelationship.type === '<' || prevRelationship.type === '<=') &&
+    (newRelationship.type === '>' || newRelationship.type === '>=')
+  ) {
+    //|
+    //|  b < a  ,  b <= a  =>  a > b  ,  a >= b  =>  a > c  ,  a >= c
+    //|  b > c  ,  b >= c      b > c  ,  b >= c
+    //|
+    const type = prevRelationship.type === '<=' && newRelationship.type === '>=' ? '>=' : '>'
+    return handleComparisonRelationship(mutableRuntime, prevRelationship, newRelationship, type)
+  } else if (
+    (prevRelationship.type === '>' || prevRelationship.type === '>=') &&
+    (newRelationship.type === '<' || newRelationship.type === '<=')
+  ) {
+    //|
+    //|  b > a  ,  b >= a  =>  a < b  ,  a <= b  =>  a < c  ,  a <= c
+    //|  b < c  ,  b <= c      b < c  ,  b <= c
+    //|
+    const type = prevRelationship.type === '>=' && newRelationship.type === '<=' ? '<=' : '<'
+    return handleComparisonRelationship(mutableRuntime, prevRelationship, newRelationship, type)
   } else {
-    throw 'todo'
+    return []
   }
+}
+
+function handleComparisonRelationship(
+  mutableRuntime: MutableTypeRuntime,
+  prevRelationship: AssignedRelationship,
+  newRelationship: AssignedRelationship,
+  type: RelationshipComparison,
+) {
+  const updatedRelationships = simplifyRelationships({
+    formula: prevRelationship.right,
+    type,
+    right: newRelationship.right,
+  })
+  for (const relationship of updatedRelationships) {
+    const prevType = runtimeLookup(mutableRuntime, relationship.formula)
+    if (!prevType) {
+      continue
+    }
+
+    const nextType = mergeAssignableType(prevType, relationship.type, relationship.right)
+    if (nextType !== prevType) {
+      replaceType(mutableRuntime, relationship.formula, nextType)
+    }
+
+    if (isAssign(relationship.formula)) {
+      mutableRuntime.addRelationshipFormula(
+        relationship.formula,
+        relationship.type,
+        relationship.right,
+      )
+    }
+  }
+
+  return updatedRelationships
+}
+
+function replaceType(
+  mutableRuntime: MutableTypeRuntime,
+  prevRef: RelationshipAssign,
+  nextType: Types.Type,
+) {
+  if (prevRef.type === 'array-access') {
+    if (!isAssign(prevRef.of)) {
+      return
+    }
+
+    if (!isLiteral(prevRef.index) || !isString(prevRef.index)) {
+      return
+    }
+
+    const type = runtimeLookup(mutableRuntime, prevRef.of)
+    if (!type) {
+      return
+    }
+
+    const nextAssignableType = type.replacingProp(prevRef.index.value, nextType)
+    if (nextAssignableType.isErr()) {
+      throw `todo - error assigning property-access type '${prevRef.index.value}' to '${nextType}': ${nextAssignableType.error}`
+    }
+
+    return replaceType(mutableRuntime, prevRef.of, nextAssignableType.get())
+  }
+
+  if (prevRef.type === 'property-access') {
+    if (!isAssign(prevRef.of)) {
+      return
+    }
+
+    const type = runtimeLookup(mutableRuntime, prevRef.of)
+    if (!type) {
+      return
+    }
+
+    const nextAssignableType = type.replacingProp(prevRef.name, nextType)
+    if (nextAssignableType.isErr()) {
+      throw `todo - error assigning property-access type '${prevRef.name}' to '${nextType}': ${nextAssignableType.error}`
+    }
+
+    return replaceType(mutableRuntime, prevRef.of, nextAssignableType.get())
+  }
+
+  return mutableRuntime.replaceTypeById(prevRef.id, nextType)
 }
 
 /**
@@ -993,32 +1114,15 @@ export function simplifyRelationships(relationship: Relationship): AssignedRelat
 function _simplifyRelationships(relationship: Relationship): AssignedRelationship[] {
   const {formula: formula, type: symbol, right: rhsFormula} = relationship
   if (isAssign(formula)) {
-    if (isAddition(rhsFormula)) {
-      return [
-        {formula: formula, type: symbol, right: normalizeAddition(rhsFormula.lhs, rhsFormula.rhs)},
-      ]
-    }
-
-    return [{formula, type: symbol, right: rhsFormula}]
+    return [{formula, type: symbol, right: normalize(rhsFormula)}]
   }
 
   if (isNegate(formula)) {
     return _simplifyRelationships({
       formula: formula.arg,
       type: reverseComparison(symbol),
-      right: normalizeNegate(relationshipFormula.negate(rhsFormula)),
+      right: normalize(relationshipFormula.negate(rhsFormula)),
     })
-    /* .map(relationship => {
-      if (isNegate(relationship.right)) {
-        return {
-          formula: relationship.formula,
-          type: relationship.type,
-          right: normalizeNegate(relationship.right),
-        }
-      } else {
-        return relationship
-      }
-    }) */
   }
 
   if (isAddition(formula)) {
@@ -1038,19 +1142,31 @@ function _simplifyRelationships(relationship: Relationship): AssignedRelationshi
   return []
 }
 
-function normalizeNegate(formula: RelationshipFormula): RelationshipFormula {
-  if (isNegate(formula) && isNumeric(formula.arg)) {
+function normalize(formula: RelationshipFormula): RelationshipFormula {
+  if (isNegate(formula)) {
+    return normalizeNegate(formula)
+  }
+
+  if (isAddition(formula)) {
+    return normalizeAddition(formula.lhs, formula.rhs)
+  }
+
+  return formula
+}
+
+function normalizeNegate(formula: RelationshipNegate): RelationshipFormula {
+  if (isNumeric(formula.arg)) {
     return {type: formula.arg.type, value: -formula.arg.value}
   }
 
-  if (isNegate(formula) && isNegate(formula.arg)) {
-    return formula.arg.arg
+  if (isNegate(formula.arg)) {
+    return normalize(formula.arg.arg)
   }
 
-  if (isNegate(formula) && isAddition(formula.arg)) {
+  if (isAddition(formula.arg)) {
     return normalizeAddition(
-      normalizeNegate(relationshipFormula.negate(formula.arg.lhs)),
-      normalizeNegate(relationshipFormula.negate(formula.arg.rhs)),
+      relationshipFormula.negate(formula.arg.lhs),
+      relationshipFormula.negate(formula.arg.rhs),
     )
   }
 
@@ -1058,16 +1174,8 @@ function normalizeNegate(formula: RelationshipFormula): RelationshipFormula {
 }
 
 function normalizeAddition(lhs: RelationshipFormula, rhs: RelationshipFormula) {
-  lhs = normalizeNegate(lhs)
-  rhs = normalizeNegate(rhs)
-
-  if (isNegate(lhs) && isNumeric(lhs.arg)) {
-    return normalizeAddition({type: lhs.arg.type, value: -lhs.arg.value}, rhs)
-  }
-
-  if (isNegate(rhs) && isNumeric(rhs.arg)) {
-    return normalizeAddition(lhs, {type: rhs.arg.type, value: -rhs.arg.value})
-  }
+  lhs = normalize(lhs)
+  rhs = normalize(rhs)
 
   if (isNumeric(lhs) && lhs.value === 0) {
     return rhs
@@ -1105,11 +1213,13 @@ function reverseComparison(comparison: RelationshipComparison): RelationshipComp
   }
 }
 
+function isReference(formula: RelationshipFormula): formula is RelationshipReference {
+  return formula.type === 'reference'
+}
+
 function isAssign(formula: RelationshipFormula): formula is RelationshipAssign {
   return (
-    formula.type === 'reference' ||
-    formula.type === 'array-access' ||
-    formula.type === 'property-access'
+    isReference(formula) || formula.type === 'array-access' || formula.type === 'property-access'
   )
 }
 
@@ -1147,6 +1257,56 @@ function isNegate(formula: RelationshipFormula): formula is RelationshipNegate {
   return formula.type === 'negate'
 }
 
+function isOperation(
+  formula: RelationshipFormula,
+): formula is RelationshipAddition | RelationshipArrayConcat | RelationshipStringConcat {
+  return (
+    formula.type === 'addition' ||
+    formula.type === 'array-concat' ||
+    formula.type === 'string-concat'
+  )
+}
+
 function isAddition(formula: RelationshipFormula): formula is RelationshipAddition {
   return formula.type === 'addition'
+}
+
+export function isEqualFormula(lhs: RelationshipFormula, rhs: RelationshipFormula): boolean {
+  if (lhs.type !== rhs.type) {
+    return false
+  }
+
+  if (isLiteral(lhs) && isLiteral(rhs)) {
+    return lhs.value === rhs.value
+  }
+
+  if (isNegate(lhs) && isNegate(rhs)) {
+    return isEqualFormula(lhs.arg, rhs.arg)
+  }
+
+  if (isOperation(lhs) && isOperation(rhs)) {
+    return isEqualFormula(lhs.lhs, rhs.lhs) && isEqualFormula(lhs.rhs, rhs.rhs)
+  }
+
+  if (isReference(lhs) && isReference(rhs)) {
+    return lhs.id === rhs.id && lhs.name === rhs.name
+  }
+
+  if (lhs.type === 'array-access' && rhs.type === 'array-access') {
+    return isEqualFormula(lhs.of, rhs.of) && isEqualFormula(lhs.index, rhs.index)
+  }
+
+  if (lhs.type === 'property-access' && rhs.type === 'property-access') {
+    return isEqualFormula(lhs.of, rhs.of) && lhs.name === rhs.name
+  }
+
+  return false
+}
+
+export function isEqualRelationship(lhs: Relationship, rhs: Relationship) {
+  if (lhs.type !== rhs.type) {
+    return false
+  }
+
+  return isEqualFormula(lhs.formula, rhs.formula) && isEqualFormula(lhs.right, rhs.right)
 }
