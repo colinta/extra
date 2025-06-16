@@ -71,10 +71,7 @@ describe('comments', () => {
         (only ? it.only : skip ? it.skip : it)(
           `should parse comments '${formula.replaceAll('\n', ' ')}'`,
           () => {
-            let expression: Expressions.Expression
-            expect(() => {
-              expression = parse(formula).get()
-            }).not.toThrow()
+            let expression: Expressions.Expression = parse(formula).get()
 
             expect(expression!.toCode()).toEqual(expectedCode)
             expect(expression!.toLisp()).toEqual(expectedLisp)
@@ -94,13 +91,10 @@ lhs --comment1
 --comment4
 rhs --comment5
 --comment6`
-      let addOperator: Expressions.Expression
-      expect(() => {
-        addOperator = parse(formula).get()
-      }).not.toThrow()
+      let addOperator: Expressions.Expression = parse(formula).get()
 
-      expect(addOperator!).toBeInstanceOf(Expressions.Operation)
       if (!(addOperator! instanceof Expressions.Operation)) {
+        expect(addOperator!).toBeInstanceOf(Expressions.Operation)
         return
       }
 
@@ -134,13 +128,10 @@ rhs --comment5
 --comment0
 [ --comment1
 ] --comment2`
-      let arrayExpr: Expressions.Expression
-      expect(() => {
-        arrayExpr = parse(formula).get()
-      }).not.toThrow()
+      let arrayExpr: Expressions.Expression = parse(formula).get()
 
-      expect(arrayExpr!).toBeInstanceOf(Expressions.ArrayExpression)
       if (!(arrayExpr! instanceof Expressions.ArrayExpression)) {
+        expect(arrayExpr!).toBeInstanceOf(Expressions.ArrayExpression)
         return
       }
 
@@ -168,13 +159,10 @@ rhs --comment5
   item1 --comment2
   --comment3
 ] --comment4`
-      let arrayExpr: Expressions.Expression
-      expect(() => {
-        arrayExpr = parse(formula).get()
-      }).not.toThrow()
+      let arrayExpr: Expressions.Expression = parse(formula).get()
 
-      expect(arrayExpr!).toBeInstanceOf(Expressions.ArrayExpression)
       if (!(arrayExpr! instanceof Expressions.ArrayExpression)) {
+        expect(arrayExpr!).toBeInstanceOf(Expressions.ArrayExpression)
         return
       }
 
@@ -210,13 +198,10 @@ item0 --comment2
 item1 --comment4
 --comment5
 ] --comment6`
-      let arrayExpr: Expressions.Expression
-      expect(() => {
-        arrayExpr = parse(formula).get()
-      }).not.toThrow()
+      let arrayExpr: Expressions.Expression = parse(formula).get()
 
-      expect(arrayExpr!).toBeInstanceOf(Expressions.ArrayExpression)
       if (!(arrayExpr! instanceof Expressions.ArrayExpression)) {
+        expect(arrayExpr!).toBeInstanceOf(Expressions.ArrayExpression)
         return
       }
 
@@ -250,13 +235,10 @@ item1 --comment4
 --comment0
 { --comment1
 } --comment2`
-      let objectExpr: Expressions.Expression
-      expect(() => {
-        objectExpr = parse(formula).get()
-      }).not.toThrow()
+      let objectExpr: Expressions.Expression = parse(formula).get()
 
-      expect(objectExpr!).toBeInstanceOf(Expressions.ObjectExpression)
       if (!(objectExpr! instanceof Expressions.ObjectExpression)) {
+        expect(objectExpr!).toBeInstanceOf(Expressions.ObjectExpression)
         return
       }
 
@@ -287,13 +269,10 @@ item2  --comment6
 ...item3  --comment8
 --comment9
 } --comment10`
-      let objectExpr: Expressions.Expression
-      expect(() => {
-        objectExpr = parse(formula).get()
-      }).not.toThrow()
+      let objectExpr: Expressions.Expression = parse(formula).get()
 
-      expect(objectExpr!).toBeInstanceOf(Expressions.ObjectExpression)
       if (!(objectExpr! instanceof Expressions.ObjectExpression)) {
+        expect(objectExpr!).toBeInstanceOf(Expressions.ObjectExpression)
         return
       }
 
@@ -348,13 +327,10 @@ dict( --comment1
   ...item2  --comment4
   --comment5
 ) --comment6`
-      let dictExpr: Expressions.Expression
-      expect(() => {
-        dictExpr = parse(formula).get()
-      }).not.toThrow()
+      let dictExpr: Expressions.Expression = parse(formula).get()
 
-      expect(dictExpr!).toBeInstanceOf(Expressions.DictExpression)
       if (!(dictExpr! instanceof Expressions.DictExpression)) {
+        expect(dictExpr!).toBeInstanceOf(Expressions.DictExpression)
         return
       }
 
@@ -388,13 +364,10 @@ set( --comment1
   ...item2  --comment4
   --comment5
 ) --comment6`
-      let setExpr: Expressions.Expression
-      expect(() => {
-        setExpr = parse(formula).get()
-      }).not.toThrow()
+      let setExpr: Expressions.Expression = parse(formula).get()
 
-      expect(setExpr!).toBeInstanceOf(Expressions.SetExpression)
       if (!(setExpr! instanceof Expressions.SetExpression)) {
+        expect(setExpr!).toBeInstanceOf(Expressions.SetExpression)
         return
       }
 
@@ -449,13 +422,10 @@ set( --comment1
     ] --comment24
     --comment25
 `
-      let letExpr: Expressions.Expression
-      expect(() => {
-        letExpr = parse(formula).get()
-      }).not.toThrow()
+      let letExpr: Expressions.Expression = parse(formula).get()
 
-      expect(letExpr!).toBeInstanceOf(Expressions.LetExpression)
       if (!(letExpr! instanceof Expressions.LetExpression)) {
+        expect(letExpr!).toBeInstanceOf(Expressions.LetExpression)
         return
       }
 
@@ -463,12 +433,28 @@ set( --comment1
       const bindings = letExpr.bindings
       // Test binding for 'a'
       const [aName, aBinding] = bindings[0]
+
+      if (!(aBinding instanceof Expressions.NamedArgument)) {
+        expect(aBinding).toBeInstanceOf(Expressions.NamedArgument)
+        return
+      }
+
       // Test a's value
       const aValue = aBinding.value
       // Test binding for 'x'
       const [xName, xBinding] = bindings[1]
+      if (!(xBinding instanceof Expressions.NamedArgument)) {
+        expect(xBinding).toBeInstanceOf(Expressions.NamedArgument)
+        return
+      }
+
       // Test binding for 'b'
       const [bName, bBinding] = bindings[2]
+      if (!(bBinding instanceof Expressions.NamedArgument)) {
+        expect(bBinding).toBeInstanceOf(Expressions.NamedArgument)
+        return
+      }
+
       // Test b's value (pipe operator)
       const pipeOp = bBinding.value as Expressions.Operation
       // Test pipe operator's arguments
@@ -595,13 +581,10 @@ fn
           --comment20
           (a+b)`
 
-      let formlaExpr: Expressions.Expression
-      expect(() => {
-        formlaExpr = parse(formula).get()
-      }).not.toThrow()
+      let formlaExpr: Expressions.Expression = parse(formula).get()
 
-      expect(formlaExpr!).toBeInstanceOf(Expressions.FormulaExpression)
       if (!(formlaExpr! instanceof Expressions.FormulaExpression)) {
+        expect(formlaExpr!).toBeInstanceOf(Expressions.FormulaExpression)
         return
       }
 
@@ -707,21 +690,18 @@ foo --comment1
 ) --comment9
 --comment10
 `
-      let fnExpr: Expressions.Expression
-      expect(() => {
-        fnExpr = parse(formula).get()
-      }).not.toThrow()
+      let fnExpr: Expressions.Expression = parse(formula).get()
 
-      expect(fnExpr!).toBeInstanceOf(Expressions.Operation)
       if (!(fnExpr! instanceof Expressions.Operation)) {
+        expect(fnExpr!).toBeInstanceOf(Expressions.Operation)
         return
       }
 
       // Destructure the array's items
       const [fooRef, argsList] = fnExpr.args
 
-      expect(argsList!).toBeInstanceOf(Expressions.ArgumentsList)
       if (!(argsList! instanceof Expressions.ArgumentsList)) {
+        expect(argsList!).toBeInstanceOf(Expressions.ArgumentsList)
         return
       }
 
@@ -772,21 +752,18 @@ foo --comment1
   item2 --comment11
 --comment12
 `
-      let fnExpr: Expressions.Expression
-      expect(() => {
-        fnExpr = parse(formula).get()
-      }).not.toThrow()
+      let fnExpr: Expressions.Expression = parse(formula).get()
 
-      expect(fnExpr!).toBeInstanceOf(Expressions.Operation)
       if (!(fnExpr! instanceof Expressions.Operation)) {
+        expect(fnExpr!).toBeInstanceOf(Expressions.Operation)
         return
       }
 
       // Destructure the array's items
       const [fooRef, argsList] = fnExpr.args
 
-      expect(argsList!).toBeInstanceOf(Expressions.ArgumentsList)
       if (!(argsList! instanceof Expressions.ArgumentsList)) {
+        expect(argsList!).toBeInstanceOf(Expressions.ArgumentsList)
         return
       }
 
@@ -854,21 +831,18 @@ foo --comment1
   --comment17
 } --comment18
 `
-      let fnExpr: Expressions.Expression
-      expect(() => {
-        fnExpr = parse(formula).get()
-      }).not.toThrow()
+      let fnExpr: Expressions.Expression = parse(formula).get()
 
-      expect(fnExpr!).toBeInstanceOf(Expressions.Operation)
       if (!(fnExpr! instanceof Expressions.Operation)) {
+        expect(fnExpr!).toBeInstanceOf(Expressions.Operation)
         return
       }
 
       // Destructure the array's items
       const [fooRef, argsList] = fnExpr.args
 
-      expect(argsList!).toBeInstanceOf(Expressions.ArgumentsList)
       if (!(argsList! instanceof Expressions.ArgumentsList)) {
+        expect(argsList!).toBeInstanceOf(Expressions.ArgumentsList)
         return
       }
 
@@ -961,8 +935,8 @@ import
         // expression = parse(formula).get()
       }).not.toThrow()
 
-      expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)
       if (!(importExpr! instanceof Expressions.ImportStatement)) {
+        expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)
         return
       }
 
@@ -1065,8 +1039,8 @@ import
         // expression = parse(formula).get()
       }).not.toThrow()
 
-      expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)
       if (!(importExpr! instanceof Expressions.ImportStatement)) {
+        expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)
         return
       }
 

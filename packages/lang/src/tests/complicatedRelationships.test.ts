@@ -51,7 +51,7 @@ describe('let … in', () => {
     expect(resolvedValue!).toEqual(Values.tuple([Values.int(0), Values.int(1), Values.int(2)]))
   })
 
-  it.only('can infer the relationships of shadowed numbers', () => {
+  it('can infer the relationships of indirect assignments', () => {
     runtimeTypes['index'] = [Types.int(), Values.int(1)]
     const code = `
       let

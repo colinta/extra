@@ -157,10 +157,7 @@ describe('array', () => {
     (only ? it.only : skip ? it.skip : it)(
       `should derive type '${expected}' from '${formula}'`,
       () => {
-        let expression: Expression
-        expect(() => {
-          expression = parse(formula).get()
-        }).not.toThrow()
+        let expression: Expression = parse(formula).get()
 
         const type = expression!.getType(typeRuntime).get()
         expect(type).toEqual(expected)
@@ -311,10 +308,7 @@ describe('set', () => {
     (only ? it.only : skip ? it.skip : it)(
       `should derive type '${expected}' from '${formula}'`,
       () => {
-        let expression: Expression
-        expect(() => {
-          expression = parse(formula).get()
-        }).not.toThrow()
+        let expression: Expression = parse(formula).get()
 
         const type = expression!.getType(typeRuntime).get()
         expect(type).toEqual(expected)
@@ -483,10 +477,7 @@ describe('dict', () => {
     (only ? it.only : skip ? it.skip : it)(
       `should derive type '${expected}' from '${formula}'`,
       () => {
-        let expression: Expression
-        expect(() => {
-          expression = parse(formula).get()
-        }).not.toThrow()
+        let expression: Expression = parse(formula).get()
 
         const type = expression!.getType(typeRuntime).get()
         expect(type).toEqual(expected)

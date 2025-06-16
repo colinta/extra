@@ -32,10 +32,7 @@ describe('range', () => {
       c(['>=9.8', '(>= 9.8)']),
     ).run(([formula, expectedLisp], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse range ${formula}`, () => {
-        let expression: Expression
-        expect(() => {
-          expression = parse(formula).get()
-        }).not.toThrow()
+        let expression: Expression = parse(formula).get()
 
         expect(expression!.toCode()).toEqual(formula)
         expect(expression!.toLisp()).toEqual(expectedLisp)

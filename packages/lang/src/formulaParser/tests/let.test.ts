@@ -112,13 +112,9 @@ in
       ;(only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         expectedCode ??= formula
 
-        let expression: Expression
-        expect(() => {
-          expression = parse(formula).get()
-        }).not.toThrow()
-
-        expect(expression!.toCode()).toEqual(expectedCode)
-        expect(expression!.toLisp()).toEqual(expectedLisp)
+        let expression: Expression = parse(formula).get()
+        expect(expression.toCode()).toEqual(expectedCode)
+        expect(expression.toLisp()).toEqual(expectedLisp)
       })
     })
   })
