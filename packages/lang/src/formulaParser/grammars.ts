@@ -6,6 +6,9 @@ import {type ArgumentType, type ExpressionType} from './types'
 
 export function isCommentStart(input: string) {
   const code = input.charCodeAt(0)
+  if (code === 0x2190 || code === 0x2192) {
+    return true
+  }
   if (code >= 0x2500 && code < 0x2580) {
     return true
   }

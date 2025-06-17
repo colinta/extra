@@ -66,6 +66,7 @@ describe('comments', () => {
         '(+ a b)',
         'a + b',
       ]),
+      c([Array('→', '←').map(comment => `a + ${comment} box character\nb`), '(+ a b)', 'a + b']),
     ).run(([formulas, expectedLisp, expectedCode], {only, skip}) => {
       formulas.forEach(formula =>
         (only ? it.only : skip ? it.skip : it)(

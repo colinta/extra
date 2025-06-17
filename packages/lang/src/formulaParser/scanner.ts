@@ -338,7 +338,7 @@ export class Scanner {
       comment = scanArrowCommentLine(this)
       this.pushComment('arrow', comment, '<--', commentIndex)
     } else {
-      // whatever this is
+      // box drawing characters and special arrows ←→
       const char = this.char
       comment = scanCommentBox(this)
       this.pushComment('box', comment, char, commentIndex)
@@ -443,10 +443,12 @@ function scanCommentLine(scanner: Scanner) {
 
 function scanCommentBox(scanner: Scanner) {
   const code = scanner.char.charCodeAt(0)
-  if (code < 0x2500 || code >= 0x2580) {
+  const isBox = code >= 0x2500 && code < 0x2580
+  const isArrow = code === 0x2190 || code === 0x2192
+  if (!isBox && !isArrow) {
     throw new ParseError(
       scanner,
-      `Expected character in range U+2500 ..< U+2580, found '${unexpectedToken(scanner)}'`,
+      `Expected box drawing comment character, found '${unexpectedToken(scanner)}'`,
     )
   }
 
