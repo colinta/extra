@@ -2,7 +2,7 @@ export interface Case<T> {
   input: T
   only: boolean
   skip: boolean
-  description(): string | undefined
+  description(): string
 }
 
 export interface CaseCreate {
@@ -24,7 +24,7 @@ export function cases<T>(...cases: Case<T>[]): CaseRunner<T> {
       ) => void | Promise<void>,
     ) {
       for (const {input, only, skip, description} of cases) {
-        const p = fn(input, {only, skip, description: description() ?? ''})
+        const p = fn(input, {only, skip, description: description()})
         if (p instanceof Promise) {
           await p
         }
@@ -34,7 +34,7 @@ export function cases<T>(...cases: Case<T>[]): CaseRunner<T> {
 }
 
 function createCase<T>(input: T, only: boolean, skip: boolean) {
-  let description: string | undefined
+  let description = ''
   return {
     input,
     only,
