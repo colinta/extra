@@ -14,12 +14,8 @@ describe('application', () => {
       (only ? it.only : skip ? it.skip : it)(`should parse application '${filename}'`, () => {
         filename = join(__dirname, `app/${filename}.extra`)
         const content = readFileSync(filename, 'utf8')
-        let application: Application
-        expect(() => {
-          application = parseApplication(content).get()
-
-          expect(application.toCode()).toEqual(content)
-        }).not.toThrow()
+        const application = parseApplication(content).get()
+        expect(application.toCode()).toEqual(content)
       }),
     )
   })
@@ -59,118 +55,5 @@ describe('application', () => {
         }).not.toThrow()
       })
     })
-  })
-
-  describe('tokenizer', () => {
-    cases<[string, any]>(
-      c([
-        'empty',
-        {
-          imports: ['', 0, 0],
-          types: [],
-          states: [],
-          main: ['Main() => null\n', 102, 117],
-          actions: [],
-          views: [],
-          helpers: [],
-        },
-      ]),
-      c([
-        'imports',
-        {
-          imports: [
-            `\
-import Foo
-import /Foo
-import /Foo/Bar/Baz: { a-a, b-b }
-import Bar: {a , b , c}
-import Baz: {
-  a
-  b
-  c
-}
-`,
-            0,
-            109,
-          ],
-          types: [],
-          states: [],
-          main: [`Main() => null\n`, 212, 227],
-          actions: [],
-          views: [],
-          helpers: [],
-        },
-      ]),
-      c([
-        'types',
-        {
-          actions: expect.anything(),
-          helpers: expect.anything(),
-          imports: ['', 0, 0],
-          main: expect.anything(),
-          states: expect.anything(),
-          types: [
-            [
-              `\
-User = {}`,
-              30,
-              39,
-            ],
-            ['public Foo = Int', 40, 56],
-            [
-              `public   Something =
-  1 | 2`,
-              57,
-              85,
-            ],
-            [`Else=3|4`, 86, 94],
-            [`Last = Int`, 95, 105],
-          ],
-          views: expect.anything(),
-        },
-      ]),
-      c([
-        'state',
-        {
-          actions: expect.anything(),
-          helpers: expect.anything(),
-          imports: ['', 0, 0],
-          main: expect.anything(),
-          states: [
-            [
-              `\
-@asdf = 1`,
-              63,
-              72,
-            ],
-            [
-              `\
-public @jkl = {
-  a: 5
-  b: 1
-}`,
-              73,
-              104,
-            ],
-            [`@foo='bar'`, 105, 115],
-            ['@one-more = 8', 116, 129],
-          ],
-          types: expect.anything(),
-          views: expect.anything(),
-        },
-      ]),
-    ).run(([filename, expected], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(`should tokenize application '${filename}'`, () => {
-        filename = join(__dirname, `app/${filename}.extra`)
-        // const content = readFileSync(filename, 'utf8')
-
-        // let application: ApplicationTokens
-        // expect(() => {
-        //   application = tokenizer(content).get()
-
-        //   expect(application).toEqual(expected)
-        // }).not.toThrow()
-      }),
-    )
   })
 })

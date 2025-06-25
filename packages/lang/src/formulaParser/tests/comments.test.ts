@@ -930,11 +930,7 @@ import
         } --comment19
 `
 
-      let importExpr: Expressions.Expression
-      expect(() => {
-        ;[importExpr] = parseInternalTest(formula, 'app_import_definition').get()
-        // expression = parse(formula).get()
-      }).not.toThrow()
+      const [importExpr] = parseInternalTest(formula, 'app_import_definition').get()
 
       if (!(importExpr! instanceof Expressions.ImportStatement)) {
         expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)
@@ -1034,11 +1030,7 @@ import
       } --comment9
 `
 
-      let importExpr: Expressions.Expression
-      expect(() => {
-        ;[importExpr] = parseInternalTest(formula, 'app_import_definition').get()
-        // expression = parse(formula).get()
-      }).not.toThrow()
+      const [importExpr] = parseInternalTest(formula, 'app_import_definition').get()
 
       if (!(importExpr! instanceof Expressions.ImportStatement)) {
         expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)

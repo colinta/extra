@@ -8,10 +8,7 @@ describe('helper', () => {
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse helper definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula
-      let expression: Expression
-      expect(() => {
-        ;[expression] = parseInternalTest(formula, 'app_helper_definition').get()
-      }).not.toThrow()
+      const [expression] = parseInternalTest(formula, 'app_helper_definition').get()
 
       expect(expression!.toCode()).toEqual(expectedCode)
       expect(expression!.toLisp()).toEqual(expectedLisp)

@@ -201,18 +201,12 @@ in
       ]),
     ).run(([formula, expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
-        let expression: Expression
-        let type: Types.Type
-        let value: Values.Value
+        const expression = parse(formula).get()
+        const type = expression.getType(typeRuntime).get()
+        const value = expression.eval(valueRuntime).get()
 
-        expect(() => {
-          expression = parse(formula).get()
-          type = expression.getType(typeRuntime).get()
-          value = expression.eval(valueRuntime).get()
-
-          expect(type).toEqual(expectedType)
-          expect(value).toEqual(expectedValue)
-        }).not.toThrow()
+        expect(type).toEqual(expectedType)
+        expect(value).toEqual(expectedValue)
       }),
     )
   })

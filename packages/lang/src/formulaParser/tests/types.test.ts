@@ -70,10 +70,7 @@ type RemoteData<Tsuccess, Tfail> = enum
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse type definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula
-      let expression: Expression | undefined
-      expect(() => {
-        ;[expression] = parseInternalTest(formula, 'app_type_definition').get()
-      }).not.toThrow()
+      const [expression] = parseInternalTest(formula, 'app_type_definition').get()
 
       expect(expression?.toCode()).toEqual(expectedCode)
       expect(expression?.toLisp()).toEqual(expectedLisp)
@@ -127,10 +124,7 @@ class User() {
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse class definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula
-      let expression: Expression | undefined
-      expect(() => {
-        ;[expression] = parseInternalTest(formula, 'app_type_definition').get()
-      }).not.toThrow()
+      const [expression] = parseInternalTest(formula, 'app_type_definition').get()
 
       expect(expression?.toCode()).toEqual(expectedCode)
       expect(expression?.toLisp()).toEqual(expectedLisp)

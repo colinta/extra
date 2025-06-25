@@ -58,10 +58,7 @@ describe('view', () => {
     ]),
   ).run(([formula, expectedLisp, expectedFormula], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse view definition '${formula}'`, () => {
-      let expression: Expression
-      expect(() => {
-        ;[expression] = parseInternalTest(formula, 'app_view_definition').get()
-      }).not.toThrow()
+      const [expression] = parseInternalTest(formula, 'app_view_definition').get()
 
       expect(expression!.toCode()).toEqual(expectedFormula ?? formula)
       expect(expression!.toLisp()).toEqual(expectedLisp)

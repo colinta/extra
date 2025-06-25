@@ -152,7 +152,7 @@ describe('toCode', () => {
   })
 })
 
-describe.only('arrayAccess', () => {
+describe('arrayAccess', () => {
   let typeRuntime: TypeRuntime
   let runtimeTypes: {[K in string]: [Types.Type, any]}
 

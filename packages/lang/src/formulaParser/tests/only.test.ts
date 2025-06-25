@@ -18,11 +18,8 @@ type User = {first-name: String(length: >=1), last-name: String(length: >=1), fu
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse type definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula
-      let expression: Expression | undefined
-      expect(() => {
-        const result = parseInternalTest(formula, 'app_type_definition')
-        ;[expression] = result.get()
-      }).not.toThrow()
+      const result = parseInternalTest(formula, 'app_type_definition')
+      const [expression] = result.get()
 
       expect(expression?.toCode()).toEqual(expectedCode)
       expect(expression?.toLisp()).toEqual(expectedLisp)

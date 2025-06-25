@@ -13,10 +13,7 @@ describe('action', () => {
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse action definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula
-      let expression: Expression
-      expect(() => {
-        ;[expression] = parseInternalTest(formula, 'app_action_definition').get()
-      }).not.toThrow()
+      const [expression] = parseInternalTest(formula, 'app_action_definition').get()
 
       expect(expression!.toCode()).toEqual(expectedCode)
       expect(expression!.toLisp()).toEqual(expectedLisp)

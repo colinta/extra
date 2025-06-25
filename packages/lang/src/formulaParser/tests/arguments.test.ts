@@ -86,10 +86,7 @@ describe('argument parser', () => {
         `should parse argument definitions '${formula}'`,
         () => {
           expectedCode = expectedCode ?? formula
-          let expression: Expression
-          expect(() => {
-            ;[expression] = parseInternalTest(`(${formula})`, 'test_formula_arguments').get()
-          }).not.toThrow()
+          const [expression] = parseInternalTest(`(${formula})`, 'test_formula_arguments').get()
 
           expect(expression!.toCode()).toEqual(expectedCode)
           expect(expression!.toLisp()).toEqual(expectedLisp)
@@ -127,10 +124,7 @@ describe('argument parser', () => {
       c(['number  :Int,asdf:Float', '((number: `Int`) (asdf: `Float`))']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse arguments ${formula}`, () => {
-        let expression: Expression
-        expect(() => {
-          ;[expression] = parseInternalTest(`(${formula})`, 'test_formula_arguments').get()
-        }).not.toThrow()
+        const [expression] = parseInternalTest(`(${formula})`, 'test_formula_arguments').get()
 
         expect(expression!.toLisp()).toEqual(expected)
       }),

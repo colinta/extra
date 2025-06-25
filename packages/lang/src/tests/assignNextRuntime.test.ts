@@ -36,11 +36,8 @@ describe('let … in', () => {
     (only ? it.only : skip ? it.skip : it)(
       `let intValue: Int(1...10), value = ${formula} should assign ${expectedType}`,
       () => {
-        let resolvedType: Types.Type
-        expect(() => {
-          const currentExpression = parse(`let value = ${formula} in value`).get()
-          resolvedType = currentExpression.getType(typeRuntime).get()
-        }).not.toThrow()
+        const currentExpression = parse(`let value = ${formula} in value`).get()
+        const resolvedType = currentExpression.getType(typeRuntime).get()
 
         expect(resolvedType!).toEqual(expectedType)
       },
@@ -58,11 +55,8 @@ describe('let … in', () => {
     (only ? it.only : skip ? it.skip : it)(
       `let floatValue: Int(2..<9), value = ${formula} should assign ${expectedType}`,
       () => {
-        let resolvedType: Types.Type
-        expect(() => {
-          const currentExpression = parse(`let value = ${formula} in value`).get()
-          resolvedType = currentExpression.getType(typeRuntime).get()
-        }).not.toThrow()
+        const currentExpression = parse(`let value = ${formula} in value`).get()
+        const resolvedType = currentExpression.getType(typeRuntime).get()
 
         expect(resolvedType!).toEqual(expectedType)
       },

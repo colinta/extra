@@ -7,10 +7,7 @@ describe('requires', () => {
     (args, {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse '${args[0]}'`, () => {
         const [formula, expectedCode] = args
-        let expression: Expression
-        expect(() => {
-          ;[expression] = parseInternalTest(formula, 'app_requires_definition').get()
-        }).not.toThrow()
+        const [expression] = parseInternalTest(formula, 'app_requires_definition').get()
 
         expect(expression!.toCode()).toEqual(expectedCode ?? formula)
       }),

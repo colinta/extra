@@ -52,10 +52,7 @@ describe('type refinements', () => {
       ]),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
-        let expression: Expression
-        expect(() => {
-          ;[expression] = parseInternalTest(formula, 'argument_type').get()
-        }).not.toThrow()
+        const [expression] = parseInternalTest(formula, 'argument_type').get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
         const type = expression!.getArgType(typeRuntime).get()
@@ -92,10 +89,7 @@ describe('type refinements', () => {
       c(['String(matches: /test1/, length: =3)', 'String(length: =3, matches: /test1/)']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
-        let expression: Expression
-        expect(() => {
-          ;[expression] = parseInternalTest(formula, 'argument_type').get()
-        }).not.toThrow()
+        const [expression] = parseInternalTest(formula, 'argument_type').get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
         const type = expression!.getArgType(typeRuntime).get()
@@ -141,10 +135,7 @@ describe('type refinements', () => {
       c(['Float(-5 <.< -1)', 'Float(-5<.<-1)']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
-        let expression: Expression
-        expect(() => {
-          ;[expression] = parseInternalTest(formula, 'argument_type').get()
-        }).not.toThrow()
+        const [expression] = parseInternalTest(formula, 'argument_type').get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
         const type = expression!.getArgType(typeRuntime).get()

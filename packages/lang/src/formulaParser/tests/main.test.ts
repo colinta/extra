@@ -9,10 +9,7 @@ describe('Main', () => {
   ).run(args =>
     it(`should parse Main definition '${args[0]}'`, () => {
       const [formula, expected, expectedFormula] = args
-      let expression: Expression
-      expect(() => {
-        ;[expression] = parseInternalTest(formula, 'app_main_definition').get()
-      }).not.toThrow()
+      const [expression] = parseInternalTest(formula, 'app_main_definition').get()
 
       expect(expression!.toCode()).toEqual(expectedFormula ?? formula)
       expect(expression!.toLisp()).toEqual(expected)

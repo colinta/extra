@@ -30,13 +30,9 @@ describe('complicated relationships', () => {
             next
           }
         }`
-    let resolvedType: Types.Type
-    let resolvedValue: Values.Value
-    expect(() => {
-      const currentExpression = parse(code).get()
-      resolvedType = currentExpression.getType(typeRuntime).get()
-      resolvedValue = currentExpression.eval(valueRuntime).get()
-    }).not.toThrow()
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
+    const resolvedValue = currentExpression.eval(valueRuntime).get()
 
     expect(resolvedType!).toEqual(
       Types.oneOf([
@@ -66,11 +62,8 @@ describe('complicated relationships', () => {
             next
           }
         }`
-    let resolvedType: Types.Type
-    expect(() => {
-      const currentExpression = parse(code).get()
-      resolvedType = currentExpression.getType(typeRuntime).get()
-    }).not.toThrow()
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
 
     expect(resolvedType!).toEqual(
       Types.oneOf([
@@ -96,11 +89,8 @@ describe('complicated relationships', () => {
           c
         }
       }`
-    let resolvedType: Types.Type
-    expect(() => {
-      const currentExpression = parse(code).get()
-      resolvedType = currentExpression.getType(typeRuntime).get()
-    }).not.toThrow()
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
 
     expect(resolvedType!).toEqual(
       Types.oneOf([
@@ -122,11 +112,8 @@ describe('complicated relationships', () => {
           c
         }
       }`
-    let resolvedType: Types.Type
-    expect(() => {
-      const currentExpression = parse(code).get()
-      resolvedType = currentExpression.getType(typeRuntime).get()
-    }).not.toThrow()
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
 
     expect(resolvedType!).toEqual(
       Types.oneOf([
@@ -136,7 +123,7 @@ describe('complicated relationships', () => {
     )
   })
 
-  it('can infer safe array access with literals', () => {
+  it.only('can infer safe array access with literals', () => {
     runtimeTypes['items'] = [
       Types.array(Types.int()),
       Values.array([Values.int(-1), Values.int(1), Values.int(3)]),
@@ -162,6 +149,40 @@ describe('complicated relationships', () => {
 
     expect(resolvedType!).toEqual(
       Types.oneOf([Types.tuple([Types.int(), Types.int(), Types.int()]), Types.nullType()]),
+    )
+    expect(resolvedValue!).toEqual(Values.tuple([Values.int(-1), Values.int(1), Values.int(3)]))
+  })
+
+  it.skip('can infer safe array access with references', () => {
+    runtimeTypes['letters'] = [
+      Types.array(Types.string()),
+      Values.array([Values.string('a'), Values.string('b'), Values.string('c')]),
+    ]
+    runtimeTypes['numbers'] = [
+      Types.array(Types.int()),
+      Values.array([Values.int(-1), Values.int(0), Values.int(1)]),
+    ]
+    runtimeTypes['index'] = [Types.int(), Values.int(1)]
+    const code = `
+      -- letters: Array(String), from runtime
+      -- numbers: Array(Int), from runtime
+      -- index: Int, from runtime
+      let
+        prev = index - 1
+        next = index + 1
+      in
+        if (index > 0 and index < letters.length and letters.length == numbers.length) {
+          then: {
+            letters[index]
+            numbers[index]
+          }
+        }`
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
+    const resolvedValue = currentExpression.eval(valueRuntime).get()
+
+    expect(resolvedType!).toEqual(
+      Types.oneOf([Types.tuple([Types.string(), Types.int()]), Types.nullType()]),
     )
     expect(resolvedValue!).toEqual(Values.tuple([Values.int(-1), Values.int(1), Values.int(3)]))
   })

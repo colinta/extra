@@ -343,9 +343,7 @@ abstract class UnaryOperator extends OperatorOperation {
 
   getType(runtime: TypeRuntime): GetTypeResult {
     const [lhsExpr] = this.args
-    const lhResult = getChildType(this, lhsExpr, runtime)
-
-    return lhResult.map(lhType => {
+    return getChildType(this, lhsExpr, runtime).map(lhType => {
       if (lhType instanceof Types.OneOfType) {
         return mapAll(
           lhType.of.map(
@@ -4045,6 +4043,10 @@ function anyFloaters(
   return lhs.is === 'literal-float' || rhs.is === 'literal-float' ? 'float' : undefined
 }
 
+/**
+ * Gets the type of 'expr', and on error it decorates the RuntimeError with the
+ * parent expression.
+ */
 function getChildType<T extends Expression>(
   parent: Expression,
   expr: T,

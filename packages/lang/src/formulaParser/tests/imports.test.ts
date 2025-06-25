@@ -57,10 +57,7 @@ import Foo : {
       c(['import sheety://user/foo@1.2.3-pre']),
     ).run(([formula, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse import definitions ${formula}`, () => {
-        let expression: Expression
-        expect(() => {
-          ;[expression] = parseInternalTest(formula, 'app_import_definition').get()
-        }).not.toThrow()
+        const [expression] = parseInternalTest(formula, 'app_import_definition').get()
 
         expect(expression!.toCode()).toEqual(expectedCode ?? formula)
         expect(expression!.toLisp()).toEqual(`(${expectedCode ?? formula})`)

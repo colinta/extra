@@ -32,6 +32,7 @@ describe('function parser', () => {
         "(|> (|> [-1 2 3] (fn join (`#` ', '))) (fn foo (`#`)))",
       ]),
       c(['doeet()', '(fn doeet ())']),
+      c(['doeet()[one]', '([] (fn doeet ()) one)']),
       c(['map(fn(): Int => 1)', '(fn map ((fn () : `Int` => 1)))']),
       c(['map(fn(a: Int): Float => 1)', '(fn map ((fn ((a: `Int`)) : `Float` => 1)))']),
       c(['map(fn(a: Int = 1): Int => 1)', '(fn map ((fn ((a: `Int` 1)) : `Int` => 1)))']),
@@ -44,11 +45,23 @@ describe('function parser', () => {
       c(['lhs is Array(Int) and foo', '(and (is lhs Array(`Int`)) foo)']),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
-        expectedCode ??= formula
-
         let expression: Expression = parse(formula).get()
 
-        expect(expression!.toCode()).toEqual(expectedCode)
+        expect(expression!.toCode()).toEqual(expectedCode ?? formula)
+        expect(expression!.toLisp()).toEqual(expectedLisp)
+      }),
+    )
+  })
+
+  describe('conditional formulas', () => {
+    cases<[string, string] | [string, string, string]>(
+      c(['[x if c]', '[(if c x)]']),
+      c(['[...x if c]', '[(... (if c x))]']),
+    ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
+        let expression: Expression = parse(formula).get()
+
+        expect(expression!.toCode()).toEqual(expectedCode ?? formula)
         expect(expression!.toLisp()).toEqual(expectedLisp)
       }),
     )
@@ -165,12 +178,8 @@ describe('function parser', () => {
       c(['dict(foo: 1, bar: 2\n , \n )', 'dict(foo: 1, bar: 2)']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should allow trailing comma in ${formula}`, () => {
-        let expression: Expression
-        expect(() => {
-          expression = parse(formula).get()
-
-          expect(expression.toCode()).toEqual(expected)
-        }).not.toThrow()
+        const expression = parse(formula).get()
+        expect(expression.toCode()).toEqual(expected)
       }),
     )
   })
@@ -183,12 +192,8 @@ describe('function parser', () => {
       c(['😁+😁', '😁 + 😁']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should allow trailing comma in ${formula}`, () => {
-        let expression: Expression
-        expect(() => {
-          expression = parse(formula).get()
-
-          expect(expression.toCode()).toEqual(expected)
-        }).not.toThrow()
+        const expression = parse(formula).get()
+        expect(expression.toCode()).toEqual(expected)
       }),
     )
   })

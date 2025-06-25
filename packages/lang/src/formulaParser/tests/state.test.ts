@@ -17,10 +17,7 @@ describe('state', () => {
   ).run((args, {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse state definition '${args[0]}'`, () => {
       const [formula, expected, expectedFormula] = args
-      let expression: Expression
-      expect(() => {
-        ;[expression] = parseInternalTest(formula, 'app_state_definition').get()
-      }).not.toThrow()
+      const [expression] = parseInternalTest(formula, 'app_state_definition').get()
 
       expect(expression!.toCode()).toEqual(expectedFormula ?? formula)
       expect(expression!.toLisp()).toEqual(expected)

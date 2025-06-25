@@ -236,17 +236,12 @@ elseif(a): a
           runtimeTypes['a'] = [Types.string(), Values.string(valueA)]
           runtimeTypes['b'] = [Types.booleanType(), Values.booleanValue(valueB)]
 
-          let expression: Expression
-          let type: Types.Type
-          let value: Values.Value
-          expect(() => {
-            expression = parse(formula).get()
-            type = expression.getType(typeRuntime).get()
-            value = expression.eval(valueRuntime).get()
-          }).not.toThrow()
+          const expression = parse(formula).get()
+          const type = expression.getType(typeRuntime).get()
+          const value = expression.eval(valueRuntime).get()
 
-          expect(type!).toEqual(expectedType)
-          expect(value!).toEqual(expectedValue)
+          expect(type).toEqual(expectedType)
+          expect(value).toEqual(expectedValue)
         },
       ),
     )
@@ -283,9 +278,8 @@ elseif(a): 1
       (only ? it.only : skip ? it.skip : it)(`should not get type of ${formula}`, () => {
         runtimeTypes['a'] = [aType, Values.string('')]
 
-        let expression: Expression
         expect(() => {
-          expression = parse(formula).get()
+          const expression = parse(formula).get()
           expression.getType(typeRuntime).get()
         }).toThrow(message)
       }),

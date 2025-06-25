@@ -62,12 +62,8 @@ describe('formulas', () => {
       c(['(fn(...#a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))(1, 2)', Values.int(3)]),
     ).run(([formula, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
-        let expression: Expression
-        let value: Values.Value
-        expect(() => {
-          expression = parse(formula).get()
-          value = expression.eval(valueRuntime).get()
-        }).not.toThrow()
+        const expression = parse(formula).get()
+        const value = expression.eval(valueRuntime).get()
 
         expect(value!).toEqual(expectedValue)
       }),
@@ -78,9 +74,8 @@ describe('formulas', () => {
       c(['(fn(#a: Int, b: Int): Int => a + b)(a: 1, b: 2)', 'No argument passed at position #1']),
     ).run(([formula, expectedMessage], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
-        let expression: Expression
         expect(() => {
-          expression = parse(formula).get()
+          const expression = parse(formula).get()
           expression.eval(valueRuntime).get()
         }).toThrow(expectedMessage)
       }),

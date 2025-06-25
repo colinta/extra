@@ -26,13 +26,10 @@ describe('valid numbers', () => {
     c(['-1.1', Values.float(-1.1)]),
   ).run(([formula, value, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse ${formula} as ${value}`, () => {
-      let expression: Literal
-      expect(() => {
-        expression = parse(formula).get() as Literal
+      const expression = parse(formula).get() as Literal
 
-        expect(expression.value).toEqual(value)
-        expect(expression.toCode()).toEqual(expectedCode ?? formula)
-      }).not.toThrow()
+      expect(expression.value).toEqual(value)
+      expect(expression.toCode()).toEqual(expectedCode ?? formula)
     }),
   )
 })

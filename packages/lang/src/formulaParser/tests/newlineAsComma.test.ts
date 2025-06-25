@@ -143,12 +143,8 @@ baz: "3"
     (only ? it.only : skip ? it.skip : it)(
       `should allow newline in place of comma in ${formula}`,
       () => {
-        let expression: Expression
-        expect(() => {
-          expression = parse(formula).get()
-
-          expect(expression.toCode()).toEqual(expected)
-        }).not.toThrow()
+        const expression = parse(formula).get()
+        expect(expression.toCode()).toEqual(expected)
       },
     ),
   )

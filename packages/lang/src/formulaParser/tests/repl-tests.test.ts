@@ -15,29 +15,26 @@ describe('repl tests', () => {
         let runtimeTypes: {[K in string]: [Types.Type, Values.Value]} = {}
         let valueRuntime = mockValueRuntime(runtimeTypes)
 
-        let expression: Expression
-        expect(() => {
-          for (const [name, code] of test.variables) {
-            const expr = parse(code)
-            if (expr.isErr()) {
-              throw expr.error
-            }
-
-            const type = expr.value.getType(valueRuntime)
-            if (type.isErr()) {
-              throw type.error
-            }
-
-            const value = expr.value.eval(valueRuntime)
-            if (value.isErr()) {
-              throw value.error
-            }
-
-            runtimeTypes[name] = [type.value, value.value]
+        for (const [name, code] of test.variables) {
+          const expr = parse(code)
+          if (expr.isErr()) {
+            throw expr.error
           }
 
-          expression = parse(test.formula).get()
-        }).not.toThrow()
+          const type = expr.value.getType(valueRuntime)
+          if (type.isErr()) {
+            throw type.error
+          }
+
+          const value = expr.value.eval(valueRuntime)
+          if (value.isErr()) {
+            throw value.error
+          }
+
+          runtimeTypes[name] = [type.value, value.value]
+        }
+
+        const expression = parse(test.formula).get()
 
         expect(expression!.toCode()).toEqual(test.expectedCode)
         expect(expression!.getType(valueRuntime).get()?.toCode()).toEqual(test.expectedType)
