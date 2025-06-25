@@ -1,5 +1,4 @@
 import {c, cases} from '@extra-lang/cases'
-import {type Expression} from '~/formulaParser/expressions'
 import {parseInternalTest} from '~/formulaParser'
 
 describe('state', () => {

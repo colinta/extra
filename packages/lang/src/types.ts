@@ -2273,7 +2273,7 @@ export class ObjectType extends Type {
    * ObjectType.literalAccessType
    */
   literalAccessType(propName: Key): Type | undefined {
-    if (propName === null || typeof propName === 'boolean' || typeof propName === 'float') {
+    if (propName === null || typeof propName === 'boolean') {
       return undefined
     }
 

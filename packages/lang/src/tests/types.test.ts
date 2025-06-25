@@ -3,9 +3,8 @@ import * as Types from '../types'
 import * as Values from '~/values'
 import {parse} from '~/formulaParser'
 import {privateOneOf} from './privateOneOf'
-import {type TypeRuntime, type ValueRuntime} from '~/runtime'
+import {type TypeRuntime} from '~/runtime'
 import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
-import {mockValueRuntime} from '~/tests/mockValueRuntime'
 
 describe('toCode', () => {
   cases<[Types.Type, string]>(

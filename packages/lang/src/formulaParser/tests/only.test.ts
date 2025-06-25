@@ -1,5 +1,4 @@
 import {c, cases} from '@extra-lang/cases'
-import {type Expression} from '../expressions'
 import {parseInternalTest} from '../'
 
 describe('types', () => {
