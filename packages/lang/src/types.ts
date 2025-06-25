@@ -226,7 +226,7 @@ export function namedArgument(args: {
 
 export type BuiltinTypeNames = 'boolean' | 'float' | 'int' | 'null' | 'string' | 'regex'
 export type Key = string | number | boolean | null
-export type KeyType = 'string' | 'int' | 'boolean' | 'null'
+export type KeyType = 'string' | 'int' | 'float' | 'boolean' | 'null'
 type Literals = 'boolean' | 'float' | 'int' | 'string' | 'regex'
 
 export abstract class Type {
@@ -1114,14 +1114,15 @@ export const AllType = new (class AllType extends Type {
 })()
 
 /**
- * 'never/NeverType' is the empty set, and 'all/AllType' is the set of all types.
+ * 'never/NeverType' is the empty set, and 'always/AlwaysType' is the set of all
+ * types.
  *
  * What is the type of 'a' here?
  *
  *     let
  *       a = []
- *       b = [1] ++ a  -- b: Array(1)
- *       c = [''] ++ a  -- c: Array('')
+ *       b = [someInt] ++ a  -- b: Array(Int)
+ *       c = [someString] ++ a  -- c: Array(String)
  *       names = a.join('')  -- join typically expects Array(String)
  *     in …
  *
@@ -2230,9 +2231,17 @@ export class ObjectType extends Type {
     return `{${propDesc}}`
   }
 
-  arrayAccessType(propType: KeyType, _rhs: Type): Type | undefined {
-    if (propType === 'null' || propType === 'boolean') {
-      return NeverType
+  /**
+   * ObjectType.arrayAccessType
+   */
+  arrayAccessType(rhs: Type): Type | undefined {
+    let propType: KeyType
+    if (rhs.isInt()) {
+      propType = 'int'
+    } else if (rhs.isString()) {
+      propType = 'string'
+    } else {
+      return
     }
 
     let reducedType: Type | undefined
@@ -2249,17 +2258,22 @@ export class ObjectType extends Type {
       }
 
       if (reducedType === NeverType) {
-        return NeverType
+        return
       }
     }
 
     if (!foundAny) {
-      return NeverType
+      return
     }
+
+    return reducedType
   }
 
+  /**
+   * ObjectType.literalAccessType
+   */
   literalAccessType(propName: Key): Type | undefined {
-    if (propName === null || typeof propName === 'boolean') {
+    if (propName === null || typeof propName === 'boolean' || typeof propName === 'float') {
       return undefined
     }
 
@@ -2344,9 +2358,19 @@ export class ArrayType extends ContainerType<ArrayType> {
     return new ArrayType(this.of, length)
   }
 
-  arrayAccessType(propType: KeyType, rhs: Type): Type | undefined {
-    if (propType === 'string') {
-      return NeverType
+  /**
+   * ArrayType.arrayAccessType
+   *     a = [...]
+   *     index: ?
+   *     a[index] => ?
+   */
+  arrayAccessType(rhs: Type) {
+    if (!rhs.isInt()) {
+      return
+    }
+
+    if (rhs instanceof LiteralIntType) {
+      return this.literalAccessType(rhs.value)
     }
 
     if (
@@ -2363,16 +2387,22 @@ export class ArrayType extends ContainerType<ArrayType> {
     return optional(this.of)
   }
 
+  /**
+   * ArrayType.literalAccessType
+   */
   literalAccessType(propName: Key): Type | undefined {
     if (typeof propName !== 'number') {
-      return NeverType
+      return
     }
 
+    // if N >= max(array.length)
+    // (length: <N) [N+]
     if (this.narrowedLength.max !== undefined && this.narrowedLength.max <= propName) {
       return NullType
     }
 
-    // so if min: 3 > N --> true
+    // if N < min(array.length)
+    // (length: <N) [0..N]
     if (this.narrowedLength.min > propName) {
       return this.of
     }
@@ -2501,10 +2531,16 @@ export class DictType extends ContainerType<DictType> {
     return new DictType(this.of, length, names)
   }
 
-  arrayAccessType(_type: KeyType, _rhs: Type) {
+  /**
+   * DictType.arrayAccessType
+   */
+  arrayAccessType(_rhs: Type) {
     return optional(this.of)
   }
 
+  /**
+   * DictType.literalAccessType
+   */
   literalAccessType(name: Key) {
     // if lhs is in narrowedNames, it is `this.of`
     const hasName = this.narrowedNames.has(name)

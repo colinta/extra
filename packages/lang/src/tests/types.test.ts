@@ -1,6 +1,11 @@
 import {c, cases} from '@extra-lang/cases'
 import * as Types from '../types'
+import * as Values from '~/values'
+import {parse} from '~/formulaParser'
 import {privateOneOf} from './privateOneOf'
+import {type TypeRuntime, type ValueRuntime} from '~/runtime'
+import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
+import {mockValueRuntime} from '~/tests/mockValueRuntime'
 
 describe('toCode', () => {
   cases<[Types.Type, string]>(
@@ -145,6 +150,50 @@ describe('toCode', () => {
     expect(Types.oneOf([worker, student, college])).toEqual(privateOneOf(worker, student))
     expect(Types.oneOf([worker, college, student])).toEqual(privateOneOf(worker, student))
   })
+})
+
+describe.only('arrayAccess', () => {
+  let typeRuntime: TypeRuntime
+  let runtimeTypes: {[K in string]: [Types.Type, any]}
+
+  beforeEach(() => {
+    runtimeTypes = {}
+    typeRuntime = mockTypeRuntime(runtimeTypes)
+
+    // items: Array(Int, length: 1..<5)
+    runtimeTypes['items'] = [
+      Types.array(Types.int(), {min: 5, max: 5}),
+      Values.array([Values.int(-1), Values.int(1), Values.int(3)]),
+    ]
+    // index0: Int(=0)
+    runtimeTypes['index0'] = [Types.int({min: 0, max: 0}), Values.int(0)]
+    // indexNeg: Int(-1...0)
+    runtimeTypes['indexNeg'] = [Types.int({min: -1, max: 0}), Values.int(0)]
+    // indexLt5: Int(<5)
+    runtimeTypes['indexLt5'] = [Types.int({max: 4}), Values.int(4)]
+    // indexMin0: Int(>=0)
+    runtimeTypes['indexMin0'] = [Types.int({min: 0}), Values.int(4)]
+    // indexSafe: Int(0..<5)
+    runtimeTypes['indexSafe'] = [Types.int({min: 0, max: 4}), Values.int(4)]
+  })
+
+  cases<[string, Types.Type]>(
+    c(['items[0]', Types.int()]),
+    c(['items[4]', Types.int()]),
+    c(['items[5]', Types.nullType()]),
+    c(['items[10]', Types.nullType()]),
+    c(['items[index0]', Types.int()]),
+    c(['items[indexNeg]', Types.optional(Types.int())]),
+    c(['items[indexLt5]', Types.optional(Types.int())]),
+    c(['items[indexMin0]', Types.optional(Types.int())]),
+    c(['items[indexSafe]', Types.int()]),
+  ).run(([code, expected], {only, skip}) =>
+    (only ? it.only : skip ? it.skip : it)(`type of ${code} should be ${expected}`, () => {
+      const currentExpression = parse(code).get()
+      const resolvedType = currentExpression.getType(typeRuntime).get()
+      expect(resolvedType).toEqual(expected)
+    }),
+  )
 })
 
 describe('checkFormulaArguments (argument checking and generics resolution)', () => {

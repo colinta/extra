@@ -61,22 +61,22 @@ export type AssignedRelationship = {
 }
 
 export const relationshipFormula = {
-  null(): RelationshipLiteral {
+  null(): RelationshipNull {
     return {type: 'null', value: null}
   },
-  boolean(value: boolean): RelationshipLiteral {
+  boolean(value: boolean): RelationshipBoolean {
     return {type: 'boolean', value}
   },
-  int(value: number): RelationshipLiteral {
+  int(value: number): RelationshipInt {
     return {type: 'int', value}
   },
-  float(value: number): RelationshipLiteral {
+  float(value: number): RelationshipFloat {
     return {type: 'float', value}
   },
-  string(value: string): RelationshipLiteral {
+  string(value: string): RelationshipString {
     return {type: 'string', value}
   },
-  reference(name: string, id: string): RelationshipAssign {
+  reference(name: string, id: string): RelationshipReference {
     return {type: 'reference', name, id}
   },
   arrayAccess(of: RelationshipFormula, index: RelationshipFormula): RelationshipAssign {
@@ -85,19 +85,19 @@ export const relationshipFormula = {
   propertyAccess(of: RelationshipFormula, name: string): RelationshipAssign {
     return {type: 'property-access', of, name}
   },
-  addition(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
+  addition(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipAddition {
     return {type: 'addition', lhs, rhs}
   },
-  negate(arg: RelationshipFormula): RelationshipFormula {
+  negate(arg: RelationshipFormula): RelationshipNegate {
     return {type: 'negate', arg}
   },
-  subtraction(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
+  subtraction(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipAddition {
     return {type: 'addition', lhs, rhs: {type: 'negate', arg: rhs}}
   },
-  stringConcat(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
+  stringConcat(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipStringConcat {
     return {type: 'string-concat', lhs, rhs}
   },
-  arrayConcat(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipFormula {
+  arrayConcat(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipArrayConcat {
     return {type: 'array-concat', lhs, rhs}
   },
   toString(rel: RelationshipFormula): string {
@@ -1142,7 +1142,7 @@ function _simplifyRelationships(relationship: Relationship): AssignedRelationshi
   return []
 }
 
-function normalize(formula: RelationshipFormula): RelationshipFormula {
+export function normalize(formula: RelationshipFormula): RelationshipFormula {
   if (isNegate(formula)) {
     return normalizeNegate(formula)
   }
@@ -1155,25 +1155,33 @@ function normalize(formula: RelationshipFormula): RelationshipFormula {
 }
 
 function normalizeNegate(formula: RelationshipNegate): RelationshipFormula {
-  if (isNumeric(formula.arg)) {
-    return {type: formula.arg.type, value: -formula.arg.value}
-  }
-
+  // undo double negation
   if (isNegate(formula.arg)) {
     return normalize(formula.arg.arg)
   }
 
-  if (isAddition(formula.arg)) {
+  const arg = normalize(formula.arg)
+
+  if (isNumeric(arg)) {
+    return {type: arg.type, value: -arg.value}
+  }
+
+  // -(a + b)
+  if (isAddition(arg)) {
+    // => -a + -b (a or b is likely to be a number)
     return normalizeAddition(
-      relationshipFormula.negate(formula.arg.lhs),
-      relationshipFormula.negate(formula.arg.rhs),
+      relationshipFormula.negate(arg.lhs),
+      relationshipFormula.negate(arg.rhs),
     )
   }
 
   return formula
 }
 
-function normalizeAddition(lhs: RelationshipFormula, rhs: RelationshipFormula) {
+function normalizeAddition(
+  lhs: RelationshipFormula,
+  rhs: RelationshipFormula,
+): RelationshipFormula {
   lhs = normalize(lhs)
   rhs = normalize(rhs)
 
@@ -1185,12 +1193,28 @@ function normalizeAddition(lhs: RelationshipFormula, rhs: RelationshipFormula) {
     return lhs
   }
 
-  if (isInt(lhs) && isInt(rhs)) {
-    return relationshipFormula.int(lhs.value + rhs.value)
+  if (isNumeric(lhs) && isNumeric(rhs)) {
+    return addNumerics(lhs, rhs)
   }
 
-  if (isNumeric(lhs) && isNumeric(rhs)) {
-    return relationshipFormula.float(lhs.value + rhs.value)
+  // swap order and defer to below
+  if (isNumeric(lhs) && isAddition(rhs)) {
+    return normalizeAddition(rhs, lhs)
+  }
+
+  if (isAddition(lhs) && isNumeric(rhs)) {
+    if (isNumeric(lhs.lhs)) {
+      return relationshipFormula.addition(lhs.rhs, normalizeAddition(lhs.lhs, rhs))
+    }
+
+    if (isNumeric(lhs.rhs)) {
+      return relationshipFormula.addition(lhs.lhs, normalizeAddition(lhs.rhs, rhs))
+    }
+  }
+
+  // prefer numbers on the right
+  if (isNumeric(lhs)) {
+    return normalizeAddition(rhs, lhs)
   }
 
   return relationshipFormula.addition(lhs, rhs)
@@ -1267,8 +1291,181 @@ function isOperation(
   )
 }
 
+function addNumerics(lhs: RelationshipNumeric, rhs: RelationshipNumeric) {
+  if (isInt(lhs) && isInt(rhs)) {
+    return relationshipFormula.int(lhs.value + rhs.value)
+  }
+
+  return relationshipFormula.float(lhs.value + rhs.value)
+}
+
 function isAddition(formula: RelationshipFormula): formula is RelationshipAddition {
   return formula.type === 'addition'
+}
+
+export function verifyRelationship(
+  formula: RelationshipFormula,
+  comparison: RelationshipComparison,
+  right: RelationshipFormula,
+  getRelationships: (id: string) => AssignedRelationship[],
+): boolean {
+  if (isNumeric(formula) && isNumeric(right)) {
+    switch (comparison) {
+      case '==':
+        return formula.value === right.value
+      case '!=':
+        return formula.value !== right.value
+      case '>':
+        return formula.value > right.value
+      case '>=':
+        return formula.value >= right.value
+      case '<':
+        return formula.value < right.value
+      case '<=':
+        return formula.value <= right.value
+    }
+  }
+
+  const ref = findEventualRef(formula)
+  const relationships = ref ? getRelationships(ref.id) : []
+  return relationships.some(rel => {
+    if (!isEqualFormula(formula, rel.formula)) {
+      return false
+    }
+
+    switch (comparison) {
+      case '>=':
+        return verifyRelationshipIsGte(right, rel)
+      case '<':
+        return verifyRelationshipIsLt(right, rel)
+      default:
+        throw `TODO - implement '${comparison}' in verifyRelationship`
+    }
+  })
+}
+
+function verifyRelationshipIsGte(
+  //
+  target: RelationshipFormula,
+  relationship: AssignedRelationship,
+) {
+  if (!['==', '>', '>='].includes(relationship.type)) {
+    return false
+  }
+
+  if (isNumeric(target) && isNumeric(relationship.right)) {
+    switch (relationship.type) {
+      case '==':
+        // relationship: formula == N (eg x == 1)
+        // verify: formula >= target   (eg x >= 1)
+        // return: N >= target   (eg 1 == 1)
+        return relationship.right.value >= target.value
+      case '>=':
+        // relationship: formula >= N (eg x >= 0)
+        // verify: formula >= target   (eg x >= 0)
+        // return: N >= target   (eg 0 >= 0)
+        return relationship.right.value >= target.value
+      case '>':
+        // relationship: formula > N (eg x > -1)
+        // verify: formula >= target   (eg x >= 0)
+        if (isInt(target) && isInt(relationship.right)) {
+          // relationship: formula > N (eg x > -1)
+          // =>          : x >= N + 1 (eg x > 0)
+          // return: N >= target - 1
+          return relationship.right.value >= target.value - 1
+        }
+
+        return relationship.right.value >= target.value
+    }
+  }
+
+  throw `TODO - verifyRelationshipIsGte(right: ${relationshipFormula.toString(target)}, formula: ${relationshipFormula.toString(relationship.formula)} ${relationship.type} ${relationshipFormula.toString(relationship.formula)})`
+}
+
+function verifyRelationshipIsLt(
+  //
+  target: RelationshipFormula,
+  relationship: AssignedRelationship,
+) {
+  if (!['==', '<', '<='].includes(relationship.type)) {
+    return false
+  }
+
+  if (isNumeric(target) && isNumeric(relationship.right)) {
+    switch (relationship.type) {
+      case '==':
+        // relationship: formula == N (eg x == 1)
+        // verify: formula < target   (eg x <= 1)
+        // return: N < target   (eg 1 == 1)
+        return relationship.right.value < target.value
+      case '<=':
+        // relationship: formula <= N (eg x <= 0, x <= 0.1)
+        // verify: formula < target   (eg x < 0)
+        // return: N < target   (eg 0 < 0)
+        return relationship.right.value < target.value
+      case '<':
+        // relationship: formula < N (eg x < -1)
+        // verify: formula < target   (eg x < 0)
+        return relationship.right.value < target.value
+    }
+  }
+
+  // target is something like 'foo' or 'foo.length' or 'foo[key]'
+  if (isAssign(target)) {
+    if (isEqualFormula(target, relationship.right)) {
+      switch (relationship.type) {
+        case '==':
+        case '<=':
+          return false
+        case '<':
+          return true
+      }
+    }
+
+    if (isAddition(relationship.right)) {
+      if (isNumeric(relationship.right.lhs) && !isNumeric(relationship.right.rhs)) {
+        // swap order and defer to below
+        return verifyRelationshipIsLt(target, {
+          formula: relationship.formula,
+          type: relationship.type,
+          right: relationshipFormula.addition(relationship.right.rhs, relationship.right.lhs),
+        })
+      }
+
+      if (isAssign(relationship.right.lhs) && isNumeric(relationship.right.rhs)) {
+        if (!isEqualFormula(target, relationship.right.lhs)) {
+          return false
+        }
+
+        // relationship.type: [ == <= < ]
+        // relationship.right is an addition
+        // relationship.right.lhs == target
+        // relationship.right.rhs is a number
+        switch (relationship.type) {
+          case '==':
+          case '<=':
+            // relationship: formula == target + N
+            // or
+            // relationship: formula <= target + N
+            //
+            // if relationship.right.rhs is < 0,
+            // then the formula is less than the target
+            return relationship.right.rhs.value < 0
+          case '<':
+            // relationship: formula < target + N
+            // relationship: formula < length + N (eg x < length - 1)
+            // verify: formula < right   (eg x < length)
+            // return: length + N < right   (eg N <= 0)
+            return relationship.right.rhs.value <= 0
+        }
+        return
+      }
+    }
+  }
+
+  console.log('=========== relationship.ts at line 1323 ===========')
+  console.log({comparison: '<', right: target, relationship})
+  throw `TODO - verifyRelationshipIsLt(right is '${target.type}', formula is '${relationshipFormula.toString(relationship.formula)}')`
 }
 
 export function isEqualFormula(lhs: RelationshipFormula, rhs: RelationshipFormula): boolean {

@@ -41,6 +41,54 @@ function splitFormula(formula: string) {
   return {lhs, rhs, symbol}
 }
 
+function sloppyParseFormula(formula: string) {
+  return parse(formula).get().relationshipFormula(typeRuntime)!
+}
+
+function sloppyParseRelationship(formula: string) {
+  const {lhs, rhs, symbol} = splitFormula(formula)
+  const lhsRel = sloppyParseFormula(lhs)
+  const rhsRel = sloppyParseFormula(rhs)
+
+  if (typeof expect !== 'undefined') {
+    expect(lhsRel).toBeTruthy()
+    expect(rhsRel).toBeTruthy()
+  }
+
+  return {lhs: lhsRel!, rhs: rhsRel!, symbol}
+}
+
+describe('normalize', () => {
+  beforeEach(() => {
+    runtimeTypes['x'] = [Types.int(), Values.int(1)]
+  })
+
+  cases<[string, string]>(
+    //
+    c(['1', '1']),
+    c(['1+1', '2']),
+    c(['1+x', 'x+1']),
+    c(['x+1', 'x+1']),
+    c(['x+ -(1)', 'x + -1']),
+    c(['1+2+x', 'x+3']),
+    c(['1+x+2', 'x+3']),
+    c(['x+1+2', 'x+3']),
+    c(['-(-1)', '1']),
+    c(['-(1) + -(2)', '-3']),
+    c(['-(-(1 + x + 2))', 'x + 3']),
+  ).run(([code, expected], {only, skip}) =>
+    (only ? it.only : skip ? it.skip : it)(`normalize(${code}) should be ${expected}`, () => {
+      const p = parse(code).get()
+      const rel = p.relationshipFormula(typeRuntime)!
+      const expectedRel = sloppyParseFormula(expected)
+      expect(rel).toBeTruthy()
+      expect(expectedRel).toBeTruthy()
+      const normalized = Relationship.normalize(rel)
+      expect(normalized).toEqual(expectedRel)
+    }),
+  )
+})
+
 describe('simplifyRelationships', () => {
   beforeEach(() => {
     runtimeTypes['x'] = [Types.int(), Values.int(1)]
@@ -48,34 +96,35 @@ describe('simplifyRelationships', () => {
     runtimeTypes['z'] = [Types.int(), Values.int(1)]
   })
 
+  // () => RelationshipFormula because ref() uses typeRuntime
   cases<[string, [string, () => Relationship.RelationshipFormula][]]>(
     c(['x < 1', [['x < 1', () => RF.int(1)]]]),
     c(['x < 1 + 1', [['x < 2', () => RF.int(2)]]]),
     c([
       'x + y < 2',
       [
-        ['x < 2 - y', () => RF.addition(RF.int(2), RF.negate(ref('y')))],
-        ['y < 2 - x', () => RF.addition(RF.int(2), RF.negate(ref('x')))],
+        ['x < 2 - y', () => RF.addition(RF.negate(ref('y')), RF.int(2))],
+        ['y < 2 - x', () => RF.addition(RF.negate(ref('x')), RF.int(2))],
       ],
     ]),
     c([
       'x <= 2 + y',
       [
-        ['x <= 2 + y', () => RF.addition(RF.int(2), ref('y'))],
+        ['x <= 2 + y', () => RF.addition(ref('y'), RF.int(2))],
         ['y >= x - 2', () => RF.addition(ref('x'), RF.int(-2))],
       ],
     ]),
     c([
       'x == 2 + y',
       [
-        ['x == 2 + y', () => RF.addition(RF.int(2), ref('y'))],
+        ['x == 2 + y', () => RF.addition(ref('y'), RF.int(2))],
         ['y == x - 2', () => RF.addition(ref('x'), RF.int(-2))],
       ],
     ]),
     c([
       'x <= 2 - y',
       [
-        ['x <= 2 - y', () => RF.addition(RF.int(2), RF.negate(ref('y')))],
+        ['x <= 2 - y', () => RF.addition(RF.negate(ref('y')), RF.int(2))],
         ['y <= -x + 2', () => RF.addition(RF.negate(ref('x')), RF.int(2))],
       ],
     ]),
@@ -88,25 +137,15 @@ describe('simplifyRelationships', () => {
       ],
     ]),
   ).run(([formula, expectedRelationships], {only, skip}) => {
-    const {lhs, rhs, symbol} = splitFormula(formula)
     ;(only ? it.only : skip ? it.skip : it)(
       `${formula} should simplify to [${expectedRelationships.map(([code]) => code).join(', ')}]`,
       () => {
-        const lhsExpression = parse(lhs).get()
-        const rhsExpression = parse(rhs).get()
-        const lhsFormula = lhsExpression.relationshipFormula(typeRuntime)
-        const rhsFormula = rhsExpression.relationshipFormula(typeRuntime)
-        expect(lhsFormula).toBeTruthy()
-        expect(rhsFormula).toBeTruthy()
-        if (!lhsFormula || !rhsFormula) {
-          return
-        }
-
+        const {lhs, rhs, symbol} = sloppyParseRelationship(formula)
         const newRelationships = new Set(
           simplifyRelationships({
-            formula: lhsFormula,
+            formula: lhs,
             type: symbol,
-            right: rhsFormula,
+            right: rhs,
           }),
         )
 
@@ -151,24 +190,20 @@ describe('isEqualRelationship', () => {
     c(['x < 1', 'x <= 1', false]),
   ).run(([lhs, rhs, expectedEqual], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`${lhs} == ${rhs} should be ${expectedEqual}`, () => {
-      const lhsRel = splitFormula(lhs)
-      const rhsRel = splitFormula(rhs)
-      const lhsFormula = parse(lhsRel.lhs).get().relationshipFormula(typeRuntime)
-      const lhsRight = parse(lhsRel.rhs).get().relationshipFormula(typeRuntime)
-      const rhsFormula = parse(rhsRel.lhs).get().relationshipFormula(typeRuntime)
-      const rhsRight = parse(rhsRel.rhs).get().relationshipFormula(typeRuntime)
+      const {lhs: lhsFormula, rhs: lhsRight, symbol: lhsSymbol} = sloppyParseRelationship(lhs)
+      const {lhs: rhsFormula, rhs: rhsRight, symbol: rhsSymbol} = sloppyParseRelationship(rhs)
 
       expect(
         Relationship.isEqualRelationship(
           {
-            formula: lhsFormula!,
-            type: lhsRel.symbol,
-            right: lhsRight!,
+            formula: lhsFormula,
+            type: lhsSymbol,
+            right: lhsRight,
           },
           {
-            formula: rhsFormula!,
-            type: rhsRel.symbol,
-            right: rhsRight!,
+            formula: rhsFormula,
+            type: rhsSymbol,
+            right: rhsRight,
           },
         ),
       ).toBe(expectedEqual)

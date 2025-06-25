@@ -15,7 +15,7 @@ beforeEach(() => {
   valueRuntime = mockValueRuntime(runtimeTypes)
 })
 
-describe('let … in', () => {
+describe('complicated relationships', () => {
   it('can infer the relationships of numbers', () => {
     runtimeTypes['index'] = [Types.int(), Values.int(1)]
     const code = `
@@ -136,9 +136,9 @@ describe('let … in', () => {
     )
   })
 
-  it('can infer array access', () => {
+  it('can infer safe array access with literals', () => {
     runtimeTypes['items'] = [
-      Types.array(Types.string()),
+      Types.array(Types.int()),
       Values.array([Values.int(-1), Values.int(1), Values.int(3)]),
     ]
     runtimeTypes['index'] = [Types.int(), Values.int(1)]
@@ -149,26 +149,19 @@ describe('let … in', () => {
         prev = index - 1
         next = index + 1
       in
-        if (items.length >= 3 and index > 0 and index < items.length - 2) {
+        if (items.length >=3 and index >= 1 and index <= items.length - 2) {
           then: {
             items[prev]
             items[index]
             items[next]
           }
         }`
-    let resolvedType: Types.Type
-    let resolvedValue: Values.Value
-    expect(() => {
-      const currentExpression = parse(code).get()
-      resolvedType = currentExpression.getType(typeRuntime).get()
-      resolvedValue = currentExpression.eval(valueRuntime).get()
-    }).not.toThrow()
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
+    const resolvedValue = currentExpression.eval(valueRuntime).get()
 
     expect(resolvedType!).toEqual(
-      Types.oneOf([
-        Types.tuple([Types.string(), Types.string(), Types.string()]),
-        Types.nullType(),
-      ]),
+      Types.oneOf([Types.tuple([Types.int(), Types.int(), Types.int()]), Types.nullType()]),
     )
     expect(resolvedValue!).toEqual(Values.tuple([Values.int(-1), Values.int(1), Values.int(3)]))
   })

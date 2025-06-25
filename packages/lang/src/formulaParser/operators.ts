@@ -12,6 +12,7 @@ import {
   assignNextRuntime,
   findEventualRef,
   relationshipFormula,
+  verifyRelationship,
   type RelationshipComparison,
   type RelationshipFormula,
 } from '~/relationship'
@@ -2481,18 +2482,8 @@ class ArrayAccessOperator extends BinaryOperator {
     lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
-    const lhsRel = lhsExpr.relationshipFormula(runtime)
-    if (lhsRel) {
-      const lhsRef = findEventualRef(lhsRel)
-      if (lhsRef) {
-        const relationships = runtime.getRelationships(lhsRef.id)
-        console.log('=========== operators.ts at line 2495 ===========')
-        console.log({lhsRef, relationships})
-      }
-    }
-
     if (lhs instanceof Types.ArrayType) {
-      return this.accessInArrayType(lhs, rhs, rhsExpr)
+      return this.accessInArrayType(runtime, lhs, rhs, lhsExpr, rhsExpr)
     }
 
     if (lhs instanceof Types.DictType) {
@@ -2506,11 +2497,45 @@ class ArrayAccessOperator extends BinaryOperator {
     return err(new RuntimeError(lhsExpr, `Expected Object, Dict, or Array, found ${lhs}`))
   }
 
-  accessInArrayType(lhs: Types.ArrayType, rhs: Types.Type, rhsExpr: Expression) {
-    if (rhs.isLiteral('int')) {
-      return ok(lhs.literalAccessType(rhs.value) ?? Types.NullType)
-    } else if (rhs.isInt()) {
-      return ok(lhs.arrayAccessType('int', rhs) ?? Types.NullType)
+  accessInArrayType(
+    runtime: TypeRuntime,
+    lhs: Types.ArrayType,
+    rhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
+    if (rhs.isLiteral() && !(rhs.value instanceof RegExp)) {
+      const type = lhs.literalAccessType(rhs.value)
+      if (type) {
+        return ok(type)
+      }
+    }
+
+    const lhsRel = lhsExpr.relationshipFormula(runtime)
+    const rhsRel = rhsExpr.relationshipFormula(runtime)
+    if (lhsRel && rhsRel) {
+      const lhsRef = findEventualRef(lhsRel)
+      if (lhsRef) {
+        const lhsLength = relationshipFormula.propertyAccess(lhsRef, 'length')
+        const getRelationships = runtime.getRelationships.bind(runtime)
+        const rhsIsGtZero = verifyRelationship(
+          rhsRel,
+          '>=',
+          relationshipFormula.int(0),
+          getRelationships,
+        )
+        const rhsIsLtLength = verifyRelationship(rhsRel, '<', lhsLength, getRelationships)
+        if (rhsIsGtZero && rhsIsLtLength) {
+          return ok(lhs.of)
+        }
+      }
+    }
+
+    if (rhs.isInt()) {
+      const type = lhs.arrayAccessType(rhs)
+      if (type) {
+        return ok(type)
+      }
     }
 
     return err(
@@ -2521,14 +2546,8 @@ class ArrayAccessOperator extends BinaryOperator {
   accessInDictType(lhs: Types.DictType, rhs: Types.Type, rhsExpr: Expression) {
     if (rhs.isLiteral('key')) {
       return ok(lhs.literalAccessType(rhs.value))
-    } else if (rhs.isInt()) {
-      return ok(lhs.arrayAccessType('int', rhs))
-    } else if (rhs.isString()) {
-      return ok(lhs.arrayAccessType('string', rhs))
-    } else if (rhs.isBoolean()) {
-      return ok(lhs.arrayAccessType('boolean', rhs))
-    } else if (rhs.isNull()) {
-      return ok(lhs.arrayAccessType('null', rhs))
+    } else if (rhs.isInt() || rhs.isString() || rhs.isBoolean() || rhs.isNull()) {
+      return ok(lhs.arrayAccessType(rhs))
     }
 
     return err(
@@ -2545,7 +2564,7 @@ class ArrayAccessOperator extends BinaryOperator {
 
       return ok(propType)
     } else if (rhs.isInt() || rhs.isString()) {
-      const propType = lhs.arrayAccessType(rhs.isInt() ? 'int' : 'string', rhs)
+      const propType = lhs.arrayAccessType(rhs)
       return ok(propType ?? Types.NullType)
     }
 
@@ -3361,6 +3380,13 @@ class NegateOperator extends UnaryOperator {
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
     return numericOperation(this, lhs, a => -a)
+  }
+
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    const lhsFormula = this.args[0].relationshipFormula(runtime)
+    if (lhsFormula) {
+      return relationshipFormula.negate(lhsFormula)
+    }
   }
 }
 
