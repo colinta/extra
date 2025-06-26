@@ -86,8 +86,11 @@ let
     3
     5
     7
-    -- alternative way to invoke 'if' (no ternary operator)
+    -- alternative way to invoke 'if'
     ...if(max <= 10, then: [9], else: [])
+    -- `if` operator here is only allowed in arrays, dict, and set
+    -- 11 is only included if the condition is true, otherwise it is skipped
+    11 if max > 10
   ]
 in
   [...evens, ...odds]

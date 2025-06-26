@@ -56,11 +56,11 @@ describe('if', () => {
       c([
         `\
 if(a) {
-then :
+then:
   1
-elseif(b) :
+elseif(b):
   3
-else :
+else:
   '4'
 }
 `,
@@ -70,15 +70,15 @@ else :
       c([
         `\
 if(a) {
-then :
+then:
   1
   +
   2
-elseif(b) :
+elseif(b):
   3
   +
   4
-else :
+else:
   '4'
   <>
   '5'

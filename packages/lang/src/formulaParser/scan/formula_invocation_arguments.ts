@@ -9,8 +9,7 @@ import {scanValidName} from './identifier'
  * - positional arguments
  *     foo("a", true, 123)
  * - named arguments
- *     foo(x: "a", y:
- ', z: 123)
+ *     foo(x: "a", y: '', z: 123)
  * - spread arguments (tuple, array, or dict)
  *
  * Tuple arguments are treated as if the arguments were passed directly.

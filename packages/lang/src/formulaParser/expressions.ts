@@ -165,6 +165,14 @@ export abstract class Expression {
   }
 
   /**
+   * Ideally this would be an instanceof check on InclusionOperator, but then import
+   * ordering would be impossible, so it's just a method.
+   */
+  isInclusionOp(): this is Operation {
+    return false
+  }
+
+  /**
    * Expressions that return the size of the container:
    *     [].length
    *     dict().length
@@ -761,8 +769,29 @@ export class ArrayExpression extends Expression {
     return mapAll(
       this.values.map((valueExpr): GetRuntimeResult<Values.Value[]> => {
         if (valueExpr instanceof SpreadArrayArgument) {
+          if (valueExpr.value.isInclusionOp()) {
+            const [_, rhs] = valueExpr.value.args
+            return rhs.eval(runtime).map(include => {
+              if (include.isTruthy()) {
+                return valueExpr.eval(runtime).map(array => [...array.iterate()])
+              } else {
+                return ok([])
+              }
+            })
+          }
+
           return valueExpr.eval(runtime).map(array => [...array.iterate()])
         } else {
+          if (valueExpr.isInclusionOp()) {
+            const [_, rhs] = valueExpr.args
+            return rhs.eval(runtime).map(include => {
+              if (include.isTruthy()) {
+                return valueExpr.eval(runtime).map(value => [value])
+              } else {
+                return ok([])
+              }
+            })
+          }
           return valueExpr.eval(runtime).map(value => [value])
         }
       }),
@@ -921,19 +950,20 @@ export class SetExpression extends Expression {
 function combineAllTypesForArray(expr: ArrayExpression, runtime: TypeRuntime) {
   return mapAll(
     // returns [isSpread, Type][]
-    expr.values.map((arg): GetRuntimeResult<[boolean, Types.Type]> => {
+    expr.values.map((arg): GetRuntimeResult<[boolean, boolean, Types.Type]> => {
       const isSpread = arg instanceof SpreadArrayArgument
-      return getChildType(expr, arg, runtime).map(type => [isSpread, type])
+      const isInclusionOp = isSpread ? arg.value.isInclusionOp() : arg.isInclusionOp()
+      return getChildType(expr, arg, runtime).map(type => [isSpread, isInclusionOp, type])
     }),
   ).map(typesInfo => {
     let returnType: Types.Type = Types.AlwaysType
     let min = 0,
       max: number | undefined = 0
-    for (const [isSpread, type] of typesInfo) {
+    for (const [isSpread, isInclusionOp, type] of typesInfo) {
       if (isSpread && (type instanceof Types.ArrayType || type instanceof Types.SetType)) {
         // [x, y, ...set]
         // [x, y, ...array]
-        min += type.narrowedLength.min
+        min += isInclusionOp ? 0 : type.narrowedLength.min
         max =
           type.narrowedLength.max === undefined || max === undefined
             ? undefined
@@ -942,8 +972,8 @@ function combineAllTypesForArray(expr: ArrayExpression, runtime: TypeRuntime) {
       } else if (isSpread) {
         // unreachable
       } else {
-        // [..., x, ...]
-        min += 1
+        // [..., x, ...] or [..., x if y, ...]
+        min += isInclusionOp ? 0 : 1
         max = max === undefined ? undefined : max + 1
         returnType = Types.compatibleWithBothTypes(returnType, type)
       }

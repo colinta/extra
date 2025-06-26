@@ -29,7 +29,7 @@ import {
   type Operator,
 } from '~/formulaParser/types'
 
-export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
+export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'matches', 'if'] as const
 export const NAMED_BINARY_ALIAS = {
   '&&': 'and',
   '||': 'or',
@@ -46,59 +46,63 @@ export const SPREAD_OPERATOR = '...'
 
 const PRECEDENCE = {
   BINARY: {
-    '|>': 1,
-    '?|>': 1,
-    '??': 3,
-    or: 4,
-    and: 5,
-    '^': 6,
-    '|': 7,
-    '&': 8,
-    matches: 10,
-    '==': 10,
-    '!=': 10,
-    '>': 10,
-    '>=': 10,
-    '<': 10,
-    '<=': 10,
-    '<=>': 10,
-    has: 10,
-    '!has': 10,
-    is: 10,
-    '!is': 10,
-    '++': 11,
-    '<>': 11,
-    '~~': 11,
-    '...': 11,
-    '<..': 11,
-    '..<': 11,
-    '<.<': 11,
-    '<<': 12,
-    '>>': 12,
-    '+': 12,
-    '-': 12,
-    '*': 13,
-    '/': 13,
-    '//': 13,
-    '%': 13,
-    '**': 15,
-    '[]': 18,
-    fn: 18,
-    '.': 18,
-    '?.': 18,
+    if: 1,
+    '|>': 2,
+    '?|>': 2,
+    // I had ternary operators at one point;
+    // then: 3,
+    // else: 3,
+    '??': 4,
+    or: 5,
+    and: 6,
+    '^': 7,
+    '|': 8,
+    '&': 9,
+    matches: 11,
+    '==': 11,
+    '!=': 11,
+    '>': 11,
+    '>=': 11,
+    '<': 11,
+    '<=': 11,
+    '<=>': 11,
+    has: 11,
+    '!has': 11,
+    is: 11,
+    '!is': 11,
+    '++': 12,
+    '<>': 12,
+    '~~': 12,
+    '...': 12,
+    '<..': 12,
+    '..<': 12,
+    '<.<': 12,
+    '<<': 13,
+    '>>': 13,
+    '+': 13,
+    '-': 13,
+    '*': 14,
+    '/': 14,
+    '//': 14,
+    '%': 14,
+    '**': 16,
+    '[]': 19,
+    fn: 19,
+    '.': 19,
+    '?.': 19,
   } as const,
   UNARY: {
-    '=': 10,
-    '>': 10,
-    '>=': 10,
-    '<': 10,
-    '<=': 10,
-    not: 15,
-    '-': 15,
-    '~': 15,
-    $: 18,
-    '.': 19,
-    typeof: 17,
+    '==': 11,
+    '>': 11,
+    '>=': 11,
+    '<': 11,
+    '<=': 11,
+    not: 16,
+    '-': 16,
+    '~': 16,
+    $: 19,
+    '.': 20,
+    typeof: 18,
   } as const,
 } as const
 
@@ -2754,6 +2758,55 @@ export class FunctionInvocationOperator extends BinaryOperator {
     })
   }
 }
+
+/**
+ * In an array/dict/set/object literal, you can optionally include an element using `if`
+ *
+ *     [1, 2, 3 if x > 2]  -- will be [1,2] or [1,2,3] depending on `x`
+ *
+ * The operator doesn't really have a runtime meaning - it is used as a container,
+ * and picked up by ArrayExpression.
+ */
+class InclusionOperator extends BinaryOperator {
+  symbol = 'if'
+
+  isInclusionOp(): this is Operation {
+    return true
+  }
+
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type, _rhs: Types.Type, rhsExpr: Expression) {
+    if (rhsExpr instanceof InclusionOperator) {
+      return err(new RuntimeError(this, 'Inclusion operator cannot be nested'))
+    }
+    return ok(lhs)
+  }
+
+  operatorEval(_runtime: ValueRuntime, lhs: Values.Value): GetValueResult {
+    return ok(lhs)
+  }
+}
+
+addBinaryOperator({
+  name: 'inclusion operator',
+  symbol: 'if',
+  precedence: PRECEDENCE.BINARY['if'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new InclusionOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
 
 export class IfExpressionInvocation extends FunctionInvocationOperator {
   symbol = 'if'

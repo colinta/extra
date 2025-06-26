@@ -32,6 +32,7 @@ import {
   terminatesWithCurlyBracket,
   terminatesWithAngleBracket,
   isBlockStartOperator,
+  INCLUSION_OPERATOR,
   PARENS_OPEN,
   ARRAY_OPEN,
   ARRAY_WORD_START,
@@ -476,9 +477,10 @@ function parseInternal(
         if (treatNewlineAsComma(expressionType) && scanner.is('\n')) {
           // we're at a newline... cool
           // 1. is the next token '...'? if we're scanning array/object/set/dict, that's a splat operator, ignore it.
-          // 2. is the next token an operator? keep scanning!
-          // 3. wait... is that operator a '-'?
-          // 4. if we are looking at a negative number, don't keep scanning.
+          // 2. also check for an 'if' inclusion operator
+          // 3. is the next token an operator? keep scanning!
+          // 4. wait... is that operator a '-'?
+          // 5. if we are looking at a negative number, don't keep scanning.
           if (
             scanner.test(() => {
               scanner.scanAllWhitespace()
@@ -487,6 +489,10 @@ function parseInternal(
                 return false
               }
               if (scanner.is('...') && expressionSupportsSplat(expressionType)) {
+                return false
+              }
+
+              if (scanner.is(INCLUSION_OPERATOR) && expressionSupportsSplat(expressionType)) {
                 return false
               }
 
@@ -620,6 +626,13 @@ function parseInternal(
           isBinaryOperatorName(scanner.remainingInput)
         ) {
           processOperator(scanBinaryOperator(scanner))
+        } else if (
+          expressionSupportsSplat(expressionType) &&
+          scanner.scanIfWord(INCLUSION_OPERATOR)
+        ) {
+          // if we are inside an array/dict/set/object literal, check for the inclusion
+          // operator `if`
+          processOperator(binaryOperatorNamed('if', scanner.flushComments()))
         } else if (isBlockStartOperator(scanner)) {
           // scans for `foo() { arg0, name: arg1, other: arg2, arg3 }`
           processBlockArguments()
