@@ -86,13 +86,17 @@ const PRECEDENCE = {
     '//': 14,
     '%': 14,
     '**': 16,
+    // property chain operators
     '[]': 19,
+    '?.[]': 19,
     fn: 19,
+    '?.()': 19,
     '.': 19,
     '?.': 19,
   } as const,
   UNARY: {
-    '==': 11,
+    // unary range operators
+    '=': 11,
     '>': 11,
     '>=': 11,
     '<': 11,
@@ -100,8 +104,8 @@ const PRECEDENCE = {
     not: 16,
     '-': 16,
     '~': 16,
-    $: 19,
-    '.': 20,
+    $: 20,
+    '.': 21,
     typeof: 18,
   } as const,
 } as const
@@ -404,12 +408,12 @@ abstract class BinaryOperator extends OperatorOperation {
    * - `and / or` use the truthy/falsey type of the lhs in the evaluation of the RHS
    */
   rhsType(
-    _runtime: TypeRuntime,
+    runtime: TypeRuntime,
     _lhsType: Types.Type,
     _lhsExpr: Expression,
-    _rhsExpr: Expression,
-  ): GetTypeResult | undefined {
-    return undefined
+    rhsExpr: Expression,
+  ): GetTypeResult {
+    return getChildType(this, rhsExpr, runtime)
   }
 
   abstract operatorType(
@@ -424,13 +428,9 @@ abstract class BinaryOperator extends OperatorOperation {
 
   getType(runtime: TypeRuntime): GetTypeResult {
     const [lhsExpr, rhsExpr] = this.args
-    return getChildType(this, lhsExpr, runtime)
-      .map(lhType => {
-        const rhResult =
-          this.rhsType(runtime, lhType, lhsExpr, rhsExpr) ?? getChildType(this, rhsExpr, runtime)
-        return rhResult.map(rhType => [lhType, rhType])
-      })
-      .map(([lhType, rhType]): GetTypeResult => {
+    return getChildType(this, lhsExpr, runtime).map(lhType => {
+      const rhResult = this.rhsType(runtime, lhType, lhsExpr, rhsExpr)
+      return rhResult.map((rhType): GetTypeResult => {
         // if we have a OneOfType, we need to map every combination into op.getType, and
         // then collect all the errors, or return Types.oneOf()
         if (lhType instanceof Types.OneOfType && rhType instanceof Types.OneOfType) {
@@ -478,6 +478,7 @@ abstract class BinaryOperator extends OperatorOperation {
           this.operatorType(runtime, lhType, rhType, lhsExpr, rhsExpr, lhType, rhType)
         )
       })
+    })
   }
 
   rhsEval(
@@ -605,7 +606,7 @@ class NullColescingPipeOperator extends BinaryOperator {
 }
 
 addBinaryOperator({
-  name: 'null coalscing pipe operator',
+  name: 'null coalescing pipe operator',
   symbol: '?|>',
   precedence: PRECEDENCE.BINARY['?|>'],
   associativity: 'left',
@@ -2450,7 +2451,320 @@ addBinaryOperator({
   },
 })
 
-class ArrayAccessOperator extends BinaryOperator {
+abstract class PropertyChainOperator extends BinaryOperator {
+  /**
+   * No need to enclose property access operators in `(…)`
+   */
+  toViewPropCode() {
+    return this.toCode()
+  }
+
+  joiner() {
+    return this.symbol
+  }
+
+  /**
+   * Like getType(), but null-coalescing operators exclude 'null'. If no null type is
+   * found, a compile error is returned (null-coalescing operator should not be used
+   * in that case).
+   */
+  getChainLhsType(runtime: TypeRuntime): GetTypeResult {
+    return this.getType(runtime).map(type => {
+      if (
+        this.hasNullCoalescing() &&
+        type instanceof Types.OneOfType &&
+        type.of.some(of => of.isNull())
+      ) {
+        return Types.oneOf(type.of.filter(of => !of.isNull()))
+      }
+
+      return ok(type)
+    })
+  }
+
+  isNullCoalescing(): boolean {
+    return false
+  }
+
+  hasNullCoalescing(): boolean {
+    if (this.isNullCoalescing()) {
+      return true
+    }
+
+    const [lhs] = this.args
+    if (lhs instanceof PropertyChainOperator) {
+      return lhs.hasNullCoalescing()
+    }
+
+    return false
+  }
+
+  abstract chainOperatorType(
+    runtime: TypeRuntime,
+    lhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetTypeResult
+
+  operatorType(
+    runtime: TypeRuntime,
+    lhs: Types.Type,
+    _rhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+    originalLhs: Types.Type,
+  ) {
+    if (
+      this.isNullCoalescing() &&
+      (!(originalLhs instanceof Types.OneOfType) || !originalLhs.of.some(of => of.isNull()))
+    ) {
+      return err(
+        new RuntimeError(
+          this,
+          `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${originalLhs}`,
+        ),
+      )
+    }
+
+    return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr).map(type => {
+      return type
+    })
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    const [lhsExpr, rhsExpr] = this.args
+    if (lhsExpr instanceof PropertyChainOperator) {
+      return lhsExpr
+        .getChainLhsType(runtime)
+        .mapResult(decorateError(this))
+        .map(lhs => {
+          if (
+            this.isNullCoalescing() &&
+            (!(lhs instanceof Types.OneOfType) || !lhs.of.some(of => of.isNull()))
+          ) {
+            return err(
+              new RuntimeError(
+                this,
+                `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${lhs}`,
+              ),
+            )
+          }
+
+          if (lhs instanceof Types.OneOfType) {
+            return mapAll(
+              lhs.of.map(
+                oneLhType =>
+                  guardNeverType(oneLhType) ??
+                  this.chainOperatorType(runtime, oneLhType, lhsExpr, rhsExpr),
+              ),
+            ).map(Types.oneOf)
+          }
+
+          return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+        })
+        .map(lhs => {
+          if (this.hasNullCoalescing()) {
+            return Types.optional(lhs)
+          }
+          return lhs
+        })
+    }
+
+    return super.getType(runtime)
+  }
+}
+
+class PropertyAccessOperator extends PropertyChainOperator {
+  symbol = '.'
+
+  /**
+   * Unlike most operators, the rhs is not a dependency
+   *
+   *     foo.bar <-- 'bar' is not a reference
+   */
+  dependencies() {
+    return this.args[0].dependencies()
+  }
+
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    const rhs = this.args[1]
+    if (!(rhs instanceof Expressions.Reference)) {
+      return
+    }
+
+    const lhsFormula = this.args[0].relationshipFormula(runtime)
+    if (lhsFormula) {
+      return relationshipFormula.propertyAccess(lhsFormula, rhs.name)
+    }
+  }
+
+  replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
+    const [lhsExpr, rhsExpr] = this.args
+    if (!(rhsExpr instanceof Expressions.Reference)) {
+      return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
+    }
+
+    return getChildType(this, lhsExpr, runtime).map(lhsType => {
+      return lhsType.replacingProp(rhsExpr.name, withType).mapResult(result => {
+        if (result.isErr()) {
+          return err(new RuntimeError(rhsExpr, result.error))
+        }
+
+        return lhsExpr.replaceWithType(runtime, result.value)
+      })
+    })
+  }
+
+  isLengthExpression(runtime: TypeRuntime): GetRuntimeResult<boolean> {
+    const [lhs, rhs] = this.args
+    if (!(rhs instanceof Expressions.Reference) || rhs.name !== 'length') {
+      return ok(false)
+    }
+
+    return getChildType(this, lhs, runtime).map(type => {
+      if (
+        type instanceof Types.ArrayType ||
+        type instanceof Types.DictType ||
+        type instanceof Types.SetType ||
+        type.isString()
+      ) {
+        return ok(true)
+      }
+
+      return ok(false)
+    })
+  }
+
+  rhsType(): GetTypeResult {
+    return ok(Types.AllType)
+  }
+
+  chainOperatorType(
+    _runtime: TypeRuntime,
+    lhs: Types.Type,
+    _lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetTypeResult {
+    if (!(rhsExpr instanceof Expressions.Reference)) {
+      return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
+    }
+
+    const rhType = lhs.propAccessType(rhsExpr.name)
+    if (!rhType) {
+      return err(
+        new RuntimeError(rhsExpr, `Property '${rhsExpr.name}' does not exist on ${lhs.toCode()}`),
+      )
+    }
+
+    return ok(rhType)
+  }
+
+  operatorEval(
+    runtime: ValueRuntime,
+    lhs: Values.Value,
+    _rhs: () => GetValueResult,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetValueResult {
+    if (!(rhsExpr instanceof Expressions.Reference)) {
+      return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
+    }
+
+    const value = lhs.propValue(rhsExpr.name)
+    if (!value) {
+      const lhsType = getChildType(this, lhsExpr, runtime).value
+      return err(
+        new RuntimeError(
+          rhsExpr,
+          `'${rhsExpr}' is not a property of '${lhsExpr}'${lhsType ? ` (type: ${lhsType})` : ''}`,
+        ),
+      )
+    }
+
+    return ok(value)
+  }
+}
+
+addBinaryOperator({
+  name: 'property access',
+  symbol: '.',
+  precedence: PRECEDENCE.BINARY['.'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new PropertyAccessOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class NullCoalescingPropertyAccessOperator extends PropertyAccessOperator {
+  symbol = '?.'
+
+  isNullCoalescing() {
+    return true
+  }
+
+  chainOperatorType(
+    runtime: TypeRuntime,
+    lhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetTypeResult {
+    if (lhs.isNull()) {
+      return ok(lhs)
+    }
+
+    return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+  }
+
+  operatorEval(
+    runtime: ValueRuntime,
+    lhs: Values.Value,
+    rhs: () => GetValueResult,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
+    if (lhs === Values.NullValue) {
+      return ok(Values.NullValue)
+    }
+
+    return super.operatorEval(runtime, lhs, rhs, lhsExpr, rhsExpr)
+  }
+}
+
+addBinaryOperator({
+  name: 'nullable property access',
+  symbol: '?.',
+  precedence: PRECEDENCE.BINARY['?.'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new NullCoalescingPropertyAccessOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class ArrayAccessOperator extends PropertyChainOperator {
   symbol = '[]'
 
   /**
@@ -2477,26 +2791,27 @@ class ArrayAccessOperator extends BinaryOperator {
     }
   }
 
-  operatorType(
+  chainOperatorType(
     runtime: TypeRuntime,
     lhs: Types.Type,
-    rhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
-    if (lhs instanceof Types.ArrayType) {
-      return this.accessInArrayType(runtime, lhs, rhs, lhsExpr, rhsExpr)
-    }
+    return rhsExpr.getType(runtime).map(rhs => {
+      if (lhs instanceof Types.ArrayType) {
+        return this.accessInArrayType(runtime, lhs, rhs, lhsExpr, rhsExpr)
+      }
 
-    if (lhs instanceof Types.DictType) {
-      return this.accessInDictType(lhs, rhs, rhsExpr)
-    }
+      if (lhs instanceof Types.DictType) {
+        return this.accessInDictType(lhs, rhs, rhsExpr)
+      }
 
-    if (lhs instanceof Types.ObjectType) {
-      return this.accessInObjectType(lhs, rhs, rhsExpr)
-    }
+      if (lhs instanceof Types.ObjectType) {
+        return this.accessInObjectType(lhs, rhs, rhsExpr)
+      }
 
-    return err(new RuntimeError(lhsExpr, `Expected Object, Dict, or Array, found ${lhs}`))
+      return err(new RuntimeError(lhsExpr, `Expected Object, Dict, or Array, found ${lhs}`))
+    })
   }
 
   accessInArrayType(
@@ -2674,7 +2989,64 @@ addBinaryOperator({
   },
 })
 
-export class FunctionInvocationOperator extends BinaryOperator {
+class NullCoalescingArrayAccessOperator extends ArrayAccessOperator {
+  symbol = '?.[]'
+
+  isNullCoalescing() {
+    return true
+  }
+
+  chainOperatorType(
+    runtime: TypeRuntime,
+    lhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetTypeResult {
+    if (lhs.isNull()) {
+      return ok(lhs)
+    }
+
+    return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+  }
+
+  operatorEval(
+    runtime: ValueRuntime,
+    lhs: Values.Value,
+    rhs: () => GetValueResult,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
+    if (lhs === Values.NullValue) {
+      return ok(Values.NullValue)
+    }
+
+    return super.operatorEval(runtime, lhs, rhs, lhsExpr, rhsExpr)
+  }
+}
+
+addBinaryOperator({
+  name: 'null coalescing array access',
+  symbol: '?.[]',
+  precedence: PRECEDENCE.BINARY['?.[]'],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new NullCoalescingArrayAccessOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+export class FunctionInvocationOperator extends PropertyChainOperator {
   symbol = 'fn'
 
   /**
@@ -2703,17 +3075,15 @@ export class FunctionInvocationOperator extends BinaryOperator {
     return ok(Types.AllType)
   }
 
-  operatorType(
+  chainOperatorType(
     runtime: TypeRuntime,
     lhFormulaType: Types.Type,
-    rhArgsType: Types.Type,
     lhFormulaExpression: Expression,
     rhArgsExpression: Expression,
   ) {
     return functionInvocationOperatorType(
       runtime,
       lhFormulaType,
-      rhArgsType,
       lhFormulaExpression,
       rhArgsExpression,
     )
@@ -2726,10 +3096,6 @@ export class FunctionInvocationOperator extends BinaryOperator {
     lhFormulaExpression: Expression,
     rhArgsExpression: Expression,
   ): GetValueResult {
-    if (lhFormulaExpression.isNullCoalescing() && lhFormula === Values.NullValue) {
-      return ok(Values.NullValue)
-    }
-
     if (!(lhFormula instanceof Values.FormulaValue)) {
       return err(new RuntimeError(lhFormulaExpression, `Expected a Formula, found '${lhFormula}'`))
     }
@@ -2758,6 +3124,66 @@ export class FunctionInvocationOperator extends BinaryOperator {
     })
   }
 }
+
+export class NullCoalescingFunctionInvocationOperator extends FunctionInvocationOperator {
+  symbol = '?.()'
+
+  /**
+   * No need to enclose function invocations in `(…)`
+   */
+  isNullCoalescing() {
+    return true
+  }
+
+  chainOperatorType(
+    runtime: TypeRuntime,
+    lhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetTypeResult {
+    if (lhs.isNull()) {
+      return ok(lhs)
+    }
+
+    return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+  }
+
+  operatorEval(
+    runtime: ValueRuntime,
+    lhs: Values.Value,
+    rhs: () => GetValueResult,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
+    if (lhs === Values.NullValue) {
+      return ok(Values.NullValue)
+    }
+
+    return super.operatorEval(runtime, lhs, rhs, lhsExpr, rhsExpr)
+  }
+}
+
+addBinaryOperator({
+  name: 'null coalescing function invocation',
+  symbol: '?.()',
+  precedence: PRECEDENCE.BINARY['?.()'],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new NullCoalescingFunctionInvocationOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
 
 /**
  * In an array/dict/set/object literal, you can optionally include an element using `if`
@@ -3160,212 +3586,6 @@ addBinaryOperator({
     }
 
     return new FunctionInvocationOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
-class PropertyAccessOperator extends BinaryOperator {
-  symbol = '.'
-
-  /**
-   * Unlike most operators, the rhs is not a dependency
-   *
-   *     foo.bar <-- 'bar' is not a reference
-   */
-  dependencies() {
-    return this.args[0].dependencies()
-  }
-
-  /**
-   * No need to enclose property access operators in `(…)`
-   */
-  toViewPropCode() {
-    return this.toCode()
-  }
-
-  joiner() {
-    return this.symbol
-  }
-
-  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
-    const rhs = this.args[1]
-    if (!(rhs instanceof Expressions.Reference)) {
-      return
-    }
-
-    const lhsFormula = this.args[0].relationshipFormula(runtime)
-    if (lhsFormula) {
-      return relationshipFormula.propertyAccess(lhsFormula, rhs.name)
-    }
-  }
-
-  replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
-    const [lhsExpr, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Expressions.Reference)) {
-      return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
-    }
-
-    return getChildType(this, lhsExpr, runtime).map(lhsType => {
-      return lhsType.replacingProp(rhsExpr.name, withType).mapResult(result => {
-        if (result.isErr()) {
-          return err(new RuntimeError(rhsExpr, result.error))
-        }
-
-        return lhsExpr.replaceWithType(runtime, result.value)
-      })
-    })
-  }
-
-  isLengthExpression(runtime: TypeRuntime): GetRuntimeResult<boolean> {
-    const [lhs, rhs] = this.args
-    if (!(rhs instanceof Expressions.Reference) || rhs.name !== 'length') {
-      return ok(false)
-    }
-
-    return getChildType(this, lhs, runtime).map(type => {
-      if (
-        type instanceof Types.ArrayType ||
-        type instanceof Types.DictType ||
-        type instanceof Types.SetType ||
-        type.isString()
-      ) {
-        return ok(true)
-      }
-
-      return ok(false)
-    })
-  }
-
-  rhsType(): GetTypeResult {
-    return ok(Types.AllType)
-  }
-
-  operatorType(
-    _runtime: TypeRuntime,
-    lhs: Types.Type,
-    _rhs: Types.Type,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ) {
-    if (!(rhsExpr instanceof Expressions.Reference)) {
-      return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
-    }
-
-    if ((this.isNullCoalescing() || lhsExpr.isNullCoalescing()) && lhs === Types.NullType) {
-      return ok(Types.NullType)
-    }
-
-    const rhType = lhs.propAccessType(rhsExpr.name)
-    if (!rhType) {
-      return err(
-        new RuntimeError(rhsExpr, `Property '${rhsExpr.name}' does not exist on ${lhs.toCode()}`),
-      )
-    }
-
-    return ok(rhType)
-  }
-
-  operatorEval(
-    runtime: ValueRuntime,
-    lhs: Values.Value,
-    _rhs: () => GetValueResult,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ): GetValueResult {
-    if (!(rhsExpr instanceof Expressions.Reference)) {
-      return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
-    }
-
-    const value = lhs.propValue(rhsExpr.name)
-    if (!value) {
-      const lhsType = getChildType(this, lhsExpr, runtime).value
-      return err(
-        new RuntimeError(
-          rhsExpr,
-          `'${rhsExpr}' is not a property of '${lhsExpr}'${lhsType ? ` (type: ${lhsType})` : ''}`,
-        ),
-      )
-    }
-
-    return ok(value)
-  }
-}
-
-addBinaryOperator({
-  name: 'property access',
-  symbol: '.',
-  precedence: PRECEDENCE.BINARY['.'],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new PropertyAccessOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
-class NullablePropertyAccessOperator extends PropertyAccessOperator {
-  symbol = '?.'
-
-  joiner() {
-    return this.symbol
-  }
-
-  isNullCoalescing() {
-    return true
-  }
-
-  operatorEval(
-    _runtime: ValueRuntime,
-    lhs: Values.Value,
-    rhs: () => GetValueResult,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ) {
-    if (!(rhsExpr instanceof Expressions.Reference)) {
-      return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
-    }
-
-    if (lhs === Values.NullValue) {
-      return ok(Values.NullValue)
-    }
-
-    const value = lhs.propValue(rhsExpr.name)
-    if (!value) {
-      return err(new RuntimeError(rhsExpr, `${lhsExpr}.${rhsExpr} is unexpectedly null`))
-    }
-
-    return ok(value)
-  }
-}
-
-addBinaryOperator({
-  name: 'nullable property access',
-  symbol: '?.',
-  precedence: PRECEDENCE.BINARY['?.'],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new NullablePropertyAccessOperator(
       range,
       precedingComments,
       followingOperatorComments,
@@ -3794,14 +4014,9 @@ type _IntermediateArgs =
 function functionInvocationOperatorType(
   runtime: TypeRuntime,
   formulaType: Types.Type,
-  argsType: Types.Type,
   formulaExpression: Expression,
   argsList: Expression,
 ): GetTypeResult {
-  if (formulaExpression.isNullCoalescing() && formulaType === Types.NullType) {
-    return ok(Types.NullType)
-  }
-
   if (!(formulaType instanceof Types.FormulaType)) {
     return err(
       new RuntimeError(
@@ -3812,12 +4027,7 @@ function functionInvocationOperatorType(
   }
 
   if (!(argsList instanceof Expressions.ArgumentsList)) {
-    return err(
-      new RuntimeError(
-        argsList,
-        `Expected function arguments, found '${argsList}' of type '${argsType}'`,
-      ),
-    )
+    return err(new RuntimeError(argsList, `Expected function arguments, found '${argsList}'`))
   }
 
   let positionIndex = 0

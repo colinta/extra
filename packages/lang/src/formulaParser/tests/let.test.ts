@@ -88,19 +88,19 @@ in
       c([
         `\
 let
-  a = bla
-    .bla.
-    bla
+  a = bla1
+    .bla2?.
+    bla3
 in
   let
     b = 2
   in
     a + b
 `,
-        '(let (a: (. (. bla bla) bla)) (let (b: 2) (+ a b)))',
+        '(let (a: (?. (. bla1 bla2) bla3)) (let (b: 2) (+ a b)))',
         `\
 let
-  a = bla.bla.bla
+  a = bla1.bla2?.bla3
 in
   let
     b = 2

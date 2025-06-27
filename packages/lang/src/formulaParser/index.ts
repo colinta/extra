@@ -33,6 +33,7 @@ import {
   terminatesWithAngleBracket,
   isBlockStartOperator,
   INCLUSION_OPERATOR,
+  NULL_COALESCING,
   PARENS_OPEN,
   ARRAY_OPEN,
   ARRAY_WORD_START,
@@ -41,10 +42,10 @@ import {
   REGEX_START,
   OBJECT_OPEN,
   OBJECT_WORD_START,
+  SINGLE_BLOCK_OPEN,
   isWhitespaceChar,
   treatNewlineAsComma,
   expressionSupportsSplat,
-  SINGLE_BLOCK_OPEN,
   isTaggedString,
 } from './grammars'
 import {Scanner} from './scanner'
@@ -622,8 +623,16 @@ function parseInternal(
         if (scanner.is(PARENS_OPEN)) {
           processOperator(binaryOperatorNamed('fn', scanner.flushComments()))
           processExpression(scanInvocationArgs(scanner, parseNext))
+        } else if (scanner.is(NULL_COALESCING + PARENS_OPEN)) {
+          scanner.expectString(NULL_COALESCING)
+          processOperator(binaryOperatorNamed('?.()', scanner.flushComments()))
+          processExpression(scanInvocationArgs(scanner, parseNext))
         } else if (scanner.is(ARRAY_OPEN)) {
           processOperator(binaryOperatorNamed('[]', scanner.flushComments()))
+          processExpression(scanArrayAccess(scanner, parseNext))
+        } else if (scanner.is(NULL_COALESCING + ARRAY_OPEN)) {
+          scanner.expectString(NULL_COALESCING)
+          processOperator(binaryOperatorNamed('?.[]', scanner.flushComments()))
           processExpression(scanArrayAccess(scanner, parseNext))
         } else if (
           isBinaryOperatorChar(scanner.char) ||

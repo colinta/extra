@@ -154,17 +154,6 @@ export abstract class Expression {
   }
 
   /**
-   * Operators return lhs.isNullCoalescing(), which means that expressions chained
-   * off of ?. will be able to detect that the "root" access operator is the null
-   * coalescing operator.
-   *
-   * lhs?.foo
-   */
-  isNullCoalescing() {
-    return false
-  }
-
-  /**
    * Ideally this would be an instanceof check on InclusionOperator, but then import
    * ordering would be impossible, so it's just a method.
    */
@@ -241,10 +230,6 @@ export abstract class Operation extends Expression {
 
   dependencies() {
     return this.args.reduce((set, arg) => union(set, arg.dependencies()), new Set<string>())
-  }
-
-  isNullCoalescing() {
-    return this.args[0].isNullCoalescing()
   }
 }
 

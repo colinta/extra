@@ -84,6 +84,7 @@ export function isStringStartChar(char: string) {
 }
 
 export const INCLUSION_OPERATOR = 'if'
+export const NULL_COALESCING = '?.'
 
 export const ARGS_OPEN = '('
 export const ARGS_CLOSE = ')'

@@ -268,9 +268,30 @@ describe('getType', () => {
       expect(expression.getType(typeRuntime).get()).toEqual(Types.string())
     })
 
-    it('user?.name => user.name type (String)', () => {
+    it('user?.name => Expected a nullable', () => {
       const expression = parse('user?.name').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.string())
+      expect(() => {
+        expression.getType(typeRuntime).get()
+      }).toThrow(
+        "Expected a nullable type on left hand side of '?.' operator, found {name: String,",
+      )
+    })
+
+    it('user?.foo.bar => Expected a nullable', () => {
+      const expression = parse('user?.foo.bar').get()
+      expect(() => {
+        expression.getType(typeRuntime).get()
+      }).toThrow(
+        "Expected a nullable type on left hand side of '?.' operator, found {name: String,",
+      )
+    })
+
+    it('user.foo?.bar => user.name type (String)', () => {
+      debugger
+      const expression = parse('user.foo?.bar').get()
+      expect(() => {
+        expression.getType(typeRuntime).get()
+      }).toThrow("Expected a nullable type on left hand side of '?.' operator")
     })
 
     it('foo.name => throws', () => {
