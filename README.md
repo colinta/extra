@@ -1374,25 +1374,30 @@ Included only because of its cool name. 😎
 a ?? b --> returns `b` if a is null, otherwise returns `a`
 ```
 
+## Other Null Safe Operators
+
+```extra
+user.address?.street  -- null-safe property access
+items?.[0]  -- null safe array access
+user.format?.(address)  -- null safe function invocation
+```
+
 ## String Concatenation
 
-I've never liked `+` as String/Array concatenation. `+` should be communative, because maths. Also because then String coersion becomes obvious.
+I've never liked `+` as String/Array concatenation. `+` should be communative, because maths.
 
 ```extra
 "aaa" <> "BBB" --> "aaaBBB"
 
-12345 <> 'dollars'  --> "12345 dollars"
+$12345 <> 'dollars'  --> "12345 dollars"
 `${12345} dollars`  --> "12345 dollars"
-
--- if you want locale-specific formatting:
-12345.toLocale('en-ca') <> " dollars" --> "12,345 dollars"
 ```
 
 ## Array Concatenation
 
 I realized at some point that while, sure, I could implement the `<>` operator
 in a way that supported Strings _and Arrays_, why not have two operators so that
-the *intention* was that much clearer? So that's what I did.
+the *intention* was that much clearer? So that's what I did. `++` for Arrays.
 
 ```extra
 [1,2,3] ++ [4,5,6]
