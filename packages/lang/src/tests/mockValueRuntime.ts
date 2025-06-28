@@ -1,6 +1,6 @@
-import * as Types from '~/types'
-import * as Values from '~/values'
-import {MutableValueRuntime} from '~/runtime'
+import * as Types from '../types'
+import * as Values from '../values'
+import {MutableValueRuntime} from '../runtime'
 
 class MockValueRuntime extends MutableValueRuntime {
   constructor(readonly runtimeTypes: {[K in string]: [Types.Type, Values.Value]}) {

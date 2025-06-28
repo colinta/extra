@@ -1,5 +1,5 @@
 import {c, cases} from '@extra-lang/cases'
-import {parse} from '~/formulaParser'
+import {parse} from '../../formulaParser'
 
 describe('newline-as-comma', () => {
   cases<[string, string]>(

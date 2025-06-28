@@ -1,5 +1,5 @@
-import * as Types from '~/types'
-import {MutableTypeRuntime} from '~/runtime'
+import * as Types from '../types'
+import {MutableTypeRuntime} from '../runtime'
 
 describe('relationshipsThatReference', () => {
   it('a == b', () => {

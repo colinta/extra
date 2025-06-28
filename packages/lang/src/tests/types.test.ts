@@ -1,10 +1,10 @@
 import {c, cases} from '@extra-lang/cases'
 import * as Types from '../types'
-import * as Values from '~/values'
-import {parse} from '~/formulaParser'
+import * as Values from '../values'
+import {parse} from '../formulaParser'
 import {privateOneOf} from './privateOneOf'
-import {type TypeRuntime} from '~/runtime'
-import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
+import {type TypeRuntime} from '../runtime'
+import {mockTypeRuntime} from './mockTypeRuntime'
 
 describe('toCode', () => {
   cases<[Types.Type, string]>(

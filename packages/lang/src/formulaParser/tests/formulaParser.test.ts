@@ -1,6 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
-import {parse} from '~/formulaParser'
-import {type Expression} from '~/formulaParser/expressions'
+import {parse} from '../../formulaParser'
+import {type Expression} from '../expressions'
 
 describe('function parser', () => {
   describe('formulas', () => {

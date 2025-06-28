@@ -1,14 +1,14 @@
-import * as Narrowed from '~/narrowed'
-import * as Values from '~/values'
+import * as Narrowed from '../../narrowed'
+import * as Values from '../../values'
 import {
   ARRAY_CLOSE,
   ARRAY_OPEN,
   PARENS_CLOSE,
   isNumberChar,
   isNumberStart,
-} from '~/formulaParser/grammars'
-import {type Scanner} from '~/formulaParser/scanner'
-import {ParseError} from '~/formulaParser/types'
+} from '../grammars'
+import {type Scanner} from '../scanner'
+import {ParseError} from '../types'
 
 import {unexpectedToken} from './basics'
 import {scanNumber} from './number'

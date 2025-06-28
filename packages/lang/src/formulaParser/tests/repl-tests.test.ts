@@ -1,7 +1,7 @@
-import * as Types from '~/types'
-import * as Values from '~/values'
-import {parse} from '~/formulaParser'
-import {mockValueRuntime} from '~/tests/mockValueRuntime'
+import * as Types from '../../types'
+import * as Values from '../../values'
+import {parse} from '../../formulaParser'
+import {mockValueRuntime} from '../../tests/mockValueRuntime'
 
 import repl from './repl.json'
 

@@ -1,9 +1,9 @@
-import {type Scanner} from '~/formulaParser/scanner'
-import * as Expressions from '~/formulaParser/expressions'
+import {type Scanner} from '../scanner'
+import * as Expressions from '../expressions'
 
 import {scanAnyReference, scanValidName} from './identifier'
 import {type Comment, ParseError, type ParseNext} from '../types'
-import {type Expression} from '~/formulaParser/expressions'
+import {type Expression} from '../expressions'
 import {
   scanActionFormula,
   scanGenerics,

@@ -1,4 +1,4 @@
-import {type GetRuntimeResult} from '~/formulaParser/types'
+import {type GetRuntimeResult} from './formulaParser/types'
 import {
   findEventualRef,
   type RelationshipFormula,
@@ -7,9 +7,9 @@ import {
   simplifyRelationships,
   isEqualRelationship,
   RelationshipAssign,
-} from '~/relationship'
-import {type Type} from '~/types'
-import {type Value, type ObjectValue} from '~/values'
+} from './relationship'
+import {type Type} from './types'
+import {type Value, type ObjectValue} from './values'
 
 export interface Runtime {
   getLocale(): Intl.Locale

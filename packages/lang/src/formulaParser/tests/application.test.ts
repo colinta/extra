@@ -4,7 +4,7 @@ import {parseApplication} from '../'
 import {readFileSync} from 'node:fs'
 import {join} from 'node:path'
 import {mockApplicationRuntime} from './mockApplicationRuntime'
-import {Renderer} from '~/runtime'
+import {Renderer} from '../../runtime'
 import {ObjectValue} from '../../values'
 
 describe('application', () => {

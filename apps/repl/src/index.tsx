@@ -170,7 +170,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
   }
 
   function calc(): Calc {
-    const runtime = new MutableValueRuntime({})
+    const runtime = new MutableValueRuntime()
 
     let successText = ''
     const expressions: [string, Expression][] = []

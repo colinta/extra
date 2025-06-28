@@ -1,13 +1,13 @@
-import * as Expressions from '~/formulaParser/expressions'
-import {type Expression} from '~/formulaParser/expressions'
-import {type Scanner} from '~/formulaParser/scanner'
-import {type ExpressionType, type Comment, ParseError, type ParseNext} from '~/formulaParser/types'
+import * as Expressions from '../expressions'
+import {type Expression} from '../expressions'
+import {type Scanner} from '../scanner'
+import {type ExpressionType, type Comment, ParseError, type ParseNext} from '../types'
 import {
   FUNCTION_BODY_START,
   TYPE_CLOSE,
   TYPE_OPEN,
   isArgumentStartChar,
-} from '~/formulaParser/grammars'
+} from '../grammars'
 
 import {scanArgumentType} from './scanArgumentType'
 import {scanFormulaArgumentDefinitions} from './formula_arguments'

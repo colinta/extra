@@ -1,5 +1,5 @@
 import {c, cases} from '@extra-lang/cases'
-import {parseInternalTest} from '~/formulaParser'
+import {parseInternalTest} from '../../formulaParser'
 
 describe('view', () => {
   cases<[string, string] | [string, string, string]>(

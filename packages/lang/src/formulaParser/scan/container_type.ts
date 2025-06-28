@@ -1,6 +1,6 @@
-import * as Values from '~/values'
-import * as Expressions from '~/formulaParser/expressions'
-import {type Expression} from '~/formulaParser/expressions'
+import * as Values from '../../values'
+import * as Expressions from '../expressions'
+import {type Expression} from '../expressions'
 import {
   isNumberStart,
   isStringStartChar,
@@ -17,10 +17,10 @@ import {
   SET_WORD_START,
   OBJECT_WORD_START,
   isArgumentStartChar,
-} from '~/formulaParser/grammars'
-import {SPREAD_OPERATOR} from '~/formulaParser/operators'
-import {type Scanner} from '~/formulaParser/scanner'
-import {ParseError, type ParseNext} from '~/formulaParser/types'
+} from '../grammars'
+import {SPREAD_OPERATOR} from '../operators'
+import {type Scanner} from '../scanner'
+import {ParseError, type ParseNext} from '../types'
 
 import {scanIdentifier, scanValidName} from './identifier'
 import {scanNumber} from './number'

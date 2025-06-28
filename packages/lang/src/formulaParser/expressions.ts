@@ -21,7 +21,7 @@ import {
   type GetValueResult,
   type GetRuntimeResult,
 } from './types'
-import {relationshipFormula, type RelationshipFormula} from '~/relationship'
+import {relationshipFormula, type RelationshipFormula} from '../relationship'
 
 export type Range = [number, number]
 export const INDENT = '  '

@@ -1,7 +1,7 @@
-import * as Types from '~/types'
-import * as Values from '~/values'
-import {ApplicationRuntime, type Renderer} from '~/runtime'
-import {mockValueRuntime} from '~/tests/mockValueRuntime'
+import * as Types from '../../types'
+import * as Values from '../../values'
+import {ApplicationRuntime, type Renderer} from '../../runtime'
+import {mockValueRuntime} from '../../tests/mockValueRuntime'
 
 export function mockApplicationRuntime<T>(
   runtimeTypes: {[K in string]: [Types.Type, Values.Value]},

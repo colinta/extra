@@ -1,8 +1,8 @@
 import {ok} from '@extra-lang/result'
-import {MutableTypeRuntime, type TypeRuntime} from '~/runtime'
-import * as Types from '~/types'
-import {type NarrowedInt, type NarrowedFloat, type NarrowedString} from '~/narrowed'
-import {type GetRuntimeResult} from '~/formulaParser/types'
+import {MutableTypeRuntime, type TypeRuntime} from './runtime'
+import * as Types from './types'
+import {type NarrowedInt, type NarrowedFloat, type NarrowedString} from './narrowed'
+import {type GetRuntimeResult} from './formulaParser/types'
 
 export type RelationshipComparison = '==' | '!=' | '>' | '>=' | '<' | '<='
 

@@ -4,12 +4,12 @@ import {
   type RelationshipLiteral,
   type RelationshipComparison,
   relationshipFormula,
-} from '~/relationship'
-import * as Types from '~/types'
-import * as Values from '~/values'
-import {parse} from '~/formulaParser'
-import {type TypeRuntime} from '~/runtime'
-import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
+} from '../relationship'
+import * as Types from '../types'
+import * as Values from '../values'
+import {parse} from '../formulaParser'
+import {type TypeRuntime} from '../runtime'
+import {mockTypeRuntime} from './mockTypeRuntime'
 
 let typeRuntime: TypeRuntime
 let runtimeTypes: {[K in string]: [Types.Type, any]}

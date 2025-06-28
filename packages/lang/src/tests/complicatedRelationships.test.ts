@@ -1,9 +1,9 @@
-import * as Types from '~/types'
-import * as Values from '~/values'
-import {parse} from '~/formulaParser'
-import {type TypeRuntime, type ValueRuntime} from '~/runtime'
-import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
-import {mockValueRuntime} from '~/tests/mockValueRuntime'
+import * as Types from '../types'
+import * as Values from '../values'
+import {parse} from '../formulaParser'
+import {type TypeRuntime, type ValueRuntime} from '../runtime'
+import {mockTypeRuntime} from './mockTypeRuntime'
+import {mockValueRuntime} from './mockValueRuntime'
 
 let typeRuntime: TypeRuntime
 let valueRuntime: ValueRuntime

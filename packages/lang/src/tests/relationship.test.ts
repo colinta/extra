@@ -1,13 +1,13 @@
 import {equals} from '@jest/expect-utils'
 
-import {parse} from '~/formulaParser'
+import {parse} from '../formulaParser'
 import {c, cases} from '@extra-lang/cases'
-import * as Types from '~/types'
-import * as Values from '~/values'
-import * as Relationship from '~/relationship'
-import {simplifyRelationships, relationshipFormula as RF} from '~/relationship'
-import {type TypeRuntime} from '~/runtime'
-import {mockTypeRuntime} from '~/tests/mockTypeRuntime'
+import * as Types from '../types'
+import * as Values from '../values'
+import * as Relationship from '../relationship'
+import {simplifyRelationships, relationshipFormula as RF} from '../relationship'
+import {type TypeRuntime} from '../runtime'
+import {mockTypeRuntime} from './mockTypeRuntime'
 
 let typeRuntime: TypeRuntime
 let runtimeTypes: {[K in string]: [Types.Type, any]}

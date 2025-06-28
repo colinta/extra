@@ -3,9 +3,7 @@
   "main": ".dist/index.js",
   "license": "MIT",
   "scripts": {
-    "build": "pnpm tsc",
-    "start": "pnpm build && node --enable-source-maps -- .dist/index.js",
-    "clean": "rm -rf .dist/"
+    "start": "bun tsc && bun src/index.tsx"
   },
   "dependencies": {
     "@extra-lang/lang": "workspace:*",

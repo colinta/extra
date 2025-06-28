@@ -1,9 +1,9 @@
-import * as Expressions from '~/formulaParser/expressions'
-import {type Expression} from '~/formulaParser/expressions'
-import {ATOM_START, isRefStartChar} from '~/formulaParser/grammars'
-import {binaryOperatorNamed} from '~/formulaParser/operators'
-import {type Scanner} from '~/formulaParser/scanner'
-import {ParseError, type ParseNext} from '~/formulaParser/types'
+import * as Expressions from '../expressions'
+import {type Expression} from '../expressions'
+import {ATOM_START, isRefStartChar} from '../grammars'
+import {binaryOperatorNamed} from '../operators'
+import {type Scanner} from '../scanner'
+import {ParseError, type ParseNext} from '../types'
 
 import {scanValidName, scanAtom} from './identifier'
 

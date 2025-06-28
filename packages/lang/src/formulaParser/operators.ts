@@ -1,13 +1,13 @@
 import {err, mapAll, ok} from '@extra-lang/result'
-import * as Types from '~/types'
-import * as Values from '~/values'
+import * as Types from '../types'
+import * as Values from '../values'
 import {
   MutableTypeRuntime,
   MutableValueRuntime,
   type TypeRuntime,
   type ValueRuntime,
-} from '~/runtime'
-import {combineConcatLengths} from '~/narrowed'
+} from '../runtime'
+import {combineConcatLengths} from '../narrowed'
 import {
   assignNextRuntime,
   findEventualRef,
@@ -15,10 +15,10 @@ import {
   verifyRelationship,
   type RelationshipComparison,
   type RelationshipFormula,
-} from '~/relationship'
-import * as Expressions from '~/formulaParser/expressions'
-import {Operation, type Expression, type Range} from '~/formulaParser/expressions'
-import {stringSort} from '~/formulaParser/stringSort'
+} from '../relationship'
+import * as Expressions from './expressions'
+import {Operation, type Expression, type Range} from './expressions'
+import {stringSort} from './stringSort'
 import {
   type AbstractOperator,
   RuntimeError,
@@ -27,7 +27,7 @@ import {
   type GetTypeResult,
   type GetValueResult,
   type Operator,
-} from '~/formulaParser/types'
+} from './types'
 
 export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'matches', 'if'] as const
 export const NAMED_BINARY_ALIAS = {

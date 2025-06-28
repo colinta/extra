@@ -191,8 +191,6 @@ export class SockyListener {
           obj[key] = SockyListener.deserialize(value)
         }
         return obj
-      default:
-        return serial.value ? serial.value.toString() : undefined
     }
   }
 }

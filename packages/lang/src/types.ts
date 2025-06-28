@@ -1,7 +1,7 @@
 import {err, ok, type Result} from '@extra-lang/result'
-import {intersection} from '~/formulaParser/set'
-import {splitter} from '~/graphemes'
-import * as Narrowed from '~/narrowed'
+import {intersection} from './formulaParser/set'
+import {splitter} from './graphemes'
+import * as Narrowed from './narrowed'
 
 export const FN = 'fn'
 export const VIEW = 'view'
