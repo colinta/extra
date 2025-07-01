@@ -197,8 +197,10 @@ export function dict<T>(parser: Parser<T>): Parser<Dict<T>> {
  *     parser(undefined) => err(expected({expected: 'object', found: 'undefined'}))
  *     parser(null) => err(expected({expected: 'object', found: 'null'}))
  *     parser(123) => err(expected({expected: 'object', found: 'int'}))
- *     parser({}) => err(expected({expected: 'string', found: 'object'}))
+ *     parser({}) => err(expected({expected: 'string', found: 'undefined'}))
+ *     parser({name: {}}) => err(expected({expected: 'string', found: 'object'}))
  *     parser({name: ''}) => ok('')
+ *     parser({name: 'hi'}) => ok('hi')
  */
 export function field<T>(name: string, parser: Parser<T>): Parser<T> {
   return createParser<T>(
@@ -323,10 +325,10 @@ export function not<T>(parser: Parser<T>): Parser<any> {
   ).named(`!(${parser.name})`)
 }
 
-export function succeed<T>(value: () => T): Parser<T> {
+export function succeed<T>(value: T | (() => T)): Parser<T> {
   return createParser(
     function succeed(_input: any, ok, _err, _Parser: Parser<any>) {
-      return ok(value())
+      return ok(value instanceof Function ? value() : value)
     },
     {type: 'unknown'},
   ).named(`succeed()`)

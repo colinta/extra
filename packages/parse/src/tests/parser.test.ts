@@ -258,7 +258,7 @@ describe('Parsers', () => {
   // Partials
   //
   runWith(
-    '{foo: string, bar: float?, ...{baz: string | int?}}',
+    '{foo: string, bar: float?, ...{baz: string | int | undefined}}',
     Parse.partial(
       [
         ['foo', Parse.string],
