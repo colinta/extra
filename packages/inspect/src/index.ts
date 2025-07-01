@@ -53,6 +53,10 @@ export function gray(input: string) {
   return ansi(90, input)
 }
 
+export function invert(input: string) {
+  return ansi(7, input)
+}
+
 export const colorize = {
   format: function (input: any): string {
     switch (typeof input) {

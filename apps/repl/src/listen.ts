@@ -1,10 +1,10 @@
+import {invert} from '@extra-lang/inspect'
 import WebSocket from 'ws'
-import {type Serial} from './socky'
 
 type LogMessage = {
   type: 'log' | 'info' | 'warn' | 'error' | 'debug'
   timestamp: string
-  args: Serial[]
+  args: string[]
 }
 
 export class SockyListener {
@@ -15,7 +15,7 @@ export class SockyListener {
   private maxReconnectAttempts = 10
   private reconnectDelay = 1000
   private url: string
-  private handlers: Map<string, (message: LogMessage) => void> = new Map()
+  private handlers: ((message: LogMessage) => void)[] = []
 
   constructor(host = 'localhost', port = 8080) {
     this.url = `ws://${host}:${port}`
@@ -78,48 +78,14 @@ export class SockyListener {
     this.connected = false
   }
 
-  onLog(handler: (message: LogMessage) => void): this {
-    this.handlers.set('log', handler)
-    return this
-  }
-
-  onInfo(handler: (message: LogMessage) => void): this {
-    this.handlers.set('info', handler)
-    return this
-  }
-
-  onWarn(handler: (message: LogMessage) => void): this {
-    this.handlers.set('warn', handler)
-    return this
-  }
-
-  onError(handler: (message: LogMessage) => void): this {
-    this.handlers.set('error', handler)
-    return this
-  }
-
-  onDebug(handler: (message: LogMessage) => void): this {
-    this.handlers.set('debug', handler)
-    return this
-  }
-
-  onUnknown(handler: (message: LogMessage) => void): this {
-    this.handlers.set('unknown', handler)
+  onMessage(handler: (message: LogMessage) => void): this {
+    this.handlers.push(handler)
     return this
   }
 
   private handleMessage(message: LogMessage): void {
     // Call type-specific handler if registered
-    const handler = this.handlers.get(message.type)
-    if (handler) {
-      handler(message)
-    }
-
-    // Call 'unknown' handler if registered
-    const unknownHandler = this.handlers.get('unknown')
-    if (unknownHandler) {
-      unknownHandler(message)
-    }
+    this.handlers.forEach(handler => handler(message))
   }
 
   private tryReconnect(): void {
@@ -155,49 +121,10 @@ export class SockyListener {
     process.on('SIGTERM', cleanup)
     process.on('exit', cleanup)
   }
-
-  // Helper method to deserialize values received from the server
-  static deserialize(serial: Serial): any {
-    switch (serial.type) {
-      case 'undefined':
-        return undefined
-      case 'null':
-        return null
-      case 'number':
-        return serial.value
-      case 'string':
-        return serial.value
-      case 'boolean':
-        return serial.value
-      case 'function':
-        return new Function(`return ${serial.value}`)()
-      case 'symbol':
-        return Symbol(serial.value.replace(/^Symbol\((.*)\)$/, '$1'))
-      case 'bigint':
-        return BigInt(serial.value)
-      case 'array':
-        return serial.value.map(item => SockyListener.deserialize(item))
-      case 'set':
-        return new Set(serial.value.map(item => SockyListener.deserialize(item)))
-      case 'map':
-        const map = new Map()
-        for (const [key, value] of Object.entries(serial.value)) {
-          map.set(key, SockyListener.deserialize(value))
-        }
-        return map
-      case 'object':
-        const obj: Record<string, any> = {}
-        for (const [key, value] of Object.entries(serial.value)) {
-          obj[key] = SockyListener.deserialize(value)
-        }
-        return obj
-    }
-  }
 }
 
-// Example usage:
-// const listener = new SockyListener()
-//   .onLog((message) => {
-//     console.log(`Remote log [${message.timestamp}]:`, message.args.map(SockyListener.deserialize))
-//   })
-//   .connect()
+new SockyListener()
+  .onMessage(message => {
+    console.log(invert(` [${message.timestamp}] `), ...message.args)
+  })
+  .connect()

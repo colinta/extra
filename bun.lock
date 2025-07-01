@@ -5,6 +5,7 @@
     "apps/repl": {
       "name": "demos",
       "dependencies": {
+        "@extra-lang/inspect": "workspace:*",
         "@extra-lang/lang": "workspace:*",
         "@teaui/core": "^1.2.5",
         "@teaui/react": "^1.2.5",

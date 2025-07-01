@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "@extra-lang/lang": "workspace:*",
+    "@extra-lang/inspect": "workspace:*",
     "@teaui/core": "^1.2.5",
     "@teaui/react": "^1.2.5",
     "@types/ws": "^8.18.1",

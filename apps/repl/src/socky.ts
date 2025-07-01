@@ -1,18 +1,7 @@
+import inspect from '@extra-lang/inspect'
 import WebSocket from 'ws'
 
-export type Serial =
-  | {type: 'undefined'}
-  | {type: 'null'; value: null}
-  | {type: 'number'; value: number}
-  | {type: 'string'; value: string}
-  | {type: 'boolean'; value: boolean}
-  | {type: 'array'; value: Array<Serial>}
-  | {type: 'set'; value: Array<Serial>}
-  | {type: 'object'; value: Record<string, Serial>}
-  | {type: 'map'; value: Record<string, Serial>}
-  | {type: 'function'; value: string}
-  | {type: 'symbol'; value: string}
-  | {type: 'bigint'; value: string}
+type ConsoleMethod = 'log' | 'info' | 'warn' | 'error' | 'debug'
 
 export class Socky {
   private originalConsole: {
@@ -25,9 +14,21 @@ export class Socky {
   private server: WebSocket.Server | null = null
   private connections: WebSocket[] = []
   private port: number
+  private connectionResolver?: ReturnType<typeof Promise.withResolvers<void>>
 
   constructor(port = 8080) {
     this.port = port
+  }
+
+  async firstConnection() {
+    if (this.connectionResolver) {
+      // If already connecting, return the existing promise
+      return this.connectionResolver.promise
+    }
+
+    const {promise, resolve, reject} = Promise.withResolvers<void>()
+    this.connectionResolver = {promise, resolve, reject}
+    return promise
   }
 
   start() {
@@ -44,7 +45,12 @@ export class Socky {
     }
 
     this.server = new WebSocket.Server({port: this.port})
+    this.server.on('error', err => {
+      this.connectionResolver?.reject(err)
+    })
+
     this.server.on('connection', ws => {
+      this.connectionResolver?.resolve()
       this.connections.push(ws)
 
       ws.on('close', () => {
@@ -98,69 +104,18 @@ export class Socky {
     this.server?.close()
     this.server = null
     this.connections = []
+    this.connectionResolver = undefined
     this.originalConsole = null
   }
 
-  private serialize(arg: any): Serial {
-    if (arg === undefined) return {type: 'undefined'}
-    if (arg === null) return {type: 'null', value: null}
-
-    const type = typeof arg
-
-    if (type === 'number') return {type: 'number', value: arg}
-    if (type === 'string') return {type: 'string', value: arg}
-    if (type === 'boolean') return {type: 'boolean', value: arg}
-    if (type === 'function') return {type: 'function', value: arg.toString()}
-    if (type === 'symbol') return {type: 'symbol', value: arg.toString()}
-    if (type === 'bigint') return {type: 'bigint', value: arg.toString()}
-
-    if (arg instanceof Error) {
-      return {
-        type: 'object',
-        value: {
-          name: this.serialize(arg.name),
-          message: this.serialize(arg.message),
-          stack: this.serialize(arg.stack),
-        },
-      }
+  private broadcast(type: ConsoleMethod, args: any[]) {
+    if (!this.connections.length) {
+      this.originalConsole?.[type](...args)
+      return
     }
-
-    if (Array.isArray(arg)) {
-      return {type: 'array', value: arg.map(value => this.serialize(value))}
-    }
-
-    if (arg instanceof Set) {
-      return {type: 'set', value: Array.from(arg).map(value => this.serialize(value))}
-    }
-
-    if (arg instanceof Map) {
-      const serializedMap: Record<string, Serial> = {}
-      arg.forEach((value, key) => {
-        serializedMap[String(key)] = this.serialize(value)
-      })
-      return {type: 'map', value: serializedMap}
-    }
-
-    if (type === 'object') {
-      const serializedObj: Record<string, Serial> = {}
-      for (const key in arg) {
-        if (Object.prototype.hasOwnProperty.call(arg, key)) {
-          serializedObj[key] = this.serialize(arg[key])
-        }
-      }
-
-      return {type: 'object', value: serializedObj}
-    }
-
-    // Fallback for any other types
-    return {type: 'string', value: String(arg)}
-  }
-
-  private broadcast(type: string, args: any[]) {
-    if (!this.connections.length) return
 
     // Convert arguments to JSON-friendly format
-    const serializedArgs = args.map(arg => this.serialize(arg))
+    const serializedArgs = args.map(arg => inspect(arg))
 
     const message = JSON.stringify({
       type,

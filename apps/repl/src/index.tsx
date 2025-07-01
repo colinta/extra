@@ -2,7 +2,26 @@ import React, {useEffect, useMemo, useReducer, useState} from 'react'
 import {existsSync, readFileSync, writeFileSync} from 'node:fs'
 import {resolve, basename} from 'node:path'
 
-import {MutableValueRuntime, parse, type Expression, dependencySort} from '@extra-lang/lang'
+import {
+  MutableValueRuntime,
+  MutableTypeRuntime,
+  parse,
+  type Expression,
+  dependencySort,
+} from '@extra-lang/lang'
+import {attempt, ok, err, type Result} from '@extra-lang/result'
+import {
+  decide,
+  field,
+  object,
+  boolean,
+  int,
+  string,
+  array,
+  parseJSON,
+  succeed,
+  map,
+} from '@extra-lang/parse'
 import {interceptConsoleLog, red} from '@teaui/core'
 import {
   Box,
@@ -17,6 +36,8 @@ import {
   run,
 } from '@teaui/react'
 import {Socky} from './socky'
+
+false ? ({attempt, ok, err} as unknown as Result<any, any>) : null
 
 const STATE_FILE = (() => {
   // start at process.cwd() and work up until repl exists, use that as "projectRoot"
@@ -57,9 +78,10 @@ const REPL_TESTS_JSON = (() => {
 })()
 
 interface State {
+  version: number
   desc: string
   formula: string
-  vars: {name: string; value: string}[]
+  vars: {name: string; type: string; value: string}[]
   only: boolean
   skip: boolean
 }
@@ -76,7 +98,7 @@ type Calc =
       variables: readonly [string, string][]
     }
 
-type ExtraInput = {name: string; value: string}
+type ExtraInput = {name: string; type: string; value: string}
 
 function useToggle(initial: boolean) {
   return useReducer(state => !state, initial)
@@ -91,18 +113,75 @@ function App() {
     return ''
   }, [])
 
-  const appState = useMemo(() => {
-    if (existsSync(STATE_FILE)) {
-      return JSON.parse(readFileSync(STATE_FILE).toString('utf8'))
-    } else {
-      return {
+  const appState: State = useMemo(() => {
+    return (
+      attempt(() => {
+        const stateContents = readFileSync(STATE_FILE).toString('utf8')
+        const json = parseJSON(
+          stateContents,
+          decide(field('version', int.optional), version => {
+            if (version === 1) {
+              return object([
+                ['version', int],
+                ['desc', string],
+                ['formula', string],
+                [
+                  'vars',
+                  array(
+                    object([
+                      ['name', string],
+                      ['type', string],
+                      ['value', string],
+                    ]),
+                  ),
+                ],
+                ['only', boolean],
+                ['skip', boolean],
+              ])
+            }
+
+            return object([
+              ['version', succeed(() => 1)],
+              ['desc', string],
+              ['formula', string],
+              [
+                'vars',
+                array(
+                  map(
+                    ({name, value}) => ({
+                      name,
+                      type: '',
+                      value,
+                    }),
+                    [
+                      object([
+                        ['name', string],
+                        ['value', string],
+                      ]),
+                    ],
+                  ),
+                ),
+              ],
+              ['only', boolean],
+              ['skip', boolean],
+            ])
+          }),
+        )
+
+        if (json.isErr()) {
+          console.log(json.error)
+        }
+
+        return json
+      }).safeGet() ?? {
+        version: 1,
         desc: '',
         formula: '',
         vars: [],
         only: false,
         skip: false,
       }
-    }
+    )
   }, [])
 
   return <Repl state={appState} warning={warning} />
@@ -127,12 +206,14 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       STATE_FILE,
       JSON.stringify(
         {
+          version: 1,
           desc: saveDesc,
           only,
           skip,
           formula,
-          vars: inputs.map(({name, value}) => ({
+          vars: inputs.map(({name, type, value}) => ({
             name: name.trim(),
+            type: type.trim(),
             value: value.trim(),
           })),
         },
@@ -141,7 +222,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       ),
       {encoding: 'utf8'},
     )
-  }, [formula, inputs])
+  }, [formula, inputs, saveDesc, only, skip])
 
   function updateInputName(inputIndex: number, name: string) {
     setInputs(
@@ -149,7 +230,18 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
         if (index !== inputIndex) {
           return input
         }
-        return {name, value: input.value}
+        return {...input, name}
+      }),
+    )
+  }
+
+  function updateInputType(inputIndex: number, type: string) {
+    setInputs(
+      inputs.map((input, index) => {
+        if (index !== inputIndex) {
+          return input
+        }
+        return {...input, type}
       }),
     )
   }
@@ -160,21 +252,23 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
         if (index !== inputIndex) {
           return input
         }
-        return {name: input.name, value}
+        return {...input, value}
       }),
     )
   }
 
   function addVar() {
-    setInputs(inputs => inputs.concat([{name: '', value: ''}]))
+    setInputs(inputs => inputs.concat([{name: '', type: '', value: ''}]))
   }
 
   function calc(): Calc {
-    const runtime = new MutableValueRuntime()
+    const typeRuntime = new MutableTypeRuntime()
+    const valueRuntime = new MutableValueRuntime()
 
     let successText = ''
-    const expressions: [string, Expression][] = []
-    for (const {name, value} of inputs) {
+    const varExpressions: [string, Expression][] = []
+    const typeExpressions: [string, Expression | undefined][] = []
+    for (const {name, type, value} of inputs) {
       if (!(name.trim() && value.trim())) {
         continue
       }
@@ -187,29 +281,40 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
         }
       }
 
-      expressions.push([name, formulaExpr.value])
+      varExpressions.push([name, formulaExpr.value])
+
+      if (type.trim()) {
+        const typeExpr = parse(type)
+        if (typeExpr.isErr()) {
+          return {
+            type: 'error',
+            text: red(`Error while trying to parse type \`${name}\`: ${typeExpr.error}`),
+          }
+        }
+        typeExpressions.push([name, typeExpr.value])
+      }
     }
 
-    const results = dependencySort(expressions, new Set())
-    if (results.isErr()) {
-      return {type: 'error', text: red(results.error.toString())}
+    const expressionsSorted = dependencySort(varExpressions, new Set())
+    if (expressionsSorted.isErr()) {
+      return {type: 'error', text: red(expressionsSorted.error.toString())}
     }
 
-    for (const [name, formulaExpr] of results.value) {
-      const formulaType = formulaExpr.getType(runtime)
+    for (const [name, formulaExpr] of expressionsSorted.value) {
+      const formulaType = formulaExpr.getType(typeRuntime)
       if (formulaType.isErr()) {
         successText += red(formulaType.error.toString())
         continue
       }
-      runtime.addLocalType(name, formulaType.value)
+      typeRuntime.addLocalType(name, formulaType.value)
 
-      const formulaValue = formulaExpr.eval(runtime)
+      const formulaValue = formulaExpr.eval(valueRuntime)
       if (formulaValue.isErr()) {
         successText += red(formulaValue.error.toString())
         continue
       }
 
-      runtime.addLocalValue(name, formulaValue.value)
+      valueRuntime.addLocalValue(name, formulaValue.value)
       successText += `${name}: ${formulaType.value.toCode()} = ${formulaValue.value.toCode()} (${formulaValue.value
         .getType()
         .toCode()})\n`
@@ -219,7 +324,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       return {type: 'args-only', text: successText}
     }
 
-    if (results.value.length) {
+    if (expressionsSorted.value.length) {
       successText += '──╼━━━━╾──\n'
     }
 
@@ -228,12 +333,14 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       successText += red(parsed.error.toString())
       return {type: 'error', text: successText}
     }
-    const variables = results.value.map(([name, expr]) => [name, expr.toCode()] as [string, string])
+    const variables = expressionsSorted.value.map(
+      ([name, expr]) => [name, expr.toCode()] as [string, string],
+    )
     const code = parsed.value.toCode()
     const parsedText = parsed.value.toCode()
     successText += parsedText
 
-    const type = parsed.value.getType(runtime)
+    const type = parsed.value.getType(typeRuntime)
     if (type.isErr()) {
       successText += '\n' + red(type.error.toString())
       return {type: 'formula-error', text: successText, code, variables}
@@ -241,7 +348,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
     const typeText = type.value.toCode()
     successText += ': ' + typeText + '\n'
 
-    const value = parsed.value.eval(runtime)
+    const value = parsed.value.eval(valueRuntime)
     if (value.isErr()) {
       successText += red(value.error.toString())
       return {type: 'formula-error', text: successText, code, variables}
@@ -326,12 +433,18 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
         </Box>
         <Box width="fill" flex={1}>
           <Stack.down flex={1}>
-            {inputs.map(({name, value}, index) => (
+            {inputs.map(({name, type, value}, index) => (
               <Stack.right key={index}>
                 <Input
                   value={name}
                   placeholder={`variable #${index + 1}`}
                   onChange={name => updateInputName(index, name)}
+                />
+                {': '}
+                <Input
+                  value={type}
+                  placeholder={`type`}
+                  onChange={type => updateInputType(index, type)}
                 />
                 {' = '}
                 <Input
@@ -371,10 +484,12 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
   )
 }
 
-interceptConsoleLog()
+;(async function () {
+  console.log('Listening to port 8080')
 
-// Start Socky server for WebSocket console logs
-const socky = new Socky(8080)
-socky.start()
-
-run(<App />)
+  interceptConsoleLog()
+  const socky = new Socky(8080)
+  socky.start()
+  await socky.firstConnection()
+  run(<App />)
+})()
