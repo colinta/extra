@@ -221,7 +221,18 @@
       ]
     },
     {
-      "desc": "weird",
+      "desc": "tuple arguments",
+      "formula": "foo(...tuple) -- tuple is a mix of positional and named values",
+      "expectedCode": "foo(...tuple)",
+      "expectedType": "String",
+      "expectedValue": "'test0'",
+      "variables": [
+        ["foo", "fn(#a: Int, b: String) => b <> $a"],
+        ["tuple", "{0, b: 'test'}"]
+      ]
+    },
+    {
+      "desc": "weird bug that I found 817422f8",
       "formula": "let\n  num = fn(): Int => 2\n  x = num()\nin\n  x == 5 and x or 0\n",
       "only": false,
       "skip": false,
@@ -231,28 +242,27 @@
       "variables": []
     },
     {
-      "desc": "tuple arguments",
-      "formula": "let\n  user = {name: null}\nin\n  user.name?.foo",
+      "desc": "bits and bobs",
+      "formula": "[\n  bits & bobs\n  bits | bobs\n  ~bits\n  ~bobs\n]",
       "only": false,
       "skip": false,
-      "expectedCode": "let\n  user = {name: null}\nin\n  user.name?.foo\n",
-      "expectedValue": "null",
+      "expectedCode": "[bits & bobs, bits | bobs, ~bits, ~bobs]",
+      "expectedType": "Array(82 | 247 | -215 | -116, length: =4)",
+      "expectedValue": "[82, 247, -215, -116]",
       "variables": [
-        ["foo", "fn(#a: Int, b: String) => b <> $a"],
-        ["tuple", "{0, b: 'test'}"]
+        ["bits", "0b11010110"],
+        ["bobs", "0b01110011"]
       ]
     },
     {
-      "desc": "bits and bobs",
-      "formula": "[\n]",
+      "desc": "generics - identity",
+      "formula": "identity(1)",
       "only": false,
       "skip": false,
-      "expectedCode": "[]",
-      "expectedValue": "[]",
-      "variables": [
-        ["bits", "0b11010110"],
-        ["bobs", "0b1110011"]
-      ]
+      "expectedCode": "identity(1)",
+      "expectedType": "1",
+      "expectedValue": "1",
+      "variables": [["identity", "fn<T>(#a: T): T => a"]]
     }
   ]
 }

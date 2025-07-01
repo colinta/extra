@@ -94,7 +94,8 @@ type Calc =
       type: 'success'
       text: string
       code: string
-      result: string
+      typeStr: string
+      valueStr: string
       variables: readonly [string, string][]
     }
 
@@ -359,7 +360,8 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       type: 'success',
       text: successText,
       code,
-      result: value.value.toCode(),
+      typeStr: typeText,
+      valueStr: value.value.toCode(),
       variables,
     }
   }
@@ -414,7 +416,8 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       only,
       skip,
       expectedCode: result.code,
-      expectedValue: result.result,
+      expectedType: result.typeStr,
+      expectedValue: result.valueStr,
       variables: result.variables,
     })
     writeFileSync(REPL_TESTS_FILE, JSON.stringify(REPL_TESTS_JSON, null, 2), {encoding: 'utf8'})
@@ -485,11 +488,14 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
 }
 
 ;(async function () {
-  console.log('Listening to port 8080')
+  if (process.argv.includes('--wait')) {
+    console.log('Listening to port 8080...')
+    const socky = new Socky(8080)
+    socky.start()
+    await socky.firstConnection()
+  } else {
+    interceptConsoleLog()
+  }
 
-  interceptConsoleLog()
-  const socky = new Socky(8080)
-  socky.start()
-  await socky.firstConnection()
   run(<App />)
 })()
