@@ -238,14 +238,20 @@
       "expectedCode": "let\n  user = {name: null}\nin\n  user.name?.foo\n",
       "expectedValue": "null",
       "variables": [
-        [
-          "foo",
-          "fn(#a: Int, b: String) => b <> $a"
-        ],
-        [
-          "tuple",
-          "{0, b: 'test'}"
-        ]
+        ["foo", "fn(#a: Int, b: String) => b <> $a"],
+        ["tuple", "{0, b: 'test'}"]
+      ]
+    },
+    {
+      "desc": "bits and bobs",
+      "formula": "[\n]",
+      "only": false,
+      "skip": false,
+      "expectedCode": "[]",
+      "expectedValue": "[]",
+      "variables": [
+        ["bits", "0b11010110"],
+        ["bobs", "0b1110011"]
       ]
     }
   ]

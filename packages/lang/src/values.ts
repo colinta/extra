@@ -344,44 +344,48 @@ export class IntValue extends FloatValue {
   }
 
   toCode() {
-    let num: string
-    let prefix: string
+    let str: string
+    let prefix = this.value < 0 ? '-' : ''
     let length: number
+    let value = Math.abs(this.value)
     if (this.base === 'decimal') {
-      prefix = ''
-      num = this.value.toString()
+      str = value.toString()
       length = 3
     } else {
       let base: number
       switch (this.base) {
         case 'binary':
           base = 2
-          prefix = '0b'
+          prefix += '0b'
           break
         case 'octal':
           base = 8
-          prefix = '0o'
+          prefix += '0o'
           break
         case 'hexadecimal':
           base = 16
-          prefix = '0x'
+          prefix += '0x'
           break
       }
 
-      num = this.value.toString(base)
+      str = value.toString(base)
       length = 8
     }
 
-    if (num.length > length) {
+    if (str.length > length) {
       const parts = []
-      for (let i = num.length; i > 0; i -= length) {
-        const part = num.slice(Math.max(i - length, 0), i)
+      for (let i = str.length; i > 0; i -= length) {
+        const part =
+          (length > 3 && i - length < 0 ? '0'.repeat(length - i) : '') +
+          str.slice(Math.max(i - length, 0), i)
         parts.unshift(part)
       }
       return prefix + parts.join('_')
+    } else if (length > 3) {
+      prefix += '0'.repeat(length - str.length)
     }
 
-    return prefix + num
+    return prefix + str
   }
 }
 

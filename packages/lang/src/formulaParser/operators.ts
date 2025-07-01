@@ -3682,17 +3682,7 @@ class BinaryNegateOperator extends UnaryOperator {
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
     if (lhs.isLiteral('float')) {
-      let value = lhs.value
-      let magnitude = lhs.value
-      if (lhs.isLiteral('int')) {
-        magnitude = lhs.magnitude
-      } else {
-        value = Math.floor(value)
-      }
-      magnitude = Math.max(Math.floor(Math.log2(value)) + 1, magnitude)
-      const mask = 2 ** magnitude - 1
-
-      return ok(Types.literal(~value & mask))
+      return ok(Types.literal(~lhs.value))
     }
 
     return numericType(this, lhs)

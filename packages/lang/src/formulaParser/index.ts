@@ -487,7 +487,7 @@ function parseInternal(
           if (
             scanner.test(() => {
               scanner.scanAllWhitespace()
-              if (scanner.is(/^-[^ \n\t]/)) {
+              if (scanner.is(/^[-~$][^ \n\t]/)) {
                 scanner.whereAmI('scanning a negative number')
                 return false
               }

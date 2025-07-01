@@ -1321,18 +1321,9 @@ a <=> b --> the sort operator compares strings and numbers, and returns -1, 0, o
 0b100 | 0b001  --> 0b101 (5)
 0b110 & 0b010  --> 0b010 (2)
 0b110 ^ 0b010  --> 0b100 (4)
-
--- Let's talk about binary negate:
-~4         -->    0b11
-~0b100 (4) -->   0b011
-~0b0100    -->  0b1011 !?
-
--- binary, octal, and hexadecimal numbers store their "magnitude", which is then
--- used by the `~` operator to determine how many digits to flip. @-me in the
--- comments.
-
- ~0xa0a -->  0x5f5
-~0x0a0a --> 0xf5f5
+~0b11010110    --> -215
+-- negate with a bitmask:
+~0b11010111 & 0b11111111 --> 0b00101000 (40)
 ```
 
 ## Logical Operators
