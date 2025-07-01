@@ -203,7 +203,7 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
     scanner.expectString('type', 'Types must be preceded by the "type" keyword.')
     scanner.expectWhitespace()
 
-    if (scanner.isWord('public')) {
+    if (!isPublic && scanner.isWord('public')) {
       isPublic = true
       scanner.expectWhitespace()
     }
@@ -217,7 +217,7 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
 
   const generics: string[] = []
   if (scanner.scanIfString('<')) {
-    generics.push(...scanGenerics(scanner))
+    generics.push(...scanGenerics(scanner, parseNext))
     scanner.scanAllWhitespace()
   }
 

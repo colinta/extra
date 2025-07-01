@@ -58,7 +58,6 @@ export abstract class Expression {
       } else if (this.resolvedType) {
         return ok(this.resolvedType)
       }
-
       return getType(runtime).map(type => {
         this.resolvedType = type
         return type
@@ -3199,48 +3198,56 @@ export class FormulaExpression extends Expression {
     runtime: TypeRuntime,
     formulaType?: Types.FormulaType | undefined,
   ): GetRuntimeResult<Types.FormulaType> {
-    const argResults = this.argumentTypes(runtime, formulaType)
+    const mutableRuntime = new MutableTypeRuntime(runtime)
+    for (const generic of this.generics) {
+      mutableRuntime.addLocalType(generic, new Types.GenericType(generic))
+    }
 
+    const argResults = this.argumentTypes(mutableRuntime, formulaType)
     if (argResults.isErr()) {
       return err(argResults.error)
     }
 
-    let bodyRuntime = new MutableTypeRuntime(runtime)
     const args = argResults.get()
     args.forEach(arg => {
-      bodyRuntime.addLocalType(arg.name, arg.type)
+      mutableRuntime.addLocalType(arg.name, arg.type)
     })
 
     let returnTypeResult: GetTypeResult
-    const bodyReturnType = this.body.getType(bodyRuntime)
+    const bodyReturnType = this.body.getType(mutableRuntime)
     if (this.returnType instanceof InferIdentifier) {
       returnTypeResult = bodyReturnType
     } else {
-      returnTypeResult = mapAll([bodyReturnType, getChildType(this, this.returnType, runtime)]).map(
-        types => {
-          const [bodyType, typeConstructor] = types
-          if (!(typeConstructor instanceof Types.TypeConstructor)) {
-            return err(
-              new RuntimeError(
-                this,
-                `Invalid return type ${typeConstructor}, expected valid type (e.g. int, string[], etc)`,
-              ),
-            )
-          }
-          const returnType = typeConstructor.intendedType
+      returnTypeResult = mapAll([
+        bodyReturnType,
+        getChildType(this, this.returnType, mutableRuntime),
+      ]).map(types => {
+        const [bodyType, typeConstructor] = types
+        let returnType: Types.Type
+        if (typeConstructor instanceof Types.GenericType) {
+          returnType = typeConstructor
+        } else if (typeConstructor instanceof Types.TypeConstructor) {
+          returnType = typeConstructor.intendedType
+        } else {
+          return err(
+            new RuntimeError(
+              this,
+              `Invalid return type ${typeConstructor}, expected valid type (e.g. Int, Array(String), etc)`,
+            ),
+          )
+        }
 
-          if (!Types.canBeAssignedTo(bodyType, returnType)) {
-            return err(
-              new RuntimeError(
-                this,
-                `Function body result type '${bodyType.toCode()}' is not assignable to explicit return type '${returnType.toCode()}'`,
-              ),
-            )
-          }
+        if (!Types.canBeAssignedTo(bodyType, returnType)) {
+          return err(
+            new RuntimeError(
+              this,
+              `Function body result type '${bodyType.toCode()}' is not assignable to explicit return type '${returnType.toCode()}'`,
+            ),
+          )
+        }
 
-          return returnType
-        },
-      )
+        return returnType
+      })
     }
 
     if (returnTypeResult.isErr()) {

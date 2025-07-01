@@ -180,6 +180,7 @@ export function expressionSupportsSplat(expressionType: ExpressionType) {
 export function treatNewlineAsComma(expressionType: ExpressionType) {
   return (
     expressionType === 'let' ||
+    expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
     expressionType === 'object' ||
@@ -192,6 +193,7 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
 
 export function terminatesWithComma(expressionType: ExpressionType) {
   return (
+    expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
     expressionType === 'object' ||
@@ -226,5 +228,5 @@ export function terminatesWithCurlyBracket(expressionType: ExpressionType) {
 }
 
 export function terminatesWithAngleBracket(expressionType: ExpressionType) {
-  return expressionType === 'type'
+  return expressionType === 'type' || expressionType === 'generic'
 }

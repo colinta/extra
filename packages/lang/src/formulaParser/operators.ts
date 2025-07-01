@@ -2451,6 +2451,28 @@ addBinaryOperator({
   },
 })
 
+/**
+ * This class groups together all the operators that "chain" at the same operator
+ * precedence:
+ * - property access foo.bar
+ * - array access foo[bar]
+ * - function invocation foo(bar)
+ *
+ * Each of these have a corresponding null-coalescing version: `?., ?.[], ?.()`.
+ *
+ * There's a small wrinkle when evaluating a chain with a null-coalescing
+ * operator. Let's say your chain is `a?.b.c`. The AST will put `a?.b` on the lhs
+ * of `.c` (`(a?.b).c`). The way we evaluate types in Extra is to simply ask the
+ * lhs what type it is, and use that information in the rest of the operation.
+ *
+ * In this case, though, we want to *ignore* the `null` type.
+ *
+ * Enter the 'chain' family of functions:
+ * - `getChainLhsType` - excludes `null` from the lhs
+ * - `isNullCoalescing` - true if the lhs is a null-coalescing operator
+ * - `hasNullCoalescing` - true if any descendents is null-coalescing operator
+ * - `chainOperatorType` - the actual operator type
+ */
 abstract class PropertyChainOperator extends BinaryOperator {
   /**
    * No need to enclose property access operators in `(…)`
@@ -2526,9 +2548,7 @@ abstract class PropertyChainOperator extends BinaryOperator {
       )
     }
 
-    return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr).map(type => {
-      return type
-    })
+    return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
@@ -2798,6 +2818,12 @@ class ArrayAccessOperator extends PropertyChainOperator {
     rhsExpr: Expression,
   ) {
     return rhsExpr.getType(runtime).map(rhs => {
+      if (rhs instanceof Types.OneOfType) {
+        return err(
+          new RuntimeError(rhsExpr, 'TODO: support one-of-type in rhs of array access operator'),
+        )
+      }
+
       if (lhs instanceof Types.ArrayType) {
         return this.accessInArrayType(runtime, lhs, rhs, lhsExpr, rhsExpr)
       }
@@ -3070,11 +3096,14 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
     return `${lhsCode}${argListCode}`
   }
 
-  // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+  // unused in 'chain' operations
   rhsType(): GetTypeResult {
     return ok(Types.AllType)
   }
 
+  /**
+   * See PropertyChainOperator
+   */
   chainOperatorType(
     runtime: TypeRuntime,
     lhFormulaType: Types.Type,

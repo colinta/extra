@@ -110,6 +110,7 @@ export type ExpressionType =
   | 'bracket_access' // value[access]
   | 'interpolation' // ${ … }
   | 'parens' // ( … )
+  | 'generic' // separated by ',' and terminated by '>'
   | 'argument' // function value, separated by ',' and terminated by ')'
   | 'block_argument' // function value, separated by ',' and terminated by ')'
   | 'single_expression' // default argument value

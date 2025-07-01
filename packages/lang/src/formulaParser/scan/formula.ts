@@ -2,12 +2,7 @@ import * as Expressions from '../expressions'
 import {type Expression} from '../expressions'
 import {type Scanner} from '../scanner'
 import {type ExpressionType, type Comment, ParseError, type ParseNext} from '../types'
-import {
-  FUNCTION_BODY_START,
-  TYPE_CLOSE,
-  TYPE_OPEN,
-  isArgumentStartChar,
-} from '../grammars'
+import {FUNCTION_BODY_START, TYPE_CLOSE, TYPE_OPEN, isArgumentStartChar} from '../grammars'
 
 import {scanArgumentType} from './scanArgumentType'
 import {scanFormulaArgumentDefinitions} from './formula_arguments'
@@ -145,7 +140,7 @@ function _scanFormula(
   let generics: string[] = []
   if (type === 'fn') {
     if (scanner.scanIfString(TYPE_OPEN)) {
-      generics = scanGenerics(scanner)
+      generics = scanGenerics(scanner, parseNext)
     }
   } else if (scanner.scanIfString(TYPE_OPEN)) {
     throw new ParseError(scanner, `Unexpected generic in ${type} function`)
@@ -244,7 +239,7 @@ function _scanFormula(
   }
 }
 
-export function scanGenerics(scanner: Scanner) {
+export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
   const generics: string[] = []
   scanner.scanAllWhitespace()
   for (;;) {
@@ -255,6 +250,20 @@ export function scanGenerics(scanner: Scanner) {
         `Unexpected duplicate generic identifier <${generic}>`,
         scanner.charIndex - generic.length,
       )
+    }
+
+    if (
+      scanner.test(() => {
+        scanner.scanAllWhitespace()
+        return scanner.isWord('is')
+      })
+    ) {
+      scanner.scanAllWhitespace()
+      scanner.expectString('is')
+      scanner.scanAllWhitespace()
+      const type = scanArgumentType(scanner, 'argument_type', 'generic', parseNext)
+      // generic.type = type
+      throw 'TODO - support type on generic'
     }
 
     generics.push(generic)

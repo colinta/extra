@@ -259,15 +259,15 @@ export abstract class Type {
   }
 
   /**
-   * If the type is a TypeConstructor, returns the intended type.
+   * If the type is a TypeConstructor expression, returns the intended type.
    *
    * Container types (Array, Dict, Tuple, Object) map their container type using
    * `fromTypeConstructor()`.
    *
    * All other types return `this`.
    *
-   * Basically, it's a way of mapping `[Int]` to Array(of: IntType) (where 'Int'
-   * could be used as the TypeConstructor 'Int("f00"): Int | null').
+   * Types are modeled as functions that accept any value and return `This?`. For
+   * instance, `Int(4) => 4, Int("4") => 4, Int("four") => null`.
    */
   fromTypeConstructor(): Type {
     return this
@@ -436,6 +436,18 @@ export abstract class Type {
   abstract propAccessType(name: string): Type | undefined
 }
 
+/**
+ * GenericType are resolved using 'hints' and 'requirements'.
+ *
+ * Hints come from values being assigned to the GenericType, for instance the
+ * arguments being passed to a generic function. All hints must be satisfied, and
+ * the hints can all be "merged" together using `compatibleWithBothTypes`.
+ *
+ * Requirements come from restrictions on the generic, like `fn<T is Foo>`. These
+ * must be satisfied, but aren't used to determine the type (they would
+ * unnecessarily restrict the type to a common 'parent' when the hints would
+ * specify a more specific type).
+ */
 export class GenericType extends Type {
   is = 'generic'
   _resolvedResult: Result<Type, string> | undefined
