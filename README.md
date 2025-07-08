@@ -109,10 +109,6 @@ in
 <p class=['bold', @is-italic ? 'italic']>Hello, World!</p>
 ```
 
-## Language Features
-
-There are a few things that I always thought would be handy in a programming language, and so I put them in here.
-
 ## Variable names
 
 References can have hyphens like in Lisp (`valid-variable-name`), and emojis (`😎-languages = set("extra")`)
@@ -128,7 +124,7 @@ I may have gone a bit overboard, just a heads up. 🤓
 `<-- alternate arrow style line comment`
 `← why stop there?` `→ pointing is rude though`
 
-The usual comment characters `#` and `//` both have special meaning in Extra, and so I looked elsewhere for inspiration, and looked no further than Ada (and yes, Ada, Elm, Lua _all_ use `--` for line comments... but Ada has a lot more hacker cred so I wanted to mention it first).
+The usual comment characters `#` and `//` both have special meaning in Extra, and so I looked elsewhere for inspiration, and looked no further than Ada (and yes, Ada, Elm, Lua _all_ use `--` for line comments... but Ada has a certain caché so I wanted to mention it first).
 
 ```extra
 -- this is a line comment
@@ -188,30 +184,32 @@ Obviously Extra supports pattern matching. This feature makes heavy use of the `
 ```extra
 switch (volume) {
   case: 0..<2 => 'turn it up!'
-  ase: 2..<5 => "that's enough"
- ase: num => `$num is too loud`
+  case: 2..<5 => "that's enough"
+  case: num => `$num is too loud`
 
 ```
 If the implication is on the right hand side of the pipe operator, it will be invoked with the `#` value.
 
 ```extra
-httpResponse |>
-  Result.Success(success) => success.message
---> Maybe<String>
+-- this is also a handy way to "name" the `#` value:
+su(numbers) |> sum =>
+ f(sum > 10, then: 'big sum', else: 'small sum')
 
--- more generally, though, you could pipe into `switch`
+name
+|> #.split(/\s+/)
+|> names =>
+  names.map(fn(name) => name.capitalize())
+|> #.join(' ')
+
+-- of course it's also just very easy to pipe into a `switch` statement
 httpResponse |> switch(#) {
   esult.Success(success) => success.message
   esult.Failure(error) => error.message
 --> String
-
--- this is also a handy way to "name" the `#` value:
-su(numbers) |> sum =>
- f(sum > 10, then: 'big sum', else: 'small sum')
 ```
 
 ## Functions
-Functions are bonkers. They support _positional_ and _named_ arguments, along with all sorts of variadic arguments. The order you have them in the function definition will determine the order that the source-code formatter (`extra-normal`) orders the arguments.
+Functions are bonkers. They support _positional_ and _named_ arguments, along with all sorts of variadic arguments.
 
 Positional arguments have a `#` prefix, `#like: This`. Named arguments `do: Not`. Named arguments can be aliased `like so: GotIt?`. Variadic arguments `...#are: LikeThis` or `...like: This`.
 
@@ -233,7 +231,7 @@ doEeet(1, 'foo', reason: '', age: 42)   -- name = 'foo', age = 42
 ✘ doEeet(1)                             -- reason is required
 ```
 
-If the argument type is null-able, you can make the argument optional `like?: This` (`like: This | null`). If the argument is _generic_, it will be made optional only if the type is null-able. In otherwords
+If the argument type is null-able, you can make the argument optional `like?: This` (`like: This | null`). If the argument is _generic_, it will be made optional only if the type is null-able. In other words:
 
 ```extra
 fn first-or<T>(#array: Array(T), else fallback?: T) =>
