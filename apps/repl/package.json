@@ -3,6 +3,7 @@
   "main": ".dist/index.js",
   "license": "MIT",
   "scripts": {
+    "listen": "bun src/listen.ts",
     "start": "bun tsc && bun src/index.tsx"
   },
   "dependencies": {

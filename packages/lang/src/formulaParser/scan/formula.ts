@@ -263,7 +263,7 @@ export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
       scanner.scanAllWhitespace()
       const type = scanArgumentType(scanner, 'argument_type', 'generic', parseNext)
       // generic.type = type
-      throw 'TODO - support type on generic'
+      throw `TODO - support type on generic ${type}`
     }
 
     generics.push(generic)

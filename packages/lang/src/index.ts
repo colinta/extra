@@ -1,4 +1,5 @@
 export {parse} from './formulaParser'
-export * from './formulaParser/expressions'
-export * from './formulaParser/dependencySort'
-export * from './runtime'
+export * as Types from './types'
+export * as Expressions from './formulaParser/expressions'
+export {dependencySort} from './formulaParser/dependencySort'
+export * as Runtime from './runtime'

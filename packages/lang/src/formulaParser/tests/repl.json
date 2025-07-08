@@ -113,15 +113,12 @@
       "expectedCode": "formula6(5, ints: 1)",
       "expectedType": "Int",
       "expectedValue": "6",
-      "variables": [["formula6", "fn(#one: Int, ...ints: Array(Int)) => one + ints.length"]]
-    },
-    {
-      "desc": "formula6",
-      "formula": "formula6(5, ints: 1, ints: 2)",
-      "expectedCode": "formula6(5, ints: 1, ints: 2)",
-      "expectedType": "Int",
-      "expectedValue": "7",
-      "variables": [["formula6", "fn(#one: Int, ...ints: Array(Int)) => one + ints.length"]]
+      "variables": [
+        [
+          "formula6",
+          "fn(#one: Int, ...ints: Array(Int)) => one + ints.length"
+        ]
+      ]
     },
     {
       "desc": "formula6",
@@ -130,7 +127,23 @@
       "expectedType": "Int",
       "expectedValue": "7",
       "variables": [
-        ["formula6", "fn(#one: Int, ...ints repInts: Array(Int)) => one + repInts.length"]
+        [
+          "formula6",
+          "fn(#one: Int, ...ints: Array(Int)) => one + ints.length"
+        ]
+      ]
+    },
+    {
+      "desc": "formula6",
+      "formula": "formula6(5, ints: 1, ints: 2)",
+      "expectedCode": "formula6(5, ints: 1, ints: 2)",
+      "expectedType": "Int",
+      "expectedValue": "7",
+      "variables": [
+        [
+          "formula6",
+          "fn(#one: Int, ...ints repInts: Array(Int)) => one + repInts.length"
+        ]
       ]
     },
     {

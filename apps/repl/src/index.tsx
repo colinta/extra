@@ -2,26 +2,6 @@ import React, {useEffect, useMemo, useReducer, useState} from 'react'
 import {existsSync, readFileSync, writeFileSync} from 'node:fs'
 import {resolve, basename} from 'node:path'
 
-import {
-  MutableValueRuntime,
-  MutableTypeRuntime,
-  parse,
-  type Expression,
-  dependencySort,
-} from '@extra-lang/lang'
-import {attempt, ok, err, type Result} from '@extra-lang/result'
-import {
-  decide,
-  field,
-  object,
-  boolean,
-  int,
-  string,
-  array,
-  parseJSON,
-  succeed,
-  map,
-} from '@extra-lang/parse'
 import {interceptConsoleLog, red} from '@teaui/core'
 import {
   Box,
@@ -35,6 +15,21 @@ import {
   Text,
   run,
 } from '@teaui/react'
+
+import {Types, Runtime, parse, Expressions, dependencySort} from '@extra-lang/lang'
+import {attempt, ok, err, type Result} from '@extra-lang/result'
+import {
+  decide,
+  field,
+  object,
+  boolean,
+  int,
+  string,
+  array,
+  parseJSON,
+  succeed,
+  map,
+} from '@extra-lang/parse'
 import {Socky} from './socky'
 
 false ? ({attempt, ok, err} as unknown as Result<any, any>) : null
@@ -263,12 +258,12 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
   }
 
   function calc(): Calc {
-    const typeRuntime = new MutableTypeRuntime()
-    const valueRuntime = new MutableValueRuntime()
+    const typeRuntime = new Runtime.MutableTypeRuntime()
+    const valueRuntime = new Runtime.MutableValueRuntime()
 
     let successText = ''
-    const varExpressions: [string, Expression][] = []
-    const typeExpressions: [string, Expression | undefined][] = []
+    const varExpressions: [string, Expressions.Expression][] = []
+    const typeExpressions: Map<string, Expressions.Expression> = new Map()
     for (const {name, type, value} of inputs) {
       if (!(name.trim() && value.trim())) {
         continue
@@ -278,7 +273,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       if (formulaExpr.isErr()) {
         return {
           type: 'error',
-          text: red(`Error while trying to parse \`${name}\`\n\n${formulaExpr.error}`),
+          text: red(`Error parsing \`${name}\`\n\n${formulaExpr.error}`),
         }
       }
 
@@ -289,25 +284,48 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
         if (typeExpr.isErr()) {
           return {
             type: 'error',
-            text: red(`Error while trying to parse type \`${name}\`: ${typeExpr.error}`),
+            text: red(`Error parsing type of \`${type}\`: ${typeExpr.error}`),
           }
         }
-        typeExpressions.push([name, typeExpr.value])
+
+        typeExpressions.set(name, typeExpr.value)
       }
     }
 
     const expressionsSorted = dependencySort(varExpressions, new Set())
     if (expressionsSorted.isErr()) {
-      return {type: 'error', text: red(expressionsSorted.error.toString())}
+      return {
+        type: 'error',
+        text: red(`Error sorting expressions: ${expressionsSorted.error.toString()}`),
+      }
     }
 
     for (const [name, formulaExpr] of expressionsSorted.value) {
       const formulaType = formulaExpr.getType(typeRuntime)
       if (formulaType.isErr()) {
-        successText += red(formulaType.error.toString())
+        successText += red(`Error resolving '${name}': ${formulaType.error.toString()}`)
         continue
       }
-      typeRuntime.addLocalType(name, formulaType.value)
+
+      const typeExpr = typeExpressions.get(name)
+      if (typeExpr) {
+        const typeResolved = typeExpr.getType(typeRuntime)
+        if (typeResolved.isErr()) {
+          successText += red(`Error resolving type of '${name}': ${typeResolved.error.toString()}`)
+          continue
+        }
+
+        if (typeResolved.value instanceof Types.TypeConstructor) {
+          typeRuntime.addLocalType(name, typeResolved.value.intendedType)
+        } else {
+          successText += red(
+            `Not sure what to do with type of '${name}': ${typeResolved.value} (expected type)`,
+          )
+          continue
+        }
+      } else {
+        typeRuntime.addLocalType(name, formulaType.value)
+      }
 
       const formulaValue = formulaExpr.eval(valueRuntime)
       if (formulaValue.isErr()) {
@@ -465,7 +483,8 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
         </Box>
       </Stack.right>
       <Stack.right>
-        ⌃Q to quit – ⇥ to change fields
+        ⌃Q to quit – ⇥ to change fields{' '}
+        <Button title="" hotKey={{char: 'q', ctrl: true}} onClick={exit} />
         <Space flex={1} minWidth={1} />
         <Text padding={{right: 1}}>
           <Style foreground="red">
@@ -487,6 +506,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
   )
 }
 
+let exit = () => {}
 ;(async function () {
   if (process.argv.includes('--wait')) {
     console.log('Listening to port 8080...')
@@ -497,5 +517,9 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
     interceptConsoleLog()
   }
 
-  run(<App />)
+  const [screen] = await run(<App />)
+  exit = () => {
+    screen.exit()
+    process.exit(0)
+  }
 })()
