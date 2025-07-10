@@ -46,7 +46,7 @@ export const SPREAD_OPERATOR = '...'
 
 const PRECEDENCE = {
   BINARY: {
-    if: 1,
+    onlyif: 1,
     '|>': 2,
     '?|>': 2,
     // I had ternary operators at one point;
@@ -1497,7 +1497,6 @@ addBinaryOperator({
 
 abstract class TypeAssertionOperator extends BinaryOperator {
   abstract symbol: 'is' | '!is'
-  abstract inverseSymbol: 'is' | '!is'
 
   assumeTypeAssertion(
     runtime: TypeRuntime,
@@ -1540,7 +1539,6 @@ abstract class TypeAssertionOperator extends BinaryOperator {
 
 class TypeIsAssertionOperator extends TypeAssertionOperator {
   readonly symbol = 'is'
-  readonly inverseSymbol = '!is'
 
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
     return this.assumeTypeAssertion(runtime, (lhsType, rhsTypeAssertion) =>
@@ -1579,7 +1577,6 @@ addBinaryOperator({
 
 class TypeIsRefutationOperator extends TypeAssertionOperator {
   readonly symbol = '!is'
-  readonly inverseSymbol = 'is'
 
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
     return this.assumeTypeAssertion(runtime, (lhsType, rhsTypeAssertion) =>
@@ -2608,7 +2605,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
 
   relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
     const rhs = this.args[1]
-    if (!(rhs instanceof Expressions.Reference)) {
+    if (!(rhs instanceof Expressions.Identifier)) {
       return
     }
 
@@ -2620,7 +2617,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
     const [lhsExpr, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Expressions.Reference)) {
+    if (!(rhsExpr instanceof Expressions.Identifier)) {
       return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
     }
 
@@ -2637,7 +2634,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
 
   isLengthExpression(runtime: TypeRuntime): GetRuntimeResult<boolean> {
     const [lhs, rhs] = this.args
-    if (!(rhs instanceof Expressions.Reference) || rhs.name !== 'length') {
+    if (!(rhs instanceof Expressions.Identifier) || rhs.name !== 'length') {
       return ok(false)
     }
 
@@ -2665,7 +2662,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
     _lhsExpr: Expression,
     rhsExpr: Expression,
   ): GetTypeResult {
-    if (!(rhsExpr instanceof Expressions.Reference)) {
+    if (!(rhsExpr instanceof Expressions.Identifier)) {
       return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
     }
 
@@ -2686,7 +2683,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
     lhsExpr: Expression,
     rhsExpr: Expression,
   ): GetValueResult {
-    if (!(rhsExpr instanceof Expressions.Reference)) {
+    if (!(rhsExpr instanceof Expressions.Identifier)) {
       return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
     }
 
@@ -3223,7 +3220,7 @@ addBinaryOperator({
  * and picked up by ArrayExpression.
  */
 class InclusionOperator extends BinaryOperator {
-  symbol = 'if'
+  symbol = 'onlyif'
 
   isInclusionOp(): this is Operation {
     return true
@@ -3243,8 +3240,8 @@ class InclusionOperator extends BinaryOperator {
 
 addBinaryOperator({
   name: 'inclusion operator',
-  symbol: 'if',
-  precedence: PRECEDENCE.BINARY['if'],
+  symbol: 'onlyif',
+  precedence: PRECEDENCE.BINARY['onlyif'],
   associativity: 'left',
   create(
     range: [number, number],
@@ -3945,7 +3942,7 @@ class EnumLookupOperator extends UnaryOperator {
   symbol = '.'
 
   operatorType(_runtime: TypeRuntime, _: Types.Type, arg: Expression) {
-    if (!(arg instanceof Expressions.Reference)) {
+    if (!(arg instanceof Expressions.Identifier)) {
       return ok(Types.NeverType)
     }
 
@@ -3953,7 +3950,7 @@ class EnumLookupOperator extends UnaryOperator {
   }
 
   operatorEval(_runtime: ValueRuntime, _: Values.Value, arg: Expression) {
-    if (!(arg instanceof Expressions.Reference)) {
+    if (!(arg instanceof Expressions.Identifier)) {
       return err(new RuntimeError(arg, `Expected a variable name`))
     }
 

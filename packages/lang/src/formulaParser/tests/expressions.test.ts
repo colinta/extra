@@ -80,10 +80,10 @@ describe('getType', () => {
       c(['10 | 3', Types.literal(11)]),
       c(['10 & 3', Types.literal(2)]),
       c(['10 ^ 3', Types.literal(9)]),
-      c(['~0b101', Types.literal(2)]),
-      c(['~0b0101', Types.literal(10)]),
-      c(['~0b00101', Types.literal(26)]),
-      c(['~0x0a', Types.literal(245)]),
+      c(['~0b101', Types.literal(-6)]),
+      c(['~0b0101', Types.literal(-6)]),
+      c(['~0b00101', Types.literal(-6)]),
+      c(['~0x0a', Types.literal(-11)]),
     ).run(([formula, type], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`operation ${formula}`, () => {
         const expression = parse(formula).get()

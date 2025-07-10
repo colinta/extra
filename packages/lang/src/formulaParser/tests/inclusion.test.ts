@@ -26,7 +26,7 @@ describe('inclusion operator', () => {
   1
   2
   3
-  a if b
+  a onlyif b
   5
 ]
 `,
@@ -50,7 +50,7 @@ describe('inclusion operator', () => {
   1
   2
   3
-  a if b
+  a onlyif b
   5
 ]
 `,
@@ -80,7 +80,7 @@ describe('inclusion operator', () => {
   1
   2
   3
-  ...a if b
+  ...a onlyif b
 ]
 `,
         ['a', Types.array(Types.string(), {min: 1, max: 2}), Values.array([Values.int(0)])],
@@ -97,7 +97,7 @@ describe('inclusion operator', () => {
   1
   2
   3
-  ...a if b
+  ...a onlyif b
 ]
 `,
         [
@@ -124,7 +124,7 @@ describe('inclusion operator', () => {
   1
   2
   3
-  ...a |> # if b
+  ...a |> # onlyif b
 ]
 `,
         [
@@ -172,7 +172,7 @@ describe('inclusion operator', () => {
   1
   2
   3
-  a if b if b
+  a onlyif b onlyif b
   5
 ]
 `,

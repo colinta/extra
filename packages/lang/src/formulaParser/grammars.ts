@@ -83,7 +83,7 @@ export function isStringStartChar(char: string) {
   return char === '"' || char === "'" || char === '`' || char === ATOM_START
 }
 
-export const INCLUSION_OPERATOR = 'if'
+export const INCLUSION_OPERATOR = 'onlyif'
 export const NULL_COALESCING = '?.'
 
 export const ARGS_OPEN = '('

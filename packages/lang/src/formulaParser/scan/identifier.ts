@@ -66,8 +66,8 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
 }
 
 /**
- * scanAtom is similar to scanValidName, but allows reserved words. They are not
- * given special treatement, all values are returned as Expressions.StringAtomLiteral
+ * "atom" is what I call strings that are of the form `:string`. All ref chars are
+ * allowed - hyphens, underscores, letters, numbers, and emoji.
  */
 export function scanAtom(scanner: Scanner) {
   scanner.whereAmI('scanAtom')

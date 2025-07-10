@@ -645,7 +645,7 @@ function parseInternal(
         ) {
           // if we are inside an array/dict/set/object literal, check for the inclusion
           // operator `if`
-          processOperator(binaryOperatorNamed('if', scanner.flushComments()))
+          processOperator(binaryOperatorNamed(INCLUSION_OPERATOR, scanner.flushComments()))
         } else if (isBlockStartOperator(scanner)) {
           // scans for `foo() { arg0, name: arg1, other: arg2, arg3 }`
           processBlockArguments()

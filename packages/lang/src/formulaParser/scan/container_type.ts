@@ -22,7 +22,7 @@ import {SPREAD_OPERATOR} from '../operators'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
-import {scanIdentifier, scanValidName} from './identifier'
+import {scanIdentifier, scanAnyReference} from './identifier'
 import {scanNumber} from './number'
 import {scanParensGroup} from './parens'
 import {scanArgumentType} from './scanArgumentType'
@@ -95,7 +95,7 @@ export function scanObject(
     } else if (isNamedObjectArgument(scanner)) {
       const nameComments = scanner.flushComments()
       scanner.whereAmI('nameComments: ' + nameComments)
-      const propName = scanValidName(scanner)
+      const propName = scanAnyReference(scanner)
       scanner.scanSpaces() // TODO: this is a weird place for comments to hide
       scanner.expectString(':')
       scanner.scanSpaces()
@@ -331,7 +331,7 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
           scanner.flushComments(),
         )
       } else {
-        const dictName = scanValidName(scanner)
+        const dictName = scanAnyReference(scanner)
         name = new Expressions.LiteralKey(dictName.range, [], Values.string(dictName.name))
         value = dictName
       }

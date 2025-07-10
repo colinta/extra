@@ -126,9 +126,9 @@ describe('newline-as-comma', () => {
 [ 1
   2
   -x
-  if foo
+  onlyif foo
 ]`,
-      '[1, 2, -x if foo]',
+      '[1, 2, -x onlyif foo]',
     ]),
     c([
       `\

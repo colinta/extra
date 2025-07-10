@@ -55,8 +55,8 @@ describe('function parser', () => {
 
   describe('conditional inclusion', () => {
     cases<[string, string] | [string, string, string]>(
-      c(['[x if c]', '[(if x c)]']),
-      c(['[...x if c]', '[(... (if x c))]']),
+      c(['[x onlyif c]', '[(onlyif x c)]']),
+      c(['[...x onlyif c]', '[(... (onlyif x c))]']),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         let expression: Expression = parse(formula).get()
