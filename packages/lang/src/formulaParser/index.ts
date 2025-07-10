@@ -111,6 +111,25 @@ export function parse(input: string, debug = 0): GetParserResult<Expression> {
   return err(result.error)
 }
 
+export function parseType(input: string, debug = 0): GetParserResult<Expression> {
+  const scanner = new Scanner(input, {debug})
+  const result = attempt<Expression, ParseError>(
+    () => parseInternal(scanner, 'argument_type'),
+    e => e instanceof ParseError,
+  )
+
+  if (result.isOk()) {
+    const expression = result.value
+    scanner.scanAllWhitespace()
+    if (scanner.charIndex < input.length) {
+      return err(new ParseError(scanner, 'Unexpected end of formula before the input was parsed'))
+    }
+    return ok(expression)
+  }
+
+  return err(result.error)
+}
+
 export function parseApplication(input: string, debug = 0): GetParserResult<Application> {
   const scanner = new Scanner(input, {debug})
 

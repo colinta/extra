@@ -16,7 +16,7 @@ import {
   run,
 } from '@teaui/react'
 
-import {Types, Runtime, parse, Expressions, dependencySort} from '@extra-lang/lang'
+import {Runtime, parse, Expressions, dependencySort} from '@extra-lang/lang'
 import {attempt, ok, err, type Result} from '@extra-lang/result'
 import {
   decide,
@@ -31,6 +31,7 @@ import {
   map,
 } from '@extra-lang/parse'
 import {Socky} from './socky'
+import {parseType} from '@extra-lang/lang/src/formulaParser'
 
 false ? ({attempt, ok, err} as unknown as Result<any, any>) : null
 
@@ -280,7 +281,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       varExpressions.push([name, formulaExpr.value])
 
       if (type.trim()) {
-        const typeExpr = parse(type)
+        const typeExpr = parseType(type)
         if (typeExpr.isErr()) {
           return {
             type: 'error',
@@ -315,14 +316,12 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
           continue
         }
 
-        if (typeResolved.value instanceof Types.TypeConstructor) {
-          typeRuntime.addLocalType(name, typeResolved.value.intendedType)
-        } else {
-          successText += red(
-            `Not sure what to do with type of '${name}': ${typeResolved.value} (expected type)`,
-          )
-          continue
-        }
+        console.log('=========== index.tsx at line 320 ===========')
+        console.log({
+          name,
+          'typeResolved.value': typeResolved.value.fromTypeConstructor(),
+        })
+        typeRuntime.addLocalType(name, typeResolved.value.fromTypeConstructor())
       } else {
         typeRuntime.addLocalType(name, formulaType.value)
       }
@@ -344,6 +343,9 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
     }
 
     if (expressionsSorted.value.length) {
+      if (!successText.endsWith('\n')) {
+        successText += '\n'
+      }
       successText += '──╼━━━━╾──\n'
     }
 
@@ -449,7 +451,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       <Stack.right flex={1}>
         <Box width="fill" flex={2}>
           <Scrollable>
-            <Text>{mainText}</Text>
+            <Text wrap>{mainText}</Text>
           </Scrollable>
         </Box>
         <Box width="fill" flex={1}>

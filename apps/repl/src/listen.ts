@@ -11,9 +11,7 @@ export class SockyListener {
   private ws: WebSocket | null = null
   private connected = false
   private reconnectTimeout: NodeJS.Timeout | null = null
-  private reconnectAttempts = 0
-  private maxReconnectAttempts = 10
-  private reconnectDelay = 1000
+  private reconnectDelay = 250
   private url: string
   private handlers: ((message: LogMessage) => void)[] = []
 
@@ -30,7 +28,6 @@ export class SockyListener {
 
       this.ws.on('open', () => {
         this.connected = true
-        this.reconnectAttempts = 0
         console.log(`Connected to WebSocket server at ${this.url}`)
       })
 
@@ -49,7 +46,6 @@ export class SockyListener {
       })
 
       this.ws.on('error', error => {
-        console.error('WebSocket error:', error)
         if (this.ws) {
           this.ws.terminate()
         }
@@ -93,18 +89,7 @@ export class SockyListener {
       clearTimeout(this.reconnectTimeout)
     }
 
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error(
-        `Maximum reconnection attempts (${this.maxReconnectAttempts}) reached. Giving up.`,
-      )
-      return
-    }
-
-    this.reconnectAttempts++
-    const delay = this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1)
-    console.log(
-      `Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts} of ${this.maxReconnectAttempts})`,
-    )
+    const delay = this.reconnectDelay
 
     this.reconnectTimeout = setTimeout(() => {
       this.connect()
