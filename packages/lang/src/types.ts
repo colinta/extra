@@ -224,6 +224,21 @@ export function namedArgument(args: {
   }
 }
 
+export function repeatedPositionalArgument(args: {
+  name: string
+  alias?: string
+  type: ArrayType
+}): RepeatedNamedArgument {
+  return {
+    is: 'repeated-named-argument',
+    spread: 'spread',
+    name: args.name,
+    type: args.type,
+    alias: args.alias ?? args.name,
+    isRequired: false,
+  }
+}
+
 export type BuiltinTypeNames = 'boolean' | 'float' | 'int' | 'null' | 'string' | 'regex'
 export type Key = string | number | boolean | null
 export type KeyType = 'string' | 'int' | 'float' | 'boolean' | 'null'

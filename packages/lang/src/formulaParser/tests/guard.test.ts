@@ -18,150 +18,101 @@ beforeEach(() => {
   valueRuntime = mockValueRuntime(runtimeTypes)
 })
 
-describe('if', () => {
+describe('guard', () => {
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
       c([
-        "if (a-letter == 'a', then: [1], else: [3])",
-        "(if ((== a-letter 'a') (then: [1]) (else: [3])))",
+        "guard (a-letter == 'a', else: [3]): [1]",
+        "(guard ((== a-letter 'a') (else: [3])) { [1] })",
         `\
-if (a-letter == 'a') {
-  then:
-    [1]
-  else:
-    [3]
-}`,
+guard (
+  a-letter == 'a'
+else:
+  [3]
+):
+  [1]`,
       ]),
       c([
-        'if (not a or b, then: 1, else: 3)',
-        '(if ((or (not a) b) (then: 1) (else: 3)))',
+        'guard (not a or b, else: 3, 1)',
+        '(guard ((or (not a) b) (else: 3) 1))',
         `\
-if (not a or b) {
-  then:
-    1
-  else:
-    3
-}`,
+guard (
+  not a or b
+else:
+  3
+):
+  1`,
       ]),
       c([
-        '1 + if (a) { then: 1, else: 3 }',
-        '(+ 1 (if (a) { (then: 1) (else: 3) }))',
-        `\
-1 + if (a) {
-  then:
-    1
-  else:
-    3
-}`,
+        '1 + guard (a) { else: 3, 1 }',
+        '(+ 1 (guard (a) { (else: 3) 1 }))',
+        '1 + guard (a, else: 3): 1',
       ]),
       c([
-        '1 + if (a) { then: 1\nelse: 3 }',
-        '(+ 1 (if (a) { (then: 1) (else: 3) }))',
-        `\
-1 + if (a) {
-  then:
-    1
-  else:
-    3
-}`,
+        '1 + guard (a) { 1\nelse: 3 }',
+        '(+ 1 (guard (a) { 1 (else: 3) }))',
+        '1 + guard (a, else: 3): 1',
       ]),
-      c([
-        "if (a) { then: 1, elseif (b): 3, else: '4' }",
-        "(if (a) { (then: 1) (fn `elseif` (b) { 3 }) (else: '4') })",
-        `\
-if (a) {
-  then:
-    1
-  elseif (b):
-    3
-  else:
-    '4'
-}`,
-      ]),
+      c(["guard (a) { 1, else: '4' }", "(guard (a) { 1 (else: '4') })", "guard (a, else: '4'): 1"]),
       c([
         `[
-  if (a) {
-  then:
-    1
+  guard (a) {
   else:
-    if (b) {
-    then:
-      3
+    1
+    guard (b) {
     else:
       '4'
+      3
     }
   }
   '4'
 ]`,
-        "[(if (a) { (then: 1) (else: (if (b) { (then: 3) (else: '4') })) }) '4']",
+        "[(guard (a) { (else: 1) (guard (b) { (else: '4') 3 }) }) '4']",
         `\
 [
-  if (a) {
-    then:
-      1
-    else:
-      if (b) {
-        then:
-          3
-        else:
-          '4'
-      }
-  }
+  guard (
+    a
+  else:
+    1
+  ):
+    guard (b, else: '4'): 3
   '4'
 ]`,
       ]),
       c([
         `\
-if (a) {
-then:
+guard (a) {
   1
-elseif (b):
-  3
 else:
   '4'
 }
 `,
-        "(if (a) { (then: 1) (fn `elseif` (b) { 3 }) (else: '4') })",
-        `\
-if (a) {
-  then:
-    1
-  elseif (b):
-    3
-  else:
-    '4'
-}`,
+        "(guard (a) { 1 (else: '4') })",
+        "guard (a, else: '4'): 1",
       ]),
       c([
         `\
-if (a) {
-then:
-  1
-  +
-  2
-elseif (b):
-  3
-  +
-  4
+guard (a) {
 else:
   '4'
   <>
   '5'
+  1
+  +
+  2
 }
 `,
-        "(if (a) { (then: (+ 1 2)) (fn `elseif` (b) { (+ 3 4) }) (else: (<> '4' '5')) })",
+        "(guard (a) { (else: (<> '4' '5')) (+ 1 2) })",
         `\
-if (a) {
-  then:
-    1 + 2
-  elseif (b):
-    3 + 4
-  else:
-    '4' <> '5'
-}`,
+guard (
+  a
+else:
+  '4' <> '5'
+):
+  1 + 2`,
       ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(`should parse if '${formula}'`, () => {
+      (only ? it.only : skip ? it.skip : it)(`should parse guard '${formula}'`, () => {
         expectedCode ??= formula
         let expression: Expression = parse(formula).get()
 
@@ -175,60 +126,39 @@ if (a) {
     cases<[string, ['a', string], ['b', boolean], Types.Type, Values.Value]>(
       c([
         `\
-if (a) {
-then:
+guard (
+  a
+  else:
+    '4'
+):
   1
-elseif (b):
-  3
-else:
-  '4'
-}
 `,
         ['a', ''],
         ['b', false],
-        Types.oneOf([Types.literal(1), Types.literal(3), Types.literal('4')]),
+        Types.oneOf([Types.literal(1), Types.literal('4')]),
         Values.string('4'),
       ]),
       c([
-        `\
-if (a) {
-then:
+        `-- test out literals and parsing block syntax
+guard (true) {
+  else:
+    '4'
   1
-elseif (b):
-  3
-else:
-  '4'
 }
 `,
         ['a', ''],
         ['b', true],
-        Types.oneOf([Types.literal(1), Types.literal(3), Types.literal('4')]),
-        Values.int(3),
-      ]),
-      c([
-        `-- test out literals
-if (true) {
-then:
-  1
-elseif (false):
-  3
-else:
-  '4'
-}
-`,
-        ['a', ''],
-        ['b', true],
-        Types.oneOf([Types.literal(1), Types.literal(3), Types.literal('4')]),
+        Types.oneOf([Types.literal(1), Types.literal('4')]),
         Values.int(1),
       ]),
       c([
         `\
-if (a) {
-then:
-  a <> '!'
+guard (
+  a
 else:
   b
-}
+):
+  a <> '!'
 `,
         ['a', ''],
         ['b', true],
@@ -237,12 +167,12 @@ else:
       ]),
       c([
         `\
-if (a) {
-then:
-  a <> '!'
+guard (
+  a
 else:
   b
-}
+):
+  a <> '!'
 `,
         ['a', ''],
         ['b', false],
@@ -251,56 +181,17 @@ else:
       ]),
       c([
         `\
-if (a) {
-then:
-  a <> a
+guard (
+  a
 else:
   b
-}
+):
+  a <> a
 `,
         ['a', 'hi'],
         ['b', false],
         Types.oneOf([Types.string(), Types.booleanType()]),
         Values.string('hihi'),
-      ]),
-      c([
-        `\
-elseif (a): a
-`,
-        ['a', 'hi'],
-        ['b', false],
-        Types.formula(
-          [],
-          Types.oneOf([
-            Types.tuple([Types.LiteralTrueType, Types.string()]),
-            Types.tuple([Types.LiteralFalseType, Types.NullType]),
-          ]),
-        ),
-        expect.anything(),
-      ]),
-      c([
-        `\
-(elseif (a): a)()
-`,
-        ['a', 'hi'],
-        ['b', false],
-        Types.oneOf([
-          Types.tuple([Types.LiteralTrueType, Types.string()]),
-          Types.tuple([Types.LiteralFalseType, Types.NullType]),
-        ]),
-        Values.tuple([Values.booleanValue(true), Values.string('hi')]),
-      ]),
-      c([
-        `\
-(elseif (a): a)()
-`,
-        ['a', ''],
-        ['b', false],
-        Types.oneOf([
-          Types.tuple([Types.LiteralTrueType, Types.string()]),
-          Types.tuple([Types.LiteralFalseType, Types.NullType]),
-        ]),
-        Values.tuple([Values.booleanValue(false), Values.NullValue]),
       ]),
     ).run(([formula, [_a, valueA], [_b, valueB], expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
@@ -324,8 +215,9 @@ elseif (a): a
     cases<[string, Types.Type, string]>(
       c([
         `\
-if (a) {
-then:
+guard (a) {
+  1
+else:
   1
 }`,
         Types.string({min: 1}),
@@ -333,17 +225,11 @@ then:
       ]),
       c([
         `\
-if (a) {
-then:
+guard (a) {
+  1
+else:
   1
 }`,
-        Types.string({max: 0}),
-        'Type \'""\' is invalid as an if condition, because it is always false.',
-      ]),
-      c([
-        `\
-elseif (a): 1
-`,
         Types.string({max: 0}),
         'Type \'""\' is invalid as an if condition, because it is always false.',
       ]),

@@ -1093,12 +1093,13 @@ All of the
 fn(#name: String?, hobbies: Array(String)): String =>
   guard(
     name != null
-    else: ''
+  else:
+    ''
   ):
     guard(
       hobbies.length > 0
-      else:
-        name <> ' is not very interesting'
+    else:
+      name <> ' is not very interesting'
     ):
       name <> ': ' <> hobbies.join(', ')
 ```
@@ -1110,8 +1111,11 @@ fn guard<T>(
   ...#condition: Array(Boolean)
   else: lazy T
   #do: lazy T
-  -- ok I lied, usually the variadic argument has to be the *last* argument...
-  -- maybe I'll special case this syntax in the future.
+  -- usually the variadic argument has to be the *last* argument... so
+  -- technically you can't implement this as of today...
+  -- maybe I'll special case this syntax in the future. It makes sense that you
+  -- could have positional arguments at the beginning *and* end, with variadics
+  -- in the middle
 ): T
 ```
 

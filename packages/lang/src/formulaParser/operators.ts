@@ -28,6 +28,7 @@ import {
   type GetValueResult,
   type Operator,
 } from './types'
+import {indent, SMALL_LEN} from './util'
 
 export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'matches', 'if'] as const
 export const NAMED_BINARY_ALIAS = {
@@ -675,6 +676,13 @@ addBinaryOperator({
 class LogicalOrOperator extends BinaryOperator {
   symbol = 'or'
 
+  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    const [lhsExpr, rhsExpr] = this.args
+    return lhsExpr
+      .assumeFalse(runtime)
+      .map(truthyRuntime => rhsExpr.assumeFalse(truthyRuntime).map(finalRuntime => finalRuntime))
+  }
+
   rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
     return lhsExpr
       .assumeFalse(runtime)
@@ -730,6 +738,15 @@ addBinaryOperator({
 
 class LogicalAndOperator extends BinaryOperator {
   symbol = 'and'
+
+  /**
+   * We can only assume that the LHS was false (*maybe* the right hand side was
+   * false, too - can't be sure, though)
+   */
+  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    const [lhsExpr] = this.args
+    return lhsExpr.assumeFalse(runtime)
+  }
 
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
     const [lhsExpr, rhsExpr] = this.args
@@ -3263,6 +3280,10 @@ addBinaryOperator({
 export class IfExpressionInvocation extends FunctionInvocationOperator {
   symbol = 'if'
   argList: Expression
+  conditionExpr?: Expression
+  thenExpr?: Expression
+  elseifExprs: Expression[] = []
+  elseExpr?: Expression
 
   constructor(
     range: Range,
@@ -3273,6 +3294,13 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
   ) {
     super(range, precedingComments, followingOperatorComments, operator, args)
     this.argList = args[1]
+
+    if (this.argList instanceof Expressions.ArgumentsList) {
+      this.conditionExpr = this.argList.positionalArg(0)
+      this.thenExpr = this.argList.namedArg('then')
+      this.elseifExprs = this.argList.allPositionalArgs(1)
+      this.elseExpr = this.argList.namedArg('else')
+    }
   }
 
   /**
@@ -3291,8 +3319,77 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
       return `(${this.toCode(0)})`
     }
 
-    const argListCode = this.argList.toCode(0)
-    return `if${argListCode}`
+    if (this.conditionExpr && this.thenExpr) {
+      const conditionCode = this.conditionExpr.toCode(0)
+      const thenCode = this.thenExpr.toCode(0)
+      const elseifs = this.elseifExprs.map(it => it.toCode(0))
+      const elseCode = this.elseExpr?.toCode(0) ?? ''
+
+      let totalLength = 0
+      const hasNewline =
+        conditionCode.includes('\n') ||
+        thenCode.includes('\n') ||
+        elseCode.includes('\n') ||
+        elseifs.some(it => it.includes('\n'))
+      if (!hasNewline) {
+        totalLength +=
+          elseifs.reduce((l, r) => l + r.length, 0) +
+          conditionCode.length +
+          thenCode.length +
+          elseCode.length
+        totalLength += ' () { then: }'.length
+        totalLength += elseifs.length * 'elseif(): '.length
+        totalLength += elseCode ? 'else: '.length : 0
+      }
+      if (hasNewline || totalLength > SMALL_LEN) {
+        let code = ''
+        if (conditionCode.includes('\n')) {
+          code += 'if (\n'
+          code += indent(conditionCode) + '\n'
+          code += ') {\n'
+        } else {
+          code += `if (${conditionCode}) {\n`
+        }
+        let blockCode = ''
+        blockCode += 'then:\n'
+        blockCode += indent(thenCode) + '\n'
+        for (const elseifExpr of this.elseifExprs) {
+          if (elseifExpr instanceof ElseIfExpressionInvocation) {
+            const conditionCode = elseifExpr.conditionExpr?.toCode() ?? ''
+            if (conditionCode.includes('\n')) {
+              blockCode += `elseif (\n${conditionCode}\n):\n`
+            } else {
+              blockCode += `elseif (${conditionCode}):\n`
+            }
+            const thenCode = elseifExpr.thenExpr?.toCode() ?? ''
+            blockCode += indent(thenCode + '\n')
+          } else {
+            const elseifCode = elseifExpr.toCode(0)
+            blockCode += indent(elseifCode) + '\n'
+          }
+        }
+        if (elseCode) {
+          blockCode += 'else:\n'
+          blockCode += indent(elseCode) + '\n'
+        }
+        code += indent(blockCode)
+        code += '}'
+        return code
+      } else {
+        let code = `if (${conditionCode}, then: ${thenCode}`
+        for (const elseif of this.elseifExprs) {
+          code += `, ${elseif.toCode(0)}`
+        }
+        if (elseCode) {
+          code += `, else: ${elseCode}`
+        }
+        code += ')'
+        return code
+      }
+    } else {
+      const argListCode = this.argList.toCode(0)
+      return `if ${argListCode}`
+    }
   }
 
   // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
@@ -3301,22 +3398,19 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
-    const argList = this.argList
-    if (!(argList instanceof Expressions.ArgumentsList)) {
-      return err(new RuntimeError(this, expectedType('arguments list', argList)))
-    }
-
-    const conditionExpr = argList.positionalArg(0)
+    const conditionExpr = this.conditionExpr
+    const thenExpr = this.thenExpr
+    const elseifExprs = this.elseifExprs
+    const elseExpr = this.elseExpr
     if (!conditionExpr) {
       return err(new RuntimeError(this, expectedIfCondition()))
     }
 
-    const thenExpr = argList.namedArg('then')
     if (!thenExpr) {
       return err(new RuntimeError(this, expectedIfThenResult()))
     }
 
-    return conditionExpr.getType(runtime).map(conditionType => {
+    return getChildType(this, conditionExpr, runtime).map(conditionType => {
       // allow literal 'true/false' expressions (for testing)
       // todo: disallow for "production" builds
       if (
@@ -3341,7 +3435,6 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
       }
 
       let returnType = returnResult.value
-      const elseifExprs = argList.allPositionalArgs(1)
 
       // Evaluate 'elseif' conditions as if conditionExpr is false.
       // merge the results of the 'then' and 'elseif' expressions into one type
@@ -3365,12 +3458,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 
         returnType = Types.compatibleWithBothTypes(returnType, elseifThenType.value)
 
-        const elseifArgList = elseif.argList
-        if (!(elseifArgList instanceof Expressions.ArgumentsList)) {
-          return err(new RuntimeError(this, expectedType('arguments list', elseifArgList)))
-        }
-
-        const elseifConditionExpr = elseifArgList.positionalArg(0)
+        const elseifConditionExpr = elseif.conditionExpr
         if (!elseifConditionExpr) {
           return err(new RuntimeError(elseif, expectedElseifConditionArgument()))
         }
@@ -3382,7 +3470,6 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
         nextRuntime = nextRuntimeResult.value
       }
 
-      const elseExpr = argList.namedArg('else')
       if (elseExpr) {
         const elseType = getChildType(this, elseExpr, nextRuntime)
         if (elseType.isErr()) {
@@ -3400,17 +3487,14 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
   }
 
   eval(runtime: ValueRuntime): GetValueResult {
-    const argList = this.argList
-    if (!(argList instanceof Expressions.ArgumentsList)) {
-      return err(new RuntimeError(this, expectedType('arguments list', argList)))
-    }
-
-    const conditionExpr = argList.positionalArg(0)
+    const conditionExpr = this.conditionExpr
+    const thenExpr = this.thenExpr
+    const elseExpr = this.elseExpr
+    const elseifExprs = this.elseifExprs
     if (!conditionExpr) {
       return err(new RuntimeError(this, expectedIfCondition()))
     }
 
-    const thenExpr = argList.namedArg('then')
     if (!thenExpr) {
       return err(new RuntimeError(this, expectedIfThenResult()))
     }
@@ -3420,24 +3504,17 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
         return thenExpr.eval(runtime)
       }
 
-      const elseifExprs = argList.allPositionalArgs(1)
-
       for (const elseif of elseifExprs) {
         if (!(elseif instanceof ElseIfExpressionInvocation)) {
           return err(new RuntimeError(elseif, expectedElseifConditionExpression(elseif)))
         }
 
-        const elseifArgList = elseif.argList
-        if (!(elseifArgList instanceof Expressions.ArgumentsList)) {
-          return err(new RuntimeError(this, expectedType('arguments list', elseifArgList)))
-        }
-
-        const elseifConditionExpr = elseifArgList.positionalArg(0)
+        const elseifConditionExpr = elseif.conditionExpr
         if (!elseifConditionExpr) {
           return err(new RuntimeError(elseif, expectedElseifConditionArgument()))
         }
 
-        const elseifThen = elseifArgList.positionalArg(1)
+        const elseifThen = elseif.thenExpr
         if (!elseifThen) {
           return err(new RuntimeError(elseif, expectedElseifConditionResult()))
         }
@@ -3452,7 +3529,6 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
         }
       }
 
-      const elseExpr = argList.namedArg('else')
       if (elseExpr) {
         return elseExpr.eval(runtime)
       }
@@ -3466,6 +3542,8 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
   symbol = 'elseif'
   argList: Expression
+  conditionExpr?: Expression
+  thenExpr?: Expression
 
   constructor(
     range: Range,
@@ -3476,6 +3554,20 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
   ) {
     super(range, precedingComments, followingOperatorComments, operator, args)
     this.argList = args[1]
+
+    if (this.argList instanceof Expressions.ArgumentsList) {
+      this.conditionExpr = this.argList.positionalArg(0)
+      this.thenExpr = this.argList.positionalArg(1)
+    }
+  }
+
+  toCode(prevPrecedence = 0): string {
+    if (prevPrecedence > this.operator.precedence) {
+      return `(${this.toCode(0)})`
+    }
+
+    const argListCode = this.argList.toCode(0)
+    return `elseif ${argListCode}`
   }
 
   getReturnType(runtime: TypeRuntime): GetTypeResult {
@@ -3484,17 +3576,17 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
       return err(new RuntimeError(this, expectedType('arguments list', argList)))
     }
 
-    const conditionExpr = argList.positionalArg(0)
+    const conditionExpr = this.conditionExpr
+    const thenExpr = this.thenExpr
     if (!conditionExpr) {
-      return err(new RuntimeError(this, expectedIfCondition()))
+      return err(new RuntimeError(this, expectedElseIfCondition()))
     }
 
-    const thenExpr = argList.positionalArg(1)
     if (!thenExpr) {
-      return err(new RuntimeError(this, expectedIfThenResult()))
+      return err(new RuntimeError(this, expectedElseIfThenResult()))
     }
 
-    return conditionExpr.getType(runtime).map(conditionType => {
+    return getChildType(this, conditionExpr, runtime).map(conditionType => {
       // allow literal 'true/false' expressions (for testing)
       // todo: disallow for "production" builds
       if (
@@ -3546,14 +3638,14 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
       return err(new RuntimeError(this, expectedType('arguments list', argList)))
     }
 
-    const conditionExpr = argList.positionalArg(0)
+    const conditionExpr = this.conditionExpr
+    const thenExpr = this.thenExpr
     if (!conditionExpr) {
-      return err(new RuntimeError(this, expectedIfCondition()))
+      return err(new RuntimeError(this, expectedElseIfCondition()))
     }
 
-    const thenExpr = argList.positionalArg(1)
     if (!thenExpr) {
-      return err(new RuntimeError(this, expectedIfThenResult()))
+      return err(new RuntimeError(this, expectedElseIfThenResult()))
     }
 
     return ok(
@@ -3579,6 +3671,173 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
   }
 }
 
+export class GuardExpressionInvocation extends FunctionInvocationOperator {
+  symbol = 'guard'
+  argList: Expression
+  bodyExpr?: Expression
+  elseExpr?: Expression
+  conditionExprs: Expression[] = []
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    super(range, precedingComments, followingOperatorComments, operator, args)
+    this.argList = args[1]
+
+    if (this.argList instanceof Expressions.ArgumentsList) {
+      const args = this.argList.allPositionalArgs()
+      this.bodyExpr = args.at(-1)
+      this.conditionExprs = args.slice(0, args.length - 1)
+      this.elseExpr = this.argList.namedArg('else')
+    }
+  }
+
+  /**
+   * No need to enclose function invocations in `(…)`
+   */
+  toViewPropCode() {
+    return this.toCode()
+  }
+
+  toLisp() {
+    return `(guard ${this.argList.toLisp()})`
+  }
+
+  toCode(prevPrecedence = 0): string {
+    if (prevPrecedence > this.operator.precedence) {
+      return `(${this.toCode(0)})`
+    }
+
+    if (this.bodyExpr && this.conditionExprs.length && this.elseExpr) {
+      const conditions = this.conditionExprs.map(it => it.toCode(0))
+      const elseCode = this.elseExpr.toCode(0)
+      const bodyCode = this.bodyExpr.toCode(0)
+      const hasNewline =
+        conditions.some(it => it.includes('\n')) ||
+        elseCode.includes('\n') ||
+        bodyCode.includes('\n')
+      let totalLength = 0
+      if (!hasNewline) {
+        totalLength +=
+          conditions.reduce((l, r) => l + r.length, 0) + elseCode.length + bodyCode.length
+        totalLength += ' (else: ):'.length
+      }
+      if (hasNewline || totalLength > SMALL_LEN) {
+        let code = 'guard (\n'
+        code += indent(conditions.join('\n')) + '\n'
+        code += 'else:\n'
+        code += indent(elseCode) + '\n'
+        code += '):\n'
+        code += indent(this.bodyExpr.toCode())
+        return code
+      } else {
+        return `guard (${conditions.join(', ')}, else: ${elseCode}): ${bodyCode}`
+      }
+    } else {
+      const argListCode = this.argList.toCode(0)
+      return `guard ${argListCode}`
+    }
+  }
+
+  // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+  rhsType(): GetTypeResult {
+    return ok(Types.AllType)
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    const bodyExpr = this.bodyExpr
+    const conditionExprs = this.conditionExprs
+    const elseExpr = this.elseExpr
+    if (!bodyExpr || !conditionExprs.length) {
+      return err(new RuntimeError(this, expectedGuardArguments()))
+    }
+
+    if (!elseExpr) {
+      return err(new RuntimeError(this, expectedGuardElseResult()))
+    }
+
+    let nextRuntime = runtime
+    let elseRuntime = runtime
+    let isFirst = true
+    for (const conditionExpr of conditionExprs) {
+      const conditionType = getChildType(this, conditionExpr, nextRuntime)
+      if (conditionType.isErr()) {
+        return err(conditionType.error)
+      }
+
+      // allow literal 'true/false' expressions (for testing)
+      // todo: disallow for "production" builds
+
+      if (
+        !(conditionExpr instanceof Expressions.TrueExpression) &&
+        !(conditionExpr instanceof Expressions.FalseExpression)
+      ) {
+        if (conditionType.value.isOnlyTruthyType()) {
+          return err(new RuntimeError(this, unexpectedOnlyType(conditionType.value, true)))
+        }
+
+        if (conditionType.value.isOnlyFalseyType()) {
+          return err(new RuntimeError(this, unexpectedOnlyType(conditionType.value, false)))
+        }
+      }
+
+      const nextRuntimeResult = conditionExpr.assumeTrue(runtime)
+      if (nextRuntimeResult.isErr()) {
+        return err(nextRuntimeResult.error)
+      }
+
+      if (isFirst) {
+        isFirst = false
+        const elseRuntimeResult = conditionExpr.assumeFalse(runtime)
+        if (elseRuntimeResult.isErr()) {
+          return err(elseRuntimeResult.error)
+        }
+        elseRuntime = elseRuntimeResult.value
+      }
+
+      nextRuntime = nextRuntimeResult.value
+    }
+
+    return bodyExpr
+      .getType(nextRuntime)
+      .map(bodyType =>
+        elseExpr
+          .getType(elseRuntime)
+          .map(elseType => Types.compatibleWithBothTypes(bodyType, elseType)),
+      )
+  }
+
+  eval(runtime: ValueRuntime): GetValueResult {
+    const bodyExpr = this.bodyExpr
+    const conditionExprs = this.conditionExprs
+    const elseExpr = this.elseExpr
+    if (!bodyExpr || !conditionExprs.length) {
+      return err(new RuntimeError(this, expectedGuardArguments()))
+    }
+
+    if (!elseExpr) {
+      return err(new RuntimeError(this, expectedGuardElseResult()))
+    }
+
+    for (const conditionExpr of conditionExprs) {
+      const conditionValue = conditionExpr.eval(runtime)
+      if (conditionValue.isErr()) {
+        return err(conditionValue.error)
+      }
+
+      if (!conditionValue.value.isTruthy()) {
+        return elseExpr.eval(runtime)
+      }
+    }
+
+    return bodyExpr.eval(runtime)
+  }
+}
+
 addBinaryOperator({
   name: 'function invocation',
   symbol: 'fn',
@@ -3591,6 +3850,16 @@ addBinaryOperator({
     operator: Operator,
     args: Expression[],
   ) {
+    if (args[0] instanceof Expressions.GuardExpression) {
+      return new GuardExpressionInvocation(
+        range,
+        precedingComments,
+        followingOperatorComments,
+        operator,
+        args,
+      )
+    }
+
     if (args[0] instanceof Expressions.IfExpression) {
       return new IfExpressionInvocation(
         range,
@@ -4285,12 +4554,28 @@ function expectedType(expected: string, expr: Expression, type?: Types.Type | Va
   }
 }
 
+function expectedGuardArguments() {
+  return "Missing '#condition: Condition' and '#body: T' in 'guard()' expression"
+}
+
+function expectedGuardElseResult() {
+  return "Missing 'else: T' in 'guard()' expression"
+}
+
 function expectedIfCondition() {
   return "Missing '#condition: Condition' in 'if()' expression"
 }
 
 function expectedIfThenResult() {
   return "Missing 'then: T' in 'if()' expression"
+}
+
+function expectedElseIfCondition() {
+  return "Missing '#condition: Condition' in 'elseif()' expression"
+}
+
+function expectedElseIfThenResult() {
+  return "Missing 'then: T' in 'elseif()' expression"
 }
 
 function expectedElseifConditionExpression(found: Expression) {

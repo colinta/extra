@@ -22,12 +22,9 @@ import {
   type GetRuntimeResult,
 } from './types'
 import {relationshipFormula, type RelationshipFormula} from '../relationship'
+import {indent, MAX_INNER_LEN, MAX_LEN, NEWLINE_INDENT, wrapStrings} from './util'
 
 export type Range = [number, number]
-export const INDENT = '  '
-const NEWLINE_INDENT = '\n  '
-const MAX_LEN = 100
-const MAX_INNER_LEN = 80
 const HIGHEST_PRECEDENCE = 100
 
 /**
@@ -2062,8 +2059,52 @@ export class ElseIfExpression extends ReservedWord {
   }
 }
 
+export class GuardExpression extends ReservedWord {
+  readonly name = 'guard'
+
+  getType() {
+    return ok(
+      Types.withGenericT(T =>
+        Types.namedFormula(
+          'guard',
+          [
+            Types.spreadPositionalArgument({
+              name: 'conditions',
+              type: Types.array(Types.ConditionType),
+            }),
+            Types.namedArgument({name: 'else', type: T, isRequired: true}),
+            Types.positionalArgument({name: 'body', type: T, isRequired: true}),
+          ],
+          T,
+          [T],
+        ),
+      ),
+    )
+  }
+}
+
 export class SwitchIdentifier extends ReservedWord {
   readonly name = 'switch'
+
+  getType() {
+    return ok(
+      Types.withGenericT(T =>
+        Types.namedFormula(
+          'switch',
+          [
+            Types.repeatedPositionalArgument({
+              name: 'cases',
+              alias: 'case',
+              type: Types.array(Types.ConditionType),
+            }),
+            Types.namedArgument({name: 'else', type: T, isRequired: false}),
+          ],
+          T,
+          [T],
+        ),
+      ),
+    )
+  }
 }
 
 export class ObjectConstructorIdentifier extends ReservedWord {
@@ -4131,31 +4172,6 @@ export class DiceExpression extends Expression {
 function wrapValues(lhs: string, expressions: Expression[], rhs: string, precedence = 0) {
   const codes = expressions.map(it => it.toCode(precedence))
   return wrapStrings(lhs, codes, rhs)
-}
-
-function wrapStrings(lhs: string, strings: string[], rhs: string) {
-  // eslint complains when I use simple 'let' for these, due to the map function
-  const wrap = {totalLength: 0, hasNewline: false}
-  const values = strings.map(code => {
-    wrap.hasNewline = wrap.hasNewline || code.length > MAX_INNER_LEN || code.includes('\n')
-    wrap.totalLength += code.length + 2
-    return code
-  })
-
-  if (wrap.hasNewline || wrap.totalLength > MAX_LEN) {
-    if (!lhs && !rhs) {
-      return values.join('\n')
-    }
-
-    const indented = values.map(code => indent(code)).join('\n')
-    return `${lhs}\n${indented}\n${rhs}`
-  } else {
-    return `${lhs}${values.join(', ')}${rhs}`
-  }
-}
-
-function indent(code: string) {
-  return (INDENT + code.replaceAll('\n', NEWLINE_INDENT)).replace(/^\s+$/g, '')
 }
 
 function getChildType<T extends Expression>(
