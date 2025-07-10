@@ -64,7 +64,7 @@ describe('eval', () => {
       Values.FalseValue,
     ]),
 
-    // dict(foo: 'bazz') has X
+    // Dict(foo: 'bazz') has X
     c([
       Values.dict(new Map([['foo', Values.string('bazz')]])),
       Values.string('foo'),

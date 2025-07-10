@@ -506,7 +506,7 @@ in
 
 ## Variable names
 
-References can have hyphens like in Lisp (`valid-variable-name`), and emojis (`😎-languages = set("extra")`).
+References can have hyphens like in Lisp (`valid-variable-name`), and emojis (`😎-languages = Set("extra")`).
 
 ## Basic Types
 
@@ -552,7 +552,7 @@ null         -- the null value
 false        -- the false value
 0            -- the number 0
 ""           -- empty String
-[], dict(), set() -- empty array, dict, set
+[], Dict(), Set() -- empty array, dict, set
 {}           -- empty object, tuple
 1/0          -- NaN --> false… I guess? I dunno! What would **you** do with this dumb value!?
 ```
@@ -782,8 +782,8 @@ Set: an unordered collection of homogenous items. Only one of each item will be 
 Syntax:
 
 - Array: `[] [] [1] [1,] [1, 2, 3]`
-- Dict: `dict() dict(key: 1) dict(key: 1,) dict(1: 1, 'key2': 2, "key$three": 3)`
-- Set: `set() set(1) set(1,) set(1, 2, 3)`
+- Dict: `Dict() Dict(key: 1) Dict(key: 1,) Dict(1: 1, 'key2': 2, "key$three": 3)`
+- Set: `Set() Set(1) Set(1,) Set(1, 2, 3)`
 
 #### Heterogenous types: Tuple, Object
 
@@ -804,14 +804,14 @@ Syntax:
 ["one", "two", ] --> [String] with two entries (trailing comma is ok)
 
 -- Dicts
-dict(one: 1, two: 2, three: 3) --> Dict(Int) with three entries
-dict()                         --> empty dict (Dict(Always))
-dict(number1: "one", number-two: "two", ) --> Dict(String) with two entries
+Dict(one: 1, two: 2, three: 3) --> Dict(Int) with three entries
+Dict()                         --> empty dict (Dict(Always))
+Dict(number1: "one", number-two: "two", ) --> Dict(String) with two entries
 ❌ {}  --> empty object, not a dict!
 
 -- Sets
-set(1, 2)     --> Set(Int) (Set of Ints)
-set()         --> empty set
+Set(1, 2)     --> Set(Int) (Set of Ints)
+Set()         --> empty set
 
 -- Objects
 { age: 1, name: 'foo' } --> {age: Int, name: String}
@@ -974,7 +974,7 @@ fn list-people(greeting: String = 'Hi, ', *people: Dict(String)) =>
 list-people(greeting: 'Hello, ', jane: 'doctor', emily: 'dumb lawyer')
 
 let
-  people = dict(jane: 'doctor', emily: 'dumb lawyer')
+  people = Dict(jane: 'doctor', emily: 'dumb lawyer')
 in
   list-people(*people)
 ```
@@ -1244,11 +1244,11 @@ right-hand-side if they have the same keys.
 **Dict Example**
 ```extra
 let
-  old_users = dict(a: …, b: …)
-  new_users = dict(b: …, c: …)
+  old_users = Dict(a: …, b: …)
+  new_users = Dict(b: …, c: …)
 in
   old_users ~~ new_users
-  -- returns dict(a: …, b: …, c: …), with 'b' coming from new_users
+  -- returns Dict(a: …, b: …, c: …), with 'b' coming from new_users
 ```
 
 **Object Example**
@@ -1291,18 +1291,18 @@ in
 
 -- dicts
 let
-  a: dict(a: 1, b: 2, c: 3)
-  b: dict(d: 4, e: 5, f: 6)
+  a: Dict(a: 1, b: 2, c: 3)
+  b: Dict(d: 4, e: 5, f: 6)
 in
-  dict(...a, ...b) --> dict(a: 1, b: "2", c: 3, d: 4, e: "5", f: 6)
+  Dict(...a, ...b) --> Dict(a: 1, b: "2", c: 3, d: 4, e: "5", f: 6)
   -- a ~~ b --> same
 
 -- sets
 let
-  a: set(1, 2, 3)
-  b: set(3, 4, 5)
+  a: Set(1, 2, 3)
+  b: Set(3, 4, 5)
 in
-  set(...a, ...b) --> set(1, 2, 3, 4, 5)
+  Set(...a, ...b) --> Set(1, 2, 3, 4, 5)
   -- a ++ b --> same
 ```
 
@@ -1361,13 +1361,13 @@ what I mean:
 
 #### Dict
 
-1. Splat: `dict(...dict1, ...dict2)`
+1. Splat: `Dict(...dict1, ...dict2)`
 2. Merge: `dict1 ~~ dict2`
 (`dict2` overrides keys in `dict1` in both cases)
 
 #### Set
 
-1. Splat: `set(...set1, ...set2)`
+1. Splat: `Set(...set1, ...set2)`
 2. Union: `set1 + set2`
 
 #### Tuple/Object

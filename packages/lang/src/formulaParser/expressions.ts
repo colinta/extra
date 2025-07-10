@@ -693,7 +693,7 @@ export class ArrayExpression extends Expression {
       return `[${this.values.map(it => it.toLisp()).join(' ')}]`
     }
 
-    return `(array(${this.generic.toLisp()}) (${this.values.map(it => it.toLisp()).join(' ')}))`
+    return `(Array(${this.generic.toLisp()}) (${this.values.map(it => it.toLisp()).join(' ')}))`
   }
 
   toCode() {
@@ -701,7 +701,7 @@ export class ArrayExpression extends Expression {
       return wrapValues('[', this.values, ']')
     }
 
-    return `array<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
+    return `Array<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
   }
 
   // SpreadArgument works pretty easily here, its type signature is an
@@ -783,18 +783,18 @@ export class DictExpression extends Expression {
       .join(' ')
 
     if (this.generic instanceof InferIdentifier) {
-      return `dict(${values})`
+      return `Dict(${values})`
     }
 
-    return `(dict(${this.generic.toLisp()}) (${values}))`
+    return `(Dict(${this.generic.toLisp()}) (${values}))`
   }
 
   toCode() {
     if (this.generic instanceof InferIdentifier) {
-      return wrapValues('dict(', this.values, ')')
+      return wrapValues('Dict(', this.values, ')')
     }
 
-    return `dict<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
+    return `Dict<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
@@ -856,18 +856,18 @@ export class SetExpression extends Expression {
 
   toLisp() {
     if (this.generic instanceof InferIdentifier) {
-      return `set(${this.values.map(it => it.toLisp()).join(' ')})`
+      return `Set(${this.values.map(it => it.toLisp()).join(' ')})`
     }
 
-    return `(set(${this.generic.toLisp()}) (${this.values.map(it => it.toLisp()).join(' ')}))`
+    return `(Set(${this.generic.toLisp()}) (${this.values.map(it => it.toLisp()).join(' ')}))`
   }
 
   toCode() {
     if (this.generic instanceof InferIdentifier) {
-      return wrapValues('set(', this.values, ')')
+      return wrapValues('Set(', this.values, ')')
     }
 
-    return `set<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
+    return `Set<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
   }
 
   // Unlike ArrayType, combining Set is not straighforward. We can only reason about

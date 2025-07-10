@@ -322,7 +322,7 @@ item2  --comment6
     it('attaches comments to dict items', () => {
       const formula = `\
 --comment0
-dict( --comment1
+Dict( --comment1
   item1: --comment2
   --comment3
   ...item2  --comment4
@@ -359,7 +359,7 @@ dict( --comment1
     it('attaches comments to set items', () => {
       const formula = `\
 --comment0
-set( --comment1
+Set( --comment1
   item1 --comment2
   --comment3
   ...item2  --comment4

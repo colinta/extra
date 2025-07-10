@@ -109,12 +109,12 @@ export function isObjectLiteralStart(input: string) {
   return input[0] === OBJECT_OPEN
 }
 
-export const ARRAY_WORD_START = 'array'
+export const ARRAY_WORD_START = 'Array'
 export const ARRAY_OPEN = '['
 export const ARRAY_CLOSE = ']'
 
-export const DICT_WORD_START = 'dict'
-export const SET_WORD_START = 'set'
+export const DICT_WORD_START = 'Dict'
+export const SET_WORD_START = 'Set'
 export const REGEX_START = '/'
 export const ATOM_START = ':'
 export const FUNCTION_BODY_START = '=>'

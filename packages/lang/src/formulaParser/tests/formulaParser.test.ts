@@ -14,8 +14,6 @@ describe('function parser', () => {
       c(['1d20 + 3 * 1d8 + 3', '(+ (+ (roll 1d20) (* 3 (roll 1d8))) 3)']),
       c(['d20', '(roll d20)']),
       c(['[1, 2, 3]', '[1 2 3]']),
-      c(['dict(key: 1, foo: 2, bar: 3)', 'dict((key: 1) (foo: 2) (bar: 3))']),
-      c(['dict("key 1": 1, 2: 2)', "dict(('key 1': 1) (2: 2))", "dict('key 1': 1, 2: 2)"]),
       c(['a.b.c[1 + 1]', '([] (. (. a b) c) (+ 1 1))']),
       c([
         '-2.2**(2 * 1)**2 * 3 >= 6 * (5 + 1)',
@@ -69,8 +67,6 @@ describe('function parser', () => {
 
   describe('spread operator', () => {
     cases<[string, string] | [string, string, string]>(
-      c(['dict(...lhs, rhs: 1)', 'dict((... lhs) (rhs: 1))']),
-      c(['set(...lhs, rhs)', 'set((... lhs) rhs)']),
       c(['{...lhs, ...rhs}', '{(... lhs) (... rhs)}']),
       c(['{...lhs, rhs}', '{(... lhs) rhs}']),
       c(['{...lhs, ...rhs}', '{(... lhs) (... rhs)}']),
@@ -119,68 +115,13 @@ describe('function parser', () => {
     )
   })
 
-  describe('dict', () => {
-    cases<[string, string] | [string, string, string]>(
-      c(['dict()', 'dict()']),
-      c([' dict(  )', 'dict()', 'dict()']),
-      c(['dict()', 'dict()', 'dict()']),
-      c([' dict(  )', 'dict()', 'dict()']),
-      c(["dict(a: 'a')", "dict((a: 'a'))"]),
-      c(['dict(a:)', 'dict((a: a))']),
-      c(["dict('a': a)", "dict(('a': a))", "dict('a': a)"]),
-      c(["dict('1': a)", "dict(('1': a))", "dict('1': a)"]),
-      c(['dict((1+1): a)', 'dict(((+ 1 1): a))', 'dict((1 + 1): a)']),
-      c(['dict(1: a)', 'dict((1: a))', 'dict(1: a)']),
-      c(["dict(a: 'a', b: [1, 2, 3])", "dict((a: 'a') (b: [1 2 3]))"]),
-      c([
-        "dict(a: a, b:, c: 'c', dee: dee)",
-        "dict((a: a) (b: b) (c: 'c') (dee: dee))",
-        "dict(a:, b:, c: 'c', dee:)",
-      ]),
-    ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(`should parse dict '${formula}'`, () => {
-        expectedCode ??= formula
-        let expression: Expression = parse(formula).get()
-
-        expect(expression!.toCode()).toEqual(expectedCode)
-        expect(expression!.toLisp()).toEqual(expectedLisp)
-      }),
-    )
-  })
-
-  describe('set', () => {
-    cases<[string, string] | [string, string, string]>(
-      c(['set()', 'set()', 'set()']),
-      c([' set(  )', 'set()', 'set()']),
-      c(['set()', 'set()', 'set()']),
-      c([' set(  )', 'set()', 'set()']),
-      c(["set('a')", "set('a')"]),
-      c(['set(a)', 'set(a)']),
-      c(['set(a)', 'set(a)', 'set(a)']),
-      c(["set('a', [1, 2, 3])", "set('a' [1 2 3])"]),
-      c(["set(a, b, 'c', dee)", "set(a b 'c' dee)", "set(a, b, 'c', dee)"]),
-    ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(`should parse dict '${formula}'`, () => {
-        expectedCode ??= formula
-        let expression: Expression = parse(formula).get()
-
-        expect(expression!.toCode()).toEqual(expectedCode)
-        expect(expression!.toLisp()).toEqual(expectedLisp)
-      }),
-    )
-  })
-
   describe('trailing commas', () => {
-    cases<[string, string]>(
-      c(['{a: 1,}', '{a: 1}']),
-      c(['{a: 1 , }', '{a: 1}']),
-      c(['dict(foo: 1, bar: 2,)', 'dict(foo: 1, bar: 2)']),
-      c(['dict(foo: 1, bar: 2\n , \n )', 'dict(foo: 1, bar: 2)']),
-    ).run(([formula, expected], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(`should allow trailing comma in ${formula}`, () => {
-        const expression = parse(formula).get()
-        expect(expression.toCode()).toEqual(expected)
-      }),
+    cases<[string, string]>(c(['{a: 1,}', '{a: 1}']), c(['{a: 1 , }', '{a: 1}'])).run(
+      ([formula, expected], {only, skip}) =>
+        (only ? it.only : skip ? it.skip : it)(`should allow trailing comma in ${formula}`, () => {
+          const expression = parse(formula).get()
+          expect(expression.toCode()).toEqual(expected)
+        }),
     )
   })
 
@@ -201,7 +142,6 @@ describe('function parser', () => {
   describe('invalid', () => {
     cases<[string, string]>(
       c(['# |> foo()', "Unexpected token '#'"]),
-      c(['dict(foo: 1, :)', 'Expected a reference']),
       c(['1 + + 1', "Unexpected token '+'"]),
     ).run(([formula, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not parse ${formula}`, () => {

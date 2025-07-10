@@ -169,14 +169,14 @@ describe('array', () => {
 describe('set', () => {
   cases<[string, Types.Type]>(
     c([
-      'set(1, 2, 3)',
+      'Set(1, 2, 3)',
       Types.set(oneTwoThree, {
         min: 3,
         max: 3,
       }),
     ]),
     c([
-      'set(1, 2, 2, 3)',
+      'Set(1, 2, 2, 3)',
       Types.set(oneTwoThree, {
         min: 3,
         max: 3,
@@ -184,35 +184,35 @@ describe('set', () => {
     ]),
     //////////////////////////////////////////////
     c([
-      'set(...genericSet)',
+      'Set(...genericSet)',
       Types.set(Types.string(), {
         min: 0,
         max: undefined,
       }),
     ]),
     c([
-      'set(...maxThreeSet)',
+      'Set(...maxThreeSet)',
       Types.set(Types.string(), {
         min: 0,
         max: 3,
       }),
     ]),
     c([
-      'set(...minThreeSet)',
+      'Set(...minThreeSet)',
       Types.set(Types.string(), {
         min: 3,
         max: undefined,
       }),
     ]),
     c([
-      'set(...exactlyThreeSet)',
+      'Set(...exactlyThreeSet)',
       Types.set(Types.string(), {
         min: 3,
         max: 3,
       }),
     ]),
     c([
-      'set(...minTwoMaxFourSet)',
+      'Set(...minTwoMaxFourSet)',
       Types.set(Types.string(), {
         min: 2,
         max: 4,
@@ -220,42 +220,42 @@ describe('set', () => {
     ]),
     //////////////////////////////////////////////
     c([
-      'set(...genericSet, ...genericSet)',
+      'Set(...genericSet, ...genericSet)',
       Types.set(Types.string(), {
         min: 0,
         max: undefined,
       }),
     ]),
     c([
-      'set(...maxThreeSet, ...maxThreeSet)',
+      'Set(...maxThreeSet, ...maxThreeSet)',
       Types.set(Types.string(), {
         min: 0,
         max: 6,
       }),
     ]),
     c([
-      'set(...minThreeSet, ...minThreeSet)',
+      'Set(...minThreeSet, ...minThreeSet)',
       Types.set(Types.string(), {
         min: 3,
         max: undefined,
       }),
     ]),
     c([
-      'set(...exactlyThreeSet, ...exactlyThreeSet)',
+      'Set(...exactlyThreeSet, ...exactlyThreeSet)',
       Types.set(Types.string(), {
         min: 3,
         max: 6,
       }),
     ]),
     c([
-      'set(...minTwoMaxFourSet, ...minTwoMaxFourSet)',
+      'Set(...minTwoMaxFourSet, ...minTwoMaxFourSet)',
       Types.set(Types.string(), {
         min: 2,
         max: 8,
       }),
     ]),
     c([
-      'set(...minTwoMaxFourSet, ...maxThreeSet)',
+      'Set(...minTwoMaxFourSet, ...maxThreeSet)',
       Types.set(Types.string(), {
         min: 2,
         max: 7,
@@ -263,42 +263,42 @@ describe('set', () => {
     ]),
     //////////////////////////////////////////////
     c([
-      'set(1, 2, 3, ...genericSet)',
+      'Set(1, 2, 3, ...genericSet)',
       Types.set(oneTwoThreeString, {
         min: 3,
         max: undefined,
       }),
     ]),
     c([
-      'set(1, 2, 3, ...maxThreeSet)',
+      'Set(1, 2, 3, ...maxThreeSet)',
       Types.set(oneTwoThreeString, {
         min: 3,
         max: 6,
       }),
     ]),
     c([
-      'set(1, 2, 3, ...minThreeSet)',
+      'Set(1, 2, 3, ...minThreeSet)',
       Types.set(oneTwoThreeString, {
         min: 3,
         max: undefined,
       }),
     ]),
     c([
-      'set(1, 2, 3, ...exactlyThreeSet)',
+      'Set(1, 2, 3, ...exactlyThreeSet)',
       Types.set(oneTwoThreeString, {
         min: 3,
         max: 6,
       }),
     ]),
     c([
-      'set(1, 2, 3, ...minTwoMaxFourSet)',
+      'Set(1, 2, 3, ...minTwoMaxFourSet)',
       Types.set(oneTwoThreeString, {
         min: 3,
         max: 7,
       }),
     ]),
     c([
-      'set(1, ...minTwoMaxFourSet)',
+      'Set(1, ...minTwoMaxFourSet)',
       Types.set(Types.oneOf([Types.literal(1), Types.string()]), {
         min: 2,
         max: 5,
@@ -320,7 +320,7 @@ describe('set', () => {
 describe('dict', () => {
   cases<[string, Types.Type]>(
     c([
-      'dict(a: 1, b: 2, c: 3)',
+      'Dict(a: 1, b: 2, c: 3)',
       Types.dict(
         oneTwoThree,
         {
@@ -331,7 +331,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...genericDict)',
+      'Dict(a: 1, b: 2, c: 3, ...genericDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -342,7 +342,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...threeKeysDict)',
+      'Dict(a: 1, b: 2, c: 3, ...threeKeysDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -353,7 +353,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...maxThreeDict)',
+      'Dict(a: 1, b: 2, c: 3, ...maxThreeDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -364,7 +364,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...twoKeysBCMaxThreeDict)',
+      'Dict(a: 1, b: 2, c: 3, ...twoKeysBCMaxThreeDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -375,7 +375,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...twoKeysCDMaxThreeDict)',
+      'Dict(a: 1, b: 2, c: 3, ...twoKeysCDMaxThreeDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -386,7 +386,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...minThreeDict)',
+      'Dict(a: 1, b: 2, c: 3, ...minThreeDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -397,7 +397,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...twoKeysBCMinThreeDict)',
+      'Dict(a: 1, b: 2, c: 3, ...twoKeysBCMinThreeDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -408,7 +408,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...twoKeysCDMinThreeDict)',
+      'Dict(a: 1, b: 2, c: 3, ...twoKeysCDMinThreeDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -419,7 +419,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...exactlyThreeDict)',
+      'Dict(a: 1, b: 2, c: 3, ...exactlyThreeDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -430,7 +430,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...exactlyThreeKeysBCDDict)',
+      'Dict(a: 1, b: 2, c: 3, ...exactlyThreeKeysBCDDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -441,7 +441,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...minTwoMaxFourDict)',
+      'Dict(a: 1, b: 2, c: 3, ...minTwoMaxFourDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -452,7 +452,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...minTwoMaxFourOneKeyBDict)',
+      'Dict(a: 1, b: 2, c: 3, ...minTwoMaxFourOneKeyBDict)',
       Types.dict(
         oneTwoThreeString,
         {
@@ -463,7 +463,7 @@ describe('dict', () => {
       ),
     ]),
     c([
-      'dict(a: 1, b: 2, c: 3, ...minTwoMaxFourOneKeyDDict)',
+      'Dict(a: 1, b: 2, c: 3, ...minTwoMaxFourOneKeyDDict)',
       Types.dict(
         oneTwoThreeString,
         {

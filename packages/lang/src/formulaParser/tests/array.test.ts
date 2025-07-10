@@ -3,32 +3,15 @@ import {parse} from '../../formulaParser'
 import {type Expression} from '../expressions'
 
 describe('array', () => {
-  describe('spread operator', () => {
-    cases<[string, string] | [string, string, string]>(
-      c(['[...lhs, ...rhs]', '[(... lhs) (... rhs)]']),
-      c(['[...lhs, rhs]', '[(... lhs) rhs]']),
-      c(['[...lhs, ...rhs]', '[(... lhs) (... rhs)]']),
-    ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
-        expectedCode ??= formula
-
-        let expression: Expression = parse(formula).get()
-
-        expect(expression!.toCode()).toEqual(expectedCode)
-        expect(expression!.toLisp()).toEqual(expectedLisp)
-      }),
-    )
-  })
-
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
       c(['[]', '[]', '[]']),
-      c(['array()', '[]', '[]']),
-      c(['array(1)', '[1]', '[1]']),
-      c(['array(1,)', '[1]', '[1]']),
-      c(['array(1 , )', '[1]', '[1]']),
-      c(['array<Int>()', '(array(`Int`) ())', 'array<Int>()']),
-      c(['array<Int>(1)', '(array(`Int`) (1))', 'array<Int>(1)']),
+      c(['Array()', '[]', '[]']),
+      c(['Array(1)', '[1]', '[1]']),
+      c(['Array(1,)', '[1]', '[1]']),
+      c(['Array(1 , )', '[1]', '[1]']),
+      c(['Array<Int>()', '(Array(`Int`) ())', 'Array<Int>()']),
+      c(['Array<Int>(1)', '(Array(`Int`) (1))', 'Array<Int>(1)']),
       c(['[ ]', '[]', '[]']),
       c([' [ ]', '[]', '[]']),
       c([' [  ]', '[]', '[]']),
@@ -53,6 +36,23 @@ describe('array', () => {
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse array '${formula}'`, () => {
         expectedCode ??= formula
+        let expression: Expression = parse(formula).get()
+
+        expect(expression!.toCode()).toEqual(expectedCode)
+        expect(expression!.toLisp()).toEqual(expectedLisp)
+      }),
+    )
+  })
+
+  describe('spread operator', () => {
+    cases<[string, string] | [string, string, string]>(
+      c(['[...lhs, ...rhs]', '[(... lhs) (... rhs)]']),
+      c(['[...lhs, rhs]', '[(... lhs) rhs]']),
+      c(['[...lhs, ...rhs]', '[(... lhs) (... rhs)]']),
+    ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
+        expectedCode ??= formula
+
         let expression: Expression = parse(formula).get()
 
         expect(expression!.toCode()).toEqual(expectedCode)
