@@ -18,12 +18,7 @@ import {
   ARRAY_CLOSE,
 } from '../grammars'
 import {type Scanner} from '../scanner'
-import {
-  type ArgumentType,
-  ParseError,
-  type ParseNext,
-  type ExpressionType,
-} from '../types'
+import {type ArgumentType, ParseError, type ParseNext, type ExpressionType} from '../types'
 
 import {unexpectedToken} from './basics'
 import {
@@ -306,10 +301,10 @@ export function scanArgumentType(
 }
 
 /**
- * Scans a formula type, starting at the open parens.
+ * Scans a formula type, possibly with generics. ('fn' has already been scanned)
  *
- * fn(foo: Type): Type
- *   ^^^^^^^^^^^^^^^^^
+ * fn<T>(foo: Type, bar: T): Type
+ *   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  */
 function scanFormulaType(
   scanner: Scanner,

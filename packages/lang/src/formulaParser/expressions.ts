@@ -2092,7 +2092,7 @@ export class SwitchIdentifier extends ReservedWord {
         Types.namedFormula(
           'switch',
           [
-            Types.repeatedPositionalArgument({
+            Types.repeatedNamedArgument({
               name: 'cases',
               alias: 'case',
               type: Types.array(Types.ConditionType),
@@ -2621,7 +2621,8 @@ export class ArgumentsList extends Expression {
  * as part of a function literal. Comes in two subclasses, FormulaLiteralArgumentDeclarations
  * and FormulaTypeArgumentDeclarations.
  *
- * FormulaLiteralArgumentDeclarations stores the arguments and types of a formula literal
+ * FormulaLiteralArgumentDeclarations stores the arguments and types of a formula
+ * literal (an instance of a formula)
  *
  *   […].map( fn(a: Int) => a + 1 )
  *               ^^^^^^ FormulaLiteralArgumentDeclarations
@@ -2817,13 +2818,47 @@ export class FormulaTypeArgumentAndType extends ArgumentExpression {
     argType: Expression,
     spreadArg: false | 'spread' | 'kwargs',
     isPositional: boolean,
-    readonly isOptional: boolean,
+    readonly isRequired: boolean,
   ) {
     super(range, precedingComments, nameRef, aliasRef, argType, spreadArg, isPositional)
   }
 
   provides(): Set<string> {
     return new Set([this.nameRef.name])
+  }
+
+  formulaArgumentType(runtime: TypeRuntime): GetRuntimeResult<Types.Argument> {
+    return this.getAsTypeExpression(runtime).map(type => {
+      // scanArgumentType already verifies that 'type' is correct (Array/Dict)
+      // for the spread/kwargs-argument types.
+      if (this.spreadArg === 'kwargs') {
+        return Types.kwargListArgument({name: this.nameRef.name, type: type as Types.DictType})
+      } else if (this.spreadArg === 'spread' && this.isPositional) {
+        return Types.spreadPositionalArgument({
+          name: this.nameRef.name,
+          type: type as Types.ArrayType,
+        })
+      } else if (this.spreadArg === 'spread') {
+        return Types.repeatedNamedArgument({
+          name: this.nameRef.name,
+          alias: this.aliasRef.name,
+          type: type as Types.ArrayType,
+        })
+      } else if (this.isPositional) {
+        return Types.positionalArgument({
+          name: this.nameRef.name,
+          type: type,
+          isRequired: this.isRequired,
+        })
+      } else {
+        return Types.namedArgument({
+          name: this.nameRef.name,
+          alias: this.aliasRef.name,
+          type: type,
+          isRequired: this.isRequired,
+        })
+      }
+    })
   }
 
   toLisp() {
@@ -2842,7 +2877,7 @@ export class FormulaTypeArgumentAndType extends ArgumentExpression {
       code += this.nameRef.name
     }
 
-    if (this.isOptional) {
+    if (!this.isRequired) {
       code += '?'
     }
     code += ': ' + this.argType.toLisp()
@@ -2866,7 +2901,7 @@ export class FormulaTypeArgumentAndType extends ArgumentExpression {
       code += this.nameRef.name
     }
 
-    if (this.isOptional) {
+    if (!this.isRequired) {
       code += '?'
     }
     code += ': ' + this.argType.toCode()
@@ -2905,6 +2940,14 @@ export class FormulaTypeExpression extends Expression {
   toCode() {
     const returnType = ': ' + this.returnType.toCode()
     return `fn(${this.argDefinitions.toCode()})${returnType}`
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    const args = this.argDefinitions.args.map(arg => arg.formulaArgumentType(runtime))
+    const generics: Types.GenericType[] = []
+    return this.returnType
+      .getAsTypeExpression(runtime)
+      .map(returnType => Types.formula(args, returnType, generics))
   }
 
   getType() {

@@ -186,23 +186,9 @@ export function positionalArgument(args: {
     is: 'positional-argument',
     spread: false,
     name: args.name,
-    type: args.type,
     alias: undefined,
+    type: args.type,
     isRequired: args.isRequired,
-  }
-}
-
-export function spreadPositionalArgument(args: {
-  name: string
-  type: ArrayType
-}): SpreadPositionalArgument {
-  return {
-    is: 'spread-positional-argument',
-    spread: 'spread',
-    name: args.name,
-    type: args.type,
-    alias: undefined,
-    isRequired: false,
   }
 }
 
@@ -218,13 +204,27 @@ export function namedArgument(args: {
     is: 'named-argument',
     spread: false,
     name: args.name,
-    type: args.type,
     alias,
+    type: args.type,
     isRequired: args.isRequired,
   }
 }
 
-export function repeatedPositionalArgument(args: {
+export function spreadPositionalArgument(args: {
+  name: string
+  type: ArrayType
+}): SpreadPositionalArgument {
+  return {
+    is: 'spread-positional-argument',
+    spread: 'spread',
+    name: args.name,
+    alias: undefined,
+    type: args.type,
+    isRequired: false,
+  }
+}
+
+export function repeatedNamedArgument(args: {
   name: string
   alias?: string
   type: ArrayType
@@ -233,8 +233,19 @@ export function repeatedPositionalArgument(args: {
     is: 'repeated-named-argument',
     spread: 'spread',
     name: args.name,
-    type: args.type,
     alias: args.alias ?? args.name,
+    type: args.type,
+    isRequired: false,
+  }
+}
+
+export function kwargListArgument(args: {name: string; type: DictType}): KwargListArgument {
+  return {
+    is: 'kwarg-list-argument',
+    spread: 'kwargs',
+    name: args.name,
+    alias: undefined,
+    type: args.type,
     isRequired: false,
   }
 }
@@ -605,7 +616,7 @@ export class GenericType extends Type {
 /**
  * ArgumentsList can come in any combination/order of positional and named arguments.
  *
- * ArgumentsList can have one SpreadPositionalArgument, and one RemainingNamedArgument,
+ * ArgumentsList can have one SpreadPositionalArgument, and one KwargListArgument,
  * and any number of RepeatedNamedArgument.
  */
 export type Argument =
@@ -613,7 +624,7 @@ export type Argument =
   | SpreadPositionalArgument
   | NamedArgument
   | RepeatedNamedArgument
-  | RemainingNamedArgument
+  | KwargListArgument
 
 /**
  * Positional arguments:
@@ -707,7 +718,7 @@ export interface RepeatedNamedArgument {
  *
  *     groupUsers(kevin: user1, angie: user2)
  */
-export interface RemainingNamedArgument {
+export interface KwargListArgument {
   is: 'kwarg-list-argument'
   spread: 'kwargs'
   name: string
@@ -725,7 +736,7 @@ export class FormulaType extends Type {
   public args: Argument[]
   private _positional: (PositionalArgument | SpreadPositionalArgument)[] = []
   private _named: Map<string, NamedArgument | RepeatedNamedArgument> = new Map()
-  private _kwargs: RemainingNamedArgument | undefined
+  private _kwargs: KwargListArgument | undefined
 
   constructor(
     public returnType: Type,
@@ -3761,15 +3772,29 @@ function canBeAssignedToFormula(
  */
 function _checkFormulaArguments(
   formulaBeingCalled: FormulaType,
+  // total number of provided positional arguments
   positionsLength: number,
+  // list, in order, of provided named arguments
   namedArgs: string[],
+  // fetch argument by position
   argumentAt: (position: number) => Type | undefined,
+  // fetch multiple arguments by name
   argumentsNamed: (name: string) => Type[],
+  // the spread positional arguments (...args) are expected to be at the end of
+  // the argument list, so they are sepearated out.
   spreadPositionalArguments: Type[],
+  // similar - these are ...name: values (Array(Type))
   spreadDictArguments: Map<string, Type[]>,
+  // remaining named args *args (Dict(Type))
   keywordListArguments: Type[],
   isRequired: (id: string | number) => boolean,
   resolvedGenerics: Map<GenericType, GenericType> | undefined,
+  // determines whether to use 'addHint' or 'addRequirement'.
+  // checkFormulaArguments -> addHint
+  // (passing concrete type 'a'|'b', the generic "requires" String, this is a hint)
+  // canBeAssignedToFormula -> addRequirement
+  // (passing a function that only accepts 'a'|'b', but the receiving function
+  // says it will be sending a String, this is a requirement)
   useHints: boolean,
 ): string[] {
   // short-circuit the special case of all-named-expected and all-positional-provided
@@ -3827,6 +3852,9 @@ function _checkFormulaArguments(
       argumentType = argumentType_
       argumentIsRequired = argumentIsRequired_
     } else if (formulaArgument.is === 'spread-positional-argument') {
+      // TODO: check here for _trailing_ positional arguments?
+      // TODO: use narrowed Array information - spreadPositionalArgumentType is only the
+      // Type, not the ArrayType(Type), so first need to pass in the ArrayType
       const {type, argumentIsRequired: argumentIsRequired_} = spreadPositionalArgumentType(
         position,
         positionsLength,
@@ -3902,6 +3930,9 @@ function _checkFormulaArguments(
   return errors
 }
 
+/**
+ * Used in _checkFormulaArguments to retrieve one argument named 'alias'.
+ */
 function namedArgumentType(
   argumentsNamed: (name: string) => Type[],
   isRequired: (id: string | number) => boolean,

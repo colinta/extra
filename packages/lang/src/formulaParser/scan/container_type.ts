@@ -153,7 +153,10 @@ export function scanObject(
   )
 }
 
-function scanGeneric(scanner: Scanner, parseNext: ParseNext) {
+/**
+ * Scans a single generic or defaults to InferIdentifier
+ */
+function scanOptionalGeneric(scanner: Scanner, parseNext: ParseNext) {
   let generic: Expression
   if (scanner.scanIfString(TYPE_OPEN)) {
     generic = scanArgumentType(scanner, 'argument_type', 'type', parseNext)
@@ -191,7 +194,7 @@ export function scanArray(scanner: Scanner, parseNext: ParseNext, type: 'array[]
     scanner.expectString(ARRAY_WORD_START)
     scanner.scanAllWhitespace()
 
-    generic = scanGeneric(scanner, parseNext)
+    generic = scanOptionalGeneric(scanner, parseNext)
     scanner.scanAllWhitespace()
     scanner.expectString(PARENS_OPEN)
     scanner.scanAllWhitespace()
@@ -263,7 +266,7 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
   scanner.expectString(DICT_WORD_START)
   scanner.scanAllWhitespace()
 
-  const generic = scanGeneric(scanner, parseNext)
+  const generic = scanOptionalGeneric(scanner, parseNext)
   scanner.scanAllWhitespace()
   scanner.expectString(PARENS_OPEN)
   const precedingComments = scanner.flushComments()
@@ -404,7 +407,7 @@ export function scanSet(scanner: Scanner, parseNext: ParseNext) {
   scanner.expectString(SET_WORD_START)
   scanner.scanAllWhitespace()
 
-  const generic = scanGeneric(scanner, parseNext)
+  const generic = scanOptionalGeneric(scanner, parseNext)
   scanner.scanAllWhitespace()
   scanner.expectString(PARENS_OPEN)
   scanner.scanAllWhitespace()

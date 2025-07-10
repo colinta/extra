@@ -41,7 +41,7 @@ export function scanFormulaArgumentDefinitions(
 // _Formula Types_ cannot have default values, only optional args
 //
 // fn visit(func: fn(#arg?: Int): Int) => func(0) + func()
-//                ^^^^^^^^^^^^^^^^^^^^
+//                  ^^^^^^^^^^^^
 export function scanFormulaTypeArgumentDefinitions(
   scanner: Scanner,
   expressionType: ExpressionType,
@@ -84,7 +84,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
     const names = new Set<string>()
     const aliases = new Set<string>()
     let firstDefaultName = ''
-    let prevIsOptional = false
+    let prevIsRequired = true
     let firstOptionalArg = ''
     /**
      * The name of the first (and only) positional spread arg
@@ -226,11 +226,11 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       // will be called with either:
       //     callback(t, u)
       //     callback(t)
-      let isOptional = false
+      let isRequired = true
       if (is === 'formula_type') {
-        isOptional = scanner.scanIfString('?')
-        if (isOptional) {
-          prevIsOptional = true
+        isRequired = !scanner.scanIfString('?')
+        if (!isRequired) {
+          prevIsRequired = false
           firstOptionalArg = firstOptionalArg ?? argName.name
         }
         scanner.scanSpaces()
@@ -239,7 +239,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
           scanner,
           `Optional arguments are not allowed in function definitions (use a default value instead).`,
         )
-      } else if (prevIsOptional && isPositional) {
+      } else if (!prevIsRequired && isPositional) {
         throw new ParseError(
           scanner,
           `Required argument '#${argName.name}' must appear before optional argument "#${firstOptionalArg}".\nAll required arguments must come before optional arguments.`,
@@ -324,7 +324,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
           argType,
           spreadArg,
           isPositional,
-          isOptional,
+          isRequired,
         )
       }
       arg.followingComments.push(...scanner.flushComments())
