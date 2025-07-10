@@ -14,12 +14,15 @@ TypeScript.
 
 While Elm made good on the promise of being extremely well-reasoned, it was
 painful, to me, to compose components that needed to track their own internal
-state. Extra makes that really easy – but still explicit.
+state. Extra makes that really easy – but still explicit. While I was in there,
+I figured it wouldn't hurt to add TypeScript's branch-based type refinements.
+Might as well add Swift's `guard` expression, too... and JSX seems like a good
+idea (but can we make it even more ergonomic?).
 
-It will also feel familiar to React developers, but without the cognitive
+Extra will also feel familiar to React developers, but without the cognitive
 dissonance of "let it render" and "prevent too many rerenders", and obviously
 not the "this was your best idea?" mess that is hooks. Whenever someone says
-"React is declarative!" I die a little inside.
+"React is (declarative|functional|good|fine/not-a-mess)!" I die a little inside.
 
 The big difference in Extra with all these frameworks is how views are
 *updated*. Think spreadsheets instead of DOM diffing.
@@ -72,10 +75,10 @@ let
   -- curly brackets are required in `if` expressions, but they surround the entire
   -- expression. This is actually an "external argument" syntax that can be used to
   -- create your own DSLs
-  evens = if(max == 10) {
+  evens = if (max == 10) {
     then:
       [2, 4, 6, 8, 10]
-    elseif(max == 12):
+    else if (max == 12):
       [2, 4, 6, 8, 10, 12]
     else:
       [2, 4, 6, 8, 10, 12, 14]
@@ -87,12 +90,13 @@ let
     5
     7
 
-    -- alternative way to invoke 'if'
-    ...if(max <= 10, then: [9], else: [])
+    -- alternative way to invoke 'if',
+    -- including the elements using spread operator
+    ... if (max <= 10, then: [9], else: [])
 
-    -- `if` operator here is only allowed in arrays, dict, and set
-    -- 11 is only included if the condition is true, otherwise it is skipped
-    11 if max > 10
+    -- even better, the  `onlyif` operator here is only allowed in arrays,
+    -- dicts, and sets. 11 is only included if the condition is true
+    11 onlyif max > 10
   ]
 in
   [...evens, ...odds]
@@ -109,40 +113,7 @@ in
 <p class=['bold', @is-italic ? 'italic']>Hello, World!</p>
 ```
 
-## Variable names
-
-References can have hyphens like in Lisp (`valid-variable-name`), and emojis (`😎-languages = set("extra")`)
-
-## Comments
-
-I may have gone a bit overboard, just a heads up. 🤓
-
-`-- line comment`
-`{- block -}`
-`{- block {- with nesting -} -}`
-`--> arrow style line comment`
-`<-- alternate arrow style line comment`
-`← why stop there?` `→ pointing is rude though`
-
-The usual comment characters `#` and `//` both have special meaning in Extra, and so I looked elsewhere for inspiration, and looked no further than Ada (and yes, Ada, Elm, Lua _all_ use `--` for line comments... but Ada has a certain caché so I wanted to mention it first).
-
-```extra
--- this is a line comment
-"no longer a comment"  <-- this is a statement (and this is a comment!)
-
-{- comment block, line 1
- {- comment blocks _can_ be nested -}
-comment, line 3 -}
-
--- Handy trick to comment/uncomment multiple lines easily:
-{--}    <-- removing the '}' here will turn all four lines into a comment
-multiple |>
-  lines
---} <-- This brace is just part of a line comment until the '}' above is removed
-
---> arrows can be a comment! It's a small thing, but I find this so handy.
-<-- so much so that I made `<--` a comment marker, too, and ← and →
-```
+# Now in no particular order, some language features of Extra
 
 ## Commas are optional
 
@@ -176,146 +147,6 @@ import Math: {
   sqrt
   pow
 } --> import `sqrt` and `pow` functions from the Math package
-```
-
-## Pattern Matching, Implication Operator
-
-Obviously Extra supports pattern matching. This feature makes heavy use of the `=>` operator, which I've named the "`implication` operator". It's already the function body marker, and so plays natural double-duty to indicate case expressions.
-```extra
-switch (volume) {
-  case: 0..<2 => 'turn it up!'
-  case: 2..<5 => "that's enough"
-  case: num => `$num is too loud`
-
-```
-If the implication is on the right hand side of the pipe operator, it will be invoked with the `#` value.
-
-```extra
--- this is also a handy way to "name" the `#` value:
-su(numbers) |> sum =>
- f(sum > 10, then: 'big sum', else: 'small sum')
-
-name
-|> #.split(/\s+/)
-|> names =>
-  names.map(fn(name) => name.capitalize())
-|> #.join(' ')
-
--- of course it's also just very easy to pipe into a `switch` statement
-httpResponse |> switch(#) {
-  esult.Success(success) => success.message
-  esult.Failure(error) => error.message
---> String
-```
-
-## Functions
-Functions are bonkers. They support _positional_ and _named_ arguments, along with all sorts of variadic arguments.
-
-Positional arguments have a `#` prefix, `#like: This`. Named arguments `do: Not`. Named arguments can be aliased `like so: GotIt?`. Variadic arguments `...#are: LikeThis` or `...like: This`.
-
-Examples:
-
-```extra
-fn doEeet(#count: Int, #name: String = '', age: Int = 0, reason why: String) => …fn body…
--- #count is required
--- #name is optional (default value provided)
--- age is optional, and is a named argument
--- reason is required. doEeet() must be called with the reason: argument,
--- but the fn body uses the name "why"
-
-doEeet(1, reason: '')                   -- name = '', age = 0
-doEeet(1, 'foo', reason: '')            -- name = 'foo', age = 0
-doEeet(1, 'foo', reason: '', age: 42)   -- name = 'foo', age = 42
-
-✘ doEeet(reason: '')                    -- #count is required
-✘ doEeet(1)                             -- reason is required
-```
-
-If the argument type is null-able, you can make the argument optional `like?: This` (`like: This | null`). If the argument is _generic_, it will be made optional only if the type is null-able. In other words:
-
-```extra
-fn first-or<T>(#array: Array(T), else fallback?: T) =>
-  if(array) {
-  then:
-    array[0]
-  else:
-    fallback
-  }
-
-let
-  a: Array(Int) = […]
-  b: Array(Int?) = […]
-in
-  first-or(a, else: 1) --> else is required because type `Int` is not nullable
-  first-or(b, else: 1) --> still fine here, but...
-  first-or(b)          --> else is optional (defaults to `null`) because `Int?` aka `Int | null` is nullable
-```
-
-Confusing! Sorry, it is, but I also think it is useful.
-
-### Inferred types
-
-The return type can always be inferred. Argument types are required when you are defining a function (in `let` or `Helpers` section), but if you are calling a function that expects a function, like `map`, `reduce`, sort, you can omit the argument types. The trick here is that the receiving function will define the types, so in this case you don't have to.
-
-```extra
-[1, 2, 3].map(fn(num) => num + 1) --> [2, 3, 4]
-```
-
-In the example above, `num` is a named argument, but `map` expects a function that accepts two positional arguments `#value: T, index: Int`. Since the first named argument is compatible with `#value: Int`, the compiler figures out what to do.
-
-### Variadic Arguments
-
-There are _three_ brands of variadic arguments.
-
-- (1) variadic positional arguments - must be an `Array` type
-- (1) variadic named arguments - must be a `Dict` type
-- (N) repeated named arguments - must be an `Array` type
-
-#### Variadic Positional Arguments
-
-These combine well with refined Array types, for instance, we can implement `add` as a variadic function, but require a minimum number of arguments.
-
-```extra
-fn add(...#numbers: Array(Int, >=2)) =>
-  numbers.reduce(0, fn(memo, num) => memo + num)
-
-add(1, 10) --> 11
-add(1, 10, 31) --> 42
-❌ add() -- not enough arguments
-❌ add(1) -- not enough arguments
-
-let
-  numbers = [1, 10, 31]
-in
-  add(...numbers)
-```
-
-#### Variadic Named Arguments
-
-Any argument names that are not otherwise declared in the arguments will be put into `*remaining: Dict(String, T)`.
-
-```extra
-fn list-people(greeting: String = 'Hi, ', *people: Dict(String)) =>
-  words.map((name, value) =>
-    `$greeting$name: $value`).join('\n')
-
-
-list-people(greeting: 'Hello, ', jane: 'doctor', emily: 'dumb lawyer')
-
-let
-  people = dict(jane: 'doctor', emily: 'dumb lawyer')
-in
-  list-people(*people)
-```
-
-#### Repeated Named Arguments
-
-You can specify the same argument by name, multiple times.
-
-```extra
-fn switch<T, U>(#value: Y, ...case: Maybe<U>, else?: U): U
-
-switch(1, case: 1 => 'one', case: 2 => 'two', else: 'who knows') --> 'one'
 ```
 
 ### Blocks and Lazy types
@@ -352,26 +183,30 @@ doSomething(1) {
 } --> 1
 ```
 
-### Literals
+## Pattern Matching
+
+Obviously Extra supports pattern matching. `switch` is the most canonical way to group a bunch of matchers:
 
 ```extra
-switch (value)
-  when 1 => 'one'
-  when 2 => 'two'
-  else => 'not one or two'
+switch (volume) {
+  case: 0..<2 => 'turn it up!'
+  case: 2..<5 => "that's enough"
+  else: `$volume is too loud`
+}
 ```
 
-### Enum matching
+### Enums / Algebraic data types
 
 ```extra
-Result<Ok, Err> = enum
-    | Ok(value: Ok)
-    | Err(error: Err)
+type Result = enum<Ok, Err>
+  | Ok(value: Ok)
+  | Err(error: Err)
 
 fn result-to-maybe<T>(result: Result<T, unknown>) =>
-  switch (result)
-    when Ok(value) => value
-    else => null
+  switch (result) {
+    case: .ok(value) => value
+    else: null
+  }
 ```
 
 ### Destructured matching
@@ -380,10 +215,13 @@ This was hard so you better like it.
 
 ```extra
 -- foo: String | Array(String)
-switch (foo)
-  when 'foo' <> bar => bar
-  when ['foo', ...a] => a.join(',')
-  else => 'not "foo…" or [a, …]'
+switch (foo) {
+  case: 'foo' <> bar => bar
+  case: [onlyOne] => onlyOne
+  case: [...many, last] => many.join(',') <> " and $last"
+  else:
+    'not "foo…" or [a, …]'
+}
 ```
 
 Not every operator is supported in this way, but I tried to support everything that makes sense. Values can be ignored using `_`.
@@ -392,9 +230,13 @@ Not every operator is supported in this way, but I tried to support everything t
 
 Minor thing: `+` is a mathematical operator that adds two numbers. Did you know that `a + b == b + a`? Except in Java and Javascript and Swift and many other languages. 🙄
 
-`++` is a computer science-y operator that concatenates two lists (strings, arrays, or merges two dicts).
+`++` is a computer science-y operator that concatenates two lists. `<>` does the same for strings.
 
-Words are used for logical operators, but not bitwise operators.
+Having distinct concatenation operators is either really nice for indicating intentionality, or an unnecessary distinction. I hate to side w/ PHP on this one, but I treat 'em differently. Or hey maybe I'm hitching my ride to PHP's weird and shocking resurgence!? Who knows!?
+
+Words (`and` `or` `not` `is` `has`) are used for logical operators, but not bitwise operators (`&` `|` `^` `~`).
+
+Actually `is` is the "match" operation, ie `if (x is .some(x))` will attempt to match the two sides. The left-hand side is evaluated, and must match the right-hand side (`.some(x) is x` will not compile).
 
 ## String coercion and interpolation
 
@@ -415,7 +257,7 @@ Extra's "coerce to String" function is a unary operator `$`, and it's also the s
 [1, 2].join($(n + 1))
 ```
 
-## Type guards
+## Type guards aka Type refinements
 
 You can provide much more type information to Arrays, Dicts, Sets, Strings, and Numbers. You can define types like "an Array of Ints, with at least one item, where each Int is greater than 0" (`[Int(>0), 1+]`).
 
@@ -503,11 +345,11 @@ have to provide two separate calls to bar:
 
 ```extra
 fn foo(#a: Int, #b: Int | null) =>
-  if(#b == null) {
-  then:
-    bar(a)
-  else:
-    bar(a, b)  -- 🤢
+  if (#b == null) {
+    then:
+      bar(a)
+    else:
+      bar(a, b)  -- 🤢
   }
 ```
 
@@ -532,14 +374,33 @@ Also available is the "null coalescing pipe". If the value is `null`, it skips t
 
 ```
 let
-  a: String? = 'bang'
-  b: String? = null
   fn example(#foo: String?) => foo ?|> # <> "!"
 in
   [
-    example(a) --> 'bang!'
-    example(b) --> null
+    example('bang') --> 'bang!'
+    example(null) --> null
   ]
+```
+
+You can place a bare "match" operator on the right hand side of the pipe operator and it will be invoked with the `#` value. This is a handy way to "name" the `#` value.
+
+```extra
+sum(numbers)
+  |> sum =>
+    if (sum > 10, then: 'big sum', else: 'small sum')
+❌  |> a <> b => … you cannot use generic matchers here
+
+name
+  |> #.split(/\s+/)
+  |> names =>
+    names.map(fn(name) => name.capitalize())
+  |> #.join(' ')
+
+-- of course it's also just very easy to pipe into a `switch` statement
+httpResponse |> switch(#) {
+    case: .ok(success) => success.message
+    case: .err(error) => error.message
+  } --> String
 ```
 
 ## Algebraic data types _of course_
@@ -547,16 +408,48 @@ in
 In particular: **Sum Types**. Shoutout to [Justin Pombrio – but please get out of my head and stealing my rants](https://justinpombrio.net/2021/03/11/algebra-and-data-types.html#:~:text=The%20Baffling%20Lack%20of%20Sum%20Types).
 
 ```extra
-RemoteData<Success, Failure> = enum
-    | NotAsked
-    | Loading
-    | Failure(error: Failure)
-    | Success(value: Success)
+type RemoteData = enum<Success, Failure>
+  | NotAsked
+  | Loading
+  | Failure(error: Failure)
+  | Success(value: Success)
 ```
 
-**Product Types** in Extra are the good ol' `Object` type – `Record` or `struct` in other languages. Extra Objects are also Tuples, because the property name is optional - you can have positional and named properties (which aligns them with how function arguments support positional and named arguments - function arguments are just Tuples/Objects!)
+**Product Types** in Extra are the good ol' `Object` type – `Record` or `struct` in other languages. Extra Objects are also Tuples, because the property name is optional - you can have positional and named properties (which aligns them with how function arguments support positional and named arguments - function arguments are just Tuples (or Objects)!)
 
-## Insane Comments
+## Comments
+
+I may have gone a bit overboard, just a heads up. 🤓
+
+`-- line comment`
+`{- block -}`
+`{- block {- with nesting -} -}`
+`--> arrow style line comment`
+`<-- alternate arrow style line comment`
+`← why stop there?` `→ pointing is rude though`
+
+The usual comment characters `#` and `//` both have special meaning in Extra, and so I looked elsewhere for inspiration, and looked no further than Ada (and yes, Ada, Elm, Lua _all_ use `--` for line comments... but Ada has a certain caché so I wanted to mention it first).
+
+**More examples**
+```extra
+-- this is a line comment
+"no longer a comment"  <-- this is a statement (and this is a comment!)
+
+{- comment block, line 1
+ {- comment blocks _can_ be nested -}
+comment, line 3 -}
+
+-- Handy trick to comment/uncomment multiple lines easily:
+{--}    <-- removing the '}' here will turn all four lines into a comment
+multiple |>
+  lines
+--} <-- This brace is just part of a line comment until the '}' above is removed
+
+--> arrows can be a comment! It's a small thing, but I find this so handy.
+<-- so much so that I made `<--` a comment marker, too, and ← and →
+```
+
+## Extra Comments
 
 This is maybe a little out of hand, but I like drawing boxes using old-school ASCII characters, so there's support for these as line-comment start characters.
 
@@ -595,276 +488,41 @@ U+2570 ╰ ╱ ╲ ╳ ╴ ╵ ╶ ╷ ╸ ╹ ╺ ╻ ╼ ╽ ╾ ╿
 ┕━┷━┙ ┖─┸─┚ ┗━┻━┛ ╰─┴─╯
 ```
 
-## Extra Applications
+# More formal language Design
 
-Not only that, but Extra programs encourage these box drawing comment characters. Extra applications use section headers to organize the different roles. These sections must be defined in exactly this order, using exactly these names, using the round-single-line border. Except `Imports`, which must be at the top of the file, and don't require a section header.
-
-```extra
-import /FromFile1
-import ./FromFile2: { TypeName, helperName, Main as FromFile2 }
-
-╭───────╮
-│ Types │
-╰───────╯
-```
-
-The sections are:
-
-- `Types` – where you define type aliases, classes, interfaces, etc.
-- `@State` - where you define the internal state of your app/compnent
-- `<Main />` - the entry point for your app or component
-- `&Actions` - your `<Main />` component will emit actions, which modify state, which modify `<Main />`... rinse & repeat
-- `<Views>` - components that you can call from `<Main />`
-- `Helpers()` - functions to assist with rendering or actions or whatever
-
-## Types
-
-Define your custom types in here. _Types must be capitalized_.
-
-```extra
-╭───────╮
-│ Types │
-╰───────╯
-Age = Int(>=0)
-Name = String(>0)
-
--- this looks like an object definition, but is actually more like an interface, due to loose type checking
-Point = {x: Int, y: Int}
-
--- object types can have functions defined on them
-User = { name: Name, age: Age, foo() => 'foo' }
-
-Student = User & {
-  grade: Int
-  summary() =>
-    -- string concat and two string embed examples
-    -- '.' operator would be `this` or `self` in many languages
-    .name <> " is ${.age} years old and is in grade $.grade"
-}
-```
-
-## State
-
-Define your initial state using "slots" and "formulas". They must begin with a lowercase letter.
-
-```extra
-╭────────╮
-│ @State │
-╰────────╯
--- these are slots, they can be modified or reassigned using Actions
-@users: [User] = [ {name: …}, … ]
-@students: [Student] = [ {name: …, grade: 1} ]
-
--- this is a formula, and is computed based on slots
--- slots (and formulas) must be referred to using the `@` sigil,
--- to distinguish them from local variables
-@allUsers = @users ++ @students
-
--- allUsers will be inferred as [User]
-```
-
-One trick to working with this slot/formula system is to make use of overridables:
-
-```extra
--- provide an "overridable" slot
-public @overrideUsers: [User] | null = null
-
--- use it in a formula
-@allUsers = @overrideUsers ?? @users ++ @students
-```
-
-Or, think in terms of spreadsheets - how would you do it in [VisiCalc](https://web.archive.org/web/20120630054522/http://www.bricklin.com/firstspreadsheetquestion.htm)!?
-
-## Main
-
-A function named `Main` that returns the main view of your application. View functions are required to return JSX[^1].
-
-```extra
-╭──────────╮
-│ <Main /> │
-╰──────────╯
-Main() =>
-  <Column>
-    <>Hello to all!</>
-    {@allUsers.map(
-      fn(user) => <User {user} />
-    )}
-  </Column>
-```
-
-## Actions
-
-Actions are emitted by Views to modify state. Actions have their own sigil, `&name`, to identify them in components. Inside of an action, you can perform mutating operations like `=` assignment, `push` onto an array, or change an object property.
-
-Internally, actions are compiled into change operations which only update the UI according to which components would be affected by that change.
-
-```extra
-╭──────────╮
-│ &Actions │
-╰──────────╯
-fn &complete(todo: Todo) => todo.isComplete = true
-
--- increase the grade of a student
-fn &graduate(#student-needle: Student) => &[
-    @students = @students.map(
-      if(student-haystack == student-needle) {
-      then:
-        { ...student-needle, grade: student-needle.grade + 1}
-      else:
-        student-haystack
-      }
-    )
-  ]
-
--- this "replace needle in haystack" is common enough that it has its own helper:
-&graduate =
-  action(#student-needle: Student) =>
-    &.replaceInArray(
-      @students,
-      find: student-needle,
-      -- if the "needle" is found, it will be passed to the replace function:
-      with: fn(student) => { ...student, grade: student.grade + 1}
-    )
-    -- there's also a version for dicts, &.replaceInDict(dict, find:, with:)
-
-&updateName =
-  action(#user-needle: User, name: String) =>
-    if(user-needle is Student and @students.includes(user-needle)) {
-    then:
-      &.replaceInArray(@students, find: user-needle, with: fn(user) => { ...user, name: })
-    else:
-      &.replaceInArray(@users, find: user-needle, with: fn(user) => { ...user, name: })
-    }
-
--- in components, they look like this:
-<Button onPress={&graduate(@selected-student)} title="Graduate" />
-<Input onChange={fn(text) => &updateName(@selected-user, text:)} … />
-```
-
-### System Actions
-
-TODO: finish this list
-
-### State
-
-- `&.set(@state, value)`
-
-### Array
-
-- `&.push(@array, item) / &.queue(@array, item)`
-- `&.insert(@array, at: Int)`
-- `&.remove(@array, at: Int)`
-
-### Dict
-
-- `&.assign(@dict, item, key: String)`
-- `&.unassign(@dict, key: String)`
-
-## Views
-
-Views are functions that return other Views. Views must be capitalized (except system views), and cannot have positional arguments, only named arguments. The special argument `children: [View]` is optional, but if it is present it _must_ be of type `[View]`.
-
-```extra
-╭─────────╮
-│ <Views> │
-╰─────────╯
-User(user: User) =>
-  <>userSummary(user:)</>
-```
-
-And like Actions (`&action`), Slots (`@slot`) and Formulas (`@formula`), Views are always indicated with JSX-style[^1] markup e.g. `<View />` or `<View>{…children…}</View>`.
-
-## Helpers
-
-Lastly, any functions that you want to define for use in views and formulas. These must be lowercase, and don't use any prefix.
-
-```extra
-╭───────────╮
-│ Helpers() │
-╰───────────╯
-userSummary(user: User) =>
-  if(user is Student) {
-  then:
-    `${user.name} in grade ${user.grade}`
-  else:
-    user.name
-  }
-
-greet(name: String) =>
-  'Hi, ' <> name
-```
-
-## Section Header Formal Rules
-
-The rules for defining the sections are:
-
-- Each section header must be present (even if empty), and in the following order: Types, State, Main, Actions, Views, Helpers
-- Each header must start with `╭` on the first line, and the second line must start with `│` followed by whitespace, then the appropriate section title
-- You can have optional extra lines, each one must start with `│`
-- The last line of the section header must start with `╰`
-
-```extra
-╭───────╮
-│ Types │ you can put comments here.
-╰───────╯
-
-╭───────
-│ State
-│
-│and in here, if you start with '│'
-│
-╰───────
-
-╭──────╮
-│ Main │
-╰──────┼─────┒
-       │ :-) ┃
-       ╰─────┚
-
-╭──────────┬─────────────────────────────────╮
-│ &Actions │ The rules are pretty loose, imo │
-╰──────────┴─────────────────────────────────╯
-
-╭─────────╮
-│ <Views> ├╼╸Be expressive!
-╰─────────╯
-
-╭ - - - - -
-│ Helpers()
-╰ - - - - -
-```
-
-I know, this is an unfamiliar design... and all the noise this generates on Twitter will only contribute to Extra's success! So please please please complain about or praise this decision.
-
-# Language Design
+Lots of repetition here. The above is a whirlwind tour, now I'll try to be more precise.
 
 ## Let
 
-`let` is how you can assign values to local ~variables~ scope.
+`let` is how you can assign values to local ~variables~ scope. I'll use this in most examples below so I better define it first.
 
 ```extra
 let
   useful = 42
-  some-thing = fn(answer: Int): String => `The answer is $answer`
+  fn some-thing(answer: Int): String => `The answer is $answer`
 in
   some-thing(really = useful)
 ```
 
-# Basic Types
+## Variable names
 
-## Null
+References can have hyphens like in Lisp (`valid-variable-name`), and emojis (`😎-languages = set("extra")`).
+
+## Basic Types
+
+### Null
 
 `null`
 
 **Don't Panic!** Null safety is built-in, and "calling method on `null`" is prevented by the compiler (if it's not, [open an issue!](https://github.com/colinta/extra-lang/issues))
 
-## Booleans
+### Booleans
 
 `true` and `false`
 
-## Truthiness and the Conditional type
+### Truthiness and the Conditional type
 
-I went back and forth on having "truthy" types. Most functional languages are strict about what goes in an `if()` expression - only Boolean is allowed.
+I went back and forth on having "truthy" types. Most functional languages are strict about what goes in an `if ()` expression - only Boolean is allowed.
 
 But this makes the `and` and `or` operators much less useful as short-circuiting operations. For instance, imagine you want to provide a default error message:
 
@@ -879,7 +537,7 @@ I think the intention above is clear - and the below is no less clear, but at th
 
 ```extra
 let
-  message = if(not error.message.isEmpty()) {
+  message = if (not error.message.isEmpty()) {
     then:
       error.message
     else:
@@ -894,8 +552,8 @@ null         -- the null value
 false        -- the false value
 0            -- the number 0
 ""           -- empty String
-[], Dict(), Set() -- empty array, dict, set
-{}, {[]}     --   "   object, tuple
+[], dict(), set() -- empty array, dict, set
+{}           -- empty object, tuple
 1/0          -- NaN --> false… I guess? I dunno! What would **you** do with this dumb value!?
 ```
 
@@ -910,12 +568,12 @@ true  -- the true value
 
 Exception: Views and Class instances (including Regex) are always truthy, and so it is considered a compile-time error to use them as a truthy value.
 
-## Numbers
+### Numbers
 
 `1, 2, 0x10, -0b1001, 4e2, 1__000_000` --> Int
 `1.0, 2., -0.000_001, 4e-2` --> Float
 
-### Supported number prefixes for other bases
+#### Supported number prefixes for other bases
 
 - `0x` --> hexadecimal (not 0X)
 - `0o` --> octal (not 0O)
@@ -923,7 +581,7 @@ Exception: Views and Class instances (including Regex) are always truthy, and so
 
 TODO: Dozenal.
 
-### Supported formats
+#### Supported formats
 
 - any number of `_` are ignored
   `1_000` --> 1000
@@ -936,7 +594,7 @@ TODO: Dozenal.
 
 If you're thinking "wow these are all supported by JavaScript's `Number()` constructor" then you've figured out what language this is all built in, without noticing the two dozen JS config files in project root.
 
-## Strings
+### Strings
 
 Strings come in a few variants: single-quoted, double-quoted, backticks, and atomic. The quoted variants all support triple-quotes (`'''test'''`). Double-quoted and backticks support tagged strings.
 
@@ -987,11 +645,11 @@ let
   calculator = fn(#a: Int, #op: String, #b: Int, #out: String) =>
     let
       result =
-        if (#op matches /^\s*\+\s*$/) {
-        then:
-          a + b
-        else:
-          a - b
+        if (#op is /^\s*\+\s*$/) {
+          then:
+            a + b
+          else:
+            a - b
         }
       out = out.replaceAll('?', with: $result)
     in
@@ -1072,7 +730,7 @@ All strings use backslash to escape special characters:
 \$ --> $
 ```
 
-## Regular Expressions / Regex
+### Regular Expressions / Regex
 
 ```extra
 /\b(regular expressions)\b/g  <-- classic perl style regex
@@ -1087,7 +745,7 @@ All strings use backslash to escape special characters:
 
 Extra runs within the JS runtime, and the regular expressions are passed directly to the `RegExp` constructor. The [Mozilla Regex cheat sheet](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions/Cheatsheet) has lots of good information about what's supported. Say what you will about JS's terrible API (thank you, I will!), the Regular Expressions support is very good.
 
-## Container Types: Array, Dict, Set, and Object
+### Container Types: Array, Dict, Set, and Object
 
 Arrays and Objects are created using the common `[]` and `{}` symbols. Dicts (aka Map in JavaScript) are created using `dict<type>(key: value)` and Sets are created using `set<type>(value)` (`type` is optional in both cases, it is usually inferred).
 
@@ -1113,7 +771,7 @@ The container types can be split into two families:
   <dt>Heterogenous</dt><dd>All items may have different types (object)</dd>
 </dl>
 
-### Homogenous types: Array, Dict, Set
+#### Homogenous types: Array, Dict, Set
 
 Homogenous types have only one type, even if that type is an `optional` or `oneOf` type.
 
@@ -1127,7 +785,7 @@ Syntax:
 - Dict: `dict() dict(key: 1) dict(key: 1,) dict(1: 1, 'key2': 2, "key$three": 3)`
 - Set: `set() set(1) set(1,) set(1, 2, 3)`
 
-### Heterogenous types: Tuple, Object
+#### Heterogenous types: Tuple, Object
 
 Object: a lookup/map/hashmap of different properties. Each key can have a different type.
 Tuple: same as an object, but indexed by number instead of string. Tuples and Objects are just one type that supports *both* string and numeric keys.
@@ -1137,7 +795,7 @@ Syntax:
 - Object: `{} {} {one: 1} {one: 1,} {1: 1, 'two': "two", "$three": [3]}`
 - Tuple: `{} {1} {1,} {1,"two",[3]}`
 
-### More examples
+#### More examples
 
 ```extra
 -- Arrays
@@ -1149,7 +807,7 @@ Syntax:
 dict(one: 1, two: 2, three: 3) --> Dict(Int) with three entries
 dict()                         --> empty dict (Dict(Always))
 dict(number1: "one", number-two: "two", ) --> Dict(String) with two entries
-✘ {}  --> empty object, not a dict!
+❌ {}  --> empty object, not a dict!
 
 -- Sets
 set(1, 2)     --> Set(Int) (Set of Ints)
@@ -1160,7 +818,7 @@ set()         --> empty set
 {}                      --> empty object or tuple
 
 -- Tuples are just objects with numeric keys
-{1, "two", [3,4,5]} --> {[Int, String, [Int]]} (3-tuple of Int, String, Int array)
+{1, "two", [3,4,5]} --> {Int, String, [Int]} (3-tuple of Int, String, Int array)
 {}                 --> empty object or tuple
 
 -- There is no actual Tuple type, objects support number keys, and they can be
@@ -1168,56 +826,16 @@ set()         --> empty set
 {0, 1, last: 10}  -- {Int, Int, last: Int}
 ```
 
-### Splat operators
-
-All of the container types (Array, Tuple, Object, Dict, and Set) use the `...` unary operator to merge multiple arrays/tuples into one. Arrays and Tuples can't be mixed and matched, though.
-
-```extra
--- arrays
-let
-  a: [1, 2, 3]
-  b: [4, 5, 6]
-in
-  [...a, ...b] --> [1, 2, 3, 4, 5, 6]
-
--- objects
-let
-  a: {a: 1, b: "2", c: 3}
-  b: {c: 4, d: "5", e: 6}
-in
-  {...a, ...b} --> {a: 1, b: "2", c: 4, d: "5", e: 6}
-
--- tuple - notice that the numeric positions _overwrite_, they don't append
-let
-  a: {0, 0, spin: 'up'}
-  b: {c: 4, d: "5", e: 6}
-in
-  {...a, ...b} --> {a: 1, b: "2", c: 4, d: "5", e: 6}
-
--- dicts
-let
-  a: dict(a: 1, b: 2, c: 3)
-  b: dict(d: 4, e: 5, f: 6)
-in
-  dict(...a, ...b) --> dict(a: 1, b: "2", c: 3, d: 4, e: "5", f: 6)
-
--- sets
-let
-  a: set(1, 2, 3)
-  b: set(3, 4, 5)
-in
-  set(...a, ...b) --> set(1, 2, 3, 4, 5)
-```
-
 Objects and Tuples can contain values with different types (this is called a **Product Type**). What happens if you put different types into an array or dict?
 
 ```extra
-[1, 2, "3"] -- Invalid!? Nope! This has the type [Int | String]
+[1, 2, "3"] -- Invalid!? Nope! This has the type `Array(Int | String)`
+-- (**ahem**, actually it has the type `Array(1 | 2 | "3")`)
 ```
 
 Enter the **OneOf** type.
 
-## OneOf
+### OneOf
 
 OneOf types represent a value that could be one type or another (or three or four types).
 
@@ -1232,7 +850,7 @@ OneOf types can be expressed in general as `type1 | type2 | ...`, e.g. `Int | St
 
 The only problem with _oneOf_ types is that you cannot call methods or properties on them, unless the method is shared between both types. You can get around this limitation using _type guards_ (or other type assertions).
 
-## Literal types
+### Literal types
 
 So far we've been expressing numbers and strings using their types, but _literal_ types are also supported. For instance, the expression:
 
@@ -1246,7 +864,7 @@ Is parsed as `literal(1) + literal(2)`, and resolved to the type `literal(3)`. Y
 size: 'small' | 'medium' | 'large' --> size must be one of these strings, no others.
 ```
 
-## Type definitions
+### Type definitions
 
 We've seen many definitions already.
 
@@ -1254,46 +872,252 @@ We've seen many definitions already.
 - `1` `1_000` `'text'` also literal types
 - `Boolean` `Int` `Float` `String` the basic types
 - `Boolean | Int` one of types
-- `[Int]` `[Int | String]` `[Float?]` arrays
+- `Array(Int)` `Array(Int | String)` `Array(Float?)` arrays
 - `Dict(Int)` `Dict(Int | String)` `Dict(Float?)` dicts
 - `{Int, String}` `{Int?, String?}` tuples
 - `{foo: Int, bar: String}` `{foo: Int?, bar: String?}` objects
-- `[Boolean] | (Int | String)[]` one of types mixed with container types
+- `Array(Boolean) | Array(Int | String)` one of types mixed with container types
 
+## Functions
 
-# `if`
+Extra's functions are bonkers. They support _positional_ and _named_ arguments, along with all sorts of variadic arguments, and
 
-`if` is implemented internally by the compiler, but I made sure that the syntax was supported by the user-defined functions. Combined with `lazy` you can create some pretty sophsiticated DSLs. At least, that was the intention.
+Positional arguments have a `#` prefix, `#like: This`. Named arguments `do: Not`. Named arguments can be aliased `like so: GotIt?`. Variadic arguments `...#are: LikeThis` or `...like: This`.
+
+Examples:
 
 ```extra
-if(test1 or test2) {
-then:
-  result_1
-elseif(test2):
-  result_2
-else:
-  if(test3, then: result-3, else: result-4)
+fn doEeet(#count: Int, #name: String = '', age: Int = 0, reason why: String) => …fn body…
+-- #count is required
+-- #name is optional (default value provided)
+-- age is optional, and is a named argument
+-- reason is required. doEeet() must be called with the reason: argument,
+-- but the fn body uses the name "why"
+
+doEeet(1, reason: '')                   -- name = '', age = 0
+doEeet(1, 'foo', reason: '')            -- name = 'foo', age = 0
+doEeet(1, 'foo', reason: '', age: 42)   -- name = 'foo', age = 42
+
+❌ doEeet(reason: '')                    -- #count is required
+❌ doEeet(1)                             -- reason is required
+```
+
+If the argument type is null-able, you can make the argument optional `like?: This` (`like: This | null`). If the argument is _generic_, it will be made optional only if the type is null-able. In other words:
+
+```extra
+fn first-or<T>(#array: Array(T), else fallback?: T) =>
+  if (array) {
+    then:
+      array[0]
+    else:
+      fallback
+  }
+
+let
+  a: Array(Int) = […]
+  b: Array(Int?) = […]
+in
+  first-or(a, else: 1) --> else is required because type `Int` is not nullable
+  first-or(b, else: 1) --> still fine here, but...
+  first-or(b)          --> else is optional (defaults to `null`) because `Int?` aka `Int | null` is nullable
+```
+
+Confusing! Sorry, it is, but I also think it is useful.
+
+### Inferred types
+
+The return type can always be inferred. Argument types are required when you are defining a function, but if you are calling a function that expects a function, like `map`, `reduce`, `sort`, you can omit the argument types. The trick here is that the receiving function will define the types, so in this case you don't have to.
+
+```extra
+[1, 2, 3].map(fn(num) => num + 1) --> [2, 3, 4]
+```
+
+In the example above, `num` is a named argument, but `map` expects a function that accepts two positional arguments `#value: T, index: Int`. Since the first named argument is compatible with `#value: Int`, the compiler figures out what to do.
+
+### Variadic Arguments
+
+There are _three_ brands of variadic arguments.
+
+- (1) variadic positional arguments - must be an `Array` type
+- (1) variadic named arguments - must be a `Dict` type
+- (N) repeated named arguments - must be an `Array` type
+
+#### Variadic Positional Arguments
+
+These combine well with refined Array types, for instance, we can implement `add` as a variadic function, but require a minimum number of arguments.
+
+```extra
+fn add(...#numbers: Array(Int, >=2)) =>
+  numbers.reduce(0, fn(memo, num) => memo + num)
+
+add(1, 10) --> 11
+add(1, 10, 31) --> 42
+❌ add() -- not enough arguments
+❌ add(1) -- not enough arguments
+
+let
+  numbers = [1, 10, 31]
+in
+  add(...numbers)
+```
+
+#### Variadic Named Arguments
+
+Any argument names that are not otherwise declared in the arguments will be put into `*remaining: Dict(String, T)`.
+
+```extra
+fn list-people(greeting: String = 'Hi, ', *people: Dict(String)) =>
+  words.map((name, value) =>
+    `$greeting$name: $value`).join('\n')
+
+
+list-people(greeting: 'Hello, ', jane: 'doctor', emily: 'dumb lawyer')
+
+let
+  people = dict(jane: 'doctor', emily: 'dumb lawyer')
+in
+  list-people(*people)
+```
+
+#### Repeated Named Arguments
+
+You can specify the same argument by name, multiple times.
+
+```extra
+fn switch<T, U>(#value: Y, ...case: Maybe<U>, else?: U): U
+
+switch(1, case: 1 => 'one', case: 2 => 'two', else: 'who knows') --> 'one'
+```
+
+#### Function overrides
+
+You can define separate function implementations if you want to have lots of different signatures all wrapped up in one function name. The Extra compiler will verify that the implementations are unambiguous.
+
+```extra
+fn add {
+  fn(#a: Int, #b: Int) => a + b
+  fn(#a: String, #b: String) => a <> b
+  -- if the types are ambiguous, the compiler will complain
+  -- this function cannot be disambiguated w/ the previous one
+  ❌ fn(#a: String, #b?: String) => a <> (b ?? a)
+  -- easily resolved, and you can even invoke a previous implementation:
+  fn(#a: String) => add(a, a)
+}
+
+add(1, 2) --> 3
+add('a', 'b') --> ab
+add('a') --> aa
+add([1]) --> ❌
+```
+
+## `if`
+
+Usually you will invoke `if` with the "block" syntax, `if (condition) { then: value }`. The `else` branch is optional. If it's not provided, it defaults to `null`. `if (condition) { then: value, else: null }`.
+
+As in all functional programming languages, `if` is an expression that returns the value of the branch that was executed. If the `else` branch is not given, `null` is returned.
+
+```extra
+if (test1 or test2) {
+  then:
+    result_1
+} --> result_1 | null
+
+if (test1 or test2) {
+  then:
+    result_1
+  else:
+    result_2
+} --> result_1 | result_2
+```
+
+Multiple `elseif` branches can be provided:
+
+```extra
+if (test1 or test2) {
+  then:
+    result_1
+  elseif (test2):
+    result_2
+  else:
+    result_3
+} --> result_1 | result_2 | result_3
+```
+
+There is also an "inline" version, which might show how `if` follows the same function argument rules as Extra in general. Assume `elseif()` is a function that also accepts a condition.
+
+```extra
+if (test1 or test2, then: result-1, elseif(test2, result_2), else: result-4)
+```
+
+`if` is, of course, implemented internally by the compiler. It had to be in order to implement the type narrowing features. But I made sure that the syntax was not "special". Given the right syntax and primitives, it could be expressed as an Extra function.
+
+```extra
+if (test1 or test2) {
+  then:  -- a required named argument
+    result_1
+  elseif (test2): -- this looks like special syntax, but actually it's
+    result_2      -- elseif(#condition, #then), the elseif clauses are variadic
+  else:  -- optional named argument
+    result_3
 }
 ```
 
-As in all function programming languages, `if` is an expression that returns the value of the branch that was executed. If `else` is not given, `null` is returned.
-
-# Operators
-
-## Comparison
+For the curious, the function signature of `if` would be *something like*:
 
 ```extra
-a > b
-a >= b
-a < b
-a <= b
-a == b  --> does a deep comparison of objects/arrays/dicts/etc
-a != b
-
-a <=> b --> the sort operator compares strings and numbers, and returns -1, 0, or 1
+fn if<T>(
+  #condition: Boolean
+  then: lazy T
+  ...#elseif: Array(lazy T)
+  else?: lazy T
+): T
 ```
 
-## Basic Math
+In the future I'd like to try to support an `implication` type, but I'm not sure I'll ever be able to support the variadic `elseif` array, such that each subsequent invocation implies all the previous ones are false. The `implication` type, in a simple `if/else` version, would look something like this:
+
+```extra
+fn if<T, C is Implication>(
+  #condition: C
+  then: Implies(C, T)
+  else?: Implies(not C, T)): T
+=> …
+```
+
+## `guard`
+
+Guard expressions are useful in any language, but the `guard` syntax in Swift was one of my favourite language features, and so I'm unapologetically stealing it. Of course w/ Extra flair.
+
+All of the
+
+```extra
+fn(#name: String?, hobbies: Array(String)): String =>
+  guard(
+    name != null
+    else: ''
+  ):
+    guard(
+      hobbies.length > 0
+      else:
+        name <> ' is not very interesting'
+    ):
+      name <> ': ' <> hobbies.join(', ')
+```
+
+Like `if`, you could imagine that this was implemented after the fact as an Extra function. The signature would be:
+
+```extra
+fn guard<T>(
+  ...#condition: Array(Boolean)
+  else: lazy T
+  #do: lazy T
+  -- ok I lied, usually the variadic argument has to be the *last* argument...
+  -- maybe I'll special case this syntax in the future.
+): T
+```
+
+## Operators
+
+### Basic Math
 
 ```extra
 1 + 2    --> 3    Addition
@@ -1304,7 +1128,7 @@ a <=> b --> the sort operator compares strings and numbers, and returns -1, 0, o
 2 ** 8   --> 256  Power/exponent
 ```
 
-## CompSci Math
+### CompSci Math
 
 ```extra
 -- Integer/floor division removes the floating point "remainder" by flooring the
@@ -1324,7 +1148,20 @@ a <=> b --> the sort operator compares strings and numbers, and returns -1, 0, o
 ~0b11010111 & 0b11111111 --> 0b00101000 (40)
 ```
 
-## Logical Operators
+### Comparison
+
+```extra
+a > b
+a >= b
+a < b
+a <= b
+a == b  --> does a deep comparison of objects/arrays/dicts/etc
+a != b
+
+a <=> b --> the sort operator compares two strings or two numbers, and returns -1, 0, or 1
+```
+
+### Logical Operators
 
 Logical operators "short circuit", e.g. they return values without converting them to a Boolean.
 
@@ -1345,17 +1182,19 @@ b or a --> 5 (returns a, because b was false)
 
 ```
 
-Btw, if you think of and as "multiplication" (if either is 0/false, result is
-0/false) and or as "addition" (if either is 1/true, result is 1/true) you'll
-have an easier time remembering the order of operations (and first, then or)
+Btw, if you think of `and` as "multiplication" (if either is 0/false, result is
+0/false) and `or` as "addition" (if either is 1/true, result is 1/true) you'll
+have an easier time remembering the order of operations (`and` first, then `or`)
 
-## Regex Match Operator
+### Regex Match Operator
+
+Funny story... when I implemented the `matches` operator, I realized that `x matches Foo` (where `Foo` is a class or other type) could only reasonably mean that `x is Foo`. Well wait a second, if `is` can be used there, could I also use it in other match contexts? Yes! I had already moved regex matches into the same bucket as generic
 
 ```extra
-"test String" ~ /[test]/ --> Boolean, returns whether the test String matches
+"test String" is /[test]/ --> Boolean
 ```
 
-## Null Coalescing Operator
+### Null Coalescing Operator
 
 Included only because of its cool name. 😎
 
@@ -1363,7 +1202,7 @@ Included only because of its cool name. 😎
 a ?? b --> returns `b` if a is null, otherwise returns `a`
 ```
 
-## Other Null Safe Operators
+### Other Null Safe Operators
 
 ```extra
 user.address?.street  -- null-safe property access
@@ -1371,7 +1210,7 @@ items?.[0]  -- null safe array access
 user.format?.(address)  -- null safe function invocation
 ```
 
-## String Concatenation
+### String Concatenation
 
 I've never liked `+` as String/Array concatenation. `+` should be communative, because maths.
 
@@ -1382,23 +1221,23 @@ $12345 <> 'dollars'  --> "12345 dollars"
 `${12345} dollars`  --> "12345 dollars"
 ```
 
-## Array Concatenation
+### Array Concatenation
 
-I realized at some point that while, sure, I could implement the `<>` operator
-in a way that supported Strings _and Arrays_, why not have two operators so that
-the *intention* was that much clearer? So that's what I did. `++` for Arrays.
+Sure I could've implemented the `<>` operator in a way that supported Strings
+_and Arrays_, why not have two operators so that the *intention* was that much
+clearer? So that's what I did. `++` for Arrays.
 
 ```extra
 [1,2,3] ++ [4,5,6]
 ```
 
-## Object and Dict Merging
+### Object and Dict Merging
 
 Last but not least, you can merge two objects or dicts with `~~`, and in this
 case the values on the left-hand-side will be replaced with the values on the
 right-hand-side if they have the same keys.
 
-###### Dict Example
+**Dict Example**
 ```extra
 let
   old_users = dict(a: …, b: …)
@@ -1408,7 +1247,7 @@ in
   -- returns dict(a: …, b: …, c: …), with 'b' coming from new_users
 ```
 
-###### Object Example
+**Object Example**
 ```extra
 let
   user = {name: 'Alice', age: 50}
@@ -1419,7 +1258,7 @@ in
 
 Since Objects are _also Tuples_ I had to make a decision on how to merge
 positional arguments. Should they override in numeric order (spoiler: yes they
-do) or should they _concatenate_ (they don't)!?
+do) or should they _concatenate_ (they don't)...
 
 ```extra
 let
@@ -1431,11 +1270,59 @@ in
   -- option B: {50, unit: 'celsius', 60}
 ```
 
-So I went with option A.
+I went with option A. I'm relieved to hear that you agree with this decision.
 
-## Splats
+### Splat operator `...`
 
-You can achieve option B easily, though, using the splat operator `...`:
+All of the container types (Array, Tuple, Object, Dict, and Set) support the `...` unary operator to merge multiple arrays/tuples/dicts/sets into one. Some containers can be mixed and matched, others can't. Try 'em and find out!
+
+```extra
+-- arrays
+let
+  a: [1, 2, 3]
+  b: [4, 5, 6]
+in
+  [...a, ...b] --> [1, 2, 3, 4, 5, 6]
+  -- a ++ b --> same
+
+-- dicts
+let
+  a: dict(a: 1, b: 2, c: 3)
+  b: dict(d: 4, e: 5, f: 6)
+in
+  dict(...a, ...b) --> dict(a: 1, b: "2", c: 3, d: 4, e: "5", f: 6)
+  -- a ~~ b --> same
+
+-- sets
+let
+  a: set(1, 2, 3)
+  b: set(3, 4, 5)
+in
+  set(...a, ...b) --> set(1, 2, 3, 4, 5)
+  -- a ++ b --> same
+```
+
+The `...` operator will also merge keys, preferring the later values, which provides yet another way to merge Dicts and Objects.
+
+```extra
+-- objects
+let
+  a: {a: 1, b: "2", c: 3}
+  b: {c: 4, d: "5", e: 6}
+in
+  {...a, ...b} --> {a: 1, b: "2", c: 4, d: "5", e: 6}
+  -- a ~~ b --> same
+
+-- tuples
+let
+  a: {0, 0, spin: 'up', name: 'electron'}
+  b: {1, 1, spin: 'down', quarks: 3}
+in
+  {...a, ...b} --> {1, 1, spin: 'down', name: 'electron', quarks: 3}
+  -- a ~~ b --> same
+```
+
+If you really had your heart set on concatenating two tuples... I don't have an easy shorthand for this. I didn't want `...` and `~~` to behave differently, and I didn't want to override the `<>` or `++` operators. The one thing that's very easy is to just _insert_ the values into the new tuple explicitly.
 
 ```extra
 let
@@ -1444,11 +1331,6 @@ let
 in
   {...weather, new_temp}
   -- {50, unit: 'celsius', 60}
-```
-
-The `...` operator will also merge keys, preferring the later values, which provides yet another way to merge Dicts and Objects.
-
-```extra
 let
   user = {name: 'Alice', age: 50}
   updates = {age: 51}
@@ -1456,88 +1338,90 @@ in
   {...user, ...updates}
 ```
 
-Splatting also applies to Set and Array types:
-
-```extra
-[...list1, ...list2]
-set(...set1, ...set2)
-```
-
-## Putting it all together
+### Putting it all together
 
 I want to take a moment to point something out - there are always two ways to
 merge/join/concat. You can start with the "container" and put in the parts you
 want, or you can start with one container and join others onto it. I'll show you
 what I mean:
 
-### String
+#### String
 
-1. String interpolation: `"${name} is ${age} years old"`
+1. String interpolation: `"${name} is $age years old"`
 2. String concatenation: `name <> ' is ' <> $age <> ' years old'`
 
-### Array
+#### Array
 
 1. Splat: `[...list1, ...list2]`
 2. Concatenation: `list1 ++ list2`
 
-### Dict
+#### Dict
 
 1. Splat: `dict(...dict1, ...dict2)`
 2. Merge: `dict1 ~~ dict2`
 (`dict2` overrides keys in `dict1` in both cases)
 
-### Set
+#### Set
 
 1. Splat: `set(...set1, ...set2)`
 2. Union: `set1 + set2`
 
-### Tuple/Object
+#### Tuple/Object
 
 1. Splat: `{...obj1, ...obj2}`
 2. Merge: `obj1 ~~ obj2`
-* Though it's important to point out that the merge strategy of `...` is *different* from the merge stragegy of `~~` - positional values will be overridden using `~~` and concatenated using `...`.
 
 I think this is a nice symmetry, and also the operators indicate (somewhat) the type that is being operated on.
 
-## Array/Dict/Tuple/Object Access / Property Access
+### Array/Dict/Tuple/Object Access / Property Access
 
-Property access looks like you'd expect `object.property`, and works on objects and dicts. `[]` works on all container types (object, dict, tuple, array), and accepts expressions (e.g. `object["foo"] --> object.foo` or `array[1 + 1] --> array[2]`).
+Property access looks like you'd expect `object.property`, and works on objects and dicts. `[]` works on all container types (object, dict, tuple, array), and accepts expressions (e.g. `object["foo"] --> object.foo` or `array[1 + 1] --> array[2]`). Tuples should use property access `tuple.0` but you _can_ use an array index if you're careful.
 
-An important difference with property access and array access is that property access will prefer built-in properties, whereas array access will always search for the value in the table. For example, Dict defines `map` and `mapEntries` methods, and so `things.map` will call that function. But `things["map"]` will ignore the built-in function and instead search for an entry named `map` and return that (or `null` - it will not return the map function).
+```extra
+-- tuple: {Int, String, name: String}
+tuple[0] == tuple.0 -- indexing with an int literal is fine
+--> Int
+
+-- x: Int
+tuple[x] --> ❌
+
+-- x: 0 | 1
+tuple[x] --> oneOf(tuple.0, tuple.1) --> Int | String
+```
+
+An important difference with property access and array access is that property access will prefer built-in properties, whereas array access will always search for the value in the table. For example, Dict defines `map` and `mapEntries` methods, and so `dict.map` will call that function. But `dict["map"]` will ignore the built-in function and instead search for an entry named `map` and return that. It will never return the built-in 'map' function.
+
+Yes I tried to make Extra familiar to JavaScript devs, but no I'm not going to copy parts that would clutter the language with ambiguities.
 
 If the property access isn't a build-in, it will search for that property in the Dict/Object. So `things.foo == things['foo']`. These will return `T | null` unless the key is known to be in the dict/object:
 
 ```extra
 let
-  values: Array(Int) = [1,2,3]
+  ages: Dict(Int) = [alice: 50, bob: 46]
 in
-  values[2]  --> 3
-
-
-let
-  ages: Dict(Int) = [alice: 50, bob: 46, map: 10]
-in
-  ages['alice']  --> 50
-  ages.bob       --> 46
+  ages['alice']  --> returns 50
+  ages.bob       --> returns 46
   ages.map       --> `map` function, which iterates over the values
-  ages['map']    --> 10
+  ages['map']    --> returns null
 
--- null safe, ie if person could be null
-person?.address.street ?? 'default address'  --> returns person.address.street if person is defined, otherwise returns 'default address' due to null coalescing operator
+-- there is also a "null safe" property access operator
+-- ie if `person` could be null:
+person?.address.street ?? 'default address'
+--> returns person.address.street if person is defined, otherwise returns 'default address' due to null coalescing operator
 ```
 
-## Pipe Operator
+### Pipe Operator
 
 Everyone's favourite! Well it's _my_ favourite, and if you haven't used it today's your day. It's more likely that you've used chained methods – the pipe operator is a natural companion, but in cases where a chained method isn't an option. Here's an example that surrounds a stringified array with `"[]"` characters, _and_ adds a trailing comma if the array wasn't empty.
 
 ```extra
 [1,2,3].filter(fn(i) => i < 3).join(',')
   |>
-    if(#.length) {
-    then:
-      $# <> ','
-    else
-      ''
+    if (#.length) {
+      then:
+        $# <> ','
+      else
+        ''
     }
   |>
     `[$#]`  --> `"[1,2,3,]"`
@@ -1555,14 +1439,13 @@ There's a clever trick with the `=>` operator that allows us to "name" the `#` s
 ```extra
 [1,2,3].filter(fn(i) => i < 3).join(',')
   |> numbers =>
-    if(numbers.length) {
-    then:
-      $numbers <> ','
-    else:
-      ''
+    if (numbers.length) {
+      then:
+        $numbers <> ','
+      else:
+        ''
     }
   |> numbers => `[$numbers]`  --> `"[1,2,3,]"`
-
 ```
 
 [^1]: JSX
@@ -1575,7 +1458,7 @@ Similarties:
 
   ```extra
   <Foo>Name: {@user.name}</Foo>
-  <Foo>Item 1: {if(foo) { then: <Item1 />, else: <Item 2/>}}</Foo>
+  <Foo>Item 1: {if (foo) { then: <Item1 />, else: <Item 2/>}}</Foo>
   ```
 
 The differences from React JSX:
