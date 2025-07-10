@@ -54,7 +54,7 @@ describe('type refinements', () => {
         const [expression] = parseInternalTest(formula, 'argument_type').get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
-        const type = expression!.getArgType(typeRuntime).get()
+        const type = expression!.getAsTypeExpression(typeRuntime).get()
         expect(type.toString()).toEqual(expected ?? formula)
       }),
     )
@@ -91,7 +91,7 @@ describe('type refinements', () => {
         const [expression] = parseInternalTest(formula, 'argument_type').get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
-        const type = expression!.getArgType(typeRuntime).get()
+        const type = expression!.getAsTypeExpression(typeRuntime).get()
         expect(type.toString()).toEqual(expected ?? formula)
       }),
     )
@@ -137,7 +137,7 @@ describe('type refinements', () => {
         const [expression] = parseInternalTest(formula, 'argument_type').get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
-        const type = expression!.getArgType(typeRuntime).get()
+        const type = expression!.getAsTypeExpression(typeRuntime).get()
         expect(type.toString()).toEqual(expected ?? formula)
       }),
     )

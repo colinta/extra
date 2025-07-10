@@ -159,9 +159,18 @@ export function assignNextRuntime(
       continue
     }
 
-    const nextType = mergeAssignableType(prevType, comparison, formula)
-    if (nextType !== prevType) {
-      mutateRuntime(nextRuntime, assignable, nextType)
+    if (prevType instanceof Types.OneOfType) {
+      const nextTypes: Types.Type[] = []
+      for (const oneOfType of prevType.of) {
+        nextTypes.push(mergeAssignableType(oneOfType, comparison, formula))
+      }
+      const nextOneOfType = Types.oneOf(nextTypes)
+      mutateRuntime(nextRuntime, assignable, nextOneOfType)
+    } else {
+      const nextType = mergeAssignableType(prevType, comparison, formula)
+      if (nextType !== prevType) {
+        mutateRuntime(nextRuntime, assignable, nextType)
+      }
     }
   }
 
@@ -237,7 +246,8 @@ function mergeAssignableType(
     return mergeAssignableTypeNull(assignableType, comparison, formula)
   }
 
-  return Types.NeverType
+  throw `TODO - do something with ${assignableType} in mergeAssignableType (or ignore?)`
+  return assignableType
 }
 
 function mutateRuntime(

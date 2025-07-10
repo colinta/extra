@@ -900,7 +900,7 @@ export class TypeConstructor extends NamedFormulaType {
   }
 
   fromTypeConstructor(): Type {
-    return this.returnType
+    return this.intendedType
   }
 }
 
@@ -909,6 +909,14 @@ export abstract class OneOfType extends Type {
 
   constructor(readonly of: Type[]) {
     super()
+  }
+
+  fromTypeConstructor(): Type {
+    const types = this.of.map(type => type.fromTypeConstructor())
+    if (types.every((type, index) => this.of[index] === type)) {
+      return this
+    }
+    return oneOf(types)
   }
 
   typeConstructor(): TypeConstructor {

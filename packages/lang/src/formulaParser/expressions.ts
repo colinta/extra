@@ -112,11 +112,11 @@ export abstract class Expression {
   /**
    * Converts a "type expression" into the type it represents (usually a `TypeConstructor`).
    *
-   * - `Int` is both a value, a function that accepts a `String|number` and returns
-   *   `Int|null`: `foo(Int(value)) --> foo(Int | null)`
+   * - `Int` as a value is a function that accepts a `String|Int|Float` and returns
+   *   `Int?`: `Int(value) --> Int?`
    * - and a type expression: `foo(#a: Int) --> foo(123)`
    */
-  getArgType(_runtime: TypeRuntime): GetTypeResult {
+  getAsTypeExpression(_runtime: TypeRuntime): GetTypeResult {
     return err(new RuntimeError(this, `Invalid argument type ${this}`))
   }
   abstract eval(runtime: ValueRuntime): GetValueResult
@@ -172,22 +172,6 @@ export abstract class Expression {
    */
   isLengthExpression(_runtime: TypeRuntime) {
     return ok(false)
-  }
-
-  /**
-   * The type that is represented by this expression.
-   *
-   * Types that return a TypeConstructor (like IntTypeExpression et al) will return
-   * their associated type (e.g. `IntType`).
-   */
-  typeAssertion(runtime: TypeRuntime): GetTypeResult {
-    return this.getType(runtime).map(type => {
-      if (type instanceof Types.TypeConstructor) {
-        return ok(type.intendedType)
-      }
-
-      return type
-    })
   }
 
   /**
@@ -414,13 +398,9 @@ export class Reference extends Identifier {
     return err(new RuntimeError(this, `Cannot get type of variable named '${this.name}'`))
   }
 
-  getArgType(runtime: TypeRuntime): GetTypeResult {
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.getType(runtime).map(type => {
-      if (type instanceof Types.TypeConstructor) {
-        return type.intendedType
-      }
-
-      return type
+      return type.fromTypeConstructor()
     })
   }
 
@@ -623,19 +603,6 @@ export class ObjectExpression extends Expression {
   toCode() {
     return wrapValues('{', this.values, '}')
   }
-
-  typeAssertion(): GetTypeResult {
-    throw new Error('Never happens?')
-  }
-  // typeAssertion(runtime: TypeRuntime) {
-  //   return mapAll(
-  //     this.values.map(arg =>
-  //       arg.value.typeAssertion(runtime).map(type => [arg.alias, type] as [string, Types.Type]),
-  //     ),
-  //   ).map(types => {
-  //     const props = new Map<string, Types.Type>(types)
-  //     return new Types.ObjectType(props)
-  //   })
 
   getType(runtime: TypeRuntime): GetTypeResult {
     return mapAll(
@@ -1136,9 +1103,9 @@ export class NamespaceAccessExpression extends TypeExpression {
     return `${this.lhs.toCode()}.${this.rhs.toCode()}`
   }
 
-  getArgType(runtime: TypeRuntime): GetTypeResult {
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     if (this.lhs instanceof NamespaceAccessExpression) {
-      return this.lhs.getArgType(runtime).map(type => {
+      return this.lhs.getAsTypeExpression(runtime).map(type => {
         if (!(type instanceof Types.ObjectType)) {
           return err(
             new RuntimeError(
@@ -1223,7 +1190,7 @@ export class OneOfTypeExpression extends TypeExpression {
     ).map(types => Types.oneOf(types))
   }
 
-  getArgType(runtime: TypeRuntime): GetTypeResult {
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.getType(runtime)
   }
 }
@@ -1312,19 +1279,6 @@ export class ObjectTypeExpression extends TypeExpression {
     return wrapStrings('{', code, '}')
   }
 
-  typeAssertion(): GetTypeResult {
-    throw new Error('Never happens?')
-    // typeAssertion(runtime: TypeRuntime) {
-    //   return mapAll(
-    //     this.values.map(arg =>
-    //       arg.value.typeAssertion(runtime).map(type => [arg.alias, type] as [string, Types.Type]),
-    //     ),
-    //   ).map(types => {
-    //     const props = new Map<string, Types.Type>(types)
-    //     return new Types.ObjectType(props)
-    //   })
-  }
-
   getType(_runtime: TypeRuntime): GetTypeResult {
     return err(new RuntimeError(this, 'ObjectType has no intrinsic type'))
   }
@@ -1359,17 +1313,13 @@ export class ArrayTypeExpression extends TypeExpression {
     return Types.ArrayType.desc(this.of.toCode(0), this.narrowed)
   }
 
-  typeAssertion(runtime: TypeRuntime) {
-    return this.of.typeAssertion(runtime).map(type => Types.array(type, this.narrowed))
-  }
-
   getType() {
     return err(new RuntimeError(this, 'ArrayType has no intrinsic type'))
   }
 
-  getArgType(runtime: TypeRuntime): GetTypeResult {
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.of
-      .getArgType(runtime)
+      .getAsTypeExpression(runtime)
       .map(type => new Types.ArrayType(type, this.narrowed).fromTypeConstructor())
   }
 }
@@ -1406,18 +1356,12 @@ export class DictTypeExpression extends TypeExpression {
     return Types.DictType.desc(this.of.toCode(0), this.narrowedNames, this.narrowedLength)
   }
 
-  typeAssertion(runtime: TypeRuntime) {
-    return this.of
-      .typeAssertion(runtime)
-      .map(type => Types.dict(type, this.narrowedLength, this.narrowedNames))
-  }
-
   getType() {
     return err(new RuntimeError(this, 'DictType has no intrinsic type'))
   }
 
-  getArgType(runtime: TypeRuntime): GetTypeResult {
-    return this.of.getArgType(runtime).map(type => {
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return this.of.getAsTypeExpression(runtime).map(type => {
       return new Types.DictType(type, this.narrowedLength, this.narrowedNames).fromTypeConstructor()
     })
   }
@@ -1449,16 +1393,12 @@ export class SetTypeExpression extends TypeExpression {
     return Types.SetType.desc(this.of.toCode(0), this.narrowedLength)
   }
 
-  typeAssertion(runtime: TypeRuntime) {
-    return this.of.typeAssertion(runtime).map(type => Types.set(type, this.narrowedLength))
-  }
-
   getType() {
     return err(new RuntimeError(this, 'SetType has no intrinsic type'))
   }
 
-  getArgType(runtime: TypeRuntime): GetTypeResult {
-    return this.of.getArgType(runtime).map(type => {
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return this.of.getAsTypeExpression(runtime).map(type => {
       return new Types.SetType(type, this.narrowedLength).fromTypeConstructor()
     })
   }
@@ -2035,10 +1975,6 @@ export abstract class ReservedWord extends Identifier {
     return this.name
   }
 
-  typeAssertion(): GetTypeResult {
-    return ok(Types.NeverType)
-  }
-
   getType(_runtime: TypeRuntime): GetTypeResult {
     return err(new RuntimeError(this, `${this.name} does not have a type`))
   }
@@ -2149,10 +2085,6 @@ export class SetConstructorIdentifier extends ReservedWord {
 export class ThisIdentifier extends ReservedWord {
   readonly name = 'this'
 
-  typeAssertion(): GetTypeResult {
-    return ok(Types.NeverType)
-  }
-
   getType() {
     return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
   }
@@ -2172,7 +2104,7 @@ abstract class TypeIdentifier extends Identifier {
     return '`' + this.toCode() + '`'
   }
 
-  getArgType(runtime: TypeRuntime): GetTypeResult {
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.getType(runtime).map(type => {
       if (type instanceof Types.TypeConstructor) {
         return type.intendedType
@@ -2196,10 +2128,6 @@ export class NullExpression extends TypeIdentifier {
 
   relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
     return relationshipFormula.null()
-  }
-
-  typeAssertion(): GetTypeResult {
-    return ok(Types.NullType)
   }
 
   getType(): GetTypeResult {
@@ -2270,11 +2198,7 @@ export class BooleanTypeExpression extends TypeIdentifier {
     return Types.BooleanType
   }
 
-  typeAssertion(): GetTypeResult {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getArgType(): GetTypeResult {
+  getAsTypeExpression(): GetTypeResult {
     return ok(this.safeTypeAssertion())
   }
 
@@ -2310,11 +2234,7 @@ export class FloatTypeExpression extends TypeIdentifier {
     }
   }
 
-  typeAssertion() {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getArgType(): GetRuntimeResult<Types.Type> {
+  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
     return ok(this.safeTypeAssertion())
   }
 
@@ -2350,11 +2270,7 @@ export class IntTypeExpression extends TypeIdentifier {
     }
   }
 
-  typeAssertion() {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getArgType(): GetRuntimeResult<Types.Type> {
+  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
     return ok(this.safeTypeAssertion())
   }
 
@@ -2390,11 +2306,7 @@ export class StringTypeExpression extends TypeIdentifier {
     }
   }
 
-  typeAssertion() {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getArgType(): GetRuntimeResult<Types.Type> {
+  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
     return ok(this.safeTypeAssertion())
   }
 
@@ -2536,11 +2448,7 @@ export class ViewTypeExpression extends TypeIdentifier {
     return Types.UserViewType
   }
 
-  typeAssertion() {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getArgType(): GetRuntimeResult<Types.Type> {
+  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
     return ok(this.safeTypeAssertion())
   }
 
@@ -3172,7 +3080,7 @@ export class FormulaExpression extends Expression {
 
           argType = ok(inferArgType)
         } else {
-          argType = arg.argType.getArgType(runtime)
+          argType = arg.argType.getAsTypeExpression(runtime)
         }
 
         return argType.map(type => {
@@ -3557,10 +3465,6 @@ abstract class ViewExpression extends Expression {
 
   toCode() {
     return this.toViewChildrenCode()
-  }
-
-  typeAssertion(runtime: TypeRuntime) {
-    return this.getType(runtime)
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {

@@ -1504,7 +1504,7 @@ abstract class TypeAssertionOperator extends BinaryOperator {
   ): GetRuntimeResult<TypeRuntime> {
     const [lhsExpr, rhsExpr] = this.args
     return rhsExpr
-      .typeAssertion(runtime)
+      .getAsTypeExpression(runtime)
       .map(rhsTypeAssertion =>
         getChildType(this, lhsExpr, runtime).map(lhsType => [lhsType, rhsTypeAssertion]),
       )
@@ -1521,7 +1521,7 @@ abstract class TypeAssertionOperator extends BinaryOperator {
     _lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
-    return rhsExpr.typeAssertion(runtime).map(() => Types.BooleanType)
+    return rhsExpr.getAsTypeExpression(runtime).map(() => Types.BooleanType)
   }
 
   operatorEval(
@@ -1531,7 +1531,7 @@ abstract class TypeAssertionOperator extends BinaryOperator {
     _lhsExpr: Expression,
     rhsExpr: Expression,
   ): GetRuntimeResult<Values.BooleanValue> {
-    return rhsExpr.typeAssertion(runtime).map(rhsType => {
+    return rhsExpr.getAsTypeExpression(runtime).map(rhsType => {
       return Values.booleanValue(Types.canBeAssignedTo(lhs.getType(), rhsType))
     })
   }
