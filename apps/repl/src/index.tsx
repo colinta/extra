@@ -316,11 +316,6 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
           continue
         }
 
-        console.log('=========== index.tsx at line 320 ===========')
-        console.log({
-          name,
-          'typeResolved.value': typeResolved.value.fromTypeConstructor(),
-        })
         typeRuntime.addLocalType(name, typeResolved.value.fromTypeConstructor())
       } else {
         typeRuntime.addLocalType(name, formulaType.value)
@@ -509,6 +504,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
 }
 
 let exit = () => {}
+
 ;(async function () {
   if (process.argv.includes('--wait')) {
     console.log('Listening to port 8080...')

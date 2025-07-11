@@ -1,4 +1,4 @@
-import {inspect as nodeInspect} from 'util'
+import {inspect as nodeInspect} from 'node:util'
 
 export const inspectable = Symbol('inspectable')
 
