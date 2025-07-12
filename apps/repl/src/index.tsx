@@ -480,8 +480,11 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
         </Box>
       </Stack.right>
       <Stack.right>
-        ⌃Q to quit – ⇥ to change fields{' '}
-        <Button title="" hotKey={{char: 'q', ctrl: true}} onClick={exit} />
+        <Button
+          title="⌃Q to quit – ⇥ to change fields "
+          hotKey={{char: 'q', ctrl: true}}
+          onClick={exit}
+        />
         <Space flex={1} minWidth={1} />
         <Text padding={{right: 1}}>
           <Style foreground="red">
@@ -503,7 +506,10 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
   )
 }
 
-let exit = () => {}
+const exit = () => {
+  doExit()
+}
+let doExit = () => {}
 
 ;(async function () {
   if (process.argv.includes('--wait')) {
@@ -516,8 +522,7 @@ let exit = () => {}
   }
 
   const [screen] = await run(<App />)
-  exit = () => {
+  doExit = () => {
     screen.exit()
-    process.exit(0)
   }
 })()
