@@ -776,16 +776,15 @@ export class FormulaType extends Type {
   }
 
   generics() {
-    const generics = new Set<GenericType>()
-    const allTypes = this.args.map(({type}) => type)
-    for (const type of allTypes) {
-      for (const generic of type.generics()) {
+    let generics = new Set<GenericType>()
+    const allGenerics = this.args
+      .map(({type}) => type)
+      .flatMap(type => type.generics())
+      .concat([this.returnType.generics()])
+    for (const genericSet of allGenerics) {
+      for (const generic of genericSet) {
         generics.add(generic)
       }
-    }
-
-    for (const generic of this.returnType.generics()) {
-      generics.add(generic)
     }
 
     return generics
@@ -851,6 +850,8 @@ export class FormulaType extends Type {
     return undefined
   }
 }
+
+export class LazyFormulaType extends FormulaType {}
 
 export class ViewFormulaType extends FormulaType {
   readonly is = 'view'
@@ -3262,7 +3263,7 @@ function compatibleWithBothFormulas(lhs: FormulaType, rhs: FormulaType) {
 
   const returnType = compatibleWithBothTypes(lhs.returnType, rhs.returnType)
 
-  if (lhs.genericTypes.length || rhs.genericTypes.length) {
+  if (lhs.generics().size || rhs.generics().size) {
     throw 'TODO'
   }
 

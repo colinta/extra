@@ -2828,7 +2828,7 @@ export class FormulaTypeArgumentAndType extends ArgumentExpression {
   }
 
   formulaArgumentType(runtime: TypeRuntime): GetRuntimeResult<Types.Argument> {
-    return this.getAsTypeExpression(runtime).map(type => {
+    return this.argType.getAsTypeExpression(runtime).map(type => {
       // scanArgumentType already verifies that 'type' is correct (Array/Dict)
       // for the spread/kwargs-argument types.
       if (this.spreadArg === 'kwargs') {
@@ -2924,6 +2924,7 @@ export class FormulaTypeExpression extends Expression {
     precedingComments: Comment[],
     readonly argDefinitions: FormulaTypeArgumentDeclarations,
     readonly returnType: Expression,
+    readonly generics: string[],
   ) {
     super(range, precedingComments)
   }
@@ -2943,11 +2944,21 @@ export class FormulaTypeExpression extends Expression {
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    const args = this.argDefinitions.args.map(arg => arg.formulaArgumentType(runtime))
     const generics: Types.GenericType[] = []
-    return this.returnType
-      .getAsTypeExpression(runtime)
-      .map(returnType => Types.formula(args, returnType, generics))
+    const mutableRuntime = new MutableTypeRuntime(runtime)
+    for (const generic of this.generics) {
+      const genericType = new Types.GenericType(generic)
+      generics.push(genericType)
+      mutableRuntime.addLocalType(generic, genericType)
+    }
+
+    return mapAll(this.argDefinitions.args.map(arg => arg.formulaArgumentType(mutableRuntime))).map(
+      args => {
+        return this.returnType
+          .getAsTypeExpression(mutableRuntime)
+          .map(returnType => Types.formula(args, returnType, generics))
+      },
+    )
   }
 
   getType() {
@@ -3191,8 +3202,11 @@ export class FormulaExpression extends Expression {
     formulaType?: Types.FormulaType | undefined,
   ): GetRuntimeResult<Types.FormulaType> {
     const mutableRuntime = new MutableTypeRuntime(runtime)
+    const genericTypes: Types.GenericType[] = []
     for (const generic of this.generics) {
-      mutableRuntime.addLocalType(generic, new Types.GenericType(generic))
+      const genericType = new Types.GenericType(generic)
+      genericTypes.push(genericType)
+      mutableRuntime.addLocalType(generic, genericType)
     }
 
     const argResults = this.argumentTypes(mutableRuntime, formulaType)
@@ -3213,8 +3227,7 @@ export class FormulaExpression extends Expression {
       returnTypeResult = mapAll([
         bodyReturnType,
         getChildType(this, this.returnType, mutableRuntime),
-      ]).map(types => {
-        const [bodyType, typeConstructor] = types
+      ]).map(([bodyType, typeConstructor]) => {
         let returnType: Types.Type
         if (typeConstructor instanceof Types.GenericType) {
           returnType = typeConstructor
@@ -3247,8 +3260,6 @@ export class FormulaExpression extends Expression {
     }
 
     const returnType = returnTypeResult.get()
-
-    const genericTypes = this.generics.map(name => new Types.GenericType(name))
 
     if (this.nameRef) {
       return ok(new Types.NamedFormulaType(this.nameRef.name, returnType, args, genericTypes))

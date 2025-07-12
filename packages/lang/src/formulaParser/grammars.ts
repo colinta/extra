@@ -99,8 +99,8 @@ export const BLOCK_CLOSE = '}'
 export const PARENS_OPEN = '('
 export const PARENS_CLOSE = ')'
 
-export const TYPE_OPEN = '<'
-export const TYPE_CLOSE = '>'
+export const GENERIC_OPEN = '<'
+export const GENERIC_CLOSE = '>'
 
 export const OBJECT_WORD_START = 'object'
 export const OBJECT_OPEN = '{'

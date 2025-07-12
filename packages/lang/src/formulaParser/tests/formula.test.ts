@@ -38,6 +38,14 @@ describe('formulas', () => {
       c(['fn(...a: Array(Int)): Int => 0', '(fn ((...a: Array(`Int`))) : `Int` => 0)']),
       c(['fn(a: Int): Int => 0', '(fn ((a: `Int`)) : `Int` => 0)']),
       c(['fn(a: Int, #b: Int): Int => 0', '(fn ((a: `Int`) (#b: `Int`)) : `Int` => 0)']),
+      c([
+        'fn(a: fn(): Int, #b: fn(): Int): fn(): Int => fn() => a() + b()',
+        '(fn ((a: (fn () : (`Int`))) (#b: (fn () : (`Int`)))) : (fn () : (`Int`)) => (fn () => (+ (fn a ()) (fn b ()))))',
+      ]),
+      c([
+        'fn<T>(a: fn(): T, #b: fn(): T): T => b()',
+        '(fn <T> ((a: (fn () : (T))) (#b: (fn () : (T)))) : T => (fn b ()))',
+      ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         expectedCode ??= formula

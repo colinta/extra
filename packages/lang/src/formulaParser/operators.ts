@@ -2567,44 +2567,46 @@ abstract class PropertyChainOperator extends BinaryOperator {
 
   getType(runtime: TypeRuntime): GetTypeResult {
     const [lhsExpr, rhsExpr] = this.args
+    let lhsResult: GetTypeResult
     if (lhsExpr instanceof PropertyChainOperator) {
-      return lhsExpr
-        .getChainLhsType(runtime)
-        .mapResult(decorateError(this))
-        .map(lhs => {
-          if (
-            this.isNullCoalescing() &&
-            (!(lhs instanceof Types.OneOfType) || !lhs.of.some(of => of.isNull()))
-          ) {
-            return err(
-              new RuntimeError(
-                this,
-                `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${lhs}`,
-              ),
-            )
-          }
-
-          if (lhs instanceof Types.OneOfType) {
-            return mapAll(
-              lhs.of.map(
-                oneLhType =>
-                  guardNeverType(oneLhType) ??
-                  this.chainOperatorType(runtime, oneLhType, lhsExpr, rhsExpr),
-              ),
-            ).map(Types.oneOf)
-          }
-
-          return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
-        })
-        .map(lhs => {
-          if (this.hasNullCoalescing()) {
-            return Types.optional(lhs)
-          }
-          return lhs
-        })
+      lhsResult = lhsExpr.getChainLhsType(runtime)
+    } else {
+      lhsResult = lhsExpr.getType(runtime)
     }
 
-    return super.getType(runtime)
+    return lhsResult
+      .mapResult(decorateError(this))
+      .map(lhs => {
+        if (
+          this.isNullCoalescing() &&
+          (!(lhs instanceof Types.OneOfType) || !lhs.of.some(of => of.isNull()))
+        ) {
+          return err(
+            new RuntimeError(
+              this,
+              `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${lhs}`,
+            ),
+          )
+        }
+
+        if (lhs instanceof Types.OneOfType) {
+          return mapAll(
+            lhs.of.map(
+              oneLhType =>
+                guardNeverType(oneLhType) ??
+                this.chainOperatorType(runtime, oneLhType, lhsExpr, rhsExpr),
+            ),
+          ).map(Types.oneOf)
+        }
+
+        return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+      })
+      .map(lhs => {
+        if (this.hasNullCoalescing()) {
+          return Types.optional(lhs)
+        }
+        return lhs
+      })
   }
 }
 

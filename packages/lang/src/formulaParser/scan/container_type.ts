@@ -8,8 +8,8 @@ import {
   ARRAY_OPEN,
   OBJECT_CLOSE,
   OBJECT_OPEN,
-  TYPE_OPEN,
-  TYPE_CLOSE,
+  GENERIC_OPEN,
+  GENERIC_CLOSE,
   PARENS_OPEN,
   PARENS_CLOSE,
   ARRAY_WORD_START,
@@ -158,10 +158,10 @@ export function scanObject(
  */
 function scanOptionalGeneric(scanner: Scanner, parseNext: ParseNext) {
   let generic: Expression
-  if (scanner.scanIfString(TYPE_OPEN)) {
+  if (scanner.scanIfString(GENERIC_OPEN)) {
     generic = scanArgumentType(scanner, 'argument_type', 'type', parseNext)
     scanner.scanAllWhitespace()
-    scanner.expectString(TYPE_CLOSE, `Expected '${TYPE_CLOSE}'`)
+    scanner.expectString(GENERIC_CLOSE, `Expected '${GENERIC_CLOSE}'`)
   } else {
     generic = new Expressions.InferIdentifier([scanner.charIndex, scanner.charIndex], [])
   }

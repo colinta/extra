@@ -2,7 +2,7 @@ import * as Expressions from '../expressions'
 import {type Expression} from '../expressions'
 import {type Scanner} from '../scanner'
 import {type ExpressionType, type Comment, ParseError, type ParseNext} from '../types'
-import {FUNCTION_BODY_START, TYPE_CLOSE, TYPE_OPEN, isArgumentStartChar} from '../grammars'
+import {FUNCTION_BODY_START, GENERIC_CLOSE, GENERIC_OPEN, isArgumentStartChar} from '../grammars'
 
 import {scanArgumentType} from './scanArgumentType'
 import {scanFormulaArgumentDefinitions} from './formula_arguments'
@@ -139,10 +139,10 @@ function _scanFormula(
 
   let generics: string[] = []
   if (type === 'fn') {
-    if (scanner.scanIfString(TYPE_OPEN)) {
+    if (scanner.scanIfString(GENERIC_OPEN)) {
       generics = scanGenerics(scanner, parseNext)
     }
-  } else if (scanner.scanIfString(TYPE_OPEN)) {
+  } else if (scanner.scanIfString(GENERIC_OPEN)) {
     throw new ParseError(scanner, `Unexpected generic in ${type} function`)
   }
 
@@ -239,6 +239,10 @@ function _scanFormula(
   }
 }
 
+/**
+ * Scans generic names just after the '<'.
+ * Ends after it scans a closing '>'.
+ */
 export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
   const generics: string[] = []
   scanner.scanAllWhitespace()
@@ -269,7 +273,7 @@ export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
     generics.push(generic)
 
     const shouldBreak = scanner.scanCommaOrBreak(
-      TYPE_CLOSE,
+      GENERIC_CLOSE,
       `Expected ',' separating items in the object`,
     )
 

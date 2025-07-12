@@ -21,6 +21,7 @@ import {type Scanner} from '../scanner'
 import {type ArgumentType, ParseError, type ParseNext, type ExpressionType} from '../types'
 
 import {unexpectedToken} from './basics'
+import {scanGenerics} from './formula'
 import {
   scanFormulaArgumentDefinitions,
   scanFormulaTypeArgumentDefinitions,
@@ -313,6 +314,12 @@ function scanFormulaType(
   parseNext: ParseNext,
   applicationOrArgument: ArgumentType,
 ) {
+  let generics: string[]
+  if (scanner.scanIfString('<')) {
+    generics = scanGenerics(scanner, parseNext)
+  } else {
+    generics = []
+  }
   const argDefinitions = scanFormulaTypeArgumentDefinitions(scanner, expressionType, parseNext)
 
   let returnType: Expression
@@ -331,6 +338,7 @@ function scanFormulaType(
     scanner.flushComments(),
     argDefinitions,
     returnType,
+    generics,
   )
 }
 

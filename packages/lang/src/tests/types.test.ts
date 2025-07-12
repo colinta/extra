@@ -197,205 +197,222 @@ describe('arrayAccess', () => {
 
 describe('checkFormulaArguments (argument checking and generics resolution)', () => {
   // fn<T>(#arg: T): T
-  const genericTypeT = Types.generic('T')
-  const genericTypeU = Types.generic('U')
+  describe('formula', () => {
+    const genericTypeT = Types.generic('T')
 
-  const formula = Types.formula(
-    [Types.positionalArgument({name: 'arg', type: genericTypeT, isRequired: true})],
-    genericTypeT,
-    [genericTypeT],
-  )
-  describe(formula.toCode(), () => {
-    cases<[Types.Type[], Types.Type]>(
-      // fn(int): int
-      c([[Types.int()], Types.int()]),
-      // fn(1): 1
-      c([[Types.literal(1)], Types.literal(1)]),
-    ).run(([args, expected], {only, skip}) => {
-      ;(only ? it.only : skip ? it.skip : it)(`successfully derives ${expected.toCode()}`, () => {
-        const genericResolution = new Map([[genericTypeT, Types.generic('T')]])
-        const errorMessage = Types.checkFormulaArguments(
-          formula,
-          args.length,
-          [],
-          position => args[position],
-          position => [],
-          // spreadPositionalArguments:
-          [],
-          // spreadDictArguments:
-          new Map(),
-          // keywordListArguments:
-          [],
-          genericResolution,
-        )
-        expect(errorMessage).toBeUndefined()
-        expect(genericResolution.get(genericTypeT)!.resolvedType).toEqual(expected)
+    const formula = Types.formula(
+      [Types.positionalArgument({name: 'arg', type: genericTypeT, isRequired: true})],
+      genericTypeT,
+      [genericTypeT],
+    )
+    describe(formula.toCode(), () => {
+      cases<[Types.Type[], Types.Type]>(
+        // fn(int): int
+        c([[Types.int()], Types.int()]),
+        // fn(1): 1
+        c([[Types.literal(1)], Types.literal(1)]),
+      ).run(([args, expected], {only, skip}) => {
+        ;(only ? it.only : skip ? it.skip : it)(`successfully derives ${expected.toCode()}`, () => {
+          const genericResolution = new Map([[genericTypeT, Types.generic('T')]])
+          const errorMessage = Types.checkFormulaArguments(
+            formula,
+            args.length,
+            [],
+            position => args[position],
+            position => [],
+            // spreadPositionalArguments:
+            [],
+            // spreadDictArguments:
+            new Map(),
+            // keywordListArguments:
+            [],
+            genericResolution,
+          )
+          expect(errorMessage).toBeUndefined()
+          expect(genericResolution.get(genericTypeT)!.resolvedType).toEqual(expected)
+        })
       })
     })
   })
 
-  // fn<T, U>(#callback: fn(#input: T): U, #values: T[]): U[]
-  const mapFormula = Types.formula(
-    [
-      Types.positionalArgument({
-        name: 'callback',
-        type: Types.formula(
-          [Types.positionalArgument({name: 'input', type: genericTypeT, isRequired: true})],
-          genericTypeU,
-        ),
-        isRequired: true,
-      }),
-      Types.positionalArgument({name: 'values', type: Types.array(genericTypeT), isRequired: true}),
-    ],
-    Types.array(genericTypeU),
-    [genericTypeT, genericTypeU],
-  )
-  describe(mapFormula.toCode(), () => {
-    it(`toCode`, () => {
-      expect(mapFormula.toCode()).toEqual(
-        'fn<T, U>(#callback: fn(#input: T): U, #values: Array(T)): Array(U)',
-      )
-    })
-
-    cases<[Types.Type[], [Types.Type, Types.Type] | string]>(
-      c([
-        // fn( fn(int): string, [Int]): [String]
-        // T: int, U: string
-        [
-          Types.formula(
-            [Types.positionalArgument({name: 'callback', type: Types.int(), isRequired: true})],
-            Types.string(),
+  describe('mapFormula', () => {
+    const genericTypeT = Types.generic('T')
+    const genericTypeU = Types.generic('U')
+    // fn<T, U>(#callback: fn(#input: T): U, #values: T[]): U[]
+    const mapFormula = Types.formula(
+      [
+        Types.positionalArgument({
+          name: 'callback',
+          type: Types.formula(
+            [Types.positionalArgument({name: 'input', type: genericTypeT, isRequired: true})],
+            genericTypeU,
           ),
-          Types.array(Types.int()),
-        ],
-        [Types.int(), Types.string()],
-      ]),
-      c([
-        // fn( fn(int): string, float[]): string[]
-        // T: int, U: string
-        [
-          Types.formula(
-            [Types.positionalArgument({name: 'callback', type: Types.int(), isRequired: true})],
-            Types.string(),
-          ),
-          Types.array(Types.float()),
-        ],
-        [Types.float(), Types.string()],
-      ]),
-    ).run(([args, expected], {only, skip}) => {
-      let desc: string
-      if (typeof expected === 'string') {
-        desc = `correctly fails on [${args.map(arg => arg.toString()).join(',')}]`
-      } else {
-        const [expectedT, expectedU] = expected
-        desc = `successfully derives T: ${expectedT.toCode()} and U: ${expectedU.toCode()}`
-      }
-
-      ;(only ? it.only : skip ? it.skip : it)(desc, () => {
-        const genericResolution = new Map([
-          [genericTypeT, Types.generic('T')],
-          [genericTypeU, Types.generic('U')],
-        ])
-
-        const errorMessage = Types.checkFormulaArguments(
-          mapFormula,
-          args.length,
-          [],
-          position => args[position],
-          position => [],
-          // spreadPositionalArguments:
-          [],
-          // spreadDictArguments:
-          new Map(),
-          // keywordListArguments:
-          [],
-          genericResolution,
+          isRequired: true,
+        }),
+        Types.positionalArgument({
+          name: 'values',
+          type: Types.array(genericTypeT),
+          isRequired: true,
+        }),
+      ],
+      Types.array(genericTypeU),
+      [genericTypeT, genericTypeU],
+    )
+    describe(mapFormula.toCode(), () => {
+      it(`toCode`, () => {
+        expect(mapFormula.toCode()).toEqual(
+          'fn<T, U>(#callback: fn(#input: T): U, #values: Array(T)): Array(U)',
         )
+      })
 
+      cases<[Types.Type[], [Types.Type, Types.Type] | string]>(
+        c([
+          // fn( fn(int): string, [Int]): [String]
+          // T: int, U: string
+          [
+            Types.formula(
+              [Types.positionalArgument({name: 'callback', type: Types.int(), isRequired: true})],
+              Types.string(),
+            ),
+            Types.array(Types.int()),
+          ],
+          [Types.int(), Types.string()],
+        ]),
+        c([
+          // fn( fn(int): string, float[]): string[]
+          // T: int, U: string
+          [
+            Types.formula(
+              [Types.positionalArgument({name: 'callback', type: Types.int(), isRequired: true})],
+              Types.string(),
+            ),
+            Types.array(Types.float()),
+          ],
+          [Types.float(), Types.string()],
+        ]),
+      ).run(([args, expected], {only, skip}) => {
+        let desc: string
         if (typeof expected === 'string') {
-          expect(errorMessage).toContain(expected)
+          desc = `correctly fails on [${args.map(arg => arg.toString()).join(',')}]`
         } else {
           const [expectedT, expectedU] = expected
-          expect(errorMessage).toBeUndefined()
-          expect(genericResolution.get(genericTypeT)!.resolvedType).toEqual(expectedT)
-          expect(genericResolution.get(genericTypeU)!.resolvedType).toEqual(expectedU)
+          desc = `successfully derives T: ${expectedT.toCode()} and U: ${expectedU.toCode()}`
         }
+
+        ;(only ? it.only : skip ? it.skip : it)(desc, () => {
+          const genericResolution = new Map([
+            [genericTypeT, Types.generic('T')],
+            [genericTypeU, Types.generic('U')],
+          ])
+
+          const errorMessage = Types.checkFormulaArguments(
+            mapFormula,
+            args.length,
+            [],
+            position => args[position],
+            position => [],
+            // spreadPositionalArguments:
+            [],
+            // spreadDictArguments:
+            new Map(),
+            // keywordListArguments:
+            [],
+            genericResolution,
+          )
+
+          if (typeof expected === 'string') {
+            expect(errorMessage).toContain(expected)
+          } else {
+            const [expectedT, expectedU] = expected
+            expect(errorMessage).toBeUndefined()
+            expect(genericResolution.get(genericTypeT)!.resolvedType).toEqual(expectedT)
+            expect(genericResolution.get(genericTypeU)!.resolvedType).toEqual(expectedU)
+          }
+        })
       })
     })
   })
 
-  // fn<T, U>(#callback: fn(#input: T): U | null, #values: T[]): U[]
-  const compactMapFormula = Types.formula(
-    [
-      Types.positionalArgument({
-        name: 'callback',
-        type: Types.formula(
-          [Types.positionalArgument({name: 'input', type: genericTypeT, isRequired: true})],
-          Types.oneOf([genericTypeU, Types.nullType()]),
-        ),
-        isRequired: true,
-      }),
-      Types.positionalArgument({name: 'values', type: Types.array(genericTypeT), isRequired: true}),
-    ],
-    Types.array(genericTypeU),
-    [genericTypeT, genericTypeU],
-  )
-  describe(compactMapFormula.toCode(), () => {
-    it('toCode', () => {
-      expect(compactMapFormula.toCode()).toEqual(
-        'fn<T, U>(#callback: fn(#input: T): U?, #values: Array(T)): Array(U)',
-      )
-    })
+  describe('compactMapFormula', () => {
+    const genericTypeT = Types.generic('T')
+    const genericTypeU = Types.generic('U')
+    // fn<T, U>(#callback: fn(#input: T): U | null, #values: T[]): U[]
+    const compactMapFormula = Types.formula(
+      [
+        Types.positionalArgument({
+          name: 'callback',
+          type: Types.formula(
+            [Types.positionalArgument({name: 'input', type: genericTypeT, isRequired: true})],
+            Types.oneOf([genericTypeU, Types.nullType()]),
+          ),
+          isRequired: true,
+        }),
+        Types.positionalArgument({
+          name: 'values',
+          type: Types.array(genericTypeT),
+          isRequired: true,
+        }),
+      ],
+      Types.array(genericTypeU),
+      [genericTypeT, genericTypeU],
+    )
+    describe(compactMapFormula.toCode(), () => {
+      it('toCode', () => {
+        expect(compactMapFormula.toCode()).toEqual(
+          'fn<T, U>(#callback: fn(#input: T): U?, #values: Array(T)): Array(U)',
+        )
+      })
 
-    const [expectedT, expectedU] = [Types.int(), Types.string()]
+      const [expectedT, expectedU] = [Types.int(), Types.string()]
 
-    it(`successfully derives T: ${expectedT.toCode()} and U: ${expectedU.toCode()}`, () => {
-      // fn<T, U>(
-      //   #callback: fn(#input: T): U?,
-      //   #values: Array(T),
-      // ): Array(U)
-      //
-      // #callback => fn(#value: Int): String?
-      // Int => requirement for T (must be Int or "smaller")
-      // String? => hint for U?
-      // (String => hint for U) (U could be "larger" than String)
-      //
-      // #values => Array(Int)
-      // Array(Int) => hint for Array(T) (T could be "larger" than Int)
-      // (Int => hint for T)
-      //
-      // T => Int,
-      // U => String
-      const args: Types.Type[] = [
-        Types.formula(
-          [Types.positionalArgument({name: 'value', type: Types.int(), isRequired: true})],
-          Types.optional(Types.string()),
-        ),
-        Types.array(Types.int()),
-      ]
+      it(`successfully derives T: ${expectedT.toCode()} and U: ${expectedU.toCode()}`, () => {
+        // fn<T, U>(
+        //   #callback: fn(#input: T): U?,
+        //   #values: Array(T),
+        // ): Array(U)
+        //
+        // #callback => fn(#value: Int): String?
+        // Int => requirement for T (must be Int or "smaller")
+        // String? => hint for U?
+        // (String => hint for U) (U could be "larger" than String)
+        //
+        // #values => Array(Int)
+        // Array(Int) => hint for Array(T) (T could be "larger" than Int)
+        // (Int => hint for T)
+        //
+        // T => Int,
+        // U => String
+        const args: Types.Type[] = [
+          Types.formula(
+            [Types.positionalArgument({name: 'value', type: Types.int(), isRequired: true})],
+            Types.optional(Types.string()),
+          ),
+          Types.array(Types.int()),
+        ]
 
-      const genericResolution = new Map([
-        [genericTypeT, genericTypeT.copy()],
-        [genericTypeU, genericTypeU.copy()],
-      ])
-      const errorMessage = Types.checkFormulaArguments(
-        compactMapFormula,
-        args.length,
-        [],
-        position => args[position],
-        _name => [],
-        // spreadPositionalArguments:
-        [],
-        // spreadDictArguments:
-        new Map(),
-        // keywordListArguments:
-        [],
-        genericResolution,
-      )
+        const genericResolution = new Map([
+          [genericTypeT, genericTypeT.copy()],
+          [genericTypeU, genericTypeU.copy()],
+        ])
+        const errorMessage = Types.checkFormulaArguments(
+          compactMapFormula,
+          args.length,
+          [],
+          position => args[position],
+          _name => [],
+          // spreadPositionalArguments:
+          [],
+          // spreadDictArguments:
+          new Map(),
+          // keywordListArguments:
+          [],
+          genericResolution,
+        )
 
-      expect(errorMessage).toBeUndefined()
-      expect(genericResolution.get(genericTypeT)!.resolvedType).toEqual(expectedT)
-      expect(genericResolution.get(genericTypeU)!.resolvedType).toEqual(expectedU)
+        expect(errorMessage).toBeUndefined()
+        expect(genericResolution.get(genericTypeT)!.resolvedType).toEqual(expectedT)
+        expect(genericResolution.get(genericTypeU)!.resolvedType).toEqual(expectedU)
+      })
     })
   })
 })
