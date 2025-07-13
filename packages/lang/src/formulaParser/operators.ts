@@ -3126,6 +3126,24 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
     lhFormulaExpression: Expression,
     rhArgsExpression: Expression,
   ) {
+    if (!(lhFormulaType instanceof Types.FormulaType)) {
+      return err(
+        new RuntimeError(
+          lhFormulaExpression,
+          `Expected a formula, found '${lhFormulaExpression}' of type '${lhFormulaType}'`,
+        ),
+      )
+    }
+
+    if (!(rhArgsExpression instanceof Expressions.ArgumentsList)) {
+      return err(
+        new RuntimeError(
+          rhArgsExpression,
+          `Expected function arguments, found '${rhArgsExpression}'`,
+        ),
+      )
+    }
+
     return functionInvocationOperatorType(
       runtime,
       lhFormulaType,
@@ -4300,23 +4318,10 @@ type _IntermediateArgs =
 
 function functionInvocationOperatorType(
   runtime: TypeRuntime,
-  formulaType: Types.Type,
+  formulaType: Types.FormulaType,
   formulaExpression: Expression,
-  argsList: Expression,
+  argsList: Expressions.ArgumentsList,
 ): GetTypeResult {
-  if (!(formulaType instanceof Types.FormulaType)) {
-    return err(
-      new RuntimeError(
-        formulaExpression,
-        `Expected a formula, found '${formulaExpression}' of type '${formulaType}'`,
-      ),
-    )
-  }
-
-  if (!(argsList instanceof Expressions.ArgumentsList)) {
-    return err(new RuntimeError(argsList, `Expected function arguments, found '${argsList}'`))
-  }
-
   let positionIndex = 0
   let hasSpreadArrayType = false
   const hasSpreadDictName: Set<string> = new Set()
@@ -4325,47 +4330,51 @@ function functionInvocationOperatorType(
     // - NamedArgument `foo(bar: bar)`
     // - PositionalArgument `foo(bar)`
     // - or SpreadFunctionArgument `foo(...bar)`, `bar` must be an Object or Array
-    // - TODO: or RepeatedFunctionArgument `foo(...name: bar)`, `bar` must be an Array
-    // - TODO: Keyword Argument List `foo(*kwargs)`, `kwargs` must be a Dict
+    // - or RepeatedFunctionArgument `foo(...name: bar)`, `bar` must be an Array
+    // - or Keyword Argument List `foo(*kwargs)`, `kwargs` must be a Dict
     argsList.allArgs.map((providedArg): GetRuntimeResult<_IntermediateArgs[]> => {
-      // this is a buried bit of magic:
-      //
-      // to derive the type of a Formula argument, we should hand it the
-      // argument (also a formula) that is invoking the formula
+      const currentPosition = positionIndex
+      // we can use the argument type (from formulaType) to derive the types of a formula
+      // literal.
       if (providedArg.value instanceof Expressions.FormulaExpression) {
-        // if providedArg is a FormulaExpression and doesn't declare its argument types, we
-        // need to hand it a formula that it can use to derive its argument types.
-        let defaultType: Types.Type | undefined
+        // if providedArg is a FormulaExpression and *doesn't* declare its argument types,
+        // we need to hand it a formula that it can use to derive its argument types.
+        let expectedFormulaType: Types.Type | undefined
 
         if (providedArg instanceof Expressions.NamedArgument) {
-          defaultType = formulaType.namedArg(providedArg.alias)?.type
+          expectedFormulaType = formulaType.namedArg(providedArg.alias)?.type
         } else {
-          defaultType = formulaType.positionalArg(positionIndex)?.type
+          expectedFormulaType = formulaType.positionalArg(positionIndex)?.type
           positionIndex += 1
         }
 
-        if (!defaultType) {
-          let message = 'No default type for argument '
+        // Guard for no argument expected
+        if (!expectedFormulaType) {
+          let message = 'Unexpected argument '
           if (providedArg instanceof Expressions.NamedArgument) {
             message += `'${providedArg.alias}'`
           } else if (providedArg instanceof Expressions.PositionalArgument) {
-            message += `at position #${positionIndex + 1}`
-          }
-
-          return err(new RuntimeError(providedArg, message))
-        } else if (!(defaultType instanceof Types.FormulaType)) {
-          let message = 'Expected argument of type Formula for argument'
-          if (providedArg instanceof Expressions.NamedArgument) {
-            message += `'${providedArg.alias}'`
-          } else if (providedArg instanceof Expressions.PositionalArgument) {
-            message += `at position #${positionIndex + 1}`
+            message += `at position #${currentPosition + 1}`
           }
 
           return err(new RuntimeError(providedArg, message))
         }
 
+        // Guard for wrong argument type
+        if (!(expectedFormulaType instanceof Types.FormulaType)) {
+          let message = `Expected argument of type '${expectedFormulaType.toCode()}' for argument`
+          if (providedArg instanceof Expressions.NamedArgument) {
+            message += `'${providedArg.alias}'`
+          } else if (providedArg instanceof Expressions.PositionalArgument) {
+            message += `at position #${currentPosition + 1}`
+          }
+
+          return err(new RuntimeError(providedArg, message))
+        }
+
+        // FormulaExpression.getType accepts a FormulaType which it can use to resolve inferred arguments.
         return providedArg.value
-          .getType(runtime, defaultType)
+          .getType(runtime, expectedFormulaType)
           .mapResult(decorateError(formulaExpression))
           .map(type => [
             providedArg.alias
@@ -4444,9 +4453,20 @@ function functionInvocationOperatorType(
     }
   }
 
-  const resolvedGenerics: Map<Types.GenericType, Types.GenericType> = new Map(
-    Array.from(formulaType.generics()).map(generic => [generic, generic.copy()]),
-  )
+  let resolvedGenerics: Map<Types.GenericType, Types.GenericType> | undefined
+  if (formulaType.genericTypes.length) {
+    resolvedGenerics = new Map()
+    // for (const generic of formulaType.generics()) {
+    for (const generic of formulaType.genericTypes) {
+      resolvedGenerics.set(generic, generic.copy())
+    }
+    const argGenerics = argsResult.value.map(([_is, _alias, type]) => [...type.generics()]).flat()
+    for (const generic of argGenerics) {
+      resolvedGenerics.set(generic, generic.copy())
+    }
+  } else {
+    resolvedGenerics = undefined
+  }
 
   const errorMessage = Types.checkFormulaArguments(
     formulaType,
@@ -4468,12 +4488,21 @@ function functionInvocationOperatorType(
     return err(new RuntimeError(formulaExpression, errorMessage))
   }
 
-  const resolved = formulaType.returnType.resolve(resolvedGenerics)
-  if (resolved.isErr()) {
-    return err(new RuntimeError(formulaExpression, resolved.error))
-  }
+  if (!resolvedGenerics) {
+    // this could easily be a generic type, for example, resolving the return type of a
+    // generic formula:
+    //     fn<T, U>(#v: T, #apply: fn(#in: T): U) => apply(v)
+    // resolves to 'U'. It's not until *this* formula is invoked that all the generics
+    // will (hopefully!) be resolved.
+    return ok(formulaType.returnType)
+  } else {
+    const resolved = formulaType.returnType.resolve(resolvedGenerics)
+    if (resolved.isErr()) {
+      return err(new RuntimeError(formulaExpression, resolved.error))
+    }
 
-  return ok(resolved.get())
+    return ok(resolved.get())
+  }
 }
 
 // hasSpreadArrayType, spreadDictName, Result

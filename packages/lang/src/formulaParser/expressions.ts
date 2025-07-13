@@ -3154,6 +3154,10 @@ export class FormulaExpression extends Expression {
       this.argDefinitions.args.map((arg, position) => {
         let argType: GetTypeResult
         if (arg.argType instanceof InferIdentifier) {
+          if (arg.spreadArg) {
+            throw `TODO: inferring type of ${arg.toCode()} in argumentTypes is not done`
+          }
+
           let inferArgType: Types.Type | undefined
           if (formulaType) {
             inferArgType =
@@ -3271,19 +3275,46 @@ export class FormulaExpression extends Expression {
   private reconcileArgs(
     runtime: ValueRuntime,
     formulaType: Types.FormulaType,
-    args: Values.FormulaArgs,
+    formulaArgs: Values.FormulaArgs,
   ): GetRuntimeResult<ValueRuntime> {
-    const defaultValues = new Map(
+    let defaultValues = new Map(
       this.argDefinitions.args.map((arg, position) => {
         const index = arg.isPositional ? position : arg.aliasRef.name
         return [index, arg.defaultValue]
       }),
     )
 
+    let args = formulaArgs.args
+    // the type checker in _checkFormulaArguments supports this "shorthand",
+    // where passing *only positional arguments* to a function that only *accepts named
+    // arguments* is accepted.
+    if (
+      // only named arguments defined by formula
+      formulaType.args.every(arg => arg.is === 'named-argument') &&
+      // all positional arguments provided
+      args.every(([alias]) => alias === undefined)
+    ) {
+      args = formulaType.args
+        .map((arg, index) => {
+          if (index >= args.length) {
+            return undefined
+          }
+
+          const [alias, argValue] = args[index]
+          if (alias) {
+            const defaultValue = defaultValues.get(alias)
+            defaultValues.delete(alias)
+            defaultValues.set(index, defaultValue)
+          }
+          return [arg.alias, argValue] as const
+        })
+        .filter(arg => arg !== undefined) as [string, Values.Value][]
+    }
+
     let argCount = 0
     const argValues: Map<string | number, Values.Value> = new Map()
     const repeatedArgValues: Map<string, Values.Value[]> = new Map()
-    for (const [alias, arg] of args.args) {
+    for (const [alias, arg] of args) {
       if (alias) {
         argValues.set(alias, arg)
 

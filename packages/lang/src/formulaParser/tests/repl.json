@@ -275,7 +275,35 @@
       "expectedCode": "identity(1)",
       "expectedType": "1",
       "expectedValue": "1",
-      "variables": [["identity", "fn<T>(#a: T): T => a"]]
+      "variables": [
+        [
+          "identity",
+          "fn<T>(#a: T): T => a"
+        ]
+      ]
+    },
+    {
+      "desc": "map identity",
+      "formula": "map(1, map: identity)",
+      "only": true,
+      "skip": false,
+      "expectedCode": "map(1, map: identity)",
+      "expectedType": "1",
+      "expectedValue": "1",
+      "variables": [
+        [
+          "identity",
+          "fn<T>(val: T) => val"
+        ],
+        [
+          "a",
+          "1"
+        ],
+        [
+          "map",
+          "fn<T, U>(#input: T, map: fn(#in: T): U) => map(input)"
+        ]
+      ]
     }
   ]
 }
