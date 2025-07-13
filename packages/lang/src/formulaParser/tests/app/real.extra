@@ -27,7 +27,7 @@ type Point = {x: Int, y: Int}
 Main() => <Hello user1=@user1 user2=@user2 />
 
 
-fn &updateUser(a: User) => &.set(@user, a)
+&fn updateUser(a: User) => &.set(@user, a)
 
 
 fn map1<T>(a: T): T => a

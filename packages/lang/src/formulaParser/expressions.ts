@@ -3349,6 +3349,8 @@ export class FormulaExpression extends Expression {
         if (fromArgs) {
           arg = ok(fromArgs)
         } else if (fromDefault) {
+          // TODO: this is running in the wrong context! It needs to store the context of
+          // where it was defined.
           arg = fromDefault.eval(runtime)
         } else if (argType.alias) {
           arg = err(new RuntimeError(this, `No argument passed for '${argType.alias}'`))
@@ -3373,7 +3375,9 @@ export class FormulaExpression extends Expression {
 
   eval(runtime: ValueRuntime): GetValueResult {
     return this.getType(runtime).map(formulaType => {
+      // this is the function that is invoked by 'FunctionInvocationOperator'
       const fn = (args: Values.FormulaArgs): Result<Values.Value, string> => {
+        // TODO: use the context from below for closed-over variables
         return this.reconcileArgs(runtime, formulaType, args)
           .map(nextRuntime => {
             return this.body.eval(nextRuntime)
@@ -3385,6 +3389,8 @@ export class FormulaExpression extends Expression {
             return ok(result.get())
           })
       }
+      // TODO: gather variables from context and pass to FormulaValue
+      // this.body.dependencies() should be enough to capture this
 
       if (formulaType.name) {
         return new Values.NamedFormulaValue(formulaType.name, formulaType, fn)
@@ -4106,10 +4112,10 @@ export class HelperDefinition extends Expression {
       code += 'public '
     }
 
-    code += 'fn '
     if (this.actionType === 'action') {
       code += '&'
     }
+    code += 'fn '
     code += `${this.value.toCodePrefixed(false)}`
     return code
   }

@@ -287,7 +287,6 @@ describe('getType', () => {
     })
 
     it('user.foo?.bar => user.name type (String)', () => {
-      debugger
       const expression = parse('user.foo?.bar').get()
       expect(() => {
         expression.getType(typeRuntime).get()

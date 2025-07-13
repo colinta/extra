@@ -20,7 +20,7 @@ Main(name: String, onResetName: fn() => &) =>
 ╭──────────╮
 │ &Actions │
 ╰──────────╯
-fn &addUser(name: String, next: fn() => &) =>
+&fn addUser(name: String, next: fn() => &) =>
   if (name.length > 0 && @users.none(|u| => u.name == name)) then:
     &[
       @users.push({ name: })

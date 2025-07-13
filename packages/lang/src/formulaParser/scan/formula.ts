@@ -108,19 +108,14 @@ function _scanFormula(
   }
 
   scanner.whereAmI(`scanFormula type = ${type}`)
-  // scans 'fn' or 'Main' or 'view'
-  const typeExpect = type === '&fn' ? 'fn' : type
-  const typeDesc = type === '&fn' ? 'fn &<name>' : type
+  const typeExpect = type
+  const typeDesc = type === '&fn' ? '&fn <name>' : type
 
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
   scanner.expectString(typeExpect, `Expected '${typeDesc}(' to start the formula expression`)
   if (isNamedFn) {
     scanner.expectWhitespace()
-  }
-
-  if (type === '&fn') {
-    scanner.expectString('&', "Actions must start with the ampersand '&' symbol")
   }
 
   let nameRef: Expressions.Reference | undefined

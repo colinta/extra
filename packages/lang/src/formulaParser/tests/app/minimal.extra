@@ -16,9 +16,9 @@ Main() => <Pt />
 ╭──────────╮
 │ &Actions │
 ╰──────────╯
--- fn &moveRight() => @pt = {...@pt, x: @pt.x + 1})
--- fn &moveRight() => @pt.x = @pt.x + 1
-fn &moveRight() => @pt.x += 1
+-- &fn moveRight() => @pt = {...@pt, x: @pt.x + 1})
+-- &fn moveRight() => @pt.x = @pt.x + 1
+&fn moveRight() => @pt.x += 1
 
 ╭───────────╮
 │ Helpers() │

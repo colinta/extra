@@ -92,6 +92,10 @@ export class RuntimeError extends Error {
     this.parents.push(parent)
     this.message += `\n${parent.constructor.name}: ` + parent.toCode()
   }
+
+  toString() {
+    return this.message
+  }
 }
 
 export function isRuntimeError(error: any): error is RuntimeError {

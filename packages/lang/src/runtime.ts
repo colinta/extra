@@ -367,6 +367,6 @@ function defaultLocale() {
 }
 
 function uid(name: string = '') {
-  const uid = Math.floor(Math.random() * 1000000).toString(16)
+  const uid = Math.floor(0x1000 + Math.random() * (0x10000 - 0x1000)).toString(16)
   return name ? `${name}-${uid}` : uid
 }

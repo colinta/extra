@@ -808,7 +808,7 @@ export class FormulaType extends Type {
    * In `checkFormulaTypes`, each argument passed to the formula is checked against
    * the argument-definition of the formula.
    */
-  namedArg(name: string) {
+  namedArg(name: string): Argument | undefined {
     return this._named.get(name) ?? this._kwargs
   }
 
@@ -3706,6 +3706,8 @@ function canBeAssignedToFormula(
       const type = formulaType.namedArg(name)?.type
       return type ? [type] : []
     },
+    // TODO: this seems wrong - but maybe it's right. FormulaType scans the arguments,
+    // and makes spread and repeated and kwargs available via positionalArg and namedArg.
     // spreadPositionalArguments:
     [],
     // spreadDictArguments:
@@ -4010,7 +4012,7 @@ function kwargListArgumentType(
       errors.push(`Multiple arguments named '${argName}' provided. Only one is expected.`)
       break
     } else if (argTypes.length === 0) {
-      throw 'impossible'
+      throw 'impossible - I got the list of arg names from remainingNames - but then none are returned by argumentsNamed!?'
     }
     type = compatibleWithBothTypes(type, argTypes[0])
   }

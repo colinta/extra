@@ -123,7 +123,7 @@ describe('complicated relationships', () => {
     )
   })
 
-  it.only('can infer safe array access with literals', () => {
+  it('can infer safe array access with literals', () => {
     runtimeTypes['items'] = [
       Types.array(Types.int()),
       Values.array([Values.int(-1), Values.int(1), Values.int(3)]),
@@ -153,7 +153,7 @@ describe('complicated relationships', () => {
     expect(resolvedValue!).toEqual(Values.tuple([Values.int(-1), Values.int(1), Values.int(3)]))
   })
 
-  it.skip('can infer safe array access with references', () => {
+  it('can infer safe array with array lengths comparison', () => {
     runtimeTypes['letters'] = [
       Types.array(Types.string()),
       Values.array([Values.string('a'), Values.string('b'), Values.string('c')]),
