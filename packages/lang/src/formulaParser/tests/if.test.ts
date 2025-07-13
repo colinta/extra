@@ -26,10 +26,10 @@ describe('if', () => {
         "(if ((== a-letter 'a') (then: [1]) (else: [3])))",
         `\
 if (a-letter == 'a') {
-  then:
-    [1]
-  else:
-    [3]
+then:
+  [1]
+else:
+  [3]
 }`,
       ]),
       c([
@@ -37,10 +37,10 @@ if (a-letter == 'a') {
         '(if ((or (not a) b) (then: 1) (else: 3)))',
         `\
 if (not a or b) {
-  then:
-    1
-  else:
-    3
+then:
+  1
+else:
+  3
 }`,
       ]),
       c([
@@ -48,10 +48,10 @@ if (not a or b) {
         '(+ 1 (if (a) { (then: 1) (else: 3) }))',
         `\
 1 + if (a) {
-  then:
-    1
-  else:
-    3
+then:
+  1
+else:
+  3
 }`,
       ]),
       c([
@@ -59,10 +59,10 @@ if (not a or b) {
         '(+ 1 (if (a) { (then: 1) (else: 3) }))',
         `\
 1 + if (a) {
-  then:
-    1
-  else:
-    3
+then:
+  1
+else:
+  3
 }`,
       ]),
       c([
@@ -70,12 +70,12 @@ if (not a or b) {
         "(if (a) { (then: 1) (fn `elseif` (b) { 3 }) (else: '4') })",
         `\
 if (a) {
-  then:
-    1
-  elseif (b):
-    3
-  else:
-    '4'
+then:
+  1
+elseif (b):
+  3
+else:
+  '4'
 }`,
       ]),
       c([
@@ -97,15 +97,15 @@ if (a) {
         `\
 [
   if (a) {
+  then:
+    1
+  else:
+    if (b) {
     then:
-      1
+      3
     else:
-      if (b) {
-        then:
-          3
-        else:
-          '4'
-      }
+      '4'
+    }
   }
   '4'
 ]`,
@@ -124,12 +124,12 @@ else:
         "(if (a) { (then: 1) (fn `elseif` (b) { 3 }) (else: '4') })",
         `\
 if (a) {
-  then:
-    1
-  elseif (b):
-    3
-  else:
-    '4'
+then:
+  1
+elseif (b):
+  3
+else:
+  '4'
 }`,
       ]),
       c([
@@ -152,12 +152,12 @@ else:
         "(if (a) { (then: (+ 1 2)) (fn `elseif` (b) { (+ 3 4) }) (else: (<> '4' '5')) })",
         `\
 if (a) {
-  then:
-    1 + 2
-  elseif (b):
-    3 + 4
-  else:
-    '4' <> '5'
+then:
+  1 + 2
+elseif (b):
+  3 + 4
+else:
+  '4' <> '5'
 }`,
       ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>

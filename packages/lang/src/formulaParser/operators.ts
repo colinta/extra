@@ -3374,7 +3374,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
           blockCode += 'else:\n'
           blockCode += indent(elseCode) + '\n'
         }
-        code += indent(blockCode)
+        code += blockCode
         code += '}'
         return code
       } else {

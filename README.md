@@ -76,13 +76,12 @@ let
   -- expression. This is actually an "external argument" syntax that can be used to
   -- create your own DSLs
   evens = if (max == 10) {
-    then:
-      [2, 4, 6, 8, 10]
-    else if (max == 12):
-      [2, 4, 6, 8, 10, 12]
-    else:
-      [2, 4, 6, 8, 10, 12, 14]
-    }
+  then:
+    [2, 4, 6, 8, 10]
+  elseif (max == 12):
+    [2, 4, 6, 8, 10, 12]
+  else:
+    [2, 4, 6, 8, 10, 12, 14]
   }
   odds = [
     1   -- look ma, no commas!
@@ -236,7 +235,7 @@ Having distinct concatenation operators is either really nice for indicating int
 
 Words (`and` `or` `not` `is` `has`) are used for logical operators, but not bitwise operators (`&` `|` `^` `~`).
 
-Actually `is` is the "match" operation, ie `if (x is .some(x))` will attempt to match the two sides. The left-hand side is evaluated, and must match the right-hand side (`.some(x) is x` will not compile).
+Actually `is` is the "match" operation, ie `if (x is .some(x))` will attempt to match the two sides. The left-hand side is evaluated, and must match the right-hand side (`.some(x) is x` will not compile). In this case, 'x' is also *reassigned* in the scope of the `then:` branch to have the unwrapped value.
 
 ## String coercion and interpolation
 
@@ -346,10 +345,10 @@ have to provide two separate calls to bar:
 ```extra
 fn foo(#a: Int, #b: Int | null) =>
   if (#b == null) {
-    then:
-      bar(a)
-    else:
-      bar(a, b)  -- 🤢
+  then:
+    bar(a)
+  else:
+    bar(a, b)  -- 🤢
   }
 ```
 
@@ -538,10 +537,10 @@ I think the intention above is clear - and the below is no less clear, but at th
 ```extra
 let
   message = if (not error.message.isEmpty()) {
-    then:
-      error.message
-    else:
-      "Try that again please"
+  then:
+    error.message
+  else:
+    "Try that again please"
   }
 ```
 
@@ -646,10 +645,10 @@ let
     let
       result =
         if (#op is /^\s*\+\s*$/) {
-          then:
-            a + b
-          else:
-            a - b
+        then:
+          a + b
+        else:
+          a - b
         }
       out = out.replaceAll('?', with: $result)
     in
@@ -907,10 +906,10 @@ If the argument type is null-able, you can make the argument optional `like?: Th
 ```extra
 fn first-or<T>(#array: Array(T), else fallback?: T) =>
   if (array) {
-    then:
-      array[0]
-    else:
-      fallback
+  then:
+    array[0]
+  else:
+    fallback
   }
 
 let
@@ -1018,15 +1017,15 @@ As in all functional programming languages, `if` is an expression that returns t
 
 ```extra
 if (test1 or test2) {
-  then:
-    result_1
+then:
+  result_1
 } --> result_1 | null
 
 if (test1 or test2) {
-  then:
-    result_1
-  else:
-    result_2
+then:
+  result_1
+else:
+  result_2
 } --> result_1 | result_2
 ```
 
@@ -1034,31 +1033,31 @@ Multiple `elseif` branches can be provided:
 
 ```extra
 if (test1 or test2) {
-  then:
-    result_1
-  elseif (test2):
-    result_2
-  else:
-    result_3
+then:
+  result_1
+elseif (test2):
+  result_2
+else:
+  result_3
 } --> result_1 | result_2 | result_3
 ```
 
 There is also an "inline" version, which might show how `if` follows the same function argument rules as Extra in general. Assume `elseif()` is a function that also accepts a condition.
 
 ```extra
-if (test1 or test2, then: result-1, elseif(test2, result_2), else: result-4)
+if (test1 or test2, then: result-1, elseif (test2, result_2), else: result-4)
 ```
 
 `if` is, of course, implemented internally by the compiler. It had to be in order to implement the type narrowing features. But I made sure that the syntax was not "special". Given the right syntax and primitives, it could be expressed as an Extra function.
 
 ```extra
 if (test1 or test2) {
-  then:  -- a required named argument
-    result_1
-  elseif (test2): -- this looks like special syntax, but actually it's
-    result_2      -- elseif(#condition, #then), the elseif clauses are variadic
-  else:  -- optional named argument
-    result_3
+then:  -- a required named argument
+  result_1
+elseif (test2): -- this looks like special syntax, but actually it's just function invocation:
+  result_2      -- `elseif (#condition): #then` (the elseif clauses are variadic in the 'if' function)
+else:  -- optional named argument
+  result_3
 }
 ```
 
@@ -1071,6 +1070,8 @@ fn if<T>(
   ...#elseif: Array(lazy T)
   else?: lazy T
 ): T
+
+fn elseif<T>(#condition: lazy Boolean, #then: lazy T)
 ```
 
 In the future I'd like to try to support an `implication` type, but I'm not sure I'll ever be able to support the variadic `elseif` array, such that each subsequent invocation implies all the previous ones are false. The `implication` type, in a simple `if/else` version, would look something like this:
@@ -1422,10 +1423,10 @@ Everyone's favourite! Well it's _my_ favourite, and if you haven't used it today
 [1,2,3].filter(fn(i) => i < 3).join(',')
   |>
     if (#.length) {
-      then:
-        $# <> ','
-      else
-        ''
+    then:
+      $# <> ','
+    else
+      ''
     }
   |>
     `[$#]`  --> `"[1,2,3,]"`
@@ -1444,10 +1445,10 @@ There's a clever trick with the `=>` operator that allows us to "name" the `#` s
 [1,2,3].filter(fn(i) => i < 3).join(',')
   |> numbers =>
     if (numbers.length) {
-      then:
-        $numbers <> ','
-      else:
-        ''
+    then:
+      $numbers <> ','
+    else:
+      ''
     }
   |> numbers => `[$numbers]`  --> `"[1,2,3,]"`
 ```
@@ -1456,7 +1457,7 @@ There's a clever trick with the `=>` operator that allows us to "name" the `#` s
 
 What!? Should I call it something else just because it _is_ something else? Bah. It walks like a duck and quacks like a duck, so I'm calling it JSX.
 
-Similarties:
+Similarities:
 
 - Within a text node, `{…}` encloses an expression that is inserted as a child.
 
