@@ -34,6 +34,8 @@ export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'match
 export const NAMED_BINARY_ALIAS = {
   '&&': 'and',
   '||': 'or',
+  '!?': 'onlyif',
+  '?!': 'onlyif',
   '≤': '<=',
   '≥': '>=',
   '≠': '!=',
