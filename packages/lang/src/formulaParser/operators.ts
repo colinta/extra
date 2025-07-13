@@ -30,8 +30,8 @@ import {
 } from './types'
 import {indent, SMALL_LEN} from './util'
 
-export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'matches', 'if'] as const
-export const NAMED_BINARY_ALIAS = {
+export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
+export const BINARY_OP_ALIASES = {
   '&&': 'and',
   '||': 'or',
   '!?': 'onlyif',

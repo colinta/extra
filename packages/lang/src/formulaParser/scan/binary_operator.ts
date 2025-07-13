@@ -3,7 +3,7 @@ import {Operator, ParseError} from '../types'
 import {
   binaryOperatorNamed,
   isBinaryOperator,
-  NAMED_BINARY_ALIAS,
+  BINARY_OP_ALIASES,
   NAMED_BINARY_OPS,
 } from '../operators'
 import {isBinaryOperatorChar} from '../grammars'
@@ -28,8 +28,8 @@ export function scanBinaryOperator(scanner: Scanner): Operator {
     }
   }
 
-  if (currentToken in NAMED_BINARY_ALIAS) {
-    currentToken = NAMED_BINARY_ALIAS[currentToken as keyof typeof NAMED_BINARY_ALIAS]
+  if (currentToken in BINARY_OP_ALIASES) {
+    currentToken = BINARY_OP_ALIASES[currentToken as keyof typeof BINARY_OP_ALIASES]
   }
 
   if (!isBinaryOperator(currentToken)) {
