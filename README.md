@@ -70,7 +70,7 @@ let
     num % 3 == 0 and num < max
 
   -- curly brackets are required in `if` expressions, but they surround the entire
-  -- expression. This is actual an "external argument" syntax that can be used to
+  -- expression. This is actually an "external argument" syntax that can be used to
   -- create your own DSLs
   evens = if(max == 10) {
     then:
@@ -86,8 +86,10 @@ let
     3
     5
     7
+
     -- alternative way to invoke 'if'
     ...if(max <= 10, then: [9], else: [])
+
     -- `if` operator here is only allowed in arrays, dict, and set
     -- 11 is only included if the condition is true, otherwise it is skipped
     11 if max > 10
@@ -95,9 +97,9 @@ let
 in
   [...evens, ...odds]
     .filter(is-divisible-by-3)
-    .sort(by: fn(a, b) => a <=> b) --> [3, 6, 9]
+    .sort(by: fn(a, b) => b <=> a) --> [9, 6, 3]
   -- the pipe operator assigns the left-hand-side to the `#` symbol
-  |> inspect('filter', #)  --> prints [3, 6, 9]: [Int] and returns that value
+  |> inspect('filter', #)  --> prints "[9, 6, 3]: [Int]" and returns that value
   -- but if you want to assign # to a name, you can use `=>`
   |> some-numbers => some-numbers.map(fn(num) => $num).join(',')
 
@@ -113,7 +115,7 @@ There are a few things that I always thought would be handy in a programming lan
 
 ## Variable names
 
-References can have hyphens like in Lisp (`valid-variable-name`).
+References can have hyphens like in Lisp (`valid-variable-name`), and emojis (`😎-languages = set("extra")`)
 
 ## Comments
 
@@ -124,6 +126,7 @@ I may have gone a bit overboard, just a heads up. 🤓
 `{- block {- with nesting -} -}`
 `--> arrow style line comment`
 `<-- alternate arrow style line comment`
+`← why stop there?` `→ pointing is rude though`
 
 The usual comment characters `#` and `//` both have special meaning in Extra, and so I looked elsewhere for inspiration, and looked no further than Ada (and yes, Ada, Elm, Lua _all_ use `--` for line comments... but Ada has a lot more hacker cred so I wanted to mention it first).
 
@@ -142,8 +145,7 @@ multiple |>
 --} <-- This brace is just part of a line comment until the '}' above is removed
 
 --> arrows can be a comment! It's a small thing, but I find this so handy.
-<-- so much so that I made `<--` a comment marker, too.
--- and <- is a "binding", which is used in views to bind getters/setters.
+<-- so much so that I made `<--` a comment marker, too, and ← and →
 ```
 
 ## Commas are optional
@@ -155,7 +157,13 @@ I've tried hard to make sure the language grammar can unambiguously determine wh
   1
   2
   3
-] --> [1, 2, 3]
+  -4
+
+  -- here's where things get tricky. The space between '-' and '5' turns it
+  -- into a subtraction operation, not negation.
+  8
+  - 5 -- equivalent to `8 - 5`
+] --> [1, 2, 3, -4, 3]
 
 {
   name: 'Extra'

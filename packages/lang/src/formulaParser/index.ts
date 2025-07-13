@@ -476,24 +476,28 @@ function parseInternal(
       if (!isMatchingExpression) {
         if (treatNewlineAsComma(expressionType) && scanner.is('\n')) {
           // we're at a newline... cool
-          // 1. is the next token '...'? if we're scanning array/object/set/dict, that's a splat operator, ignore it.
-          // 2. also check for an 'if' inclusion operator
-          // 3. is the next token an operator? keep scanning!
-          // 4. wait... is that operator a '-'?
-          // 5. if we are looking at a negative number, don't keep scanning.
+          // 1. is the next token a '-'? Check for whitespace after.
+          //    whitespace means it's subtraction (keep scanning),
+          //    otherwise it's negation (stop scanning)
+          // 2. is the next token '...'? if we're scanning array/object/set/dict,
+          //    that's a splat operator, we should stop scanning.
+          // 3. check for an 'if' inclusion operator inside of array/object/set/dict.
+          // 4. finally, check for a binary operator.
           if (
             scanner.test(() => {
               scanner.scanAllWhitespace()
-              if (scanner.is(/^-(\d|\.\d)/)) {
-                scanner.whereAmI(`not scanning a negative number`)
+              if (scanner.is(/^-[^ \n\t]/)) {
+                scanner.whereAmI('scanning a negative number')
                 return false
               }
+
               if (scanner.is('...') && expressionSupportsSplat(expressionType)) {
                 return false
               }
 
               if (scanner.is(INCLUSION_OPERATOR) && expressionSupportsSplat(expressionType)) {
-                return false
+                scanner.whereAmI('INCLUSION_OPERATOR if foo')
+                return true
               }
 
               return (
