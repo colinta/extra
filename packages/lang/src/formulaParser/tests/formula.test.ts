@@ -24,6 +24,29 @@ describe('formulas', () => {
         '(fn ((name: (`String` | `null`)) (age: (`Int` | `null`))) => 0)',
       ]),
       c([
+        'fn(name: String | null, age: Int | null) => 0',
+        '(fn ((name: (`String` | `null`)) (age: (`Int` | `null`))) => 0)',
+        'fn(name: String?, age: Int?) => 0',
+      ]),
+      c([
+        "fn(name: 'alice' | 'bob', age: 1 | 2 | 42) => 0",
+        "(fn ((name: ('alice' | 'bob')) (age: (1 | 2 | 42))) => 0)",
+      ]),
+      c([
+        `\
+fn(
+  name:
+    | 'alice'
+    | 'bob'
+  age:
+    1
+    | 2 |
+    42
+) => 0`,
+        "(fn ((name: ('alice' | 'bob')) (age: (1 | 2 | 42))) => 0)",
+        "fn(name: 'alice' | 'bob', age: 1 | 2 | 42) => 0",
+      ]),
+      c([
         'fn(#a: Int, ...#as: Array(Int)): Int => 0',
         '(fn ((#a: `Int`) (...#as: Array(`Int`))) : `Int` => 0)',
       ]),

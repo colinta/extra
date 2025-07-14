@@ -261,7 +261,6 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         argType = scanArgumentType(scanner, 'argument_type', expressionType, parseNext)
         scanner.scanSpaces()
         argType.followingComments.push(...scanner.flushComments())
-        scanner.scanAllWhitespace()
 
         if (spreadArg === 'spread' && !(argType instanceof Expressions.ArrayTypeExpression)) {
           throw new ParseError(
@@ -279,7 +278,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       }
 
       let defaultValue: Expression | undefined
-      if (scanner.scanIfString('=')) {
+      if (scanner.scanAhead('=')) {
         if (is === 'formula_type') {
           throw new ParseError(
             scanner,

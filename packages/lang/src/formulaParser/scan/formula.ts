@@ -52,11 +52,20 @@ export function scanViewFormula(
   parseNext: ParseNext,
   bodyExpressionType?: ExpressionType,
 ) {
-  return _scanFormula(scanner, expressionType, parseNext, {
+  const value = _scanFormula(scanner, expressionType, parseNext, {
     type: 'view',
     isNamedFn: true,
     bodyExpressionType,
   }) as Expressions.ViewFormulaExpression
+
+  if (!value.nameRef.name.match(/^[A-Z]/)) {
+    throw new ParseError(
+      scanner,
+      `Views must start with an uppercased letter, found '${value.nameRef.name}'`,
+    )
+  }
+
+  return value
 }
 
 export function scanMainFormula(

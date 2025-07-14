@@ -83,6 +83,16 @@ export function isStringStartChar(char: string) {
   return char === '"' || char === "'" || char === '`' || char === ATOM_START
 }
 
+export const REQUIRES_KEYWORD = 'requires'
+export const PUBLIC_KEYWORD = 'public'
+export const IMPORT_KEYWORD = 'import'
+export const LET_KEYWORD = 'let'
+export const LET_IN = 'in'
+export const FN_KEYWORD = 'fn'
+export const VIEW_KEYWORD = 'view'
+export const STATIC_KEYWORD = 'static'
+export const TYPE_KEYWORD = 'type'
+
 export const INCLUSION_OPERATOR = 'onlyif'
 export const NULL_COALESCING = '?.'
 
@@ -118,6 +128,16 @@ export const SET_WORD_START = 'Set'
 export const REGEX_START = '/'
 export const ATOM_START = ':'
 export const FUNCTION_BODY_START = '=>'
+
+export const ENUM_KEYWORD = 'enum'
+export const ENUM_START = '.'
+export const ENUM_OPEN = '{'
+export const ENUM_CLOSE = '}'
+
+export const CLASS_KEYWORD = 'class'
+export const CLASS_EXTENDS = 'extends'
+export const CLASS_OPEN = '{'
+export const CLASS_CLOSE = '}'
 
 export function isRegexFlag(char: string) {
   return /^[gims]/.test(char)

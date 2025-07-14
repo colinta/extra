@@ -1,5 +1,5 @@
 import {DEFAULT_NARROWED_LENGTH, lengthDesc, type NarrowedLength} from '../../narrowed'
-import {ARRAY, DICT, FLOAT, INT, OBJECT, SET, STRING} from '../../types'
+import {ARRAY, DICT, FLOAT, INT, OBJECT, SET, STATIC, STRING} from '../../types'
 import * as Expressions from '../expressions'
 import {type Expression} from '../expressions'
 import {
@@ -7,6 +7,7 @@ import {
   isNumberStart,
   isArgumentStartChar,
   isStringStartChar,
+  FN_KEYWORD,
   ARGS_CLOSE,
   ARGS_OPEN,
   PARENS_CLOSE,
@@ -16,6 +17,15 @@ import {
   isNamedArg,
   ARRAY_OPEN,
   ARRAY_CLOSE,
+  ENUM_START,
+  ENUM_OPEN,
+  GENERIC_OPEN,
+  ENUM_CLOSE,
+  CLASS_OPEN,
+  CLASS_CLOSE,
+  CLASS_EXTENDS,
+  ENUM_KEYWORD,
+  CLASS_KEYWORD,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {type ArgumentType, ParseError, type ParseNext, type ExpressionType} from '../types'
@@ -26,7 +36,13 @@ import {
   scanFormulaArgumentDefinitions,
   scanFormulaTypeArgumentDefinitions,
 } from './formula_arguments'
-import {scanAtom, scanIdentifier, scanValidName} from './identifier'
+import {
+  scanAnyReference,
+  scanAtom,
+  scanIdentifier,
+  scanValidName,
+  scanValidTypeName,
+} from './identifier'
 import {
   scanNarrowedFloat,
   scanNarrowedInt,
@@ -52,10 +68,14 @@ import {scanString} from './string'
  *     Set(Int), Set(String), etc
  *   oneOf:
  *     Int | String, (Int | String)
+ *   oneOf supports initial '|'
+ *     | Int | String, (Int | String)
  *   function:
  *     fn (#name: Int): String
  *   enum:
- *     enum | NotLoaded | Loading | Success(#value: Tsuccess) | Failure(#value: Tfail)
+ *     enum RemoteData(Tsuccess, Tfailure) { .notLoaded, .loading, .success(Tsuccess), .failure(Tfailure) }
+ *   enum shorthand (does not support generics):
+ *     .notLoaded | .loading | .success(String) | .failure(HttpError)
  */
 export function scanArgumentType(
   scanner: Scanner,
@@ -70,16 +90,21 @@ export function scanArgumentType(
   let argType: Expression | undefined
   const range0 = scanner.charIndex
   const oneOfExpressions: Expression[] = []
+  const enumExpressions: Expressions.EnumShorthandExpression[] = []
   let extendsExpressions: Expression[] = []
   let hasOptional = false
   let rewind = scanner.charIndex
+
+  if (scanner.scanIfString('|')) {
+    scanner.scanAllWhitespace()
+  }
 
   // need to be careful in this scanning function to only scan what is necessary,
   // so that we can then check for a newline at the end. Object type parsing can
   // include multilines, with argument types coming at the end of the line.
   for (;;) {
-    const arg0 = scanner.charIndex
     scanner.scanAllWhitespace()
+    const arg0 = scanner.charIndex
 
     if (scanner.scanIfString(PARENS_OPEN)) {
       argType = scanArgumentType(scanner, applicationOrArgument, expressionType, parseNext)
@@ -231,6 +256,8 @@ export function scanArgumentType(
       argTypeIsOptional = true
     }
 
+    // we are starting or continuing a 'extends' type, e.g.
+    //     User & {isGreat: Boolean} & {isFunny: Boolean}
     if (scanner.scanIfString('&')) {
       if (argTypeIsOptional) {
         throw new ParseError(
@@ -244,6 +271,8 @@ export function scanArgumentType(
       continue
     }
 
+    // we *had* some extendsExpressions, but no more (no '&'), so merge them into one
+    // `ExtendsExpression`.
     if (extendsExpressions.length) {
       if (argTypeIsOptional) {
         throw new ParseError(
@@ -470,7 +499,7 @@ function scanDictType(
   let didSetNarrowedNames = false
   while (scanner.scanIfString(',')) {
     scanner.scanAllWhitespace()
-    if (!didSetNarrowedLength && scanner.scanIfString('length')) {
+    if (!didSetNarrowedLength && scanner.scanIfWord('length')) {
       didSetNarrowedLength = true
 
       scanner.scanAllWhitespace()
@@ -479,7 +508,7 @@ function scanDictType(
       narrowedLength = scanNarrowedLength(scanner)
       scanner.scanAllWhitespace()
       scanner.whereAmI(`scanDictType: (length: ${narrowedLength})`)
-    } else if (!didSetNarrowedNames && scanner.scanIfString('keys')) {
+    } else if (!didSetNarrowedNames && scanner.scanIfWord('keys')) {
       didSetNarrowedNames = true
 
       scanner.scanAllWhitespace()

@@ -67,6 +67,21 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
 }
 
 /**
+ * doesn't support state or action references, and fails on reserved words, and
+ * type names must be capitalized.
+ */
+export function scanValidTypeName(scanner: Scanner): Expressions.Reference {
+  const ref = scanValidName(scanner)
+  if (!ref.name.match(/^[A-Z]/)) {
+    throw new ParseError(
+      scanner,
+      `Invalid type name '${ref.name}'. Types must start with an uppercased letter`,
+    )
+  }
+  return ref
+}
+
+/**
  * "atom" is what I call strings that are of the form `:string`. All ref chars are
  * allowed - hyphens, underscores, letters, numbers, and emoji.
  */

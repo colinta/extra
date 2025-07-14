@@ -1,12 +1,6 @@
 import * as Narrowed from '../../narrowed'
 import * as Values from '../../values'
-import {
-  ARRAY_CLOSE,
-  ARRAY_OPEN,
-  PARENS_CLOSE,
-  isNumberChar,
-  isNumberStart,
-} from '../grammars'
+import {ARRAY_CLOSE, ARRAY_OPEN, PARENS_CLOSE, isNumberChar, isNumberStart} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
 
@@ -178,7 +172,7 @@ export function scanNarrowedString(scanner: Scanner): Narrowed.NarrowedString {
       scanner.scanAllWhitespace()
     }
 
-    if (!didSetNarrowedLength && scanner.scanIfString('length')) {
+    if (!didSetNarrowedLength && scanner.scanIfWord('length')) {
       didSetNarrowedLength = true
 
       scanner.scanAllWhitespace()
@@ -187,7 +181,7 @@ export function scanNarrowedString(scanner: Scanner): Narrowed.NarrowedString {
       narrowedLength = scanNarrowedLength(scanner)
       scanner.scanAllWhitespace()
       scanner.whereAmI(`scanDictType: (length: ${narrowedLength})`)
-    } else if (!didSetNarrowedRegex && scanner.scanIfString('matches')) {
+    } else if (!didSetNarrowedRegex && scanner.scanIfWord('matches')) {
       didSetNarrowedRegex = true
 
       scanner.scanAllWhitespace()

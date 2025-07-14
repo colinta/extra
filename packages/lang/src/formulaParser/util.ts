@@ -5,7 +5,6 @@ export const MAX_LEN = 100
 export const MAX_INNER_LEN = 80
 
 export function wrapStrings(lhs: string, strings: string[], rhs: string) {
-  // eslint complains when I use simple 'let' for these, due to the map function
   const wrap = {totalLength: 0, hasNewline: false}
   const values = strings.map(code => {
     wrap.hasNewline = wrap.hasNewline || code.length > MAX_INNER_LEN || code.includes('\n')

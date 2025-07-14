@@ -32,6 +32,14 @@ import {
   terminatesWithCurlyBracket,
   terminatesWithAngleBracket,
   isBlockStartOperator,
+  isWhitespaceChar,
+  treatNewlineAsComma,
+  expressionSupportsSplat,
+  isTaggedString,
+  LET_KEYWORD,
+  LET_IN,
+  VIEW_KEYWORD,
+  FN_KEYWORD,
   INCLUSION_OPERATOR,
   NULL_COALESCING,
   PARENS_OPEN,
@@ -43,10 +51,11 @@ import {
   OBJECT_OPEN,
   OBJECT_WORD_START,
   SINGLE_BLOCK_OPEN,
-  isWhitespaceChar,
-  treatNewlineAsComma,
-  expressionSupportsSplat,
-  isTaggedString,
+  PUBLIC_KEYWORD,
+  CLASS_KEYWORD,
+  IMPORT_KEYWORD,
+  REQUIRES_KEYWORD,
+  TYPE_KEYWORD,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -76,7 +85,6 @@ import {scanArrayAccess} from './scan/array_access'
 import {scanBlockArgs, scanInvocationArgs} from './scan/formula_invocation_arguments'
 import {scanBinaryOperator} from './scan/binary_operator'
 import {scanUnaryOperator} from './scan/unary_operator'
-import {FN, VIEW} from '../types'
 import {scanLet} from './scan/let'
 
 const LOWEST_OP: Operator = {
@@ -162,7 +170,7 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       break
     }
 
-    if (scanner.isWord('requires')) {
+    if (scanner.isWord(REQUIRES_KEYWORD)) {
       //
       //  REQUIRES
       //
@@ -177,15 +185,15 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       } else {
         applicationTokens.requires = requires
       }
-    } else if (scanner.isWord('import')) {
+    } else if (scanner.isWord(IMPORT_KEYWORD)) {
       //
       //  IMPORT
       //
       applicationTokens.imports.push(scanImportStatement(scanner))
     } else if (
       scanner.test(() => {
-        scanner.scanIfString('public') && scanner.expectWhitespace()
-        return scanner.isWord('type') || scanner.isWord('class')
+        scanner.scanIfWord(PUBLIC_KEYWORD) && scanner.expectWhitespace()
+        return scanner.isWord(TYPE_KEYWORD) || scanner.isWord(CLASS_KEYWORD)
       })
     ) {
       //
@@ -198,7 +206,7 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       applicationTokens.types.push(type.value as Expressions.TypeDefinition)
     } else if (
       scanner.test(() => {
-        scanner.scanIfString('public') && scanner.expectWhitespace()
+        scanner.scanIfWord(PUBLIC_KEYWORD) && scanner.expectWhitespace()
         return scanner.is('@')
       })
     ) {
@@ -224,7 +232,7 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       applicationTokens.main = main.value as Expressions.MainFormulaExpression
     } else if (
       scanner.test(() => {
-        if (!scanner.scanIfWord(FN)) {
+        if (!scanner.scanIfWord(FN_KEYWORD)) {
           return false
         }
         scanner.scanAllWhitespace()
@@ -239,7 +247,7 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
         return err(action.error)
       }
       applicationTokens.actions.push(action.value as Expressions.ActionDefinition)
-    } else if (scanner.isWord(FN)) {
+    } else if (scanner.isWord(FN_KEYWORD)) {
       //
       //  HELPER
       //
@@ -585,11 +593,11 @@ function parseInternal(
           processExpression(scanDice(scanner))
         } else if (isNumberChar(scanner.char) && isNumberStart(scanner.remainingInput)) {
           processExpression(scanNumber(scanner, 'float'))
-        } else if (scanner.isWord(FN)) {
+        } else if (scanner.isWord(FN_KEYWORD)) {
           processExpression(scanFormula(scanner, expressionType, parseNext))
         } else if (scanner.is(Expressions.PipePlaceholderExpression.Symbol)) {
           processExpression(scanPipePlaceholder(scanner))
-        } else if (scanner.isWord('let')) {
+        } else if (scanner.isWord(LET_KEYWORD)) {
           processExpression(scanLet(scanner, parseNext, expressionType))
         } else if (scanner.is(PARENS_OPEN)) {
           processExpression(scanParensGroup(scanner, parseNext))
@@ -605,7 +613,7 @@ function parseInternal(
           processExpression(scanSet(scanner, parseNext))
         } else if (scanner.isWord(DICT_WORD_START)) {
           processExpression(scanDict(scanner, parseNext))
-        } else if (scanner.isWord(VIEW)) {
+        } else if (scanner.isWord(VIEW_KEYWORD)) {
           processExpression(scanViewFormula(scanner, expressionType, parseNext))
         } else if (
           isUnaryOperatorChar(scanner.char) ||
@@ -628,10 +636,10 @@ function parseInternal(
         if (isWhitespaceChar(scanner.prevChar) && !scanner.isEOF()) {
           // very special case for let ... in, where the 'let' ends with whitespace before 'in'
           if (
-            expressionType === 'let' &&
+            expressionType === LET_KEYWORD &&
             scanner.test(() => {
               scanner.scanAllWhitespace()
-              return scanner.isWord('in')
+              return scanner.isWord(LET_IN)
             })
           ) {
           } else {

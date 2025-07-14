@@ -1,7 +1,7 @@
 import {type Scanner} from '../scanner'
 import * as Expressions from '../expressions'
 
-import {scanAnyReference, scanValidName} from './identifier'
+import {scanAnyReference, scanValidName, scanValidTypeName} from './identifier'
 import {type Comment, ParseError, type ParseNext} from '../types'
 import {type Expression} from '../expressions'
 import {
@@ -11,7 +11,15 @@ import {
   scanNamedFormula,
   scanViewFormula,
 } from './formula'
-import {IMPORTS_CLOSE, IMPORTS_OPEN} from '../grammars'
+import {
+  CLASS_KEYWORD,
+  ENUM_KEYWORD,
+  IMPORT_KEYWORD,
+  IMPORTS_CLOSE,
+  IMPORTS_OPEN,
+  PUBLIC_KEYWORD,
+  TYPE_KEYWORD,
+} from '../grammars'
 
 export function scanRequiresStatement(scanner: Scanner) {
   const precedingComments = scanner.flushComments()
@@ -46,7 +54,7 @@ export function scanImportStatement(scanner: Scanner) {
   const precedingComments = scanner.flushComments()
   let precedingSpecifierComments: Comment[] = []
 
-  scanner.expectString('import')
+  scanner.expectString(IMPORT_KEYWORD)
   scanner.expectWhitespace()
   const precedingSourceComments = scanner.flushComments()
 
@@ -189,18 +197,18 @@ export function scanImportStatement(scanner: Scanner) {
 export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  let isPublic = scanner.scanIfString('public')
+  let isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
   if (isPublic) {
     scanner.expectWhitespace()
   }
 
   let isClass: boolean
-  if (scanner.scanIfString('class')) {
+  if (scanner.is(CLASS_KEYWORD)) {
     isClass = true
     scanner.expectWhitespace()
   } else {
     isClass = false
-    scanner.expectString('type', 'Types must be preceded by the "type" keyword.')
+    scanner.expectString(TYPE_KEYWORD, 'Types must be preceded by the "type" keyword.')
     scanner.expectWhitespace()
 
     if (!isPublic && scanner.isWord('public')) {
@@ -243,7 +251,7 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
 export function scanStateDefinition(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  const isPublic = scanner.scanIfString('public')
+  const isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
   if (isPublic) {
     scanner.expectWhitespace()
   }
@@ -288,7 +296,7 @@ export function scanMainDefinition(scanner: Scanner, parseNext: ParseNext) {
 export function scanActionDefinition(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  const isPublic = scanner.scanIfString('public')
+  const isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
   if (isPublic) {
     scanner.expectWhitespace()
   }
@@ -313,18 +321,12 @@ export function scanActionDefinition(scanner: Scanner, parseNext: ParseNext) {
 export function scanViewDefinition(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  const isPublic = scanner.scanIfString('public')
+  const isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
   if (isPublic) {
     scanner.expectWhitespace()
   }
 
   const value = scanViewFormula(scanner, 'expression', parseNext)
-  if (!value.nameRef.name.match(/^[A-Z]/)) {
-    throw new ParseError(
-      scanner,
-      `Views must start with an uppercased letter, found '${value.nameRef.name}'`,
-    )
-  }
 
   return new Expressions.ViewDefinition(
     [range0, scanner.charIndex],
@@ -337,7 +339,7 @@ export function scanViewDefinition(scanner: Scanner, parseNext: ParseNext) {
 export function scanHelperDefinition(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  const isPublic = scanner.scanIfString('public')
+  const isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
   if (isPublic) {
     scanner.expectWhitespace()
   }
