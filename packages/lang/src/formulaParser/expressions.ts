@@ -99,7 +99,7 @@ export abstract class Expression {
    * All other values are enclosed in `{…}`
    */
   toViewChildrenCode() {
-    return `{${this}}`
+    return `{${this.toCode()}}`
   }
 
   /**
@@ -253,6 +253,7 @@ export class Literal extends Expression {
     if (this.value instanceof Values.StringValue) {
       let code = this.value.value.replace(/([{}])/g, '\\$1')
       code = code.replace(/(<\/)/g, '\\</')
+      code = code.replace(/(<>)/g, '\\<>')
       return code
     } else {
       return super.toViewChildrenCode()
@@ -1593,7 +1594,7 @@ export abstract class Argument extends Expression {
 }
 
 /**
- * A named argument passed to a function, object, or view. Also used to store
+ * A named argument passed to a function, object, class, or view. Also used to store
  * 'let' declarations
  *
  *     foo(name: 'value')
@@ -3567,7 +3568,7 @@ abstract class ViewExpression extends Expression {
       code += '>'
       const lines: string[] = [code]
 
-      const children = this.children
+      let childrenCode = this.children
         .map(child => {
           if (child instanceof ViewExpression) {
             return child.toViewChildrenCode().replaceAll('\n', NEWLINE_INDENT)
@@ -3576,7 +3577,21 @@ abstract class ViewExpression extends Expression {
           }
         })
         .join('')
-      lines.push(children)
+      if (childrenCode.includes('\n') && !childrenCode.startsWith('\n')) {
+        const indent =
+          childrenCode.split('\n').reduce(
+            (indent, line) => {
+              const lineIndent = line.match(/^\s*/)?.[0] ?? ''
+              if (indent === undefined) {
+                return lineIndent
+              }
+              return lineIndent.length > indent.length ? lineIndent : indent
+            },
+            undefined as string | undefined,
+          ) ?? ''
+        childrenCode = '\n' + indent + childrenCode
+      }
+      lines.push(childrenCode)
 
       if (this.nameRef) {
         lines.push(`</${this.nameRef}>`)
@@ -3691,7 +3706,7 @@ abstract class ViewExpression extends Expression {
   }
 }
 
-export class UserViewExpression extends ViewExpression {
+export class NamedViewExpression extends ViewExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],

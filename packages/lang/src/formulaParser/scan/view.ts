@@ -134,6 +134,7 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
         if (scanner.charIndex === 0 || scanner.is('\n')) {
           const offset = scanner.is('\n') ? 1 : 0
           indent = scanner.input.substring(scanner.charIndex + offset, scanStart)
+          scanner.whereAmI(`scanView <${name}>indent: '${indent}'`)
         }
         scanner.whereAmI(`scanView <${name}>…(${children.length})…</${name}>`)
         scanner.rewindTo(rewind)
@@ -203,13 +204,9 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
             return line
           } else if (line.startsWith(indent)) {
             return line.substring(indent.length)
+          } else {
+            return line
           }
-
-          throw new ParseError(
-            scanner,
-            `Inconsistent indent, expected '${indent.replaceAll('\t', '\\t')}'`,
-            child.range[0],
-          )
         })
 
         return new Expressions.StringLiteral(child.range, scanner.flushComments(), lines.join('\n'))
@@ -220,7 +217,7 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
   }
 
   if (nameRef) {
-    return new Expressions.UserViewExpression(
+    return new Expressions.NamedViewExpression(
       [range0, scanner.charIndex],
       scanner.flushComments(),
       nameRef,

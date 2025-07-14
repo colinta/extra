@@ -23,7 +23,35 @@ describe('view', () => {
     c([
       'view Asdf() => <>a\\{a\\}b<\\<\\></>',
       "(view Asdf() => <> 'a{a}b<<>' </>)",
-      'view Asdf() => <>a\\{a\\}b<<></>',
+      'view Asdf() => <>a\\{a\\}b<\\<></>',
+    ]),
+    c([
+      `view Asdf() => <><!-- is this a comment? -->
+  a\\{a\\}b<\\<\\> -- and is this a comment?
+  <!-- this IS a comment, but ignored -->
+</>`,
+      "(view Asdf() => <> '<!-- is this a comment? -->\\n  a{a}b<<> -- and is this a comment?\\n  <!-- this IS a comment, but ignored -->\\n' </>)",
+      `view Asdf() =>
+  <>
+    <!-- is this a comment? -->
+    a\\{a\\}b<\\<> -- and is this a comment?
+    <!-- this IS a comment, but ignored -->
+  </>`,
+    ]),
+    c([
+      `view Asdf() =>
+  <>
+    <!-- is this a comment? -->
+    a\\{a\\}b<\\<> -- and is this a comment?
+    <!-- this IS a comment, but ignored -->
+  </>`,
+      "(view Asdf() => <> '\\n  <!-- is this a comment? -->\\n  a{a}b<<> -- and is this a comment?\\n  <!-- this IS a comment, but ignored -->\\n' </>)",
+      `view Asdf() =>
+  <>
+    <!-- is this a comment? -->
+    a\\{a\\}b<\\<> -- and is this a comment?
+    <!-- this IS a comment, but ignored -->
+  </>`,
     ]),
     c([
       `view Asdf() =>
@@ -33,6 +61,36 @@ describe('view', () => {
     b<
   </>`,
       "(view Asdf() => <> '\\n  a\\n  ' a '\\n  b<\\n' </>)",
+    ]),
+    c([
+      `view Asdf() =>
+  <>
+    a
+{a}
+    b<
+  </>`,
+      "(view Asdf() => <> '\\n  a\\n' a '\\n  b<\\n' </>)",
+      `view Asdf() =>
+  <>
+    a
+  {a}
+    b<
+  </>`,
+    ]),
+    c.only([
+      `view Asdf() =>
+  <>
+      a
+  {a}
+      b<
+  </>`,
+      "(view Asdf() => <> '\\n    a\\n' a '\\n    b<\\n' </>)",
+      `view Asdf() =>
+  <>
+      a
+  {a}
+      b<
+  </>`,
     ]),
     c(['view Foo(a: User) => <User user=a />', '(view Foo((a: User)) => <User user=a />)']),
     c([

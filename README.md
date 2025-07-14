@@ -106,10 +106,20 @@ in
   -- but if you want to assign # to a name, you can use `=>`
   |> some-numbers => some-numbers.map(fn(num) => $num).join(',')
 
--- there's a JSX-like syntax built in
--- arrays, dicts, sets, and objects support an inclusion operator `?`
+-- there's a JSX-like syntax built in.
+<div>
+  <h1>Hello, Extra!</h1>
+  <p>-- some things change, like this is no longer a comment</p>
+  <p>{- other things don't change, like this *is* a comment -}</p>
+  <!-- this is an HTML comment, so it's preserved -->
+</div>
+
+-- arrays, dicts, sets, and objects support an inclusion operator `onlyif`
 -- in this case, 'italic' is included in the array only if `@is-italic` is true
-<p class=['bold', @is-italic ? 'italic']>Hello, World!</p>
+<p class=[
+  'bold'
+  'italic' onlyif @is-italic
+]>Hello, World!</p>
 ```
 
 # Now in no particular order, some language features of Extra
@@ -166,9 +176,12 @@ Here is a function definition using `lazy` arguments:
 ```extra
 fn doSomething<T>(condition: 1 | 2 | 3, one: lazy(T), two: lazy(T), three: lazy(T)) =>
   switch (condition) {
-    case: 1 => one()
-    case: 2 => two()
-    case: 3 => three()
+  case:
+    1 => one()
+  case:
+    2 => two()
+  case:
+    3 => three()
   }
 
 -- usually you would call the function like this - "vanilla" extra code
@@ -188,24 +201,53 @@ Obviously Extra supports pattern matching. `switch` is the most canonical way to
 
 ```extra
 switch (volume) {
-  case: 0..<2 => 'turn it up!'
-  case: 2..<5 => "that's enough"
-  else: `$volume is too loud`
+case:
+  0..<2 => 'turn it up!'
+case:
+  2..<5 => "that's enough"
+else:
+  `$volume is too loud`
 }
 ```
 
 ### Enums / Algebraic data types
 
 ```extra
-type Result = enum<Ok, Err>
-  | Ok(value: Ok)
-  | Err(error: Err)
+enum Result(Ok, Err) {
+  .ok(Ok)
+  .err(Err)
 
-fn result-to-maybe<T>(result: Result<T, unknown>) =>
-  switch (result) {
+  fn to-maybe() =>
+    switch (this) {
     case: .ok(value) => value
     else: null
-  }
+    }
+
+  static from-maybe<T>(#value: T?): Result<T, null> =>
+    if (value, then: .ok(value), else: .err(null))
+}
+
+enum Colour {
+  .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
+  .hex(String(length: =6))
+  .name('red' | 'green' | 'blue')
+}
+```
+
+There is also a shorthand syntax, only available when defining an enum as an
+argument type (you cannot use generics in that case):
+
+```extra
+fn print(
+  #text: String
+  color:
+    -- initial '|' is optional, but looks nice in multilines
+    | .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
+    | .hex(String(length: =6))
+    | .name('red' | 'green' | 'blue')
+    | null
+) =>
+  if (color) { then: … }
 ```
 
 ### Destructured matching
@@ -215,10 +257,13 @@ This was hard so you better like it.
 ```extra
 -- foo: String | Array(String)
 switch (foo) {
-  case: 'foo' <> bar => bar
-  case: [onlyOne] => onlyOne
-  case: [...many, last] => many.join(',') <> " and $last"
-  else:
+case:
+  'foo' <> bar => bar
+case:
+  [onlyOne] => onlyOne
+case:
+  [...many, last] => many.join(',') <> " and $last"
+else:
     'not "foo…" or [a, …]'
 }
 ```
@@ -397,21 +442,40 @@ name
 
 -- of course it's also just very easy to pipe into a `switch` statement
 httpResponse |> switch(#) {
-    case: .ok(success) => success.message
-    case: .err(error) => error.message
+  case:
+    .ok(success) => success.message
+  case:
+    .err(error) => error.message
   } --> String
 ```
 
 ## Algebraic data types _of course_
 
-In particular: **Sum Types**. Shoutout to [Justin Pombrio – but please get out of my head and stealing my rants](https://justinpombrio.net/2021/03/11/algebra-and-data-types.html#:~:text=The%20Baffling%20Lack%20of%20Sum%20Types).
+In particular: **Sum Types**. Shoutout to [Justin Pombrio – but please get out of my head and stealing my rants](https://justinpombrio.net/2021/03/11/algebra-and-data-types.html#:~:text=The%20Baffling%20Lack%20of%20Sum%20Types) for a great writeup on Sum and Product types.
 
 ```extra
-type RemoteData = enum<Success, Failure>
-  | NotAsked
-  | Loading
-  | Failure(error: Failure)
-  | Success(value: Success)
+enum RemoteData(Success, Failure) {
+  .notAsked
+  .loading
+  .failure(error: Failure)
+  .success(value: Success)
+
+  static maybe<S, F>(#value: S?): RemoteData(S, F) =>
+    if (value, then: .success(value), else: .notAsked)
+
+  fn data(): Success? =>
+    switch(this) {
+    case:
+      .success(value) => value
+    else:
+      null
+    }
+}
+
+let
+  remoteData: RemoteData<String, Error> = .success('data loaded')
+in
+  remoteData.data() --> 'data loaded': String?
 ```
 
 **Product Types** in Extra are the good ol' `Object` type – `Record` or `struct` in other languages. Extra Objects are also Tuples, because the property name is optional - you can have positional and named properties (which aligns them with how function arguments support positional and named arguments - function arguments are just Tuples (or Objects)!)
