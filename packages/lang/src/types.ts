@@ -2227,7 +2227,7 @@ export class ObjectType extends Type {
 
   constructor(readonly props: ObjectProp[]) {
     // TODO: props are not being checked for duplicate names (later names should
-    // override earlier names, positional props concatenate)
+    // override earlier names)
     super()
   }
 

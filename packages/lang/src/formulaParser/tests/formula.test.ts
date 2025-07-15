@@ -86,7 +86,9 @@ fn(
   describe('eval', () => {
     cases<[string, Values.Value]>(
       c(['(fn(): Int => 0)()', Values.int(0)]),
+      c(['(fn(#a: Int = 0): Int => a)()', Values.int(0)]),
       c(['(fn(#a: Int): Int => a)(1)', Values.int(1)]),
+      c(['(fn(#a: Int = 0): Int => a)(1)', Values.int(1)]),
       c(['(fn(a: Int): Int => a)(a: 1)', Values.int(1)]),
       c(['(fn(#a: Int, b: Int): Int => a + b)(1, b: 2)', Values.int(3)]),
       c(['(fn(#a: Int, b: Int): Int => a + b)(b: 2, 1)', Values.int(3)]),
@@ -120,6 +122,10 @@ fn(
       c(['fn(#a: Int, #a: Int): Int => 0', "Found second argument with the same name 'a'"]),
       c(['fn(a a1: Int, a a2: Int): Int => 0', "Found second argument with the same name 'a'"]),
       c([
+        'fn(a as: Array(Int), a: Array(Int)): Int => 0',
+        "Found second argument with the same name 'a'",
+      ]),
+      c([
         'fn(...#a: Int): Int => 0',
         "Expected 'Array' type for '...#a', found 'Int'. Remaining argument lists must use the Array type, e.g. 'Array(Int)'.",
       ]),
@@ -130,10 +136,6 @@ fn(
       c([
         'fn(#a: Int, *as: Int): Int => 0',
         "Expected 'Dict' type for '*as', found 'Int'. Keyword arguments lists must use the Dict type, e.g. 'Dict(Int)'.",
-      ]),
-      c([
-        'fn(...a as: Array(Int), ...a: Array(Int)): Int => 0',
-        "Found second argument with the same name 'a'",
       ]),
       c([
         'fn(...#a: Array(Int), ...#b: Array(Int)): Int => 0',

@@ -1955,9 +1955,14 @@ export class LetExpression extends Expression {
       code += indent(line) + '\n'
     }
     code += 'in\n'
-    code += indent(this.body.toCode()) + '\n'
+    const bodyCode = indent(this.body.toCode())
+    if (bodyCode.includes('\n')) {
+      code += bodyCode
+    } else {
+      code += bodyCode + '\n'
+    }
 
-    return code.replace(/^\s+$/gm, '')
+    return code
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
@@ -2519,10 +2524,17 @@ export class ClassExpression extends Expression {
   }
 
   toLisp() {
-    let code = `(class ${this.nameRef.name}) `
-    code += this.generics.length > 0 ? `<${this.generics.join(' ')}> ` : ''
-    code += '(' + this.properties.map(m => m.toLisp()).join(' ') + ')'
-    code += '(' + this.formulas.map(f => f.toLisp()).join(' ') + ')'
+    let code = `(class ${this.nameRef.name})`
+    code += this.generics.length > 0 ? ` <${this.generics.join(' ')}>` : ''
+    if (this.extendsExpression) {
+      code += ` extends ${this.extendsExpression.name}`
+    }
+    if (this.properties.length) {
+      code += ' (' + this.properties.map(m => m.toLisp()).join(' ') + ')'
+    }
+    if (this.formulas.length) {
+      code += ' (' + this.formulas.map(f => f.toLisp()).join(' ') + ')'
+    }
     return `(${code})`
   }
 
@@ -2651,11 +2663,12 @@ export class NamedEnumTypeExpression extends EnumTypeExpression {
   }
 
   toLisp() {
-    let code = `((enum ${this.nameRef.name}) `
+    let code = `(enum ${this.nameRef.name})`
     if (this.generics.length) {
-      code += `<${this.generics.join(' ')}> `
+      code += ` <${this.generics.join(' ')}>`
     }
-    return code + '(' + this.members.map(m => m.toLisp()).join(' ') + '))'
+    code += ' (' + this.members.map(m => m.toLisp()).join(' ') + ')'
+    return `(${code})`
   }
 
   toCode() {
@@ -3020,9 +3033,9 @@ export class FormulaLiteralArgumentAndTypeDeclaration extends ArgumentExpression
  * List of argument declarations and their type, e.g. `(name: String, age: Int)`
  * FormulaTypeArgumentDeclarations stores the arguments and types of a formula *type*
  *
- *   Add = fn(a: Int, b: Int): Int
- *            ^^^^^^^^^^^^^^
- *            (list of FormulaTypeArgumentAndType)
+ *     add = fn(a: Int, b: Int): Int
+ *              ^^^^^^^^^^^^^^
+ *       (list of FormulaTypeArgumentAndType)
  */
 export class FormulaTypeArgumentDeclarations extends ArgumentDeclarations {
   constructor(
@@ -3035,7 +3048,11 @@ export class FormulaTypeArgumentDeclarations extends ArgumentDeclarations {
 }
 
 /**
- * Can be declared optional, but cannot accept a default value
+ * The argument name and type for a FormulaType expression
+ *
+ *     add = fn(a: Int, b: Int): Int
+ *              ^^^^^^  |
+ *                      ^^^^^^
  */
 export class FormulaTypeArgumentAndType extends ArgumentExpression {
   constructor(

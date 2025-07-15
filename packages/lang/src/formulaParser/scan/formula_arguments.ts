@@ -65,6 +65,7 @@ export function scanFormulaTypeArgumentDefinitions(
 function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
   scanner: Scanner,
   is: T,
+  // view formulas cannot have positional arguments
   type: 'view' | 'fn',
   expressionType: ExpressionType,
   parseNext: ParseNext,
@@ -249,11 +250,9 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
 
       let argType: Expression
       if (is === 'formula' && !scanner.is(':')) {
-        // maybe this will be supported one day?
-        // argType = new Expressions.InferIdentifier(
-        //   [scanner.charIndex, scanner.charIndex],
-        //   scanner.flushComments(),
-        // )
+        // I know some programming languages are able to infer the argument type
+        // based on how it's *used* but that just sounds like a ton of work,
+        // for mediocre results.
         throw new ParseError(scanner, `Expected type expression for '${argName.name}'`)
       } else {
         scanner.expectString(':', "Expected ':' followed by the argument type")
@@ -282,7 +281,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         if (is === 'formula_type') {
           throw new ParseError(
             scanner,
-            `Default values are not allowed in formula type definitions (you can use '?:' to define optional arguments)`,
+            `Default values are not allowed in formula type definitions (but you can use '?:' to define optional arguments)`,
           )
         }
 

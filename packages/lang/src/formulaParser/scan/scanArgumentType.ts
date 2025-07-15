@@ -837,6 +837,7 @@ export function scanClass(
           `Unexpected comments after class property '${nameRef.name}'. Comments should be before the property definition.`,
         )
       }
+
       const property = new Expressions.ClassPropertyExpression(
         [range1, scanner.charIndex],
         precedingComments,
@@ -848,6 +849,9 @@ export function scanClass(
     }
 
     scanner.scanAllWhitespace()
+    if (scanner.scanIfString(',')) {
+      scanner.scanAllWhitespace()
+    }
   }
 
   if (properties.length === 0) {
