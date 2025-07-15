@@ -107,6 +107,8 @@ export type ExpressionType =
   | 'let' // let ... in
   | 'type' // parses the type within <>
   | 'object' // parses the value within {key: value}
+  | 'enum' // parses enum members, member and static functions, closes w/ }
+  | 'class' // parses properties, member and static functions, closes w/ }
   | 'array[]' // parses the values within [1,2,3]
   | 'array-word' // parses the values within array(1,2,3)
   | 'dict-word' // parses the values within dict(1,2,3)

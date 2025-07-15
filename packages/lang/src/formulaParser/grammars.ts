@@ -204,6 +204,8 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
     expressionType === 'object' ||
+    expressionType === 'enum' ||
+    expressionType === 'class' ||
     expressionType === 'array[]' ||
     expressionType === 'array-word' ||
     expressionType === 'dict-word' ||
@@ -243,7 +245,9 @@ export function terminatesWithCurlyBracket(expressionType: ExpressionType) {
     expressionType === 'block_argument' ||
     expressionType === 'view_embed' ||
     expressionType === 'interpolation' ||
-    expressionType === 'object'
+    expressionType === 'object' ||
+    expressionType === 'enum' ||
+    expressionType === 'class'
   )
 }
 

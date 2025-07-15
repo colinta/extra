@@ -21,6 +21,18 @@ export function scanFormula(
   })
 }
 
+export function scanStaticFormula(
+  scanner: Scanner,
+  parseNext: ParseNext,
+  bodyExpressionType?: ExpressionType,
+) {
+  return _scanFormula(scanner, 'expression', parseNext, {
+    type: 'static',
+    isNamedFn: true,
+    bodyExpressionType,
+  }) as Expressions.StaticFormulaExpression
+}
+
 export function scanNamedFormula(
   scanner: Scanner,
   parseNext: ParseNext,
@@ -85,7 +97,7 @@ function _scanFormula(
   expressionType: ExpressionType,
   parseNext: ParseNext,
   options: {
-    type: 'Main' | 'view' | 'fn' | '&fn'
+    type: 'Main' | 'view' | 'fn' | '&fn' | 'static'
     isNamedFn: boolean
     bodyExpressionType: ExpressionType | undefined
   },
@@ -133,6 +145,7 @@ function _scanFormula(
     precedingNameComments = scanner.flushComments()
     nameRef = scanValidName(scanner)
   }
+  scanner.whereAmI(`scanFormula name = ${nameRef}`)
 
   if (isNamedFn && nameRef === undefined) {
     throw new ParseError(scanner, `Expected function name after '${type}'`)
@@ -149,6 +162,7 @@ function _scanFormula(
   } else if (scanner.scanIfString(GENERIC_OPEN)) {
     throw new ParseError(scanner, `Unexpected generic in ${type} function`)
   }
+  scanner.whereAmI(`scanFormula generics = [${generics.join(', ')}]`)
 
   const argDeclarations = scanFormulaArgumentDefinitions(
     scanner,
@@ -158,6 +172,7 @@ function _scanFormula(
   )
   scanner.scanAllWhitespace()
   argDeclarations.followingComments.push(...scanner.flushComments())
+  scanner.whereAmI(`scanFormula argDeclarations = (${argDeclarations})`)
 
   let returnType: Expression
   if (type === 'fn' && scanner.scanIfString(':')) {
@@ -174,6 +189,7 @@ function _scanFormula(
       scanner.flushComments(),
     )
   }
+  scanner.whereAmI(`scanFormula returnType = ${returnType}`)
 
   scanner.scanSpaces()
   returnType.followingComments.push(...scanner.flushComments())
@@ -215,7 +231,19 @@ function _scanFormula(
       generics,
     )
   } else {
-    if (nameRef) {
+    if (type === 'static' && nameRef) {
+      return new Expressions.StaticFormulaExpression(
+        [range0, scanner.charIndex],
+        precedingComments,
+        precedingNameComments,
+        precedingReturnTypeComments,
+        nameRef,
+        argDeclarations,
+        returnType,
+        body,
+        generics,
+      )
+    } else if (nameRef) {
       return new Expressions.NamedFormulaExpression(
         [range0, scanner.charIndex],
         precedingComments,

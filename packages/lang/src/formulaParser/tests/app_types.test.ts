@@ -53,18 +53,75 @@ type User = {first-name: String(length: >=1), last-name: String(length: >=1), fu
     ]),
     c([
       `\
-type RemoteData<Tsuccess, Tfail> = enum
-  | NotLoaded
-  | Loading
-  | Success(#value: Tsuccess)
-  | Failure(#value: Tfail)
+enum RemoteData<Tsuccess, Tfail> {
+  .notLoaded
+  .loading
+  .success(#value: Tsuccess)
+  .failure(#value: Tfail)
+}
 `,
-      '(type RemoteData <Tsuccess, Tfail> (enum | NotLoaded | Loading | Success((#value: Tsuccess)) | Failure((#value: Tfail))))',
-      `type RemoteData<Tsuccess, Tfail> = enum
-  | NotLoaded
-  | Loading
-  | Success(#value: Tsuccess)
-  | Failure(#value: Tfail)`,
+      '((enum RemoteData) <Tsuccess Tfail> (.notLoaded .loading .success((#value: Tsuccess)) .failure((#value: Tfail))))',
+      `\
+enum RemoteData<Tsuccess, Tfail> {
+  .notLoaded
+  .loading
+  .success(#value: Tsuccess)
+  .failure(#value: Tfail)
+}`,
+    ]),
+    c([
+      `\
+enum RemoteData<Tsuccess, Tfail> {
+  .notLoaded
+  .loading
+  .success(#value: Tsuccess)
+  .failure(#value: Tfail)
+
+  fn toMaybe(): Maybe(Tsuccess) =>
+      if (this is .success(value)) {
+      then:
+        .some(value)
+      else:
+        .none
+      }
+}
+`,
+      '((enum RemoteData) <Tsuccess Tfail> (.notLoaded .loading .success((#value: Tsuccess)) .failure((#value: Tfail))))',
+      `\
+enum RemoteData<Tsuccess, Tfail> {
+  .notLoaded
+  .loading
+  .success(#value: Tsuccess)
+  .failure(#value: Tfail)
+
+  fn toMaybe(): Maybe(Tsuccess) =>
+    switch(this) { case: .success(value) => .some(value), else: .none }
+}`,
+    ]),
+    c([
+      `\
+public class User<T> {
+    first-name: String
+    last-name: String
+    data: T
+
+    fn name() =>
+        first-name <> ' ' <> last-name
+    static default() =>
+        User(first-name: '', last-name: '', data: 0)
+}
+`,
+      "((class User) <T> ((first-name: `String`) (last-name: `String`) (data: T))((fn name() => (<> (<> first-name ' ') last-name)) (static default() => (fn User ((first-name: '') (last-name: '') (data: 0))))))",
+      `class User<T> {
+  first-name: String
+  last-name: String
+  data: T
+
+  fn name() =>
+    first-name <> ' ' <> last-name
+  static default() =>
+    User(first-name: '', last-name: '', data: 0)
+}`,
     ]),
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse type definition '${formula}'`, () => {
@@ -77,47 +134,56 @@ type RemoteData<Tsuccess, Tfail> = enum
   )
 })
 
-describe.skip('classes', () => {
+describe('classes', () => {
   cases<[string, string] | [string, string, string]>(
     c([
-      'class Point() { x: Int = 0, y: Int = 0 }',
-      '(class Point() {(x: `Int` = 0) (y: `Int` = 0)})',
-      'class Point() {x: Int = 0, y: Int = 0}',
+      'class Point { x: Int = 0, y: Int = 0 }',
+      '(class Point {(x: `Int` = 0) (y: `Int` = 0)})',
+      'class Point {x: Int = 0, y: Int = 0}',
+    ]),
+    c([
+      'class Rect extends Point { w: Int = 0, h: Int = 0 }',
+      '(class Rect extends Point {(w: `Int` = 0) (h: `Int` = 0)})',
+      'class Rect extends Point {w: Int = 0, h: Int = 0}',
     ]),
     c([
       `\
-type User = class {
+class User {
   first-name: String(length: >=1)
   age: Age = 0
 }`,
-      '(type User {(first-name: `String(length: >=1)`) (age: Age = 0)})',
+      '(class User {(first-name: `String(length: >=1)`) (age: Age = 0)})',
       'User = {first-name: String(length: >=1), age: Age = 0}',
     ]),
     c([
       `\
-class User() {
+class User {
   first-name: String = ''
   last-name: String(length: >=1)?
   age: Int(>=0) = 0
 
   fn fullname(): String =>
-    if (this.first-name and this.last-name)
-    then
-      this.first-name ++ this.last-name
-    else
+    if (this.first-name and this.last-name) {
+    then:
+      this.first-name <> this.last-name
+    else:
       this.first-name or this.last-name or '<no name>'
+    }
 }`,
-      "(type User {(first-name: `String` = '') (last-name: (`String(length: >=1)` | `null`)) (age: `Int(>=0)` = 0) (fn fullname(() : (`String`) => (fn if ((&& (. this first-name) (. this last-name)) (then (++ (. this first-name) (. this last-name))) (else (|| (|| (. this first-name) (. this last-name)) '<no name>'))))))})",
+      "(type User {(first-name: `String` = '') (last-name: (`String(length: >=1)` | `null`)) (age: `Int(>=0)` = 0) (fn fullname(() : (`String`) => (fn if ((&& (. this first-name) (. this last-name)) (then (<> (. this first-name) (. this last-name))) (else (|| (|| (. this first-name) (. this last-name)) '<no name>'))))))})",
       `\
-class User() {
+class User {
   first-name: String = ''
   last-name: String(length: >=1) | null
   age: Int(>=0) = 0
+
   fn fullname(): String =>
-    if ((this.first-name and this.last-name)) then
-      this.first-name ++ this.last-name
-    else
+    if ((this.first-name and this.last-name)) {
+    then:
+      this.first-name <> this.last-name
+    else:
       this.first-name or this.last-name or '<no name>'
+    }
 }`,
     ]),
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>

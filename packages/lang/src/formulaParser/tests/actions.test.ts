@@ -3,12 +3,12 @@ import {parseInternalTest} from '../../formulaParser'
 
 describe('action', () => {
   cases<[string, string, string] | [string, string]>(
-    c(['&fn asdf() => @foo = null', '(action &asdf (fn asdf() => (= @foo `null`)))']),
+    c(['&fn asdf() =>\n  @foo = null', '(action &asdf (fn asdf() => (= @foo `null`)))']),
     c([
-      '&fn update() => @pt = {...@pt, x: @pt.x + 1}',
+      '&fn update() =>\n  @pt = {...@pt, x: @pt.x + 1}',
       '(action &update (fn update() => (= @pt {(... @pt) (x: (+ (. @pt x) 1))})))',
     ]),
-    c(['&fn asdf(a: User) => @user = a', '(action &asdf (fn asdf((a: User)) => (= @user a)))']),
+    c(['&fn asdf(a: User) =>\n  @user = a', '(action &asdf (fn asdf((a: User)) => (= @user a)))']),
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse action definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula

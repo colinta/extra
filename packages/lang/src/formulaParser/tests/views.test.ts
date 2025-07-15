@@ -77,7 +77,7 @@ describe('view', () => {
     b<
   </>`,
     ]),
-    c.only([
+    c([
       `view Asdf() =>
   <>
       a

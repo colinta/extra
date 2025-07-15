@@ -1061,19 +1061,24 @@ function combineAllTypesForDict(expr: DictExpression, runtime: TypeRuntime) {
 }
 
 /**
- * A "complex" type of a function argument, e.g.
- *
- * Array<Int>
- * Dict<String>
- * Int | String --> OneOf<Int | String>
+ * The class doesn't provide much convenience, mostly it groups together a bunch of
+ * related classes:
+ *   NamespaceAccessExpression
+ *   OneOfTypeExpression
+ *   ExtendsExpression
+ *   ObjectTypeExpression
+ *   ArrayTypeExpression
+ *   DictTypeExpression
+ *   SetTypeExpression
+ *   TypeConstructorExpression
  */
 export abstract class TypeExpression extends Expression {
   isUnknown() {
     return false
   }
 
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'ArgumentType cannot be evaluated'))
+  eval(_runtime: ValueRuntime): GetValueResult {
+    return err(new RuntimeError(this, `${this.constructor.name} cannot be evaluated`))
   }
 }
 
@@ -1399,6 +1404,44 @@ export class SetTypeExpression extends TypeExpression {
     return this.of.getAsTypeExpression(runtime).map(type => {
       return new Types.SetType(type, this.narrowedLength).fromTypeConstructor()
     })
+  }
+}
+
+/**
+ * An example will make the most sense:
+ *
+ *     type TupleType<T, U> = { T, U }
+ *     fn intStringTuple(): TupleType(Int, String) => …
+ *                          ^^^^^^^^^^^^^^^^^^^^^^
+ *     fn anotherExample(): TupleType(Array(Int), String?) => …
+ *                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ */
+export class TypeConstructorExpression extends TypeExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly nameRef: Reference,
+    readonly types: Expression[],
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies() {
+    return this.types.reduce((set, type) => union(set, type.dependencies()), new Set<string>())
+  }
+
+  toLisp() {
+    const types = this.types.map(type => type.toLisp()).join(' ')
+    return `(${this.nameRef.toLisp()} ${types})`
+  }
+
+  toCode() {
+    const types = this.types.map(type => type.toLisp()).join(', ')
+    return `${this.nameRef.toLisp()}(${types})`
+  }
+
+  getType(): GetTypeResult {
+    throw 'TODO - TypeConstructorExpression getAsTypeExpression'
   }
 }
 
@@ -2401,6 +2444,125 @@ export class PipePlaceholderExpression extends Expression {
   }
 }
 
+export class ClassPropertyExpression extends Expression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly nameRef: Reference,
+    readonly argType: Expression,
+    readonly defaultValue: Expression | undefined,
+  ) {
+    super(range, precedingComments)
+  }
+
+  provides() {
+    return new Set([this.nameRef.name])
+  }
+
+  toLisp() {
+    let code = ''
+    code += this.nameRef.name
+
+    code += ': ' + this.argType.toLisp()
+
+    if (this.defaultValue) {
+      code += ' ' + this.defaultValue.toLisp()
+    }
+
+    return `(${code})`
+  }
+
+  toCode() {
+    let code = ''
+    code += this.nameRef.name
+    code += ': ' + this.argType.toCode()
+
+    if (this.defaultValue) {
+      code += ' = ' + this.defaultValue.toCode()
+    }
+
+    return code
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'ClassPropertyExpression does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'ClassPropertyExpression cannot be evaluated'))
+  }
+}
+
+export class ClassExpression extends Expression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly lastComments: Comment[],
+    readonly nameRef: Reference,
+    readonly generics: string[],
+    readonly extendsExpression: Reference | undefined,
+    /**
+     * Properties and their type, possibly with default value.
+     */
+    readonly properties: ClassPropertyExpression[],
+    /**
+     * Static *and* member formulas
+     */
+    readonly formulas: NamedFormulaExpression[],
+    readonly isPublic: boolean,
+  ) {
+    super(range, precedingComments)
+  }
+
+  provides(): Set<string> {
+    return new Set([this.nameRef.name])
+  }
+
+  toLisp() {
+    let code = `(class ${this.nameRef.name}) `
+    code += this.generics.length > 0 ? `<${this.generics.join(' ')}> ` : ''
+    code += '(' + this.properties.map(m => m.toLisp()).join(' ') + ')'
+    code += '(' + this.formulas.map(f => f.toLisp()).join(' ') + ')'
+    return `(${code})`
+  }
+
+  toCode() {
+    let code = `class ${this.nameRef.name}`
+    if (this.generics.length > 0) {
+      code += `<${this.generics.join(', ')}>`
+    }
+    if (this.extendsExpression) {
+      code += ` extends ${this.extendsExpression.name}`
+    }
+    code += ' {\n'
+    let body = ''
+    // if (this.initializer)
+    for (const prop of this.properties) {
+      body += prop.toCode() + '\n'
+    }
+
+    if (this.properties.length && this.formulas.length) {
+      body += '\n'
+    }
+
+    for (const formula of this.formulas) {
+      body += formula.toCodePrefixed(true, true) + '\n'
+    }
+    code += indent(body)
+    code += '}'
+
+    return code
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    throw 'TODO - class getType'
+  }
+
+  eval(): GetValueResult {
+    throw 'TODO - class eval'
+  }
+}
+
 export class EnumMemberExpression extends Expression {
   constructor(
     range: Range,
@@ -2420,7 +2582,7 @@ export class EnumMemberExpression extends Expression {
   }
 
   toLisp() {
-    let code = this.name
+    let code = '.' + this.name
     if (this.args !== undefined) {
       code += this.args.toLisp()
     }
@@ -2429,7 +2591,7 @@ export class EnumMemberExpression extends Expression {
   }
 
   toCode() {
-    let code = this.name
+    let code = '.' + this.name
     if (this.args !== undefined) {
       code += `(${this.args})`
     }
@@ -2446,7 +2608,7 @@ export class EnumMemberExpression extends Expression {
   }
 }
 
-export class EnumTypeExpression extends Expression {
+export abstract class EnumTypeExpression extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -2462,20 +2624,85 @@ export class EnumTypeExpression extends Expression {
     )
   }
 
-  toLisp() {
-    return '(enum | ' + this.members.map(m => m.toLisp()).join(' | ') + ')'
-  }
-
-  toCode() {
-    return 'enum\n  | ' + this.members.map(m => m.toCode()).join('\n  | ')
-  }
-
   getType() {
     return err(new RuntimeError(this, 'EnumTypeExpression does not have a type'))
   }
 
   eval(): GetValueResult {
     return err(new RuntimeError(this, 'EnumTypeExpression cannot be evaluated'))
+  }
+}
+
+export class NamedEnumTypeExpression extends EnumTypeExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly nameRef: Reference,
+    members: EnumMemberExpression[],
+    readonly formulas: NamedFormulaExpression[],
+    readonly generics: string[],
+    readonly isPublic: boolean,
+  ) {
+    super(range, precedingComments, members)
+  }
+
+  provides(): Set<string> {
+    return new Set([this.nameRef.name])
+  }
+
+  toLisp() {
+    let code = `((enum ${this.nameRef.name}) `
+    if (this.generics.length) {
+      code += `<${this.generics.join(' ')}> `
+    }
+    return code + '(' + this.members.map(m => m.toLisp()).join(' ') + '))'
+  }
+
+  toCode() {
+    let code = ''
+    if (this.isPublic) {
+      code += 'public '
+    }
+    code += `enum ${this.nameRef.name}`
+    if (this.generics.length) {
+      code += '<' + this.generics.join(', ') + '>'
+    }
+    code += ' {\n'
+    let body = ''
+    for (const member of this.members) {
+      body += member.toCode() + '\n'
+    }
+    if (this.formulas.length) {
+      body += '\n'
+    }
+    // if (this.initializer)
+    for (const formula of this.formulas) {
+      body += formula.toCodePrefixed(true, true) + '\n'
+    }
+    code += indent(body)
+    code += '}'
+    return code
+  }
+}
+
+/**
+ * An enum expression as part of a formula argument list
+ *
+ *     fn (foo: .a | .b | .c(Int))
+ */
+export class EnumShorthandExpression extends EnumMemberExpression {}
+
+export class EnumShorthandTypeExpression extends EnumTypeExpression {
+  constructor(range: Range, precedingComments: Comment[], members: EnumShorthandExpression[]) {
+    super(range, precedingComments, members)
+  }
+
+  toCode() {
+    return this.members.map(m => m.toCode()).join(' | ')
+  }
+
+  toLisp() {
+    return '(enum | ' + this.members.map(m => m.toLisp()).join(' | ') + ')'
   }
 }
 
@@ -3021,7 +3248,7 @@ export class FormulaExpression extends Expression {
     }
 
     if (this.generics.length) {
-      code += '<' + this.generics.join(' ') + '> '
+      code += '<' + this.generics.join(', ') + '> '
     }
     code += this.argDefinitions.toLisp()
     if (!(this.returnType instanceof InferIdentifier)) {
@@ -3033,10 +3260,10 @@ export class FormulaExpression extends Expression {
   }
 
   toCode() {
-    return this.toCodePrefixed(true)
+    return this.toCodePrefixed(true, false)
   }
 
-  toCodePrefixed(prefixed: boolean) {
+  toCodePrefixed(prefixed: boolean, forceNewline: boolean) {
     let code = prefixed ? this.prefix : ''
     if (this.nameRef) {
       if (prefixed) {
@@ -3050,8 +3277,21 @@ export class FormulaExpression extends Expression {
     }
 
     const argDefinitions = this.argDefinitions.toCode()
-    const hasNewline = argDefinitions.includes('\n')
-    if (hasNewline) {
+    const returnTypeCode = this.returnType.toCode()
+    let hasNewline: boolean
+    if (forceNewline) {
+      hasNewline = true
+    } else {
+      const bodyCode = this.body.toCode()
+      const testCode = code + argDefinitions + returnTypeCode + bodyCode
+      hasNewline = testCode.includes('\n') || testCode.length > MAX_LEN
+    }
+
+    const argDefinitionsHasNewline =
+      argDefinitions.includes('\n') || argDefinitions.length > MAX_INNER_LEN
+    if (!argDefinitions.length) {
+      code += '()'
+    } else if (argDefinitionsHasNewline) {
       code += `(\n${indent(argDefinitions)}\n)`
     } else {
       code += `(${argDefinitions})`
@@ -3069,7 +3309,8 @@ export class FormulaExpression extends Expression {
   toBodyCode(REM_LEN: number) {
     let code = '=>'
     const bodyCode = this.body.toCode()
-    if (bodyCode.length > REM_LEN || bodyCode.includes('\n')) {
+    const hasNewline = bodyCode.length > REM_LEN || bodyCode.includes('\n')
+    if (hasNewline) {
       code += '\n' + indent(bodyCode)
     } else {
       code += ' ' + bodyCode
@@ -3434,14 +3675,12 @@ export class FormulaExpression extends Expression {
 }
 
 export class NamedFormulaExpression extends FormulaExpression {
-  nameRef: Reference
-
   constructor(
     range: Range,
     precedingComments: Comment[],
     precedingNameComments: Comment[],
     precedingReturnTypeComments: Comment[],
-    nameRef: Reference,
+    readonly nameRef: Reference,
     argDefinitions: FormulaLiteralArgumentDeclarations,
     returnType: Expression,
     body: Expression,
@@ -3460,6 +3699,15 @@ export class NamedFormulaExpression extends FormulaExpression {
     )
     this.nameRef = nameRef
   }
+}
+
+/**
+ * Identical in form to a NamedFormulaExpression, but prefixed w/ 'static'
+ * (and obviously semantics are different when invoked, but since they act as
+ * regular formulas, this is actually "for free").
+ */
+export class StaticFormulaExpression extends NamedFormulaExpression {
+  prefix = 'static'
 }
 
 abstract class ViewExpression extends Expression {
@@ -3770,7 +4018,7 @@ export class MainFormulaExpression extends ViewFormulaExpression {
   }
 
   toCode() {
-    return this.toCodePrefixed(false)
+    return this.toCodePrefixed(false, true)
   }
 }
 
@@ -4162,7 +4410,7 @@ export class HelperDefinition extends Expression {
       code += '&'
     }
     code += 'fn '
-    code += `${this.value.toCodePrefixed(false)}`
+    code += `${this.value.toCodePrefixed(false, true)}`
     return code
   }
 

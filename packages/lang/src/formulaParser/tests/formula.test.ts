@@ -69,6 +69,8 @@ fn(
         'fn<T>(a: fn(): T, #b: fn(): T): T => b()',
         '(fn <T> ((a: (fn () : (T))) (#b: (fn () : (T)))) : T => (fn b ()))',
       ]),
+      c(['fn(#arg: .a | .b): T => b()', '(fn ((#arg: (enum | .a | .b))) : T => (fn b ()))']),
+      c(['fn(#arg: {a: String}): T => b()', '(fn ((#arg: {(a: `String`)})) : T => (fn b ()))']),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         expectedCode ??= formula
@@ -140,6 +142,10 @@ fn(
       c([
         'fn(*a: Dict(Int), *b: Dict(Int)): Int => 0',
         "Found second keyword arguments list '*b' after '*a'",
+      ]),
+      c([
+        'fn(#arg: enum Foo { .a }): T => b()',
+        'The `enum` type is not allowed as a formula argument type',
       ]),
     ).run(([formula, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not parse ${formula}`, () => {

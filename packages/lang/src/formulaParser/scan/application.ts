@@ -20,6 +20,7 @@ import {
   PUBLIC_KEYWORD,
   TYPE_KEYWORD,
 } from '../grammars'
+import {scanClass, scanEnum} from './scanArgumentType'
 
 export function scanRequiresStatement(scanner: Scanner) {
   const precedingComments = scanner.flushComments()
@@ -202,25 +203,21 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
     scanner.expectWhitespace()
   }
 
-  let isClass: boolean
   if (scanner.is(CLASS_KEYWORD)) {
-    isClass = true
-    scanner.expectWhitespace()
-  } else {
-    isClass = false
-    scanner.expectString(TYPE_KEYWORD, 'Types must be preceded by the "type" keyword.')
-    scanner.expectWhitespace()
-
-    if (!isPublic && scanner.isWord('public')) {
-      isPublic = true
-      scanner.expectWhitespace()
-    }
+    return scanClass(scanner, 'application_type', parseNext, {isPublic})
+  } else if (scanner.is(ENUM_KEYWORD)) {
+    return scanEnum(scanner, 'application_type', parseNext, {isPublic, isFnArg: false})
   }
 
-  const name = scanValidName(scanner).name
-  if (!name.match(/^[A-Z]/)) {
-    throw new ParseError(scanner, 'Types must start with an uppercased letter')
+  scanner.expectString(TYPE_KEYWORD, 'Types must be preceded by the "type" keyword.')
+  scanner.expectWhitespace()
+
+  if (!isPublic && scanner.isWord(PUBLIC_KEYWORD)) {
+    isPublic = true
+    scanner.expectWhitespace()
   }
+
+  const name = scanValidTypeName(scanner).name
   scanner.scanAllWhitespace()
 
   const generics: string[] = []
@@ -229,23 +226,18 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
     scanner.scanAllWhitespace()
   }
 
-  if (isClass) {
-    scanner.expectString('{')
-    scanner.scanAllWhitespace()
-    throw new ParseError(scanner, 'Classes are not yet supported')
-  } else {
-    scanner.expectString('=')
-    const type = parseNext('application_type')
+  scanner.expectString('=')
+  scanner.scanAllWhitespace()
+  const type = parseNext('application_type')
 
-    return new Expressions.TypeDefinition(
-      [range0, scanner.charIndex],
-      precedingComments,
-      name,
-      type,
-      generics,
-      isPublic,
-    )
-  }
+  return new Expressions.TypeDefinition(
+    [range0, scanner.charIndex],
+    precedingComments,
+    name,
+    type,
+    generics,
+    isPublic,
+  )
 }
 
 export function scanStateDefinition(scanner: Scanner, parseNext: ParseNext) {
