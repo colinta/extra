@@ -1,6 +1,6 @@
 import {Scanner} from '../scanner'
 import {Operator, ParseError} from '../types'
-import {unaryOperatorNamed, isUnaryOperator, NAMED_UNARY_OPS} from '../operators'
+import {unaryOperatorNamed, isUnaryOperator, NAMED_UNARY_OPS, UNARY_OP_ALIASES} from '../operators'
 import {isUnaryOperatorChar} from '../grammars'
 
 export function scanUnaryOperator(scanner: Scanner): Operator {
@@ -21,6 +21,10 @@ export function scanUnaryOperator(scanner: Scanner): Operator {
 
       currentToken += scanner.char
     }
+  }
+
+  if (currentToken in UNARY_OP_ALIASES) {
+    currentToken = UNARY_OP_ALIASES[currentToken as keyof typeof UNARY_OP_ALIASES]
   }
 
   if (!isUnaryOperator(currentToken)) {

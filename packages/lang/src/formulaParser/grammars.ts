@@ -37,7 +37,7 @@ export function isBinaryOperatorName(input: string) {
 }
 
 export function isUnaryOperatorChar(char: string) {
-  return /^[~$.<=>≤≥-]/.test(char)
+  return /^[!~$.<=>≤≥-]/.test(char)
 }
 
 const namedUnaryOpRegex = new RegExp(`^(${NAMED_UNARY_OPS.join('|')})\\b`)

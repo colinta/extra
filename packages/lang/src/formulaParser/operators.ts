@@ -41,6 +41,9 @@ export const BINARY_OP_ALIASES = {
   '≠': '!=',
 } as const
 export const NAMED_UNARY_OPS = ['not', 'typeof'] as const
+export const UNARY_OP_ALIASES = {
+  '!': 'not',
+} as const
 
 export const LOWEST_PRECEDENCE = -1
 export const HIGHEST_PRECEDENCE = 100
@@ -1557,7 +1560,7 @@ abstract class TypeAssertionOperator extends BinaryOperator {
   }
 }
 
-class TypeIsAssertionOperator extends TypeAssertionOperator {
+class MatchOperator extends TypeAssertionOperator {
   readonly symbol = 'is'
 
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
@@ -1574,7 +1577,7 @@ class TypeIsAssertionOperator extends TypeAssertionOperator {
 }
 
 addBinaryOperator({
-  name: 'type is assertion',
+  name: 'is match',
   symbol: 'is',
   precedence: PRECEDENCE.BINARY['is'],
   associativity: 'left',
@@ -1585,17 +1588,11 @@ addBinaryOperator({
     operator: Operator,
     args: Expression[],
   ) {
-    return new TypeIsAssertionOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
+    return new MatchOperator(range, precedingComments, followingOperatorComments, operator, args)
   },
 })
 
-class TypeIsRefutationOperator extends TypeAssertionOperator {
+class MatchRefutationOperator extends TypeAssertionOperator {
   readonly symbol = '!is'
 
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
@@ -1624,7 +1621,7 @@ class TypeIsRefutationOperator extends TypeAssertionOperator {
 }
 
 addBinaryOperator({
-  name: 'type is not',
+  name: 'is not match',
   symbol: '!is',
   precedence: PRECEDENCE.BINARY['!is'],
   associativity: 'left',
@@ -1635,7 +1632,7 @@ addBinaryOperator({
     operator: Operator,
     args: Expression[],
   ) {
-    return new TypeIsRefutationOperator(
+    return new MatchRefutationOperator(
       range,
       precedingComments,
       followingOperatorComments,
