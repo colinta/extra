@@ -204,9 +204,9 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
   }
 
   if (scanner.is(CLASS_KEYWORD)) {
-    return scanClass(scanner, 'application_type', parseNext, {isPublic})
+    return scanClass(scanner, parseNext, {isPublic})
   } else if (scanner.is(ENUM_KEYWORD)) {
-    return scanEnum(scanner, 'application_type', parseNext, {isPublic, isFnArg: false})
+    return scanEnum(scanner, parseNext, {isPublic, isFnArg: false})
   }
 
   scanner.expectString(TYPE_KEYWORD, 'Types must be preceded by the "type" keyword.')

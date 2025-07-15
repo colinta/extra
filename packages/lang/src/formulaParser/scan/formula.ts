@@ -167,7 +167,6 @@ function _scanFormula(
   const argDeclarations = scanFormulaArgumentDefinitions(
     scanner,
     isInView ? 'view' : 'fn',
-    expressionType,
     parseNext,
   )
   scanner.scanAllWhitespace()
@@ -177,7 +176,7 @@ function _scanFormula(
   let returnType: Expression
   if (type === 'fn' && scanner.scanIfString(':')) {
     scanner.scanAllWhitespace()
-    returnType = scanArgumentType(scanner, 'argument_type', expressionType, parseNext)
+    returnType = scanArgumentType(scanner, 'argument_type', parseNext)
   } else if (scanner.scanIfString(':')) {
     throw new ParseError(
       scanner,
@@ -297,7 +296,7 @@ export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
       scanner.scanAllWhitespace()
       scanner.expectString('is')
       scanner.scanAllWhitespace()
-      const type = scanArgumentType(scanner, 'argument_type', 'generic', parseNext)
+      const type = scanArgumentType(scanner, 'argument_type', parseNext)
       // generic.type = type
       throw `TODO - support type on generic ${type}`
     }

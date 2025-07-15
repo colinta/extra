@@ -2,7 +2,7 @@ import * as Expressions from '../expressions'
 import {type Expression} from '../expressions'
 import {ARGS_CLOSE, ARGS_OPEN, isArgumentStartChar} from '../grammars'
 import {type Scanner} from '../scanner'
-import {type ExpressionType, ParseError, type ParseNext} from '../types'
+import {ParseError, type ParseNext} from '../types'
 
 import {scanArgumentType} from './scanArgumentType'
 import {scanValidName} from './identifier'
@@ -17,20 +17,13 @@ import {scanValidName} from './identifier'
 export function scanFormulaArgumentDefinitions(
   scanner: Scanner,
   type: 'view' | 'fn',
-  expressionType: ExpressionType,
   parseNext: ParseNext,
 ) {
   const range0 = scanner.charIndex - 1
   const precedingComments = scanner.flushComments()
   scanner.expectString(ARGS_OPEN, `Expected '${ARGS_OPEN}' to start arguments`)
   scanner.scanAllWhitespace()
-  const [args, range1] = _scanArgumentDeclarations(
-    scanner,
-    'formula',
-    type,
-    expressionType,
-    parseNext,
-  )
+  const [args, range1] = _scanArgumentDeclarations(scanner, 'formula', type, parseNext)
   return new Expressions.FormulaLiteralArgumentDeclarations(
     [range0, range1],
     precedingComments,
@@ -42,23 +35,13 @@ export function scanFormulaArgumentDefinitions(
 //
 // fn visit(func: fn(#arg?: Int): Int) => func(0) + func()
 //                  ^^^^^^^^^^^^
-export function scanFormulaTypeArgumentDefinitions(
-  scanner: Scanner,
-  expressionType: ExpressionType,
-  parseNext: ParseNext,
-) {
+export function scanFormulaTypeArgumentDefinitions(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
   scanner.expectString(ARGS_OPEN)
   scanner.scanAllWhitespace()
 
-  const [args, range1] = _scanArgumentDeclarations(
-    scanner,
-    'formula_type',
-    'fn',
-    expressionType,
-    parseNext,
-  )
+  const [args, range1] = _scanArgumentDeclarations(scanner, 'formula_type', 'fn', parseNext)
   return new Expressions.FormulaTypeArgumentDeclarations([range0, range1], precedingComments, args)
 }
 
@@ -67,7 +50,6 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
   is: T,
   // view formulas cannot have positional arguments
   type: 'view' | 'fn',
-  expressionType: ExpressionType,
   parseNext: ParseNext,
 ): [
   T extends 'formula'
@@ -257,7 +239,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       } else {
         scanner.expectString(':', "Expected ':' followed by the argument type")
         scanner.scanAllWhitespace()
-        argType = scanArgumentType(scanner, 'argument_type', expressionType, parseNext)
+        argType = scanArgumentType(scanner, 'argument_type', parseNext)
         scanner.scanSpaces()
         argType.followingComments.push(...scanner.flushComments())
 

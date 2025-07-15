@@ -42,7 +42,7 @@ export const BINARY_OP_ALIASES = {
 } as const
 export const NAMED_UNARY_OPS = ['not', 'typeof'] as const
 
-export const LOWEST_PRECEDENCE = -10
+export const LOWEST_PRECEDENCE = -1
 export const HIGHEST_PRECEDENCE = 100
 
 export const SPREAD_OPERATOR = '...'

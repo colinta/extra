@@ -586,7 +586,7 @@ function parseInternal(
         scanner.whereAmI(`expressionType ${expressionType}`)
         if (isOperator(prevOperator, 'is', 2) || isOperator(prevOperator, '!is', 2)) {
           // a is Array(Int) <-- scanArgumentType('formula_type') will match `Array(Int)`
-          processExpression(scanArgumentType(scanner, 'argument_type', expressionType, parseNext))
+          processExpression(scanArgumentType(scanner, 'argument_type', parseNext))
         } else if (scanner.isInView && scanner.is('<') && isViewStart(scanner.remainingInput)) {
           processExpression(scanView(scanner, parseNext))
         } else if (isDiceStart(scanner.remainingInput)) {
@@ -776,10 +776,10 @@ function parseInternal(
   } else if (expressionType === 'app_helper_definition') {
     expression = scanHelperDefinition(scanner, parseNext)
   } else if (expressionType === 'test_formula_arguments') {
-    expression = scanFormulaArgumentDefinitions(scanner, 'fn', expressionType, parseNext)
+    expression = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext)
   } else if (isScanningType(expressionType)) {
     // isScanningType => 'argument_type' | 'application_type'
-    expression = scanArgumentType(scanner, expressionType, expressionType, parseNext)
+    expression = scanArgumentType(scanner, expressionType, parseNext)
   } else {
     expression = scanExpression()
   }

@@ -159,7 +159,7 @@ export function scanObject(
 function scanOptionalGeneric(scanner: Scanner, parseNext: ParseNext) {
   let generic: Expression
   if (scanner.scanIfString(GENERIC_OPEN)) {
-    generic = scanArgumentType(scanner, 'argument_type', 'type', parseNext)
+    generic = scanArgumentType(scanner, 'argument_type', parseNext)
     scanner.scanAllWhitespace()
     scanner.expectString(GENERIC_CLOSE, `Expected '${GENERIC_CLOSE}'`)
   } else {

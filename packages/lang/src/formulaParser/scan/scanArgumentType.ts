@@ -28,7 +28,7 @@ import {
   CLASS_KEYWORD,
 } from '../grammars'
 import {type Scanner} from '../scanner'
-import {type ArgumentType, ParseError, type ParseNext, type ExpressionType} from '../types'
+import {type ArgumentType, ParseError, type ParseNext} from '../types'
 
 import {unexpectedToken} from './basics'
 import {scanNamedFormula, scanGenerics, scanStaticFormula} from './formula'
@@ -82,8 +82,6 @@ export function scanArgumentType(
   // argument_type | application_type
   // only application_type supports enum definitions
   applicationOrArgument: ArgumentType,
-  // could be anything in theory, because the 'is' operator scans for a type signature
-  expressionType: ExpressionType,
   parseNext: ParseNext,
 ): Expression {
   scanner.whereAmI('scanArgumentType')
@@ -107,7 +105,7 @@ export function scanArgumentType(
     const arg0 = scanner.charIndex
 
     if (scanner.scanIfString(PARENS_OPEN)) {
-      argType = scanArgumentType(scanner, applicationOrArgument, expressionType, parseNext)
+      argType = scanArgumentType(scanner, applicationOrArgument, parseNext)
       scanner.scanAllWhitespace()
       scanner.expectString(
         PARENS_CLOSE,
@@ -130,7 +128,7 @@ export function scanArgumentType(
       scanner.whereAmI(`scanEnum: ${enumCaseName}`)
       let args: Expressions.FormulaLiteralArgumentDeclarations | undefined
       if (scanner.is(ARGS_OPEN)) {
-        args = scanFormulaArgumentDefinitions(scanner, 'fn', expressionType, parseNext)
+        args = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext)
       }
 
       enumExpressions.push(
@@ -154,14 +152,7 @@ export function scanArgumentType(
 
       break
     } else if (scanner.scanIfString(OBJECT_OPEN)) {
-      argType = scanObjectType(
-        scanner,
-        'literal',
-        applicationOrArgument,
-        expressionType,
-        parseNext,
-        arg0,
-      )
+      argType = scanObjectType(scanner, 'literal', applicationOrArgument, parseNext, arg0)
     } else if (scanner.isWord(CLASS_KEYWORD)) {
       throw new ParseError(
         scanner,
@@ -175,7 +166,7 @@ export function scanArgumentType(
     } else if (scanner.isWord(FN_KEYWORD)) {
       scanner.expectString(FN_KEYWORD)
       scanner.scanAllWhitespace()
-      argType = scanFormulaType(scanner, arg0, expressionType, parseNext, applicationOrArgument)
+      argType = scanFormulaType(scanner, arg0, parseNext, applicationOrArgument)
     } else if (isArgumentStartChar(scanner)) {
       const typeName = scanIdentifier(scanner)
 
@@ -220,11 +211,11 @@ export function scanArgumentType(
           scanner.scanAllWhitespace()
           scanner.expectString(ARGS_CLOSE)
         } else if (typeName.name === ARRAY) {
-          argType = scanArrayType(scanner, applicationOrArgument, expressionType, parseNext, arg0)
+          argType = scanArrayType(scanner, applicationOrArgument, parseNext, arg0)
         } else if (typeName.name === DICT) {
-          argType = scanDictType(scanner, applicationOrArgument, expressionType, parseNext, arg0)
+          argType = scanDictType(scanner, applicationOrArgument, parseNext, arg0)
         } else if (typeName.name === SET) {
-          argType = scanSetType(scanner, applicationOrArgument, expressionType, parseNext, arg0)
+          argType = scanSetType(scanner, applicationOrArgument, parseNext, arg0)
         } else if (typeName.name === OBJECT) {
           throw new ParseError(
             scanner,
@@ -240,12 +231,7 @@ export function scanArgumentType(
         } else if (typeName instanceof Expressions.Reference) {
           const typeArgs: Expressions.Expression[] = []
           for (;;) {
-            const ofType = scanArgumentType(
-              scanner,
-              applicationOrArgument,
-              expressionType,
-              parseNext,
-            )
+            const ofType = scanArgumentType(scanner, applicationOrArgument, parseNext)
             typeArgs.push(ofType)
 
             const shouldBreak = scanner.scanCommaOrBreak(
@@ -405,7 +391,6 @@ export function scanArgumentType(
 function scanFormulaType(
   scanner: Scanner,
   arg0: number,
-  expressionType: ExpressionType,
   parseNext: ParseNext,
   applicationOrArgument: ArgumentType,
 ) {
@@ -415,12 +400,12 @@ function scanFormulaType(
   } else {
     generics = []
   }
-  const argDefinitions = scanFormulaTypeArgumentDefinitions(scanner, expressionType, parseNext)
+  const argDefinitions = scanFormulaTypeArgumentDefinitions(scanner, parseNext)
 
   let returnType: Expression
   if (scanner.scanAhead(':')) {
     scanner.scanAllWhitespace()
-    returnType = scanArgumentType(scanner, applicationOrArgument, expressionType, parseNext)
+    returnType = scanArgumentType(scanner, applicationOrArgument, parseNext)
   } else {
     returnType = new Expressions.InferIdentifier(
       [scanner.charIndex, scanner.charIndex],
@@ -441,7 +426,6 @@ function scanObjectType(
   scanner: Scanner,
   is: 'literal' | 'object',
   applicationOrArgument: ArgumentType,
-  expressionType: ExpressionType,
   parseNext: ParseNext,
   range0: number,
 ) {
@@ -487,12 +471,7 @@ function scanObjectType(
       scanner.scanAllWhitespace()
     }
 
-    const objectArgType = scanArgumentType(
-      scanner,
-      applicationOrArgument,
-      expressionType,
-      parseNext,
-    )
+    const objectArgType = scanArgumentType(scanner, applicationOrArgument, parseNext)
 
     scanner.whereAmI(`objectArgType: ${objectArgType.toCode()}`)
     values.push([name, objectArgType])
@@ -526,17 +505,11 @@ function scanObjectType(
 function scanArrayType(
   scanner: Scanner,
   applicationOrArgument: ArgumentType,
-  expressionType: ExpressionType,
   parseNext: ParseNext,
   range0: number,
 ) {
   scanner.whereAmI(`scanArrayType`)
-  const {ofType, narrowedLength} = scanOfAndLength(
-    scanner,
-    applicationOrArgument,
-    expressionType,
-    parseNext,
-  )
+  const {ofType, narrowedLength} = scanOfAndLength(scanner, applicationOrArgument, parseNext)
   scanner.whereAmI(
     `scanArrayType: (` + ofType.toCode() + `, length: ${lengthDesc(narrowedLength)})`,
   )
@@ -551,12 +524,11 @@ function scanArrayType(
 function scanDictType(
   scanner: Scanner,
   applicationOrArgument: ArgumentType,
-  expressionType: ExpressionType,
   parseNext: ParseNext,
   range0: number,
 ) {
   scanner.whereAmI(`scanDictType`)
-  const ofType = scanArgumentType(scanner, applicationOrArgument, expressionType, parseNext)
+  const ofType = scanArgumentType(scanner, applicationOrArgument, parseNext)
   scanner.scanAllWhitespace()
 
   let narrowedLength: NarrowedLength = DEFAULT_NARROWED_LENGTH
@@ -629,17 +601,11 @@ function scanDictType(
 function scanSetType(
   scanner: Scanner,
   applicationOrArgument: ArgumentType,
-  expressionType: ExpressionType,
   parseNext: ParseNext,
   range0: number,
 ) {
   scanner.whereAmI(`scanSetType`)
-  const {ofType, narrowedLength} = scanOfAndLength(
-    scanner,
-    applicationOrArgument,
-    expressionType,
-    parseNext,
-  )
+  const {ofType, narrowedLength} = scanOfAndLength(scanner, applicationOrArgument, parseNext)
   scanner.whereAmI(`scanSetType: (` + ofType.toCode() + `, length: ${lengthDesc(narrowedLength)})`)
   return new Expressions.SetTypeExpression(
     [range0, scanner.charIndex],
@@ -652,10 +618,9 @@ function scanSetType(
 function scanOfAndLength(
   scanner: Scanner,
   applicationOrArgument: ArgumentType,
-  expressionType: ExpressionType,
   parseNext: ParseNext,
 ) {
-  const ofType = scanArgumentType(scanner, applicationOrArgument, expressionType, parseNext)
+  const ofType = scanArgumentType(scanner, applicationOrArgument, parseNext)
   scanner.scanAllWhitespace()
 
   let narrowedLength: NarrowedLength = DEFAULT_NARROWED_LENGTH
@@ -677,7 +642,6 @@ function scanOfAndLength(
 
 export function scanEnum(
   scanner: Scanner,
-  expressionType: ExpressionType,
   parseNext: ParseNext,
   {
     isPublic,
@@ -719,7 +683,7 @@ export function scanEnum(
       scanner.whereAmI(`scanEnum: ${enumCaseName}`)
       let args: Expressions.FormulaLiteralArgumentDeclarations | undefined
       if (scanner.is(ARGS_OPEN)) {
-        args = scanFormulaArgumentDefinitions(scanner, 'fn', expressionType, parseNext)
+        args = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext)
       }
       range1 = scanner.charIndex
 
@@ -771,7 +735,6 @@ export function scanEnum(
 
 export function scanClass(
   scanner: Scanner,
-  expressionType: ExpressionType,
   parseNext: ParseNext,
   {
     isPublic,
