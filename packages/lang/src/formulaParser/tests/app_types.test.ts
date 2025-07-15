@@ -78,11 +78,9 @@ enum RemoteData<Tsuccess, Tfail> {
   .failure(#value: Tfail)
 
   fn toMaybe(): Maybe(Tsuccess) =>
-      if (this is .success(value)) {
-      then:
-        .some(value)
-      else:
-        .none
+      switch(this) {
+      case: .success(value) => .some(value)
+      else: .none
       }
 }
 `,

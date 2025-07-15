@@ -50,66 +50,67 @@ export const SPREAD_OPERATOR = '...'
 const PRECEDENCE = {
   BINARY: {
     onlyif: 1,
-    '|>': 2,
-    '?|>': 2,
+    '=>': 2,
+    '|>': 3,
+    '?|>': 3,
     // I had ternary operators at one point;
-    // then: 3,
-    // else: 3,
-    '??': 4,
-    or: 5,
-    and: 6,
-    '^': 7,
-    '|': 8,
-    '&': 9,
-    matches: 11,
-    '==': 11,
-    '!=': 11,
-    '>': 11,
-    '>=': 11,
-    '<': 11,
-    '<=': 11,
-    '<=>': 11,
-    has: 11,
-    '!has': 11,
-    is: 11,
-    '!is': 11,
-    '++': 12,
-    '<>': 12,
-    '~~': 12,
-    '...': 12,
-    '<..': 12,
-    '..<': 12,
-    '<.<': 12,
-    '<<': 13,
-    '>>': 13,
-    '+': 13,
-    '-': 13,
-    '*': 14,
-    '/': 14,
-    '//': 14,
-    '%': 14,
+    // then: 4,
+    // else: 4,
+    '??': 5,
+    or: 6,
+    and: 7,
+    '^': 8,
+    '|': 9,
+    '&': 10,
+    matches: 12,
+    '==': 12,
+    '!=': 12,
+    '>': 12,
+    '>=': 12,
+    '<': 12,
+    '<=': 12,
+    '<=>': 12,
+    has: 12,
+    '!has': 12,
+    is: 12,
+    '!is': 12,
+    '++': 13,
+    '<>': 13,
+    '~~': 13,
+    '...': 13,
+    '<..': 13,
+    '..<': 13,
+    '<.<': 13,
+    '<<': 14,
+    '>>': 14,
+    '+': 14,
+    '-': 14,
+    '*': 15,
+    '/': 15,
+    '//': 15,
+    '%': 15,
     '**': 16,
     // property chain operators
-    '[]': 19,
-    '?.[]': 19,
-    fn: 19,
-    '?.()': 19,
-    '.': 19,
-    '?.': 19,
+    '[]': 18,
+    '?.[]': 18,
+    fn: 18,
+    '?.()': 18,
+    '.': 18,
+    '?.': 18,
   } as const,
   UNARY: {
     // unary range operators
-    '=': 11,
-    '>': 11,
-    '>=': 11,
-    '<': 11,
-    '<=': 11,
+    '=': 12,
+    '>': 12,
+    '>=': 12,
+    '<': 12,
+    '<=': 12,
     not: 16,
     '-': 16,
     '~': 16,
-    $: 20,
-    '.': 21,
-    typeof: 18,
+    typeof: 17,
+    $: 19,
+    '.': 20,
   } as const,
 } as const
 
@@ -3299,6 +3300,441 @@ addBinaryOperator({
   },
 })
 
+class ImplicationOperator extends BinaryOperator {
+  symbol = '=>'
+
+  rhsType(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
+    let myRuntime = new MutableTypeRuntime(runtime)
+    myRuntime.setPipeType(lhs)
+
+    return getChildType(this, rhsExpr, myRuntime)
+  }
+
+  operatorType(_runtime: TypeRuntime, _lhs: Types.Type, rhs: Types.Type) {
+    return ok(rhs)
+  }
+
+  rhsEval(runtime: ValueRuntime, lhs: Values.Value, _lhsExpr: Expression, rhsExpr: Expression) {
+    let myRuntime = new MutableValueRuntime(runtime)
+    myRuntime.setPipeValue(lhs)
+
+    return rhsExpr.eval(myRuntime)
+  }
+
+  operatorEval(_runtime: ValueRuntime, _lhs: Values.Value, rhs: () => GetValueResult) {
+    return rhs()
+  }
+}
+
+addBinaryOperator({
+  name: 'implication',
+  symbol: '=>',
+  precedence: PRECEDENCE.BINARY['=>'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new ImplicationOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class LogicalNotOperator extends UnaryOperator {
+  symbol = 'not'
+
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
+    if (lhs.isLiteral()) {
+      return ok(Types.literal(!lhs.value))
+    }
+
+    return ok(Types.BooleanType)
+  }
+
+  operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
+    return ok(Values.booleanValue(!lhs.isTruthy()))
+  }
+}
+
+addUnaryOperator({
+  name: 'logical not',
+  symbol: 'not',
+  precedence: PRECEDENCE.UNARY['not'],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new LogicalNotOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class NegateOperator extends UnaryOperator {
+  symbol = '-'
+
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
+    if (lhs.isLiteral('float')) {
+      return ok(Types.literal(-lhs.value, lhs.is === 'literal-float' ? 'float' : undefined))
+    }
+
+    // x: Int(>=1), x - 1 => Int(>=0)
+    if (lhs instanceof Types.NumberType) {
+      return ok(lhs.negateNarrow(0))
+    }
+
+    return numericType(this, lhs)
+  }
+
+  operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
+    return numericOperation(this, lhs, a => -a)
+  }
+
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    const lhsFormula = this.args[0].relationshipFormula(runtime)
+    if (lhsFormula) {
+      return relationshipFormula.negate(lhsFormula)
+    }
+  }
+}
+
+addUnaryOperator({
+  name: 'negate',
+  symbol: '-',
+  precedence: PRECEDENCE.UNARY['-'],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new NegateOperator(range, precedingComments, followingOperatorComments, operator, args)
+  },
+})
+
+class BinaryNegateOperator extends UnaryOperator {
+  symbol = '~'
+
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
+    if (lhs.isLiteral('float')) {
+      return ok(Types.literal(~lhs.value))
+    }
+
+    return numericType(this, lhs)
+  }
+
+  operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
+    return numericOperation(this, lhs, a => ~a)
+  }
+}
+
+addUnaryOperator({
+  name: 'binary negate',
+  symbol: '~',
+  precedence: PRECEDENCE.UNARY['~'],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new BinaryNegateOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class StringCoercionOperator extends UnaryOperator {
+  symbol = '$'
+
+  operatorType(_runtime: TypeRuntime, _lhs: Types.Type) {
+    // todo be smarter about this (just about printable has String(length: >0))
+    return ok(Types.StringType)
+  }
+
+  operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
+    return ok(Values.string(lhs.printable()))
+  }
+}
+
+addUnaryOperator({
+  name: 'string-coercion',
+  symbol: '$',
+  precedence: PRECEDENCE.UNARY['$'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new StringCoercionOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class UnaryRangeOperator extends UnaryOperator {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+    readonly symbol: '=' | '<' | '<=' | '>=' | '>',
+  ) {
+    super(range, precedingComments, followingOperatorComments, operator, args)
+  }
+
+  operatorType(_runtime: TypeRuntime, type: Types.Type, expr: Expression) {
+    if (!type.isFloat()) {
+      return err(
+        new RuntimeError(expr, `Invalid type '${type}' passed to range operator '${this.symbol}'`),
+      )
+    }
+
+    return ok(Types.range(type.isInt() ? Types.int() : Types.float()))
+  }
+
+  operatorEval(_runtime: ValueRuntime, value: Values.Value, expr: Expression) {
+    if (!(value instanceof Values.FloatValue)) {
+      return err(
+        new RuntimeError(
+          expr,
+          `Invalid value '${value}' passed to range operator '${this.symbol}'`,
+        ),
+      )
+    }
+
+    switch (this.symbol) {
+      case '=':
+        return ok(Values.range([value, false], [value, false]))
+      case '<':
+        return ok(Values.range(undefined, [value, true]))
+      case '<=':
+        return ok(Values.range(undefined, [value, false]))
+      case '>':
+        return ok(Values.range([value, true], undefined))
+      case '>=':
+        return ok(Values.range([value, false], undefined))
+    }
+  }
+}
+
+addUnaryOperator({
+  name: 'unary-range-equals',
+  symbol: '=',
+  precedence: PRECEDENCE.UNARY['='],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new UnaryRangeOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+      '=',
+    )
+  },
+})
+
+addUnaryOperator({
+  name: 'unary-range-max-exclusive',
+  symbol: '<',
+  precedence: PRECEDENCE.UNARY['<'],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new UnaryRangeOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+      '<',
+    )
+  },
+})
+
+addUnaryOperator({
+  name: 'unary-range-max',
+  symbol: '<=',
+  precedence: PRECEDENCE.UNARY['<='],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new UnaryRangeOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+      '<=',
+    )
+  },
+})
+
+addUnaryOperator({
+  name: 'unary-range-min-exclusive',
+  symbol: '>',
+  precedence: PRECEDENCE.UNARY['>'],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new UnaryRangeOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+      '>',
+    )
+  },
+})
+
+addUnaryOperator({
+  name: 'unary-range-min',
+  symbol: '>=',
+  precedence: PRECEDENCE.UNARY['>='],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new UnaryRangeOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+      '>=',
+    )
+  },
+})
+
+class EnumLookupOperator extends UnaryOperator {
+  symbol = '.'
+
+  operatorType(_runtime: TypeRuntime, _: Types.Type, arg: Expression) {
+    if (!(arg instanceof Expressions.Identifier)) {
+      return ok(Types.NeverType)
+    }
+
+    return err(new RuntimeError(arg, `No enum value named ${this.symbol}${arg.name}`))
+  }
+
+  operatorEval(_runtime: ValueRuntime, _: Values.Value, arg: Expression) {
+    if (!(arg instanceof Expressions.Identifier)) {
+      return err(new RuntimeError(arg, `Expected a variable name`))
+    }
+
+    return err(new RuntimeError(arg, `No enum value named ${this.symbol}${arg.name}`))
+  }
+}
+
+addUnaryOperator({
+  name: 'enum lookup',
+  symbol: '.',
+  precedence: PRECEDENCE.UNARY['.'],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new EnumLookupOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class TypeofOperator extends UnaryOperator {
+  symbol = 'typeof'
+
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
+    return ok(lhs.typeConstructor())
+  }
+
+  operatorEval(_runtime: ValueRuntime, _lhs: Values.Value) {
+    return err(new RuntimeError(this, 'TODO'))
+  }
+}
+
+addUnaryOperator({
+  name: 'type of',
+  symbol: 'typeof',
+  precedence: PRECEDENCE.UNARY['typeof'],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new TypeofOperator(range, precedingComments, followingOperatorComments, operator, args)
+  },
+})
+
 export class IfExpressionInvocation extends FunctionInvocationOperator {
   symbol = 'if'
   argList: Expression
@@ -3909,393 +4345,6 @@ addBinaryOperator({
       operator,
       args,
     )
-  },
-})
-
-class LogicalNotOperator extends UnaryOperator {
-  symbol = 'not'
-
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
-    if (lhs.isLiteral()) {
-      return ok(Types.literal(!lhs.value))
-    }
-
-    return ok(Types.BooleanType)
-  }
-
-  operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
-    return ok(Values.booleanValue(!lhs.isTruthy()))
-  }
-}
-
-addUnaryOperator({
-  name: 'logical not',
-  symbol: 'not',
-  precedence: PRECEDENCE.UNARY['not'],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new LogicalNotOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
-class NegateOperator extends UnaryOperator {
-  symbol = '-'
-
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
-    if (lhs.isLiteral('float')) {
-      return ok(Types.literal(-lhs.value, lhs.is === 'literal-float' ? 'float' : undefined))
-    }
-
-    // x: Int(>=1), x - 1 => Int(>=0)
-    if (lhs instanceof Types.NumberType) {
-      return ok(lhs.negateNarrow(0))
-    }
-
-    return numericType(this, lhs)
-  }
-
-  operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
-    return numericOperation(this, lhs, a => -a)
-  }
-
-  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
-    const lhsFormula = this.args[0].relationshipFormula(runtime)
-    if (lhsFormula) {
-      return relationshipFormula.negate(lhsFormula)
-    }
-  }
-}
-
-addUnaryOperator({
-  name: 'negate',
-  symbol: '-',
-  precedence: PRECEDENCE.UNARY['-'],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new NegateOperator(range, precedingComments, followingOperatorComments, operator, args)
-  },
-})
-
-class BinaryNegateOperator extends UnaryOperator {
-  symbol = '~'
-
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
-    if (lhs.isLiteral('float')) {
-      return ok(Types.literal(~lhs.value))
-    }
-
-    return numericType(this, lhs)
-  }
-
-  operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
-    return numericOperation(this, lhs, a => ~a)
-  }
-}
-
-addUnaryOperator({
-  name: 'binary negate',
-  symbol: '~',
-  precedence: PRECEDENCE.UNARY['~'],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new BinaryNegateOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
-class StringCoercionOperator extends UnaryOperator {
-  symbol = '$'
-
-  operatorType(_runtime: TypeRuntime, _lhs: Types.Type) {
-    // todo be smarter about this (just about printable has String(length: >0))
-    return ok(Types.StringType)
-  }
-
-  operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
-    return ok(Values.string(lhs.printable()))
-  }
-}
-
-addUnaryOperator({
-  name: 'string-coercion',
-  symbol: '$',
-  precedence: PRECEDENCE.UNARY['$'],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new StringCoercionOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
-class UnaryRangeOperator extends UnaryOperator {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-    readonly symbol: '=' | '<' | '<=' | '>=' | '>',
-  ) {
-    super(range, precedingComments, followingOperatorComments, operator, args)
-  }
-
-  operatorType(_runtime: TypeRuntime, type: Types.Type, expr: Expression) {
-    if (!type.isFloat()) {
-      return err(
-        new RuntimeError(expr, `Invalid type '${type}' passed to range operator '${this.symbol}'`),
-      )
-    }
-
-    return ok(Types.range(type.isInt() ? Types.int() : Types.float()))
-  }
-
-  operatorEval(_runtime: ValueRuntime, value: Values.Value, expr: Expression) {
-    if (!(value instanceof Values.FloatValue)) {
-      return err(
-        new RuntimeError(
-          expr,
-          `Invalid value '${value}' passed to range operator '${this.symbol}'`,
-        ),
-      )
-    }
-
-    switch (this.symbol) {
-      case '=':
-        return ok(Values.range([value, false], [value, false]))
-      case '<':
-        return ok(Values.range(undefined, [value, true]))
-      case '<=':
-        return ok(Values.range(undefined, [value, false]))
-      case '>':
-        return ok(Values.range([value, true], undefined))
-      case '>=':
-        return ok(Values.range([value, false], undefined))
-    }
-  }
-}
-
-addUnaryOperator({
-  name: 'unary-range-equals',
-  symbol: '=',
-  precedence: PRECEDENCE.UNARY['='],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new UnaryRangeOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-      '=',
-    )
-  },
-})
-
-addUnaryOperator({
-  name: 'unary-range-max-exclusive',
-  symbol: '<',
-  precedence: PRECEDENCE.UNARY['<'],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new UnaryRangeOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-      '<',
-    )
-  },
-})
-
-addUnaryOperator({
-  name: 'unary-range-max',
-  symbol: '<=',
-  precedence: PRECEDENCE.UNARY['<='],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new UnaryRangeOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-      '<=',
-    )
-  },
-})
-
-addUnaryOperator({
-  name: 'unary-range-min-exclusive',
-  symbol: '>',
-  precedence: PRECEDENCE.UNARY['>'],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new UnaryRangeOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-      '>',
-    )
-  },
-})
-
-addUnaryOperator({
-  name: 'unary-range-min',
-  symbol: '>=',
-  precedence: PRECEDENCE.UNARY['>='],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new UnaryRangeOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-      '>=',
-    )
-  },
-})
-
-class EnumLookupOperator extends UnaryOperator {
-  symbol = '.'
-
-  operatorType(_runtime: TypeRuntime, _: Types.Type, arg: Expression) {
-    if (!(arg instanceof Expressions.Identifier)) {
-      return ok(Types.NeverType)
-    }
-
-    return err(new RuntimeError(arg, `No enum value named ${this.symbol}${arg.name}`))
-  }
-
-  operatorEval(_runtime: ValueRuntime, _: Values.Value, arg: Expression) {
-    if (!(arg instanceof Expressions.Identifier)) {
-      return err(new RuntimeError(arg, `Expected a variable name`))
-    }
-
-    return err(new RuntimeError(arg, `No enum value named ${this.symbol}${arg.name}`))
-  }
-}
-
-addUnaryOperator({
-  name: 'enum lookup',
-  symbol: '.',
-  precedence: PRECEDENCE.UNARY['.'],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new EnumLookupOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
-class TypeofOperator extends UnaryOperator {
-  symbol = 'typeof'
-
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
-    return ok(lhs.typeConstructor())
-  }
-
-  operatorEval(_runtime: ValueRuntime, _lhs: Values.Value) {
-    return err(new RuntimeError(this, 'TODO'))
-  }
-}
-
-addUnaryOperator({
-  name: 'type of',
-  symbol: 'typeof',
-  precedence: PRECEDENCE.UNARY['typeof'],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new TypeofOperator(range, precedingComments, followingOperatorComments, operator, args)
   },
 })
 
