@@ -1492,6 +1492,15 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
     if (Narrowed.testNumber(literal.value, this.narrowed)) {
       return this
     }
+
+    // if the literal is one below min or one above max, merge those
+    if (this.narrowed.min !== undefined && literal.value === this.narrowed.min - 1) {
+      return new MetaIntType({min: this.narrowed.min - 1, max: this.narrowed.max})
+    }
+
+    if (this.narrowed.max !== undefined && literal.value === this.narrowed.max + 1) {
+      return new MetaIntType({min: this.narrowed.min, max: this.narrowed.max + 1})
+    }
   }
 
   toCode() {
@@ -3229,6 +3238,9 @@ function compatibleWithBothObjects(lhs: ObjectType, rhs: ObjectType): ObjectType
   return new ObjectType(props)
 }
 
+/**
+ * I doubt this has support for spread/repeated/kwargs.
+ */
 function compatibleWithBothFormulas(lhs: FormulaType, rhs: FormulaType) {
   const lhsPositions = lhs.args.reduce((count, arg) => (arg.alias ? count : count + 1), 0)
   const rhsPositions = rhs.args.reduce((count, arg) => (arg.alias ? count : count + 1), 0)
