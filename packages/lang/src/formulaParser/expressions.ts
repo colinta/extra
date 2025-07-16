@@ -3484,19 +3484,7 @@ export class FormulaExpression extends Expression {
           bodyReturnType,
           getChildType(this, this.returnType, mutableRuntime),
         ]).map(([bodyType, typeConstructor]) => {
-          let returnType: Types.Type
-          if (typeConstructor instanceof Types.GenericType) {
-            returnType = typeConstructor
-          } else if (typeConstructor instanceof Types.TypeConstructor) {
-            returnType = typeConstructor.intendedType
-          } else {
-            return err(
-              new RuntimeError(
-                this,
-                `Invalid return type ${typeConstructor}, expected valid type (e.g. Int, Array(String), etc)`,
-              ),
-            )
-          }
+          const returnType = typeConstructor.fromTypeConstructor()
 
           if (!Types.canBeAssignedTo(bodyType, returnType)) {
             return err(
