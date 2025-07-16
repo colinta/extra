@@ -3967,13 +3967,27 @@ function _checkFormulaArguments(
           ),
         )
       } else {
-        errors.push(
-          cannotAssignToPositionalArgumentError(
-            argumentType,
-            formulaArgument.type,
-            currentPosition,
-          ),
-        )
+        if (
+          formulaArgument.is === 'spread-positional-argument' &&
+          argumentType instanceof ArrayType
+        ) {
+          errors.push(
+            cannotAssignToSpreadArgumentError(
+              argumentType.of,
+              formulaArgument.type.of,
+              formulaArgument.name,
+            ),
+          )
+        } else {
+          errors.push(
+            cannotAssignToPositionalArgumentError(
+              argumentType,
+              formulaArgument.type,
+              formulaArgument.name,
+              currentPosition,
+            ),
+          )
+        }
       }
 
       if (reason.reason) {
@@ -4083,7 +4097,7 @@ function kwargListArgumentType(
   return new DictType(type)
 }
 
-export function combineErrorMessages(errorMessages: string[]) {
+function combineErrorMessages(errorMessages: string[]) {
   const errorCount = errorMessages.length
   if (errorCount === 0) {
     return
@@ -4109,35 +4123,36 @@ export function combineErrorMessages(errorMessages: string[]) {
   return errorMessage
 }
 
-export function outOfArgumentsMessageError(formulaArgumentType: Type, position: number) {
+function outOfArgumentsMessageError(formulaArgumentType: Type, position: number) {
   let errorMessage = `Expected argument at position #${position + 1} of type '${formulaArgumentType.toCode()}'`
 
   return errorMessage
 }
 
-export function missingNamedArgumentInFormulaError(formulaArgumentType: Type, name: string) {
+function missingNamedArgumentInFormulaError(formulaArgumentType: Type, name: string) {
   let errorMessage = `Expected argument named '${name}' of type '${formulaArgumentType.toCode()}'`
 
   return errorMessage
 }
 
-export function cannotAssignToPositionalArgumentError(
+function cannotAssignToPositionalArgumentError(
   testType: Type,
   assignTo: Type,
+  name: string,
   position: number,
 ) {
-  return `Incorrect type for argument #${position + 1}. ${cannotAssignToError(testType, assignTo)}`
+  return `Incorrect type for argument '${name}' at position #${position + 1}. ${cannotAssignToError(testType, assignTo)}`
 }
 
-export function cannotAssignToNamedArgumentError(testType: Type, assignTo: Type, name: string) {
+function cannotAssignToSpreadArgumentError(testType: Type, assignTo: Type, name: string) {
+  return `Incorrect type for spread argument '...#${name}'. ${cannotAssignToError(testType, assignTo)}`
+}
+
+function cannotAssignToNamedArgumentError(testType: Type, assignTo: Type, name: string) {
   return `Incorrect type for argument '${name}'. ${cannotAssignToError(testType, assignTo)}`
 }
 
-export function requiredArgumentError(
-  id: string | number,
-  assignTo: Type,
-  formulaType: FormulaType,
-) {
+function requiredArgumentError(id: string | number, assignTo: Type, formulaType: FormulaType) {
   const argDesc = typeof id === 'number' ? `at position #${id + 1}` : `named '${id}'`
   return `Argument ${argDesc} of type '${assignTo}' is required in '${formulaType}', but is being called optionally`
 }

@@ -184,10 +184,10 @@ function numericType(expr: Operation, lhs: Types.Type, rhs?: Types.Type): GetTyp
     return ok(Types.FloatType)
   }
 
-  if (lhs.isFloat()) {
-    return err(new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1])))
+  if (lhs.isFloat() && rhs) {
+    return err(new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1], rhs)))
   } else {
-    return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0])))
+    return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0], lhs)))
   }
 }
 
@@ -236,10 +236,10 @@ function numericOperation(
       return ok(Values.float(result))
     }
 
-    if (lhs.isFloat()) {
-      return err(new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1])))
+    if (lhs.isFloat() && rhs) {
+      return err(new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1], rhs)))
     } else {
-      return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0])))
+      return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0], lhs)))
     }
   } else {
     const [lhs, op] = args
@@ -265,7 +265,7 @@ function numericOperation(
       return ok(Values.float(result))
     }
 
-    return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0])))
+    return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0], lhs)))
   }
 }
 
@@ -285,10 +285,10 @@ function comparisonOperation(
     return ok(Values.booleanValue(op(lhs.value, rhs.value)))
   }
 
-  if (lhs.isFloat()) {
-    return err(new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1])))
+  if (lhs.isFloat() && rhs) {
+    return err(new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1], rhs)))
   } else {
-    return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0])))
+    return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0], lhs)))
   }
 }
 
@@ -2340,7 +2340,7 @@ class FloorDivisionOperator extends BinaryOperator {
       return ok(Types.IntType)
     }
 
-    return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr)))
+    return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr, lhs)))
   }
 
   operatorEval(
@@ -2358,7 +2358,7 @@ class FloorDivisionOperator extends BinaryOperator {
         return ok(Values.int(Math.floor(lhs.value / rhs.value)))
       }
 
-      return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr)))
+      return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr, lhs)))
     })
   }
 }
@@ -4346,8 +4346,8 @@ function expectedPropertyName(found: Expression) {
   return expectedType('property name', found)
 }
 
-function expectedNumberMessage(found: Expression) {
-  return expectedType('int or float', found)
+function expectedNumberMessage(found: Expression, type?: Types.Type | Values.Value) {
+  return expectedType('Int or Float', found, type)
 }
 
 type _IntermediateArgs =

@@ -195,7 +195,7 @@ else:
       ]),
     ).run(([formula, [_a, valueA], [_b, valueB], expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
-        `should '${formula}' should have type '${expectedType}' and value '${expectedValue}' (a = '${valueA}', b = ${valueB})`,
+        `'${formula}' should have type '${expectedType}' and value '${expectedValue}' (a = '${valueA}', b = ${valueB})`,
         () => {
           runtimeTypes['a'] = [Types.string(), Values.string(valueA)]
           runtimeTypes['b'] = [Types.booleanType(), Values.booleanValue(valueB)]

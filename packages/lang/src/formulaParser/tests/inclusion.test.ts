@@ -148,7 +148,7 @@ describe('inclusion operator', () => {
     ).run(
       ([formula, [_a, typeA, valueA], [_b, valueB], expectedType, expectedValue], {only, skip}) =>
         (only ? it.only : skip ? it.skip : it)(
-          `should '${formula}' should have type '${expectedType}' and value '${expectedValue}' (a: ${typeA} = ${valueA}, b = ${valueB})`,
+          `'${formula}' should have type '${expectedType}' and value '${expectedValue}' (a: ${typeA} = ${valueA}, b = ${valueB})`,
           () => {
             runtimeTypes['a'] = [typeA, valueA]
             runtimeTypes['b'] = [Types.booleanType(), Values.booleanValue(valueB)]
