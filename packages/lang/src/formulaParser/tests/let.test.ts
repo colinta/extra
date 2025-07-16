@@ -31,6 +31,17 @@ in
         '(let (a: 1) (+ a 1))',
       ]),
       c([
+        `let a = 1 , b = 2 in a + b`,
+        '(let (a: 1) (b: 2) (+ a b))',
+        `\
+let
+  a = 1
+  b = 2
+in
+  a + b
+`,
+      ]),
+      c([
         `\
 let
   a =

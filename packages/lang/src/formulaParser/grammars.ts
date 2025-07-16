@@ -215,6 +215,7 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
 
 export function terminatesWithComma(expressionType: ExpressionType) {
   return (
+    expressionType === 'let' ||
     expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
