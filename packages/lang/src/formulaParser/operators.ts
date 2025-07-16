@@ -586,7 +586,7 @@ class NullColescingPipeOperator extends BinaryOperator {
     _runtime: TypeRuntime,
     _lhs: Types.Type,
     rhs: Types.Type,
-    _lhsExpr: Expression,
+    lhsExpr: Expression,
     _rhsExpr: Expression,
     originalLhs: Types.Type,
   ) {
@@ -595,7 +595,7 @@ class NullColescingPipeOperator extends BinaryOperator {
     if (!hasNullType) {
       return err(
         new RuntimeError(
-          _lhsExpr,
+          lhsExpr,
           `Left hand side of '?|>' operator must be a nullable-type. Found '${originalLhs}'`,
         ),
       )
@@ -647,6 +647,21 @@ addBinaryOperator({
 // a || (b ?? c) || d
 class NullCoalescingOperator extends BinaryOperator {
   symbol = '??'
+
+  rhsType(runtime: TypeRuntime, lhs: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+    const hasNullType =
+      lhs instanceof Types.OneOfType && lhs.of.some(type => type === Types.NullType)
+    if (!hasNullType) {
+      return err(
+        new RuntimeError(
+          lhsExpr,
+          `Left hand side of '??' operator must be a nullable-type. Found '${lhs}'`,
+        ),
+      )
+    }
+
+    return super.rhsType(runtime, lhs, lhsExpr, rhsExpr)
+  }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     if (lhs === Types.NullType) {

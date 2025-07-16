@@ -201,8 +201,10 @@ describe('getType', () => {
 
   describe('CoalescingOperation', () => {
     it('null ?? 1 => Int', () => {
-      const expression = parse('null ?? 1').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.literal(1))
+      expect(() => {
+        const expression = parse('null ?? 1').get()
+        expect(expression.getType(typeRuntime).get()).toEqual(Types.literal(1))
+      }).toThrow("Left hand side of '??' operator must be a nullable-type.")
     })
 
     describe('a ?? b', () => {
@@ -210,16 +212,20 @@ describe('getType', () => {
         runtimeTypes['a'] = [Types.int(), Values.int(1)]
         runtimeTypes['b'] = [Types.string(), Values.string('dog')]
 
-        const expression = parse('a ?? b').get()
-        expect(expression.getType(typeRuntime).get()).toEqual(Types.int())
+        expect(() => {
+          const expression = parse('a ?? b').get()
+          expect(expression.getType(typeRuntime).get()).toEqual(Types.int())
+        }).toThrow("Left hand side of '??' operator must be a nullable-type.")
       })
 
       it('=> b if a is only null', () => {
         runtimeTypes['a'] = [Types.nullType(), Values.nullValue()]
         runtimeTypes['b'] = [Types.string(), Values.string('dog')]
 
-        const expression = parse('a ?? b').get()
-        expect(expression.getType(typeRuntime).get()).toEqual(Types.string())
+        expect(() => {
+          const expression = parse('a ?? b').get()
+          expect(expression.getType(typeRuntime).get()).toEqual(Types.string())
+        }).toThrow("Left hand side of '??' operator must be a nullable-type.")
       })
 
       it('=> a|b if a is optional', () => {
@@ -234,8 +240,10 @@ describe('getType', () => {
     })
 
     it('1 ?? "str" => Int', () => {
-      const expression = parse('1 ?? "str"').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.literal(1))
+      expect(() => {
+        const expression = parse('1 ?? "str"').get()
+        expect(expression.getType(typeRuntime).get()).toEqual(Types.literal(1))
+      }).toThrow("Left hand side of '??' operator must be a nullable-type.")
     })
   })
 
