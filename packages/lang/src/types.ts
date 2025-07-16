@@ -2995,6 +2995,17 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     }
 
     types.push(commonType)
+    const nonNullType = types.find(t => t !== NullType)
+    if (
+      // only 2
+      types.length === 2 &&
+      // one is NullType
+      types.some(t => t === NullType) &&
+      // the other isn't
+      nonNullType
+    ) {
+      return OptionalType.createOptional(nonNullType)
+    }
 
     return _privateOneOf(types)
   } else if (rhs instanceof OneOfType) {
