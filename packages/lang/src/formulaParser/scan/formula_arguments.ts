@@ -10,10 +10,11 @@ import {scanValidName} from './identifier'
 // "Formula" (declared, actual formula) vs "Formula Type" (type signature of a
 // formula)
 
-// Formulas _can_ have default values
+// Formulas can have default values, Formula Types can have optional arguments.
 //
 // fn plusOne(#arg: Int = 0) => foo + 1
 //            ^^^^^^^^^^^^^
+
 export function scanFormulaArgumentDefinitions(
   scanner: Scanner,
   type: 'view' | 'fn',
@@ -179,9 +180,9 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         scanner.scanAllWhitespace()
       }
 
-      if (!isPositional) {
-        argAlias ??= argName
+      argAlias ??= argName
 
+      if (!isPositional) {
         if (aliases.has(argAlias.name)) {
           throw new ParseError(
             scanner,
@@ -260,6 +261,13 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
 
       let defaultValue: Expression | undefined
       if (scanner.scanAhead('=')) {
+        if (isPositional && spreadPositionalArg !== undefined) {
+          throw new ParseError(
+            scanner,
+            `Default values are not allowed on positional arguments following a spread positional argument ('...#${spreadPositionalArg}')`,
+          )
+        }
+
         if (is === 'formula_type') {
           throw new ParseError(
             scanner,
@@ -289,7 +297,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
           [argRange0, scanner.charIndex],
           [], // precedingComments
           argName,
-          argAlias ?? argName,
+          argAlias,
           argType,
           spreadArg,
           isPositional,
@@ -300,7 +308,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
           [argRange0, scanner.charIndex],
           [], // precedingComments
           argName,
-          argAlias ?? argName,
+          argAlias,
           argType,
           spreadArg,
           isPositional,

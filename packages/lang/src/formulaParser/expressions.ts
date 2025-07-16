@@ -444,7 +444,7 @@ export class StateReference extends Reference {
       return ok(type)
     }
 
-    return err(new RuntimeError(this, `Cannot get type of variable named '${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get type of state variable '@${this.name}'`))
   }
 
   eval(runtime: ValueRuntime) {
@@ -453,7 +453,7 @@ export class StateReference extends Reference {
       return ok(value)
     }
 
-    return err(new RuntimeError(this, `Cannot get value of variable named '${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get value of state variable '@${this.name}'`))
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
@@ -483,7 +483,7 @@ export class ActionReference extends Reference {
       return ok(type)
     }
 
-    return err(new RuntimeError(this, `Cannot get type of variable named '${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get type of action named '&${this.name}'`))
   }
 
   eval(runtime: ValueRuntime) {
@@ -492,7 +492,7 @@ export class ActionReference extends Reference {
       return ok(value)
     }
 
-    return err(new RuntimeError(this, `Cannot get value of variable named '${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get value of action named '&${this.name}'`))
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
@@ -3340,12 +3340,6 @@ export class FormulaExpression extends Expression {
     arg: FormulaLiteralArgumentAndTypeDeclaration,
     type: Types.Type,
   ): GetRuntimeResult<Types.Argument> {
-    // arg:
-    // name: string,
-    // alias: string,
-    // argType: Expression,
-    // spreadArg: false | 'spread' | 'kwargs',
-    // isPositional: boolean,
     if (arg.spreadArg === 'spread' && arg.isPositional) {
       if (!(type instanceof Types.ArrayType)) {
         return err(new RuntimeError(this, 'Spread positional argument must be an array'))
