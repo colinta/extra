@@ -3444,7 +3444,11 @@ export class FormulaExpression extends Expression {
 
             const defaultType = defaultTypeResult.get()
             if (!Types.canBeAssignedTo(defaultType, type)) {
-              return err(new RuntimeError(this, Types.cannotAssignToError(defaultType, type)))
+              return decorateError(this)(
+                err(
+                  new RuntimeError(arg.defaultValue, Types.cannotAssignToError(defaultType, type)),
+                ),
+              )
             }
           }
 
@@ -3466,222 +3470,279 @@ export class FormulaExpression extends Expression {
       mutableRuntime.addLocalType(generic, genericType)
     }
 
-    const argResults = this.argumentTypes(mutableRuntime, formulaType)
-    if (argResults.isErr()) {
-      return err(argResults.error)
-    }
-
-    const args = argResults.get()
-    args.forEach(arg => {
-      mutableRuntime.addLocalType(arg.name, arg.type)
-    })
-
-    let returnTypeResult: GetTypeResult
-    const bodyReturnType = this.body.getType(mutableRuntime)
-    if (this.returnType instanceof InferIdentifier) {
-      returnTypeResult = bodyReturnType
-    } else {
-      returnTypeResult = mapAll([
-        bodyReturnType,
-        getChildType(this, this.returnType, mutableRuntime),
-      ]).map(([bodyType, typeConstructor]) => {
-        let returnType: Types.Type
-        if (typeConstructor instanceof Types.GenericType) {
-          returnType = typeConstructor
-        } else if (typeConstructor instanceof Types.TypeConstructor) {
-          returnType = typeConstructor.intendedType
-        } else {
-          return err(
-            new RuntimeError(
-              this,
-              `Invalid return type ${typeConstructor}, expected valid type (e.g. Int, Array(String), etc)`,
-            ),
-          )
-        }
-
-        if (!Types.canBeAssignedTo(bodyType, returnType)) {
-          return err(
-            new RuntimeError(
-              this,
-              `Function body result type '${bodyType.toCode()}' is not assignable to explicit return type '${returnType.toCode()}'`,
-            ),
-          )
-        }
-
-        return returnType
+    return this.argumentTypes(mutableRuntime, formulaType).map(args => {
+      args.forEach(arg => {
+        mutableRuntime.addLocalType(arg.name, arg.type)
       })
-    }
 
-    if (returnTypeResult.isErr()) {
-      return err(returnTypeResult.error)
-    }
+      let returnTypeResult: GetTypeResult
+      const bodyReturnType = this.body.getType(mutableRuntime)
+      if (this.returnType instanceof InferIdentifier) {
+        returnTypeResult = bodyReturnType
+      } else {
+        returnTypeResult = mapAll([
+          bodyReturnType,
+          getChildType(this, this.returnType, mutableRuntime),
+        ]).map(([bodyType, typeConstructor]) => {
+          let returnType: Types.Type
+          if (typeConstructor instanceof Types.GenericType) {
+            returnType = typeConstructor
+          } else if (typeConstructor instanceof Types.TypeConstructor) {
+            returnType = typeConstructor.intendedType
+          } else {
+            return err(
+              new RuntimeError(
+                this,
+                `Invalid return type ${typeConstructor}, expected valid type (e.g. Int, Array(String), etc)`,
+              ),
+            )
+          }
 
-    const returnType = returnTypeResult.get()
+          if (!Types.canBeAssignedTo(bodyType, returnType)) {
+            return err(
+              new RuntimeError(
+                this,
+                `Function body result type '${bodyType.toCode()}' is not assignable to explicit return type '${returnType.toCode()}'`,
+              ),
+            )
+          }
 
-    if (this.nameRef) {
-      return ok(new Types.NamedFormulaType(this.nameRef.name, returnType, args, genericTypes))
-    }
+          return returnType
+        })
+      }
 
-    return ok(new Types.FormulaType(returnType, args, genericTypes))
+      return returnTypeResult.map(returnType => {
+        if (this.nameRef) {
+          return new Types.NamedFormulaType(this.nameRef.name, returnType, args, genericTypes)
+        }
+
+        return new Types.FormulaType(returnType, args, genericTypes)
+      })
+    })
   }
 
-  private reconcileArgs(
-    runtime: ValueRuntime,
-    formulaType: Types.FormulaType,
-    formulaArgs: Values.FormulaArgs,
-  ): GetRuntimeResult<ValueRuntime> {
-    let defaultValues = new Map(
-      this.argDefinitions.args.map((arg, position) => {
-        const index = arg.isPositional ? position : arg.aliasRef.name
-        return [index, arg.defaultValue]
-      }),
-    )
+  private organizeArguments(argDefinitions: FormulaLiteralArgumentAndTypeDeclaration[]) {
+    const requiredPositional: FormulaLiteralArgumentAndTypeDeclaration[] = []
+    // const lastPositional: FormulaLiteralArgumentAndTypeDeclaration[] = []
+    const optionalPositional: [FormulaLiteralArgumentAndTypeDeclaration, Expression][] = []
+    let remainingPositional: FormulaLiteralArgumentAndTypeDeclaration | undefined
+    const singleNamed: Map<string, FormulaLiteralArgumentAndTypeDeclaration> = new Map()
+    const repeatNamed: Map<string, FormulaLiteralArgumentAndTypeDeclaration> = new Map()
+    let kwargs: FormulaLiteralArgumentAndTypeDeclaration | undefined
 
-    let args = formulaArgs.args
+    for (const arg of argDefinitions) {
+      // console.log('=========== expressions.ts at line 3534 ===========')
+      // console.log({arg})
+      if (arg.spreadArg === 'spread' && arg.isPositional) {
+        // console.log('remainingPositional')
+        if (remainingPositional) {
+          throw `weird(organizeArguments) - spread positional argument '${remainingPositional.aliasRef.name}' already defined`
+        }
+        remainingPositional = arg
+      } else if (arg.spreadArg === 'spread') {
+        // console.log('repeatNamed')
+        if (repeatNamed.has(arg.aliasRef.name)) {
+          throw `weird(organizeArguments) - repeated named argument '${arg.aliasRef.name}' already defined`
+        }
+        repeatNamed.set(arg.aliasRef.name, arg)
+      } else if (arg.spreadArg === 'kwargs') {
+        // console.log('kwargs')
+        if (kwargs) {
+          throw `weird(organizeArguments) - kwargs argument '${kwargs.aliasRef.name}' already defined`
+        }
+        kwargs = arg
+      } else if (arg.isPositional && arg.defaultValue) {
+        // console.log('optionalPositional')
+        optionalPositional.push([arg, arg.defaultValue])
+      } else if (arg.isPositional && remainingPositional) {
+        // console.log('lastPositional')
+        // lastPositional.push(arg)
+      } else if (arg.isPositional && !arg.defaultValue) {
+        // console.log('requiredPositional')
+        requiredPositional.push(arg)
+      } else {
+        // console.log('singleNamed')
+        if (singleNamed.has(arg.aliasRef.name)) {
+          throw `weird(organizeArguments) - single named argument '${arg.aliasRef.name}' already defined`
+        }
+        singleNamed.set(arg.aliasRef.name, arg)
+      }
+    }
+
+    return {
+      requiredPositional,
+      // lastPositional,
+      optionalPositional,
+      remainingPositional,
+      singleNamed,
+      repeatNamed,
+      kwargs,
+    }
+  }
+
+  private argumentValues(
+    runtime: ValueRuntime,
+    argDefinitions: FormulaLiteralArgumentAndTypeDeclaration[],
+    invokedArgs: Values.FormulaArgs,
+  ): GetRuntimeResult<ValueRuntime> {
     // the type checker in _checkFormulaArguments supports this "shorthand",
     // where passing *only positional arguments* to a function that only *accepts named
     // arguments* is accepted.
     if (
       // only named arguments defined by formula
-      formulaType.args.every(arg => arg.is === 'named-argument') &&
+      argDefinitions.length &&
+      argDefinitions.every(arg => !arg.spreadArg && !arg.isPositional) &&
       // all positional arguments provided
-      args.every(([alias]) => alias === undefined)
+      invokedArgs.args.length &&
+      invokedArgs.args.every(([alias]) => alias === undefined)
     ) {
-      args = formulaType.args
-        .map((arg, index) => {
-          if (index >= args.length) {
-            return undefined
-          }
-
-          const [alias, argValue] = args[index]
-          if (alias) {
-            const defaultValue = defaultValues.get(alias)
-            defaultValues.delete(alias)
-            defaultValues.set(index, defaultValue)
-          }
-          return [arg.alias, argValue] as const
-        })
-        .filter(arg => arg !== undefined) as [string, Values.Value][]
+      return this.argumentValues(
+        runtime,
+        argDefinitions.map(
+          arg =>
+            new FormulaLiteralArgumentAndTypeDeclaration(
+              arg.range,
+              arg.precedingComments,
+              arg.nameRef,
+              arg.aliasRef,
+              arg.argType,
+              false,
+              true,
+              arg.defaultValue,
+            ),
+        ),
+        invokedArgs,
+      )
     }
 
-    let argCount = 0
-    const argValues: Map<string | number, Values.Value> = new Map()
-    const repeatedArgValues: Map<string, Values.Value[]> = new Map()
-    for (const [alias, arg] of args) {
-      if (alias) {
-        argValues.set(alias, arg)
-
-        const repeated = repeatedArgValues.get(alias) ?? []
-        repeated.push(arg)
-        repeatedArgValues.set(alias, repeated)
-      } else {
-        argValues.set(argCount++, arg)
+    const {
+      requiredPositional,
+      // lastPositional,
+      optionalPositional,
+      remainingPositional,
+      singleNamed,
+      repeatNamed,
+      kwargs,
+    } = this.organizeArguments(argDefinitions)
+    // console.log('=========== expressions.ts at line 3618 ===========')
+    // console.log({invokedArgs, singleNamed})
+    const mutableRuntime = new MutableValueRuntime(runtime)
+    let position = 0
+    for (const arg of requiredPositional) {
+      const value = invokedArgs.safeAt(position)
+      if (!value) {
+        throw `weird - missing positional argument '${arg.nameRef.name}'. No argument passed at position #${position + 1}`
       }
+      // console.log('=========== expressions.ts at line 3625 ===========')
+      // console.log({'arg.aliasRef.name': arg.aliasRef.name})
+      mutableRuntime.addLocalValue(arg.aliasRef.name, value)
+      position += 1
+    }
+    for (const [arg, defaultValue] of optionalPositional) {
+      let value = invokedArgs.safeAt(position)
+      if (!value) {
+        const result = defaultValue.eval(runtime)
+        if (result.isErr()) {
+          return err(result.error)
+        }
+        value = result.get()
+      }
+      // console.log('=========== expressions.ts at line 3639 ===========')
+      // console.log({'arg.aliasRef.name': arg.aliasRef.name})
+      mutableRuntime.addLocalValue(arg.aliasRef.name, value)
+      position += 1
     }
 
-    let formulaTypeArgIndex = 0
-    const resolvedValues = mapAll(
-      formulaType.args.map(argType => {
-        let arg: GetValueResult
-        let fromArgs: Values.Value | undefined
-        let fromDefault: Expression | undefined
-        switch (argType.is) {
-          case 'positional-argument':
-            fromArgs = argValues.get(formulaTypeArgIndex)
-            fromDefault = defaultValues.get(formulaTypeArgIndex)
-            argValues.delete(formulaTypeArgIndex)
-
-            formulaTypeArgIndex++
-            break
-          case 'named-argument':
-            fromArgs = argValues.get(argType.alias)
-            fromDefault = defaultValues.get(argType.alias)
-
-            argValues.delete(argType.alias)
-            repeatedArgValues.delete(argType.alias)
-            break
-          case 'spread-positional-argument':
-            // starting at formulaTypeArgIndex until argCount
-            // put all remaining values into fromArgs ArrayValue
-            const spreadArgs: Values.Value[] = []
-            for (let index = formulaTypeArgIndex; index < argCount; index++) {
-              const value = argValues.get(index)
-              if (!value) {
-                break
-              }
-              spreadArgs.push(value)
-              argValues.delete(index)
-            }
-            fromArgs = new Values.ArrayValue(spreadArgs)
-            break
-          case 'repeated-named-argument':
-            const repeatedArgs = repeatedArgValues.get(argType.alias)
-            fromArgs = new Values.ArrayValue(repeatedArgs ?? [])
-            argValues.delete(argType.alias)
-            repeatedArgValues.delete(argType.alias)
-            break
-          case 'kwarg-list-argument':
-            const kwargArgs: Map<string, Values.Value> = new Map()
-            for (const [key, value] of argValues) {
-              kwargArgs.set(key as string, value)
-              argValues.delete(key)
-            }
-            fromArgs = new Values.DictValue(kwargArgs)
-            break
+    if (remainingPositional) {
+      const values = []
+      for (let index = position; index < invokedArgs.length; index += 1) {
+        const value = invokedArgs.safeAt(index)
+        if (!value) {
+          break
         }
-
-        if (fromArgs) {
-          arg = ok(fromArgs)
-        } else if (fromDefault) {
-          // TODO: this is running in the wrong context! It needs to store the context of
-          // where it was defined.
-          arg = fromDefault.eval(runtime)
-        } else if (argType.alias) {
-          arg = err(new RuntimeError(this, `No argument passed for '${argType.alias}'`))
-        } else {
-          arg = err(
-            new RuntimeError(this, `No argument passed at position #${formulaTypeArgIndex}`),
-          )
-        }
-
-        return arg.map(arg => [argType.name, arg] as [string, Values.Value])
-      }),
-    ).map(entries => new Map(entries))
-
-    return resolvedValues.map(argValues => {
-      let nextRuntime = new MutableValueRuntime(runtime)
-      for (const [name, value] of argValues) {
-        nextRuntime.addLocalValue(name, value)
+        values.push(value)
       }
-      return nextRuntime
-    })
+      const array = new Values.ArrayValue(values)
+      // console.log('=========== expressions.ts at line 3655 ===========')
+      // console.log({'remainingPositional.aliasRef.name': remainingPositional.aliasRef.name})
+      mutableRuntime.addLocalValue(remainingPositional.aliasRef.name, array)
+    }
+
+    const allNames = invokedArgs.names
+
+    for (const [name, arg] of singleNamed) {
+      allNames.delete(name)
+      let value = invokedArgs.safeNamed(name)
+      // console.log('=========== expressions.ts at line 3667 ===========')
+      // console.log({value, name})
+      if (!value) {
+        const defaultValue = arg.defaultValue
+        if (!defaultValue) {
+          throw `weird - missing positional argument '${arg.aliasRef.name}'. No argument named '${arg.aliasRef.name}'`
+        }
+
+        const result = defaultValue.eval(runtime)
+        if (result.isErr()) {
+          return err(result.error)
+        }
+        value = result.get()
+      }
+      // console.log('=========== expressions.ts at line 3677 ===========')
+      // console.log({'arg.aliasRef.name': arg.aliasRef.name})
+      mutableRuntime.addLocalValue(arg.aliasRef.name, value)
+    }
+
+    for (const [name, arg] of repeatNamed) {
+      allNames.delete(name)
+      let value = invokedArgs.safeAllNamed(name)
+      // console.log('=========== expressions.ts at line 3685 ===========')
+      // console.log({'arg.aliasRef.name': arg.aliasRef.name})
+      mutableRuntime.addLocalValue(arg.aliasRef.name, new Values.ArrayValue(value))
+    }
+
+    if (kwargs) {
+      const kwargValues: Map<string, Values.Value> = new Map()
+      for (const name of allNames) {
+        const value = invokedArgs.safeNamed(name)
+        if (!value) {
+          continue
+        }
+        kwargValues.set(name, value)
+      }
+      // console.log('=========== expressions.ts at line 3699 ===========')
+      // console.log({'kwargs.aliasRef.name': kwargs.aliasRef.name})
+      mutableRuntime.addLocalValue(kwargs.aliasRef.name, new Values.DictValue(kwargValues))
+    }
+
+    return ok(mutableRuntime)
   }
 
   eval(runtime: ValueRuntime): GetValueResult {
-    return this.getType(runtime).map(formulaType => {
-      // this is the function that is invoked by 'FunctionInvocationOperator'
-      const fn = (args: Values.FormulaArgs): Result<Values.Value, string> => {
-        // TODO: use the context from below for closed-over variables
-        return this.reconcileArgs(runtime, formulaType, args)
-          .map(nextRuntime => {
-            return this.body.eval(nextRuntime)
-          })
-          .mapResult(result => {
-            if (result.isErr()) {
-              return err(result.error.message)
-            }
-            return ok(result.get())
-          })
-      }
-      // TODO: gather variables from context and pass to FormulaValue
-      // this.body.dependencies() should be enough to capture this
+    const argDefinitions = this.argDefinitions.args
+    // this is the function that is invoked by 'FunctionInvocationOperator'
+    const fn = (args: Values.FormulaArgs): Result<Values.Value, string> => {
+      // TODO: use the context from below for closed-over variables
+      return this.argumentValues(runtime, argDefinitions, args)
+        .map(nextRuntime => {
+          return this.body.eval(nextRuntime)
+        })
+        .mapResult(result => {
+          if (result.isErr()) {
+            return err(result.error.message)
+          }
+          return ok(result.get())
+        })
+    }
+    // TODO: gather variables from context and pass to FormulaValue
+    // this.dependencies() should be enough to capture this
+    // console.log('=========== expressions.ts at line 3672 ===========')
+    // console.log({'this.dependencies()': this.dependencies()})
 
-      if (formulaType.name) {
-        return new Values.NamedFormulaValue(formulaType.name, formulaType, fn)
-      } else {
-        return new Values.FormulaValue(formulaType, fn)
-      }
-    })
+    if (this.nameRef) {
+      return ok(new Values.NamedFormulaValue(this.nameRef.name, fn))
+    } else {
+      return ok(new Values.FormulaValue(fn))
+    }
   }
 }
 
@@ -3886,17 +3947,7 @@ abstract class ViewExpression extends Expression {
     } else {
       type = Types.FragmentViewType
     }
-    ;(_ => {})(type)
-
-    return mapAll(
-      this.args.map(arg =>
-        getChildType(this, arg.value, runtime).map(
-          type => [arg.alias, type] as [string, Types.Type],
-        ),
-      ),
-    ).map(types => {
-      return new Types.ObjectType(types.map(([name, type]) => ({is: 'named', name, type})))
-    })
+    throw `TODO - what to do with ${type}`
   }
 
   eval(runtime: ValueRuntime) {

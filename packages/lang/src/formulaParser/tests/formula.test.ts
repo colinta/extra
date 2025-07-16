@@ -105,7 +105,7 @@ fn(
     )
 
     cases<[string, string]>(
-      c(['(fn(#a: Int, b: Int): Int => a + b)(1, 2)', "No argument passed for 'b'"]),
+      c(['(fn(#a: Int, b: Int): Int => a + b)(1, 2)', "No argument named 'b'"]),
       c(['(fn(#a: Int, b: Int): Int => a + b)(a: 1, b: 2)', 'No argument passed at position #1']),
     ).run(([formula, expectedMessage], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {

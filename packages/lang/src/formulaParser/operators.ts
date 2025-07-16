@@ -4104,23 +4104,16 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
     }
 
     return ok(
-      Values.formula(
-        Types.lazy(
-          Types.oneOf([
-            Types.tuple([Types.LiteralTrueType, returnType.value]),
-            Types.tuple([Types.LiteralFalseType, Types.NullType]),
-          ]),
-        ),
-        () =>
-          conditionExpr.eval(runtime).map(conditionValue => {
-            if (conditionValue.isTruthy()) {
-              return thenExpr
-                .eval(runtime)
-                .map(thenValue => ok(Values.tuple([Values.booleanValue(true), thenValue])))
-            }
+      Values.formula(() =>
+        conditionExpr.eval(runtime).map(conditionValue => {
+          if (conditionValue.isTruthy()) {
+            return thenExpr
+              .eval(runtime)
+              .map(thenValue => ok(Values.tuple([Values.booleanValue(true), thenValue])))
+          }
 
-            return ok(Values.tuple([Values.booleanValue(false), Values.NullValue]))
-          }),
+          return ok(Values.tuple([Values.booleanValue(false), Values.NullValue]))
+        }),
       ),
     )
   }

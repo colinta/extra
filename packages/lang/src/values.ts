@@ -74,11 +74,15 @@ export function set(values: Value[]) {
   return new SetValue(values)
 }
 
-export function formula(
-  formulaType: Types.FormulaType,
+export function formula(fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>) {
+  return new FormulaValue(fn)
+}
+
+export function namedFormula(
+  name: string,
   fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>,
 ) {
-  return new FormulaValue(formulaType, fn)
+  return new NamedFormulaValue(name, fn)
 }
 
 export type JSValue = boolean | number | string | null | {[x: string]: JSValue} | Array<JSValue>
@@ -532,26 +536,18 @@ export class StringValue extends BasicValue {
     [
       'mapChars',
       value =>
-        new NamedFormulaValue(
-          'mapChars',
-          Types.MetaStringType.types.mapChars?.(Types.StringType)! as Types.FormulaType,
-          (args: FormulaArgs) => {
-            return args
-              .at(0, FormulaValue)
-              .map(mapFn => mapFn.fn(new FormulaArgs([[undefined, value]])))
-          },
-        ),
+        namedFormula('mapChars', (args: FormulaArgs) => {
+          return args
+            .at(0, FormulaValue)
+            .map(mapFn => mapFn.fn(new FormulaArgs([[undefined, value]])))
+        }),
     ],
     [
       'repeat',
       value =>
-        new NamedFormulaValue(
-          'repeat',
-          Types.MetaStringType.types.repeat?.(Types.StringType)! as Types.FormulaType,
-          function repeat(args: FormulaArgs) {
-            return args.at(0, IntValue).map(times => string(value.value.repeat(times.value)))
-          },
-        ),
+        namedFormula('repeat', function repeat(args: FormulaArgs) {
+          return args.at(0, IntValue).map(times => string(value.value.repeat(times.value)))
+        }),
     ],
   ])
 
@@ -1264,9 +1260,16 @@ export class SetValue extends Value {
   }
 }
 
+/**
+ * When arguments are passed to a function there are plenty of shorthands like
+ * `...` and `...name:` and `*kwargs`. These are all flattened and combined (in
+ * Expressions.ArgumentsList.evalToArguments()) to create a `FormulaArgs` value.
+ */
 export class FormulaArgs {
   private _positional: Value[] = []
-  private _named: Map<string, Value> = new Map()
+  private _named: Map<string, Value[]> = new Map()
+  readonly length: number
+  readonly names: Set<string>
 
   constructor(readonly args: [string | undefined, Value][]) {
     for (const [alias, arg] of args) {
@@ -1274,9 +1277,18 @@ export class FormulaArgs {
         this._positional.push(arg)
         continue
       }
-      this._named.set(alias, arg)
+      const prevNamed = this._named.get(alias)
+      if (prevNamed) {
+        prevNamed.push(arg)
+      } else {
+        this._named.set(alias, [arg])
+      }
     }
 
+    this.length = this._positional.length
+    this.names = new Set(this._named.keys())
+    Object.defineProperty(this, 'length', {enumerable: false})
+    Object.defineProperty(this, 'names', {enumerable: false})
     Object.defineProperty(this, '_positional', {enumerable: false})
     Object.defineProperty(this, '_named', {enumerable: false})
   }
@@ -1312,14 +1324,14 @@ export class FormulaArgs {
   }
 
   safeNamed(name: string): Value | undefined {
-    return this._named.get(name)
+    return this._named.get(name)?.[0]
   }
 
   named<V extends Value>(
     name: string,
     type?: new (...args: any[]) => V,
   ): Result<V, string | RuntimeError> {
-    const arg = this._named.get(name)
+    const arg = this._named.get(name)?.[0]
     if (arg !== undefined) {
       if (type === undefined || arg instanceof type) {
         return ok(arg as V)
@@ -1333,6 +1345,10 @@ export class FormulaArgs {
     return err(`No argument named ${name}`)
   }
 
+  safeAllNamed(name: string): Value[] {
+    return this._named.get(name) ?? []
+  }
+
   alias(index: number) {
     const [, alias] = this.args[index] ?? []
     return alias
@@ -1343,10 +1359,7 @@ export class FormulaValue extends Value {
   readonly is: 'formula' | 'named-formula' = 'formula'
   name: string | undefined = undefined
 
-  constructor(
-    readonly formulaType: Types.FormulaType,
-    readonly fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>,
-  ) {
+  constructor(readonly fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>) {
     super()
   }
 
@@ -1359,19 +1372,19 @@ export class FormulaValue extends Value {
   }
 
   getType(): Types.Type {
-    return this.formulaType
+    return Types.NullType
   }
 
   toLisp() {
-    return this.formulaType.toCode()
+    return ''
   }
 
   toCode() {
-    return this.formulaType.toCode()
+    return ''
   }
 
   printable() {
-    return this.formulaType.toCode()
+    return ''
   }
 
   private static _props: Map<string, (value: FormulaValue) => Value> = new Map([])
@@ -1396,10 +1409,9 @@ export class NamedFormulaValue extends FormulaValue {
 
   constructor(
     readonly name: string,
-    formulaType: Types.FormulaType,
     fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>,
   ) {
-    super(formulaType, fn)
+    super(fn)
   }
 }
 
