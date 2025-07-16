@@ -340,7 +340,7 @@ function parseInternal(
     const enterPipe =
       !scanner.isInPipe && (isOperator(nextOperator, '|>', 2) || isOperator(nextOperator, '?|>', 2))
     if (enterPipe) {
-      scanner.pushOptions({isInPipe: true})
+      scanner.setOptions({isInPipe: true})
     }
 
     while (

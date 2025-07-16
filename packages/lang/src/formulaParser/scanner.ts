@@ -15,10 +15,11 @@ export class Scanner {
     readonly input: string,
     options?: Options,
   ) {
-    this.options = options ?? {
+    this.options = {
       debug: 0,
       isInPipe: false,
       isInView: false,
+      ...options,
     }
   }
 
@@ -36,6 +37,10 @@ export class Scanner {
 
   get isInView() {
     return this.options.isInView
+  }
+
+  setOptions(options: Partial<Options>) {
+    this.options = {...this.options, ...options}
   }
 
   pushOptions(options: Partial<Options>) {

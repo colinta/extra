@@ -564,12 +564,20 @@ class NullColescingPipeOperator extends BinaryOperator {
   symbol = '?|>'
 
   rhsType(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
-    if (lhs === Types.NullType) {
-      return ok(Types.NullType)
+    const hasNullType =
+      lhs instanceof Types.OneOfType && lhs.of.some(type => type === Types.NullType)
+    if (!hasNullType) {
+      return err(
+        new RuntimeError(
+          _lhsExpr,
+          `Left hand side of '?|>' operator must be a nullable-type. Found '${lhs}'`,
+        ),
+      )
     }
 
+    const safeTypes = Types.oneOf(lhs.of.filter(type => type !== Types.NullType))
     let myRuntime = new MutableTypeRuntime(runtime)
-    myRuntime.setPipeType(lhs)
+    myRuntime.setPipeType(safeTypes)
 
     return getChildType(this, rhsExpr, myRuntime)
   }
@@ -593,7 +601,7 @@ class NullColescingPipeOperator extends BinaryOperator {
       )
     }
 
-    return ok(rhs)
+    return ok(Types.optional(rhs))
   }
 
   rhsEval(runtime: ValueRuntime, lhs: Values.Value, _lhsExpr: Expression, rhsExpr: Expression) {
