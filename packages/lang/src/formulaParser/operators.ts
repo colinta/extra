@@ -108,11 +108,18 @@ const PRECEDENCE = {
     '>=': 12,
     '<': 12,
     '<=': 12,
+    // unary logic
     not: 16,
+    // unary math
     '-': 16,
     '~': 16,
+    // meta data operators has/is
     typeof: 17,
+    // toString binds higher than property access
+    //     $name.length --> ($name).length
     $: 19,
+    // enum shorthand - this _only_ works when the type can be inferred...
+    // if you are applying operators, the type _cannot_ be inferred.
     '.': 20,
   } as const,
 } as const
@@ -1406,7 +1413,7 @@ class PropertyExistsOperator extends BinaryOperator {
 
   existsInObjectType(haystack: Types.ObjectType, needle: Types.Type, rhsExpr: Expression) {
     if (needle.isLiteral('string')) {
-      const hasProp = haystack.propAccessType(needle.value) !== undefined
+      const hasProp = haystack.literalAccessType(needle.value) !== undefined
       return ok(Types.literal(hasProp))
     } else if (needle.isString()) {
       return ok(Types.BooleanType)

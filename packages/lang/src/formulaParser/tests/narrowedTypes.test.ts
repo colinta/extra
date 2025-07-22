@@ -109,7 +109,6 @@ describe('narrowed types', () => {
         runtimeTypes[name] = [type, Values.nullValue()]
       })
       ;(only ? it.only : skip ? it.skip : it)(`truthy: ${truthyType}`, () => {
-        // returns false (foo is null) or Int (foo is String)
         const expression = parse(`(${formula}) and foo`).get()
         const andExpression = expression as TestingTypes.LogicalAndOperator
         const [lhsExpr, rhsExpr] = andExpression.args
@@ -118,7 +117,6 @@ describe('narrowed types', () => {
         expect(andType.get()).toEqual(truthyType)
       })
       ;(only ? it.only : skip ? it.skip : it)(`falsey: ${falseyType}`, () => {
-        // returns false (foo is null) or Int (foo is String)
         const expression = parse(`(${formula}) or foo`).get()
         const orExpression = expression as TestingTypes.LogicalAndOperator
         const [lhsExpr, rhsExpr] = orExpression.args

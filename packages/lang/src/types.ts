@@ -96,10 +96,6 @@ export function namedObject(name: string, props: ObjectProp[]) {
   return new NamedObjectType(name, props)
 }
 
-export function klass(props: Map<string, Type>, parent?: ClassType) {
-  return new ClassType(props, parent)
-}
-
 export function array(type: Type, narrowed?: Partial<Narrowed.NarrowedLength>) {
   return new ArrayType(
     type,
@@ -130,6 +126,11 @@ export function set(type: Type, narrowed?: Partial<Narrowed.NarrowedLength>) {
 
 export function range(type: Type) {
   return new RangeType(type)
+}
+
+// TODO: rename to classType
+export function klass(props: Map<string, Type>, parent?: ClassType) {
+  return new ClassType(props, parent)
 }
 
 export function namedClass(
@@ -250,7 +251,6 @@ export function kwargListArgument(args: {name: string; type: DictType}): KwargLi
   }
 }
 
-export type BuiltinTypeNames = 'boolean' | 'float' | 'int' | 'null' | 'string' | 'regex'
 export type Key = string | number | boolean | null
 export type KeyType = 'string' | 'int' | 'float' | 'boolean' | 'null'
 type Literals = 'boolean' | 'float' | 'int' | 'string' | 'regex'
@@ -493,7 +493,7 @@ export class GenericType extends Type {
   }
 
   constructor(
-    public name: string,
+    readonly name: string,
     /**
      * All done, the hints and requirements must be assignable to this type. This type
      * can be derived from the hints, or given explicitly.
@@ -776,10 +776,6 @@ export class FormulaType extends Type {
     Object.defineProperty(this, '_named', {enumerable: false})
     Object.defineProperty(this, '_positional', {enumerable: false})
     Object.defineProperty(this, '_kwargs', {enumerable: false})
-    // if (genericTypes.length) {
-    //   console.log('=========== types.ts at line 788 ===========')
-    //   console.log({genericTypes, this: this.toCode()})
-    // }
   }
 
   typeConstructor(): TypeConstructor {
@@ -1152,7 +1148,7 @@ export const NeverType = new (class NeverType extends Type {
   readonly is = 'never'
 
   typeConstructor(): TypeConstructor {
-    return new TypeConstructor('never', this, this, [])
+    throw 'Cannot construct Never instances'
   }
 
   propAccessType(name: string) {
@@ -1173,7 +1169,7 @@ export const AllType = new (class AllType extends Type {
   readonly is = 'all'
 
   typeConstructor(): TypeConstructor {
-    return new TypeConstructor('all', this, this, [])
+    throw 'Cannot construct All instances'
   }
 
   propAccessType(name: string) {
@@ -1201,7 +1197,7 @@ export const AlwaysType = new (class AlwaysType extends Type {
   readonly is = 'always'
 
   typeConstructor(): TypeConstructor {
-    return new TypeConstructor('always', this, this, [])
+    throw 'Cannot construct Always instances'
   }
 
   propAccessType(name: string) {
@@ -1221,7 +1217,7 @@ class MetaNullType extends Type {
   }
 
   typeConstructor(): TypeConstructor {
-    return new TypeConstructor('null', this, this, [])
+    return new TypeConstructor('Null', this, this, [])
   }
 
   isOnlyFalseyType(): boolean {
@@ -1252,7 +1248,7 @@ class MetaBooleanType extends Type {
   }
 
   typeConstructor(): TypeConstructor {
-    return new TypeConstructor('boolean', this, this, [
+    return new TypeConstructor('Boolean', this, this, [
       positionalArgument({name: 'input', type: AllType, isRequired: true}),
     ])
   }
@@ -1336,7 +1332,7 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
   }
 
   typeConstructor(): TypeConstructor {
-    return new TypeConstructor('float', this, optional(this), [
+    return new TypeConstructor('Float', this, optional(this), [
       positionalArgument({name: 'input', type: oneOf([string(), float()]), isRequired: true}),
     ])
   }
@@ -1464,7 +1460,7 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
   }
 
   typeConstructor(): TypeConstructor {
-    return new TypeConstructor('int', this, optional(this), [
+    return new TypeConstructor('Int', this, optional(this), [
       positionalArgument({name: 'input', type: oneOf([string(), int()]), isRequired: true}),
     ])
   }
@@ -1622,12 +1618,12 @@ export class MetaStringType extends Type {
       this.narrowedString.regex.length ||
       !Narrowed.isDefaultNarrowedLength(this.narrowedString.length)
     ) {
-      return new TypeConstructor('string', this, optional(this), [
+      return new TypeConstructor('String', this, optional(this), [
         positionalArgument({name: 'input', type: AllType, isRequired: true}),
       ])
     }
 
-    return new TypeConstructor('string', this, this, [
+    return new TypeConstructor('String', this, this, [
       positionalArgument({name: 'input', type: AllType, isRequired: true}),
     ])
   }
@@ -1793,7 +1789,7 @@ class MetaRegexType extends Type {
   declare static types: Record<string, ((object: MetaRegexType) => Type) | undefined>
 
   typeConstructor(): TypeConstructor {
-    return new TypeConstructor('regex', this, this, [
+    return new TypeConstructor('Regex', this, this, [
       positionalArgument({name: 'input', type: oneOf([StringType, this]), isRequired: true}),
     ])
   }
@@ -1824,7 +1820,7 @@ class RangeType extends Type {
   }
 
   typeConstructor(): TypeConstructor {
-    return new TypeConstructor('range', this, this, [])
+    return new TypeConstructor('Range', this, this, [])
   }
 
   isRange() {
@@ -2826,7 +2822,7 @@ export class NamedClassType extends ClassType {
   readonly is = 'named-class'
 
   constructor(
-    public name: string,
+    readonly name: string,
     props: Map<string, Type>,
     parent: ClassType | undefined,
   ) {
@@ -3167,6 +3163,14 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     }
   }
 
+  if (lhs === NullType) {
+    return optional(rhs)
+  }
+
+  if (rhs === NullType) {
+    return optional(lhs)
+  }
+
   return _privateOneOf([lhs, rhs])
 }
 
@@ -3350,21 +3354,26 @@ export function canBeAssignedTo(
   reason?: {reason: string}, // if provided, this object will be modified to include an error message.
 ): boolean {
   function why(canBeAssigned: boolean, error: string) {
-    if (!canBeAssigned && reason) {
+    if (canBeAssigned) {
+      if (reason) {
+        reason.reason = ''
+      }
+      return true
+    }
+
+    if (reason) {
       if (reason.reason) {
-        reason.reason = error + '. ' + reason.reason
+        reason.reason = error + ' ' + reason.reason
       } else {
         reason.reason = error
       }
-    } else if (canBeAssigned && reason) {
-      reason.reason = ''
     }
 
-    return canBeAssigned
+    return false
   }
 
   if (testType === NeverType || assignTo === NeverType) {
-    return why(false, `Encountered unexpected type 'never'`)
+    return why(false, `Encountered unexpected type 'never'.`)
   }
 
   if (assignTo === AllType) {
@@ -3372,7 +3381,7 @@ export function canBeAssignedTo(
   }
 
   if (testType === AllType) {
-    return why(false, `Encountered unexpected type 'any'`)
+    return why(false, `Encountered unexpected type 'any'.`)
   }
 
   if (testType === AlwaysType) {
@@ -3380,7 +3389,7 @@ export function canBeAssignedTo(
   }
 
   if (assignTo === AlwaysType) {
-    return why(false, `Encountered unexpected type 'always'`)
+    return why(false, `Encountered unexpected type 'always'.`)
   }
 
   if (testType === assignTo) {
@@ -3432,7 +3441,7 @@ export function canBeAssignedTo(
     // (ie testType is a *narrowed* type of assignTo)
     return why(
       generic.some(rhType => canBeAssignedTo(testType, rhType, resolvedGenericsMap, reason)),
-      `'${testType}' is not assignable to '${assignTo}'`,
+      `'${testType}' is not assignable to '${assignTo}'.`,
     )
   }
 
@@ -3441,21 +3450,18 @@ export function canBeAssignedTo(
     if (testType.is === assignTo.is || (testType.isInt() && assignTo.isFloat())) {
       return why(
         testType.value === assignTo.value,
-        `Different literal values ${testType.value} !== ${assignTo.value}`,
+        `Different literal values ${testType.value} !== ${assignTo.value}.`,
       )
     }
 
     return why(
       false,
-      `Literal type ${testType.valueType()} is not assignable to ${assignTo.valueType()}`,
+      `Literal type ${testType.valueType()} is not assignable to ${assignTo.valueType()}.`,
     )
   } else if (testType.isLiteral()) {
     return canBeAssignedTo(testType.valueType(), assignTo, resolvedGenericsMap, reason)
   } else if (assignTo.isLiteral()) {
-    return why(
-      false,
-      `'${testType}' is not assignable to literal type '${assignTo.valueType().is}'`,
-    )
+    return why(false, `'${testType}' is not assignable to literal type '${assignTo.toCode()}'.`)
   } else if (testType.isFloat() && assignTo.isFloat()) {
     // canBeAssignedToFloat checks the narrowed types,
     // and whether testType canBeAssignedTo assignTo (Int can be assigned to Float,
@@ -3467,30 +3473,30 @@ export function canBeAssignedTo(
   } else if (testType instanceof ArrayType && assignTo instanceof ArrayType) {
     // checks only the narrowed types
     if (!canBeAssignedToArray(testType, assignTo)) {
-      return why(false, `Incompatible array types '${testType}' and '${assignTo}'`)
+      return why(false, `Incompatible array types '${testType}' and '${assignTo}'.`)
     }
 
     return why(
       canBeAssignedTo(testType.of, assignTo.of, resolvedGenericsMap, reason),
-      `Incompatible array types '${testType}' and '${assignTo}'`,
+      `Incompatible array types '${testType}' and '${assignTo}'.`,
     )
   } else if (testType instanceof DictType && assignTo instanceof DictType) {
     if (!canBeAssignedToDict(testType, assignTo)) {
-      return why(false, `Incompatible dict types '${testType}' and '${assignTo}'`)
+      return why(false, `Incompatible dict types '${testType}' and '${assignTo}'.`)
     }
 
     return why(
       canBeAssignedTo(testType.of, assignTo.of, resolvedGenericsMap, reason),
-      `Incompatible dict types '${testType}' and '${assignTo}'`,
+      `Incompatible dict types '${testType}' and '${assignTo}'.`,
     )
   } else if (testType instanceof SetType && assignTo instanceof SetType) {
     if (!canBeAssignedToSet(testType, assignTo)) {
-      return why(false, `Incompatible set types '${testType}' and '${assignTo}'`)
+      return why(false, `Incompatible set types '${testType}' and '${assignTo}'.`)
     }
 
     return why(
       canBeAssignedTo(testType.of, assignTo.of, resolvedGenericsMap, reason),
-      `Incompatible set types '${testType}' and '${assignTo}'`,
+      `Incompatible set types '${testType}' and '${assignTo}'.`,
     )
   } else if (testType instanceof ObjectType && assignTo instanceof ObjectType) {
     const assignToTupleProps: PositionalProp[] = []
@@ -3519,7 +3525,7 @@ export function canBeAssignedTo(
       if (!canBeAssignedTo(testProp, assignType, resolvedGenericsMap, reason)) {
         return why(
           false,
-          `Incompatible types in object property '${name}'. '${testProp.toCode()}' cannot be assigned to '${assignType.toCode()}'`,
+          `Incompatible types in object property '${name}'. '${testProp.toCode()}' cannot be assigned to '${assignType.toCode()}'.`,
         )
       }
     }
@@ -3529,7 +3535,7 @@ export function canBeAssignedTo(
       if (testProp && !canBeAssignedTo(testProp, assignType, resolvedGenericsMap, reason)) {
         return why(
           false,
-          `Incompatible types in object at index '${index}'. '${testProp.toCode()}' cannot be assigned to '${assignType.toCode()}'`,
+          `Incompatible types in object at index '${index}'. '${testProp.toCode()}' cannot be assigned to '${assignType.toCode()}'.`,
         )
       }
     }
@@ -3549,7 +3555,7 @@ export function canBeAssignedTo(
     for (const [name, assignType] of assignTo.props.entries()) {
       const testProp = testType.propAccessType(name) ?? NullType
       if (!canBeAssignedTo(testProp, assignType, resolvedGenericsMap, reason)) {
-        return why(false, `Incompatible types in object property '${name}'`)
+        return why(false, `Incompatible types in object property '${name}'.`)
       }
     }
 
@@ -3559,7 +3565,7 @@ export function canBeAssignedTo(
     return why(errorMessage === undefined, errorMessage ?? '')
   }
 
-  return why(false, `Type '${testType}' cannot be assigned to '${assignTo}'`)
+  return why(false, `Type '${testType}' cannot be assigned to '${assignTo}'.`)
 }
 
 function canBeAssignedToFloat(

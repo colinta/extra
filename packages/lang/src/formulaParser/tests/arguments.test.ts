@@ -62,8 +62,8 @@ describe('argument parser', () => {
         "((#number: `Int`) (#number2: `Int` 0) (foo: `String` '') (bar: `String`))",
       ]),
       c([
-        'number: Int, name: String, score: score',
-        '((number: `Int`) (name: `String`) (score: score))',
+        'number: Int, name: String, score: Score',
+        '((number: `Int`) (name: `String`) (score: Score))',
       ]),
       c([
         'reduce: fn(#initial: String, #callback: fn(#memo: String, #value: Int): String, values: Array(Int)): String',
@@ -94,6 +94,7 @@ describe('argument parser', () => {
     )
 
     cases<[string, string]>(
+      c(['#count: int', "Expected a type name, found 'int'"]),
       c(['#count number: Int', "Expected type expression for 'count'"]),
       c([
         '#count1: Int = 0, #count2: Int',
@@ -117,8 +118,8 @@ describe('argument parser', () => {
       c(['   number: Int', '((number: `Int`))']),
       c(['number : Int, name : String', '((number: `Int`) (name: `String`))']),
       c([
-        'number:Int,name:String,\n\tscore:score',
-        '((number: `Int`) (name: `String`) (score: score))',
+        'number:Int,name:String,\n\tscore:Score',
+        '((number: `Int`) (name: `String`) (score: Score))',
       ]),
       c(['number  :Int,asdf:Float', '((number: `Int`) (asdf: `Float`))']),
     ).run(([formula, expected], {only, skip}) =>

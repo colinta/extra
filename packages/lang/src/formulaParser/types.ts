@@ -85,6 +85,7 @@ export class RuntimeError extends Error {
     public children: RuntimeError[] = [],
   ) {
     super()
+    this.parents.push(expression)
     this.message += `\n${expression.constructor.name}: ` + expression.toCode()
   }
 

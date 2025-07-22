@@ -48,9 +48,6 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case 'Int':
     case 'String':
     case 'object':
-    case 'array':
-    case 'dict':
-    case 'set':
     case 'Object':
     case 'Array':
     case 'Dict':
