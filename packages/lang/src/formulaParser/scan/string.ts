@@ -20,7 +20,7 @@ import {scanValidName, scanAtom} from './identifier'
  *      line2  <-- this line will have two spaces in front
  *    """      <-- closing quotes determine the indentation
  */
-export function scanString(scanner: Scanner, parseNext: ParseNext) {
+export function scanString(scanner: Scanner, enableInterpolation: boolean, parseNext: ParseNext) {
   const range0 = scanner.charIndex
   scanner.whereAmI('scanString')
   if (scanner.is(ATOM_START)) {
@@ -58,6 +58,7 @@ export function scanString(scanner: Scanner, parseNext: ParseNext) {
 
   const parts: Expression[] = []
   const isSingleQuote = quote.startsWith("'")
+  const quoteSupportsInterpolation = !isSingleQuote
   let bufferRange0 = scanner.charIndex
   let stringBuffer = ''
   let escapeBuffer = ''
@@ -158,9 +159,13 @@ export function scanString(scanner: Scanner, parseNext: ParseNext) {
     } else if (scanner.is('\\')) {
       escaping = 'single'
     } else if (
-      !isSingleQuote &&
+      quoteSupportsInterpolation &&
       scanner.test(() => scanner.scanIfString('$') && isRefStartChar(scanner))
     ) {
+      if (!enableInterpolation) {
+        throw new ParseError(scanner, `Interpolation is not enabled in this context`)
+      }
+
       // string substitution for "$varname" shorthand
       appendNext()
 
@@ -171,7 +176,11 @@ export function scanString(scanner: Scanner, parseNext: ParseNext) {
       scanner.whereAmI('ref: `' + ref.toCode() + '`')
       bufferRange0 = scanner.charIndex
       continue
-    } else if (!isSingleQuote && scanner.is('${')) {
+    } else if (quoteSupportsInterpolation && scanner.is('${')) {
+      if (!enableInterpolation) {
+        throw new ParseError(scanner, `Interpolation is not enabled in this context`)
+      }
+
       // string substitution for "${…}"
       appendNext()
 

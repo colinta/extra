@@ -311,7 +311,7 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
       if (isNumberStart(scanner.char)) {
         name = value = scanNumber(scanner, 'float')
       } else if (isStringStartChar(scanner.char)) {
-        name = value = scanString(scanner, parseNext)
+        name = value = scanString(scanner, true, parseNext)
         scanner.whereAmI(`scanDictArg: Dict( ${name.toCode()} )`)
       } else if (scanner.is(PARENS_OPEN)) {
         name = value = scanParensGroup(scanner, parseNext)

@@ -621,9 +621,9 @@ function parseInternal(
         ) {
           processOperator(scanUnaryOperator(scanner))
         } else if (isStringStartChar(scanner.char)) {
-          processExpression(scanString(scanner, parseNext))
+          processExpression(scanString(scanner, true, parseNext))
         } else if (isTaggedString(scanner)) {
-          processExpression(scanString(scanner, parseNext))
+          processExpression(scanString(scanner, true, parseNext))
         } else if (scanner.is(REGEX_START)) {
           processExpression(scanRegex(scanner))
         } else if (isRefStartChar(scanner)) {

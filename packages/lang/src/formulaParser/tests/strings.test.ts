@@ -66,14 +66,14 @@ world
     c(['"""this ${is} a good "test"."""', "(++ 'this ' is ' a good \"test\".')"]),
     c(["'''this ${is} ok.'''", "'this ${is} ok.'", "'this ${is} ok.'"]),
     c([
-      '"""this $is another fine \'test\'."""',
-      "(++ 'this ' is ' another fine \\'test\\'.')",
-      '"""this ${is} another fine \'test\'."""',
+      '"""this $another fine \'test\'."""',
+      "(++ 'this ' another ' fine \\'test\\'.')",
+      '"""this ${another} fine \'test\'."""',
     ]),
     c([
-      '"""this \\$is one more "test"."""',
-      '\'this $is one more "test".\'',
-      '\'this $is one more "test".\'',
+      '"""this \\$one more "test"."""',
+      '\'this $one more "test".\'',
+      '\'this $one more "test".\'',
     ]),
     c([
       '"""this is \\$an alternative "test"."""',
