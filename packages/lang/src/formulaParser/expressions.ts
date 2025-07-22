@@ -214,6 +214,10 @@ export abstract class Operation extends Expression {
   }
 }
 
+//|
+//|  Literal Expressions
+//|
+
 /**
  * Literal of any kind: Boolean, Int, Float, String, Regex
  */
@@ -297,6 +301,10 @@ export class LiteralKey extends Literal {
   }
 }
 
+//|
+//|  String Expressions
+//|
+
 /**
  * Literal is good for storing strings and numbers _in general_, but in
  * interpolated strings and View expressions, we need a way to distinguish "parts
@@ -353,6 +361,76 @@ export class StringAtomLiteral extends Literal {
     super(range, precedingComments, Values.string(stringValue))
   }
 }
+
+export class StringTemplateOperation extends Operation {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+    readonly quote: string,
+    readonly tag?: string,
+  ) {
+    super(range, precedingComments, [], operator, args)
+  }
+
+  toLisp(): string {
+    const args = this.args
+      .map(it => {
+        if (it instanceof StringLiteral) {
+          return it.toLisp(false)
+        } else {
+          return it.toLisp()
+        }
+      })
+      .join(' ')
+    return `(${this.operator.symbol} ${args})`
+  }
+
+  toViewChildrenCode() {
+    return this.args.flatMap(arg => arg.toViewChildrenCode()).join('')
+  }
+
+  toCode() {
+    let output = ''
+    let hasNewline = false
+    for (const arg of this.args) {
+      if (arg instanceof StringLiteral) {
+        const code = arg.value.value.replaceAll(this.quote, '\\' + this.quote)
+        hasNewline = hasNewline || code.includes('\n')
+        output += code
+      } else {
+        output += '${'.concat(arg.toCode(), '}')
+      }
+    }
+
+    if (hasNewline && this.quote.length > 1) {
+      output = (this.tag ?? '').concat(this.quote, '\n', output, '\n')
+    } else {
+      output = (this.tag ?? '').concat(this.quote, output)
+    }
+    return output.concat(this.quote)
+  }
+
+  getType(): GetTypeResult {
+    // todo scan all values in the string template and return a narrowed string type
+    return ok(Types.StringType)
+  }
+
+  eval(runtime: ValueRuntime) {
+    return mapAll(this.args.map(arg => arg.eval(runtime))).map(values => {
+      let result = ''
+      for (const value of values) {
+        result = result += value.printable()
+      }
+      return Values.string(result)
+    })
+  }
+}
+
+//|
+//|  Reference Expressions
+//|
 
 export abstract class Identifier extends Expression {
   abstract readonly name: string
@@ -425,7 +503,6 @@ export class Reference extends Identifier {
   }
 }
 
-// @state
 export class StateReference extends Reference {
   dependencies() {
     return new Set(['@' + this.name])
@@ -464,7 +541,6 @@ export class StateReference extends Reference {
   }
 }
 
-// &action
 export class ActionReference extends Reference {
   dependencies() {
     return new Set(['&' + this.name])
@@ -503,71 +579,9 @@ export class ActionReference extends Reference {
   }
 }
 
-export class StringTemplateOperation extends Operation {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-    readonly quote: string,
-    readonly tag?: string,
-  ) {
-    super(range, precedingComments, [], operator, args)
-  }
-
-  toLisp(): string {
-    const args = this.args
-      .map(it => {
-        if (it instanceof StringLiteral) {
-          return it.toLisp(false)
-        } else {
-          return it.toLisp()
-        }
-      })
-      .join(' ')
-    return `(${this.operator.symbol} ${args})`
-  }
-
-  toViewChildrenCode() {
-    return this.args.flatMap(arg => arg.toViewChildrenCode()).join('')
-  }
-
-  toCode() {
-    let output = ''
-    let hasNewline = false
-    for (const arg of this.args) {
-      if (arg instanceof StringLiteral) {
-        const code = arg.value.value.replaceAll(this.quote, '\\' + this.quote)
-        hasNewline = hasNewline || code.includes('\n')
-        output += code
-      } else {
-        output += '${'.concat(arg.toCode(), '}')
-      }
-    }
-
-    if (hasNewline && this.quote.length > 1) {
-      output = (this.tag ?? '').concat(this.quote, '\n', output, '\n')
-    } else {
-      output = (this.tag ?? '').concat(this.quote, output)
-    }
-    return output.concat(this.quote)
-  }
-
-  getType(): GetTypeResult {
-    // todo scan all values in the string template and return a narrowed string type
-    return ok(Types.StringType)
-  }
-
-  eval(runtime: ValueRuntime) {
-    return mapAll(this.args.map(arg => arg.eval(runtime))).map(values => {
-      let result = ''
-      for (const value of values) {
-        result = result += value.printable()
-      }
-      return Values.string(result)
-    })
-  }
-}
+//|
+//|  Container literal Expressions
+//|
 
 export class ObjectExpression extends Expression {
   constructor(
@@ -748,6 +762,47 @@ export class ArrayExpression extends Expression {
     )
       .map(values => values.flat())
       .map(values => Values.array(values))
+  }
+}
+
+export class DictEntry extends Expression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly name: Expression,
+    readonly value: Expression,
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies() {
+    return union(this.name.dependencies(), this.value.dependencies())
+  }
+
+  toLisp() {
+    return `(${this.name.toLisp()}: ${this.value.toLisp()})`
+  }
+
+  toCode() {
+    const name = this.name.toCode(HIGHEST_PRECEDENCE)
+    if (this.value instanceof Reference && this.value.name === name) {
+      return name + ':'
+    }
+
+    const value = this.value.toCode()
+    if (value.length > MAX_INNER_LEN) {
+      return `${name}:\n${indent(value)}`
+    }
+
+    return `${name}: ${value}`
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'DictEntry does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'DictEntry cannot be evaluated'))
   }
 }
 
@@ -1061,6 +1116,10 @@ function combineAllTypesForDict(expr: DictExpression, runtime: TypeRuntime) {
   })
 }
 
+//|
+//|  Type Expressions
+//|
+
 /**
  * The class doesn't provide much convenience, mostly it groups together a bunch of
  * related classes:
@@ -1324,7 +1383,7 @@ export class ArrayTypeExpression extends TypeExpression {
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.of
       .getAsTypeExpression(runtime)
-      .map(type => new Types.ArrayType(type, this.narrowed).fromTypeConstructor())
+      .map(type => new Types.ArrayType(type, this.narrowed))
   }
 }
 
@@ -1366,7 +1425,7 @@ export class DictTypeExpression extends TypeExpression {
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.of.getAsTypeExpression(runtime).map(type => {
-      return new Types.DictType(type, this.narrowedLength, this.narrowedNames).fromTypeConstructor()
+      return new Types.DictType(type, this.narrowedLength, this.narrowedNames)
     })
   }
 }
@@ -1403,7 +1462,7 @@ export class SetTypeExpression extends TypeExpression {
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.of.getAsTypeExpression(runtime).map(type => {
-      return new Types.SetType(type, this.narrowedLength).fromTypeConstructor()
+      return new Types.SetType(type, this.narrowedLength)
     })
   }
 }
@@ -1445,6 +1504,10 @@ export class TypeConstructorExpression extends TypeExpression {
     throw 'TODO - TypeConstructorExpression getAsTypeExpression'
   }
 }
+
+//|
+//|  Argument and Spread Expressions
+//|
 
 /**
  * An argument declaration, as part of a formula definition.
@@ -1493,47 +1556,6 @@ export abstract class ArgumentExpression extends Expression {
 
   eval(): GetValueResult {
     return err(new RuntimeError(this, 'ArgumentExpression cannot be evaluated'))
-  }
-}
-
-export class DictEntry extends Expression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly name: Expression,
-    readonly value: Expression,
-  ) {
-    super(range, precedingComments)
-  }
-
-  dependencies() {
-    return union(this.name.dependencies(), this.value.dependencies())
-  }
-
-  toLisp() {
-    return `(${this.name.toLisp()}: ${this.value.toLisp()})`
-  }
-
-  toCode() {
-    const name = this.name.toCode(HIGHEST_PRECEDENCE)
-    if (this.value instanceof Reference && this.value.name === name) {
-      return name + ':'
-    }
-
-    const value = this.value.toCode()
-    if (value.length > MAX_INNER_LEN) {
-      return `${name}:\n${indent(value)}`
-    }
-
-    return `${name}: ${value}`
-  }
-
-  getType() {
-    return err(new RuntimeError(this, 'DictEntry does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'DictEntry cannot be evaluated'))
   }
 }
 
@@ -1638,6 +1660,20 @@ export abstract class Argument extends Expression {
 }
 
 /**
+ * A positional argument passed to a function.
+ *
+ *     foo('value')
+ *         ^^^^^^^
+ */
+export class PositionalArgument extends Argument {
+  readonly alias = undefined
+
+  constructor(range: Range, precedingComments: Comment[], value: Expression) {
+    super(range, precedingComments, value)
+  }
+}
+
+/**
  * A named argument passed to a function, object, class, or view. Also used to store
  * 'let' declarations
  *
@@ -1668,20 +1704,6 @@ export class NamedArgument extends Argument {
 }
 
 /**
- * A positional argument passed to a function.
- *
- *     foo('value')
- *         ^^^^^^^
- */
-export class PositionalArgument extends Argument {
-  readonly alias = undefined
-
-  constructor(range: Range, precedingComments: Comment[], value: Expression) {
-    super(range, precedingComments, value)
-  }
-}
-
-/**
  * A spread argument passed to an object, array, set, dict, or function
  *
  *     {...a} -- must be an object
@@ -1701,6 +1723,10 @@ export abstract class SpreadArgument extends Argument {
   }
 
   toCode() {
+    if (this.value instanceof Operation && this.value.operator.symbol !== 'onlyif') {
+      return `...(${this.value})`
+    }
+
     return `...${this.value}`
   }
 }
@@ -1873,6 +1899,10 @@ export class SpreadFunctionArgument extends SpreadArgument {
   }
 }
 
+//|
+//|  Let Expression
+//|
+
 export class LetExpression extends Expression {
   readonly name = 'let'
   readonly bindings: [string, NamedArgument | NamedFormulaExpression][]
@@ -2010,6 +2040,10 @@ export class LetExpression extends Expression {
       .map(() => this.body.eval(nextRuntime))
   }
 }
+
+//|
+//|  Reserved Word Expressions
+//|
 
 export abstract class ReservedWord extends Identifier {
   abstract name: string
@@ -2184,6 +2218,10 @@ export class ThisIdentifier extends ReservedWord {
     return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
   }
 }
+
+//|
+//|  Type Identifier Expressions
+//|
 
 /**
  * The name of a built-in type:
@@ -2410,6 +2448,34 @@ export class StringTypeExpression extends TypeIdentifier {
   }
 }
 
+export class ViewTypeExpression extends TypeIdentifier {
+  readonly name = 'view'
+
+  toCode() {
+    return this.safeTypeAssertion().toCode()
+  }
+
+  safeTypeAssertion(): Types.Type {
+    return Types.UserViewType
+  }
+
+  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
+    return ok(this.safeTypeAssertion())
+  }
+
+  getType(): GetRuntimeResult<Types.TypeConstructor> {
+    return ok(this.safeTypeAssertion().typeConstructor())
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'ViewTypeExpression cannot be evaluated'))
+  }
+}
+
+//|
+//|  Pipe Expressions
+//|
+
 export class PipePlaceholderExpression extends Expression {
   static Symbol = '#'
 
@@ -2449,6 +2515,10 @@ export class PipePlaceholderExpression extends Expression {
     )
   }
 }
+
+//|
+//|  Class Expressions
+//|
 
 export class ClassPropertyExpression extends Expression {
   constructor(
@@ -2575,6 +2645,10 @@ export class ClassExpression extends Expression {
     throw 'TODO - class eval'
   }
 }
+
+//|
+//|  Enum Expressions
+//|
 
 export class EnumMemberExpression extends Expression {
   constructor(
@@ -2720,29 +2794,9 @@ export class EnumShorthandTypeExpression extends EnumTypeExpression {
   }
 }
 
-export class ViewTypeExpression extends TypeIdentifier {
-  readonly name = 'view'
-
-  toCode() {
-    return this.safeTypeAssertion().toCode()
-  }
-
-  safeTypeAssertion(): Types.Type {
-    return Types.UserViewType
-  }
-
-  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getType(): GetRuntimeResult<Types.TypeConstructor> {
-    return ok(this.safeTypeAssertion().typeConstructor())
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'ViewTypeExpression cannot be evaluated'))
-  }
-}
+//|
+//|  Formula and Argument Expressions
+//|
 
 /**
  * The argument list passed to a function by the invocation operator `()`
@@ -3051,9 +3105,9 @@ export class FormulaTypeArgumentDeclarations extends ArgumentDeclarations {
 /**
  * The argument name and type for a FormulaType expression
  *
- *     add = fn(a: Int, b: Int): Int
- *              ^^^^^^  |
- *                      ^^^^^^
+ *     add: fn(a: Int, b: Int): Int
+ *             ^^^^^^  |
+ *                     ^^^^^^
  */
 export class FormulaTypeArgumentAndType extends ArgumentExpression {
   constructor(
@@ -3190,11 +3244,11 @@ export class FormulaTypeExpression extends Expression {
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    const generics: Types.GenericType[] = []
+    const genericTypes: Types.GenericType[] = []
     const mutableRuntime = new MutableTypeRuntime(runtime)
     for (const generic of this.generics) {
       const genericType = new Types.GenericType(generic)
-      generics.push(genericType)
+      genericTypes.push(genericType)
       mutableRuntime.addLocalType(generic, genericType)
     }
 
@@ -3202,17 +3256,17 @@ export class FormulaTypeExpression extends Expression {
       args => {
         return this.returnType
           .getAsTypeExpression(mutableRuntime)
-          .map(returnType => Types.formula(args, returnType, generics))
+          .map(returnType => Types.formula(args, returnType, genericTypes))
       },
     )
   }
 
   getType() {
-    return err(new RuntimeError(this, ''))
+    return err(new RuntimeError(this, 'FormulaTypeExpression does not have a type'))
   }
 
   eval(): GetValueResult {
-    return err(new RuntimeError(this, ''))
+    return err(new RuntimeError(this, 'FormulaTypeExpression cannot be evaluated'))
   }
 }
 
@@ -3422,6 +3476,9 @@ export class FormulaExpression extends Expression {
           }
 
           if (!inferArgType) {
+            // I know some programming languages are able to infer the argument type
+            // based on how it's *used* but that just sounds like a ton of work,
+            // for mediocre results.
             let message = 'Unable to infer type for argument '
             if (arg instanceof NamedArgument) {
               message += `'${arg.aliasRef.name}'`
@@ -3520,37 +3577,28 @@ export class FormulaExpression extends Expression {
     let kwargs: FormulaLiteralArgumentAndTypeDeclaration | undefined
 
     for (const arg of argDefinitions) {
-      // console.log('=========== expressions.ts at line 3534 ===========')
-      // console.log({arg})
       if (arg.spreadArg === 'spread' && arg.isPositional) {
-        // console.log('remainingPositional')
         if (remainingPositional) {
           throw `weird(organizeArguments) - spread positional argument '${remainingPositional.aliasRef.name}' already defined`
         }
         remainingPositional = arg
       } else if (arg.spreadArg === 'spread') {
-        // console.log('repeatNamed')
         if (repeatNamed.has(arg.aliasRef.name)) {
           throw `weird(organizeArguments) - repeated named argument '${arg.aliasRef.name}' already defined`
         }
         repeatNamed.set(arg.aliasRef.name, arg)
       } else if (arg.spreadArg === 'kwargs') {
-        // console.log('kwargs')
         if (kwargs) {
           throw `weird(organizeArguments) - kwargs argument '${kwargs.aliasRef.name}' already defined`
         }
         kwargs = arg
       } else if (arg.isPositional && arg.defaultValue) {
-        // console.log('optionalPositional')
         optionalPositional.push([arg, arg.defaultValue])
       } else if (arg.isPositional && remainingPositional) {
-        // console.log('lastPositional')
         // lastPositional.push(arg)
       } else if (arg.isPositional && !arg.defaultValue) {
-        // console.log('requiredPositional')
         requiredPositional.push(arg)
       } else {
-        // console.log('singleNamed')
         if (singleNamed.has(arg.aliasRef.name)) {
           throw `weird(organizeArguments) - single named argument '${arg.aliasRef.name}' already defined`
         }
@@ -3613,8 +3661,6 @@ export class FormulaExpression extends Expression {
       repeatNamed,
       kwargs,
     } = this.organizeArguments(argDefinitions)
-    // console.log('=========== expressions.ts at line 3618 ===========')
-    // console.log({invokedArgs, singleNamed})
     const mutableRuntime = new MutableValueRuntime(runtime)
     let position = 0
     for (const arg of requiredPositional) {
@@ -3622,8 +3668,6 @@ export class FormulaExpression extends Expression {
       if (!value) {
         throw `weird - missing positional argument '${arg.nameRef.name}'. No argument passed at position #${position + 1}`
       }
-      // console.log('=========== expressions.ts at line 3625 ===========')
-      // console.log({'arg.aliasRef.name': arg.aliasRef.name})
       mutableRuntime.addLocalValue(arg.aliasRef.name, value)
       position += 1
     }
@@ -3636,8 +3680,6 @@ export class FormulaExpression extends Expression {
         }
         value = result.get()
       }
-      // console.log('=========== expressions.ts at line 3639 ===========')
-      // console.log({'arg.aliasRef.name': arg.aliasRef.name})
       mutableRuntime.addLocalValue(arg.aliasRef.name, value)
       position += 1
     }
@@ -3652,8 +3694,6 @@ export class FormulaExpression extends Expression {
         values.push(value)
       }
       const array = new Values.ArrayValue(values)
-      // console.log('=========== expressions.ts at line 3655 ===========')
-      // console.log({'remainingPositional.aliasRef.name': remainingPositional.aliasRef.name})
       mutableRuntime.addLocalValue(remainingPositional.aliasRef.name, array)
     }
 
@@ -3662,8 +3702,6 @@ export class FormulaExpression extends Expression {
     for (const [name, arg] of singleNamed) {
       allNames.delete(name)
       let value = invokedArgs.safeNamed(name)
-      // console.log('=========== expressions.ts at line 3667 ===========')
-      // console.log({value, name})
       if (!value) {
         const defaultValue = arg.defaultValue
         if (!defaultValue) {
@@ -3676,16 +3714,12 @@ export class FormulaExpression extends Expression {
         }
         value = result.get()
       }
-      // console.log('=========== expressions.ts at line 3677 ===========')
-      // console.log({'arg.aliasRef.name': arg.aliasRef.name})
       mutableRuntime.addLocalValue(arg.aliasRef.name, value)
     }
 
     for (const [name, arg] of repeatNamed) {
       allNames.delete(name)
       let value = invokedArgs.safeAllNamed(name)
-      // console.log('=========== expressions.ts at line 3685 ===========')
-      // console.log({'arg.aliasRef.name': arg.aliasRef.name})
       mutableRuntime.addLocalValue(arg.aliasRef.name, new Values.ArrayValue(value))
     }
 
@@ -3698,8 +3732,6 @@ export class FormulaExpression extends Expression {
         }
         kwargValues.set(name, value)
       }
-      // console.log('=========== expressions.ts at line 3699 ===========')
-      // console.log({'kwargs.aliasRef.name': kwargs.aliasRef.name})
       mutableRuntime.addLocalValue(kwargs.aliasRef.name, new Values.DictValue(kwargValues))
     }
 
@@ -3722,10 +3754,6 @@ export class FormulaExpression extends Expression {
           return ok(result.get())
         })
     }
-    // TODO: gather variables from context and pass to FormulaValue
-    // this.dependencies() should be enough to capture this
-    // console.log('=========== expressions.ts at line 3672 ===========')
-    // console.log({'this.dependencies()': this.dependencies()})
 
     if (this.nameRef) {
       return ok(new Values.NamedFormulaValue(this.nameRef.name, fn))
@@ -3759,6 +3787,13 @@ export class NamedFormulaExpression extends FormulaExpression {
       generics,
     )
     this.nameRef = nameRef
+  }
+
+  getType(
+    runtime: TypeRuntime,
+    formulaType?: Types.FormulaType | undefined,
+  ): GetRuntimeResult<Types.NamedFormulaType> {
+    return super.getType(runtime, formulaType) as GetRuntimeResult<Types.NamedFormulaType>
   }
 }
 
@@ -4072,6 +4107,11 @@ export class MainFormulaExpression extends ViewFormulaExpression {
     return this.toCodePrefixed(false, true)
   }
 }
+
+
+//|
+//|  Application Expressions
+//|
 
 export class ImportSpecific extends Expression {
   constructor(
