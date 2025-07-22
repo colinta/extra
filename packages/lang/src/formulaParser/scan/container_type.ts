@@ -25,7 +25,7 @@ import {ParseError, type ParseNext} from '../types'
 import {scanIdentifier, scanAnyReference} from './identifier'
 import {scanNumber} from './number'
 import {scanParensGroup} from './parens'
-import {scanArgumentType} from './scanArgumentType'
+import {scanArgumentType} from './argument_type'
 import {scanString} from './string'
 
 function isNamedObjectArgument(scanner: Scanner) {

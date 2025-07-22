@@ -77,7 +77,7 @@ import {
 import {scanFormula, scanViewFormula} from './scan/formula'
 import {scanArray, scanDict, scanObject, scanSet} from './scan/container_type'
 import {scanFormulaArgumentDefinitions} from './scan/formula_arguments'
-import {scanArgumentType} from './scan/scanArgumentType'
+import {scanArgumentType} from './scan/argument_type'
 import {scanView} from './scan/view'
 import {scanPipePlaceholder} from './scan/pipe'
 import {scanParensGroup} from './scan/parens'
@@ -514,7 +514,7 @@ function parseInternal(
           if (
             scanner.test(() => {
               scanner.scanAllWhitespace()
-              if (scanner.is(/^[-~$][^ \n\t]/)) {
+              if (scanner.is(/[-~$][^ \n\t]/)) {
                 scanner.whereAmI('scanning a negative number')
                 return false
               }

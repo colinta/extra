@@ -106,7 +106,11 @@ export class Scanner {
       }
       return true
     } else {
-      return Boolean(this.input.slice(this.charIndex).match(search))
+      const match = this.input.slice(this.charIndex).match(search)
+      if (match?.index === 0) {
+        return true
+      }
+      return false
     }
   }
 

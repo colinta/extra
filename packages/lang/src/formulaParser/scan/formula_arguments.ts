@@ -4,7 +4,7 @@ import {ARGS_CLOSE, ARGS_OPEN, isArgumentStartChar} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
-import {scanArgumentType} from './scanArgumentType'
+import {scanArgumentType} from './argument_type'
 import {scanValidName} from './identifier'
 
 // "Formula" (declared, actual formula) vs "Formula Type" (type signature of a
@@ -357,7 +357,7 @@ function scannerIsRepeatedNamed(scanner: Scanner) {
   }
 
   scanner.scanAllWhitespace()
-  return scanner.is(/^\b/)
+  return scanner.is(/\b/)
 }
 
 function scannerIsKeywordList(scanner: Scanner) {
@@ -366,5 +366,5 @@ function scannerIsKeywordList(scanner: Scanner) {
   }
 
   scanner.scanAllWhitespace()
-  return scanner.is(/^\b/)
+  return scanner.is(/\b/)
 }

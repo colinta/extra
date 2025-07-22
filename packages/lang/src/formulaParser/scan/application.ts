@@ -20,7 +20,7 @@ import {
   PUBLIC_KEYWORD,
   TYPE_KEYWORD,
 } from '../grammars'
-import {scanClass, scanEnum} from './scanArgumentType'
+import {scanClass, scanEnum} from './argument_type'
 
 export function scanRequiresStatement(scanner: Scanner) {
   const precedingComments = scanner.flushComments()
@@ -91,7 +91,7 @@ export function scanImportStatement(scanner: Scanner) {
 
   if (schema && scanner.scanIfString('@')) {
     version = ''
-    while (!scanner.is(/^\s/) && !scanner.isEOF()) {
+    while (!scanner.is(/\s/) && !scanner.isEOF()) {
       version += scanner.char
       scanner.charIndex += 1
     }

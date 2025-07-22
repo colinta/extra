@@ -59,7 +59,7 @@ import {scanString} from './string'
  *   Object:
  *     { … }
  *   Object:
- *     Object(age: Int), Object(#name: String), etc
+ *     TODO: Object(age: Int), Object(#name: String), etc
  *   Array:
  *     Array(Int), Array(String), etc
  *   Dict:
@@ -72,10 +72,9 @@ import {scanString} from './string'
  *     | Int | String, (Int | String)
  *   function:
  *     fn (#name: Int): String
- *   enum:
- *     enum RemoteData(Tsuccess, Tfailure) { .notLoaded, .loading, .success(Tsuccess), .failure(Tfailure) }
  *   enum shorthand (does not support generics):
  *     .notLoaded | .loading | .success(String) | .failure(HttpError)
+ *     ❌ enum RemoteData(Tsuccess, Tfailure) { .notLoaded, .loading, .success(Tsuccess), .failure(Tfailure) }
  */
 export function scanArgumentType(
   scanner: Scanner,
@@ -115,7 +114,7 @@ export function scanArgumentType(
     } else if (isNumberChar(scanner.char) && isNumberStart(scanner.remainingInput)) {
       argType = scanNumber(scanner, 'float')
     } else if (isStringStartChar(scanner.char)) {
-      argType = scanString(scanner, parseNext)
+      argType = scanString(scanner, false, parseNext)
     } else if (scanner.scanIfString(ENUM_START)) {
       if (applicationOrArgument === 'application_type') {
         throw new ParseError(
@@ -126,9 +125,21 @@ export function scanArgumentType(
 
       const enumCaseName = scanAnyReference(scanner).name
       scanner.whereAmI(`scanEnum: ${enumCaseName}`)
-      let args: Expressions.FormulaLiteralArgumentDeclarations | undefined
+      let args: Expressions.FormulaLiteralArgumentAndTypeDeclaration[] = []
       if (scanner.is(ARGS_OPEN)) {
-        args = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext)
+        args = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false).args
+
+        // TODO: I'm being lazy, and don't want to implement spread arguments support
+        // in the new enum code (specifically in the matching code)
+        args.forEach(arg => {
+          if (arg.spreadArg) {
+            throw new ParseError(
+              scanner,
+              'Spread, repeated, and keyword-list arguments are not allowed in enum case definitions, only positional and named arguments.',
+              scanner.charIndex - 1,
+            )
+          }
+        })
       }
 
       enumExpressions.push(
@@ -281,7 +292,16 @@ export function scanArgumentType(
           throw new ParseError(scanner, `${typeName.name} requires a type (${typeName.name}(Type))`)
         }
 
-        argType = typeName
+        if (
+          typeName.name.match(/^[A-Z]/) ||
+          typeName.name === 'null' ||
+          typeName.name === 'true' ||
+          typeName.name === 'false'
+        ) {
+          argType = typeName
+        } else {
+          throw new ParseError(scanner, `Expected a type name, found '${typeName.name}'`)
+        }
       }
     } else {
       throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
@@ -443,6 +463,7 @@ function scanObjectType(
     //     {
     //       fn foo(): Value
     //     }
+    //     (like in 'let' expressions)
     //
     //     but instead I think I should stick to
     //     {
@@ -681,9 +702,23 @@ export function scanEnum(
       const enum0 = scanner.charIndex
       const enumCaseName = scanAnyReference(scanner).name
       scanner.whereAmI(`scanEnum: ${enumCaseName}`)
-      let args: Expressions.FormulaLiteralArgumentDeclarations | undefined
+      let args: Expressions.FormulaLiteralArgumentAndTypeDeclaration[]
       if (scanner.is(ARGS_OPEN)) {
-        args = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext)
+        args = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false).args
+
+        // TODO: I'm being lazy, and don't want to implement spread arguments support
+        // in the new enum code (specifically in the matching code)
+        args.forEach(arg => {
+          if (arg.spreadArg) {
+            throw new ParseError(
+              scanner,
+              'Spread, repeated, and keyword-list arguments are not allowed in enum case definitions, only positional and named arguments.',
+              scanner.charIndex - 1,
+            )
+          }
+        })
+      } else {
+        args = []
       }
       range1 = scanner.charIndex
 
@@ -698,13 +733,11 @@ export function scanEnum(
 
       scanner.scanCommaOrNewline()
     } else if (isFnArg && (scanner.isWord(FN_KEYWORD) || scanner.isWord(STATIC))) {
-      if (isFnArg) {
-        throw new ParseError(
-          scanner,
-          `Enum formulas are not supported in argument definitions, only enum cases.`,
-          scanner.charIndex - 1,
-        )
-      }
+      throw new ParseError(
+        scanner,
+        `Enum formulas are not supported in argument definitions, only enum cases.`,
+        scanner.charIndex - 1,
+      )
     } else if (scanner.isWord(FN_KEYWORD)) {
       const formula = scanNamedFormula(scanner, parseNext, 'enum')
       formulas.push(formula)

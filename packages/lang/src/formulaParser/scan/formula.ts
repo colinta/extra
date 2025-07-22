@@ -4,7 +4,7 @@ import {type Scanner} from '../scanner'
 import {type ExpressionType, type Comment, ParseError, type ParseNext} from '../types'
 import {FUNCTION_BODY_START, GENERIC_CLOSE, GENERIC_OPEN, isArgumentStartChar} from '../grammars'
 
-import {scanArgumentType} from './scanArgumentType'
+import {scanArgumentType} from './argument_type'
 import {scanFormulaArgumentDefinitions} from './formula_arguments'
 import {scanValidName} from './identifier'
 

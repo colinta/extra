@@ -170,7 +170,7 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
           } else if (scanner.scanIfString('\\\n', false)) {
             stringBuffer += '\n'
           } else if (scanner.is('<')) {
-            if (scanner.is(/^<[a-zA-Z/]/)) {
+            if (scanner.is(/<[a-zA-Z/]/)) {
               break
             }
             stringBuffer += scanner.char

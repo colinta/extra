@@ -76,7 +76,7 @@ export function isDice(input: string) {
 }
 
 export function isTaggedString(scanner: Scanner) {
-  return scanner.is(/^[a-zA-Z_][a-zA-Z0-9_-]*`/)
+  return scanner.is(/[a-zA-Z_][a-zA-Z0-9_-]*`/)
 }
 
 export function isStringStartChar(char: string) {
@@ -144,7 +144,7 @@ export function isRegexFlag(char: string) {
 }
 
 export function isNamedArg(scanner: Scanner) {
-  return scanner.is(/^[a-zA-Z_][a-zA-Z0-9_-]*\s*:/)
+  return scanner.is(/[a-zA-Z_][a-zA-Z0-9_-]*\s*:/)
 }
 
 export function isRefChar(scanner: Scanner) {
