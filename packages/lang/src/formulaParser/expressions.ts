@@ -2152,9 +2152,10 @@ export class GuardExpression extends ReservedWord {
         Types.namedFormula(
           'guard',
           [
-            Types.spreadPositionalArgument({
-              name: 'conditions',
+            Types.positionalArgument({
+              name: 'condition',
               type: Types.array(Types.ConditionType),
+              isRequired: true,
             }),
             Types.namedArgument({name: 'else', type: T, isRequired: true}),
             Types.positionalArgument({name: 'body', type: T, isRequired: true}),

@@ -1170,14 +1170,9 @@ Like `if`, you could imagine that this was implemented after the fact as an Extr
 
 ```extra
 fn guard<T>(
-  ...#condition: Array(Boolean)
+  #condition: Boolean
   else: lazy T
   #do: lazy T
-  -- usually the variadic argument has to be the *last* argument... so
-  -- technically you can't implement this as of today...
-  -- maybe I'll special case this syntax in the future. It makes sense that you
-  -- could have positional arguments at the beginning *and* end, with variadics
-  -- in the middle
 ): T
 ```
 

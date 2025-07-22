@@ -4145,9 +4145,9 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
 export class GuardExpressionInvocation extends FunctionInvocationOperator {
   symbol = 'guard'
   argList: Expression
+  conditionExpr?: Expression
   bodyExpr?: Expression
   elseExpr?: Expression
-  conditionExprs: Expression[] = []
 
   constructor(
     range: Range,
@@ -4161,8 +4161,8 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
 
     if (this.argList instanceof Expressions.ArgumentsList) {
       const args = this.argList.allPositionalArgs()
-      this.bodyExpr = args.at(-1)
-      this.conditionExprs = args.slice(0, args.length - 1)
+      this.conditionExpr = args[0]
+      this.bodyExpr = args[1]
       this.elseExpr = this.argList.namedArg('else')
     }
   }
@@ -4183,30 +4183,27 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
       return `(${this.toCode(0)})`
     }
 
-    if (this.bodyExpr && this.conditionExprs.length && this.elseExpr) {
-      const conditions = this.conditionExprs.map(it => it.toCode(0))
+    if (this.bodyExpr && this.conditionExpr && this.elseExpr) {
+      const condition = this.conditionExpr.toCode(0)
       const elseCode = this.elseExpr.toCode(0)
       const bodyCode = this.bodyExpr.toCode(0)
       const hasNewline =
-        conditions.some(it => it.includes('\n')) ||
-        elseCode.includes('\n') ||
-        bodyCode.includes('\n')
+        condition.includes('\n') || elseCode.includes('\n') || bodyCode.includes('\n')
       let totalLength = 0
       if (!hasNewline) {
-        totalLength +=
-          conditions.reduce((l, r) => l + r.length, 0) + elseCode.length + bodyCode.length
+        totalLength += condition.length + elseCode.length + bodyCode.length
         totalLength += ' (else: ):'.length
       }
       if (hasNewline || totalLength > SMALL_LEN) {
         let code = 'guard (\n'
-        code += indent(conditions.join('\n')) + '\n'
+        code += indent(condition) + '\n'
         code += 'else:\n'
         code += indent(elseCode) + '\n'
         code += '):\n'
         code += indent(this.bodyExpr.toCode())
         return code
       } else {
-        return `guard (${conditions.join(', ')}, else: ${elseCode}): ${bodyCode}`
+        return `guard (${condition}, else: ${elseCode}): ${bodyCode}`
       }
     } else {
       const argListCode = this.argList.toCode(0)
@@ -4221,9 +4218,9 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
 
   getType(runtime: TypeRuntime): GetTypeResult {
     const bodyExpr = this.bodyExpr
-    const conditionExprs = this.conditionExprs
+    const conditionExpr = this.conditionExpr
     const elseExpr = this.elseExpr
-    if (!bodyExpr || !conditionExprs.length) {
+    if (!bodyExpr || !conditionExpr) {
       return err(new RuntimeError(this, expectedGuardArguments()))
     }
 
@@ -4233,45 +4230,39 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
 
     let nextRuntime = runtime
     let elseRuntime = runtime
-    let isFirst = true
-    for (const conditionExpr of conditionExprs) {
-      const conditionType = getChildType(this, conditionExpr, nextRuntime)
-      if (conditionType.isErr()) {
-        return err(conditionType.error)
-      }
-
-      // allow literal 'true/false' expressions (for testing)
-      // todo: disallow for "production" builds
-
-      if (
-        !(conditionExpr instanceof Expressions.TrueExpression) &&
-        !(conditionExpr instanceof Expressions.FalseExpression)
-      ) {
-        if (conditionType.value.isOnlyTruthyType()) {
-          return err(new RuntimeError(this, unexpectedOnlyType(conditionType.value, true)))
-        }
-
-        if (conditionType.value.isOnlyFalseyType()) {
-          return err(new RuntimeError(this, unexpectedOnlyType(conditionType.value, false)))
-        }
-      }
-
-      const nextRuntimeResult = conditionExpr.assumeTrue(runtime)
-      if (nextRuntimeResult.isErr()) {
-        return err(nextRuntimeResult.error)
-      }
-
-      if (isFirst) {
-        isFirst = false
-        const elseRuntimeResult = conditionExpr.assumeFalse(runtime)
-        if (elseRuntimeResult.isErr()) {
-          return err(elseRuntimeResult.error)
-        }
-        elseRuntime = elseRuntimeResult.value
-      }
-
-      nextRuntime = nextRuntimeResult.value
+    const conditionType = getChildType(this, conditionExpr, nextRuntime)
+    if (conditionType.isErr()) {
+      return err(conditionType.error)
     }
+
+    // allow literal 'true/false' expressions (for testing)
+    // todo: disallow for "production" builds
+
+    if (
+      !(conditionExpr instanceof Expressions.TrueExpression) &&
+      !(conditionExpr instanceof Expressions.FalseExpression)
+    ) {
+      if (conditionType.value.isOnlyTruthyType()) {
+        return err(new RuntimeError(this, unexpectedOnlyType(conditionType.value, true)))
+      }
+
+      if (conditionType.value.isOnlyFalseyType()) {
+        return err(new RuntimeError(this, unexpectedOnlyType(conditionType.value, false)))
+      }
+    }
+
+    const nextRuntimeResult = conditionExpr.assumeTrue(runtime)
+    if (nextRuntimeResult.isErr()) {
+      return err(nextRuntimeResult.error)
+    }
+
+    const elseRuntimeResult = conditionExpr.assumeFalse(runtime)
+    if (elseRuntimeResult.isErr()) {
+      return err(elseRuntimeResult.error)
+    }
+    elseRuntime = elseRuntimeResult.value
+
+    nextRuntime = nextRuntimeResult.value
 
     return bodyExpr
       .getType(nextRuntime)
@@ -4284,9 +4275,9 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
 
   eval(runtime: ValueRuntime): GetValueResult {
     const bodyExpr = this.bodyExpr
-    const conditionExprs = this.conditionExprs
+    const conditionExpr = this.conditionExpr
     const elseExpr = this.elseExpr
-    if (!bodyExpr || !conditionExprs.length) {
+    if (!bodyExpr || !conditionExpr) {
       return err(new RuntimeError(this, expectedGuardArguments()))
     }
 
@@ -4294,15 +4285,13 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
       return err(new RuntimeError(this, expectedGuardElseResult()))
     }
 
-    for (const conditionExpr of conditionExprs) {
-      const conditionValue = conditionExpr.eval(runtime)
-      if (conditionValue.isErr()) {
-        return err(conditionValue.error)
-      }
+    const conditionValue = conditionExpr.eval(runtime)
+    if (conditionValue.isErr()) {
+      return err(conditionValue.error)
+    }
 
-      if (!conditionValue.value.isTruthy()) {
-        return elseExpr.eval(runtime)
-      }
+    if (!conditionValue.value.isTruthy()) {
+      return elseExpr.eval(runtime)
     }
 
     return bodyExpr.eval(runtime)
