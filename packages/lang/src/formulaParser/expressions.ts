@@ -48,18 +48,19 @@ export abstract class Expression {
      */
     public followingComments: Comment[] = [],
   ) {
-    const getType = this.getType.bind(this)
-    this.getType = (runtime: TypeRuntime) => {
+    const getType: (runtime: TypeRuntime, ...rem: any[]) => GetTypeResult = this.getType.bind(this)
+    this.getType = (runtime: TypeRuntime, ...args: any[]) => {
       if (this.#resolvedRuntime !== runtime) {
         this.resolvedType = undefined
       } else if (this.resolvedType) {
         return ok(this.resolvedType)
       }
-      return getType(runtime).map(type => {
+      return getType(runtime, ...args).map(type => {
         this.resolvedType = type
         return type
       })
     }
+    Object.defineProperty(this, 'getType', {enumerable: false})
   }
 
   /**
