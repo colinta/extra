@@ -32,8 +32,13 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
 
   scanner.whereAmI(`scanValidName: ${currentToken}`)
   switch (currentToken) {
+    case '_':
+    case '__':
+    case '___':
+      throw new ParseError(scanner, `Invalid use of reserved symbol '${currentToken}'`)
     case 'let':
     case 'if':
+    case 'is':
     case 'elseif':
     case 'guard':
     case 'switch':
@@ -132,6 +137,9 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
   scanner.whereAmI(`scanIdentifier: ${currentToken}`)
   let identifier: Expressions.Identifier | undefined
   switch (currentToken) {
+    case '_':
+      identifier = new Expressions.IgnorePlaceholder(range, scanner.flushComments())
+      break
     case 'if':
       identifier = new Expressions.IfExpression(range, scanner.flushComments())
       break

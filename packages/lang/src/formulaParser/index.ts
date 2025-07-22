@@ -86,6 +86,7 @@ import {scanBlockArgs, scanInvocationArgs} from './scan/formula_invocation_argum
 import {scanBinaryOperator} from './scan/binary_operator'
 import {scanUnaryOperator} from './scan/unary_operator'
 import {scanLet} from './scan/let'
+import {scanMatch} from './scan/match'
 
 const LOWEST_OP: Operator = {
   name: 'lowest op',
@@ -586,7 +587,7 @@ function parseInternal(
         scanner.whereAmI(`expressionType ${expressionType}`)
         if (isOperator(prevOperator, 'is', 2) || isOperator(prevOperator, '!is', 2)) {
           // a is Array(Int) <-- scanArgumentType('formula_type') will match `Array(Int)`
-          processExpression(scanArgumentType(scanner, 'argument_type', parseNext))
+          processExpression(scanMatch(scanner, parseNext))
         } else if (scanner.isInView && scanner.is('<') && isViewStart(scanner.remainingInput)) {
           processExpression(scanView(scanner, parseNext))
         } else if (isDiceStart(scanner.remainingInput)) {

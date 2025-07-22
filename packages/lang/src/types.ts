@@ -36,6 +36,12 @@ export function booleanType() {
   return BooleanType
 }
 
+export function typeConstructor(name: string, type: Type) {
+  return new TypeConstructor(name, type, type, [
+    positionalArgument({name: 'input', type, isRequired: true}),
+  ])
+}
+
 export function int(narrowed?: Partial<Narrowed.NarrowedInt>) {
   if (narrowed) {
     return new MetaIntType(
@@ -139,6 +145,26 @@ export function namedClass(
   parent?: ClassType,
 ): NamedClassType {
   return new NamedClassType(name, props, parent)
+}
+
+export function enumCase(
+  name: string,
+  args: (PositionalArgument | NamedArgument)[] = [],
+): EnumCase {
+  return new EnumCase(name, args)
+}
+export function enumType(members: EnumCase[]) {
+  return new EnumType(members)
+}
+
+export function namedEnumType(
+  name: string,
+  members: EnumCase[],
+  formulas: NamedFormulaType[],
+  staticFormulas: NamedFormulaType[],
+  genericTypes: GenericType[] = [],
+) {
+  return new NamedEnumType(name, members, formulas, staticFormulas, genericTypes)
 }
 
 export function optional(type: Type) {
@@ -2829,6 +2855,102 @@ export class NamedClassType extends ClassType {
 
   toCode() {
     return this.name
+  }
+}
+
+export class EnumCase {
+  readonly positionalTypes: Type[] = []
+  readonly namedTypes = new Map<string, Type>()
+
+  constructor(
+    readonly name: string,
+    readonly args: (PositionalArgument | NamedArgument)[],
+  ) {
+    for (const arg of args) {
+      if (arg.is === 'positional-argument') {
+        this.positionalTypes.push(arg.type)
+      } else {
+        this.namedTypes.set(arg.name, arg.type)
+      }
+    }
+  }
+}
+
+/**
+ * "Simple" enum type, used in formula shorthands
+ *
+ *     fn(foo: .a | .b(Int))
+ */
+export class EnumType extends Type {
+  is = 'enum'
+
+  constructor(readonly members: EnumCase[]) {
+    super()
+  }
+
+  typeConstructor(): TypeConstructor {
+    return new TypeConstructor('enum', this, this, [
+      positionalArgument({name: 'input', type: this, isRequired: true}),
+    ])
+  }
+
+  propAccessType(_prop: string): Type | undefined {
+    return undefined
+  }
+
+  toCodeMember(member: EnumCase) {
+    if (member.args.length) {
+      const members = member.args
+        .map(arg => {
+          if (arg.is === 'positional-argument') {
+            return arg.type.toCode(false)
+          } else {
+            return `${arg.name}: ${arg.type.toCode(false)}`
+          }
+        })
+        .join(', ')
+      return `.${member.name}(${members})`
+    }
+
+    return `.${member.name}`
+  }
+
+  toCode() {
+    return this.members.map(member => this.toCodeMember(member)).join(' | ')
+  }
+}
+
+/**
+ * Enum type defined at module scope – with functions, support for generics
+ */
+export class NamedEnumType extends EnumType {
+  is = 'named-enum'
+
+  constructor(
+    readonly name: string,
+    members: EnumCase[],
+    readonly formulas: NamedFormulaType[],
+    readonly staticFormulas: NamedFormulaType[],
+    readonly genericTypes: GenericType[],
+  ) {
+    super(members)
+  }
+
+  propAccessType(_prop: string): Type | undefined {
+    // TODO: scan this.formulas
+    return undefined
+  }
+
+  toCode() {
+    let code = `enum ${this.name}`
+    if (this.genericTypes.length) {
+      code += `(${this.genericTypes.map(generic => generic.toCode()).join(', ')})`
+    }
+    code += ' {\n'
+    // TODO: members, formulas, staticFormulas
+    code += '}'
+
+    return code
   }
 }
 

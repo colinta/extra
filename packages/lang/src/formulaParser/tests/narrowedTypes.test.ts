@@ -3,7 +3,6 @@ import * as Types from '../../types'
 import {type TypeRuntime} from '../../runtime'
 import * as Values from '../../values'
 import {parse} from '../../formulaParser'
-import {type Expression} from '../expressions'
 import {type TestingTypes} from '../operators'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
 
@@ -16,51 +15,7 @@ beforeEach(() => {
   typeRuntime = mockTypeRuntime(runtimeTypes)
 })
 
-function truthyFalsey(name: string, expression: Expression, runtime: TypeRuntime) {
-  const truthy = expression.assumeTrue(runtime).get()
-  const falsey = expression.assumeFalse(runtime).get()
-  return {truthy: truthy.getLocalType(name), falsey: falsey.getLocalType(name)}
-}
-
 describe('narrowed types', () => {
-  it('(foo: String | Int) is Int => truthy: Int, falsey: String', () => {
-    runtimeTypes['foo'] = [Types.oneOf([Types.string(), Types.int()]), Values.string('')]
-    const expression = parse('foo is Int').get()
-    const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
-    expect(truthy).toEqual(Types.int())
-    expect(falsey).toEqual(Types.string())
-  })
-
-  it('(foo: String?) is String => truthy: String, falsey: null', () => {
-    runtimeTypes['foo'] = [Types.optional(Types.string()), Values.string('')]
-    const expression = parse('foo is String').get()
-    const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
-    expect(truthy).toEqual(Types.string())
-    expect(falsey).toEqual(Types.nullType())
-  })
-
-  it('(foo: Array(String | Int)) is Array(Int) => truthy: NeverType, falsey: Array(String | Int)', () => {
-    runtimeTypes['foo'] = [
-      Types.array(Types.oneOf([Types.string(), Types.int()])),
-      Values.string(''),
-    ]
-    const expression = parse('foo is Array(Int)').get()
-    const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
-    expect(truthy).toEqual(Types.array(Types.int()))
-    expect(falsey).toEqual(Types.array(Types.oneOf([Types.string(), Types.int()])))
-  })
-
-  it('(foo: Array(String) | Array(Int)) is Array(Int) => truthy: Array(Int), falsey: Array(String)', () => {
-    runtimeTypes['foo'] = [
-      Types.oneOf([Types.array(Types.string()), Types.array(Types.int())]),
-      Values.string(''),
-    ]
-    const expression = parse('foo is Array(Int)').get()
-    const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
-    expect(truthy).toEqual(Types.array(Types.int()))
-    expect(falsey).toEqual(Types.array(Types.string()))
-  })
-
   cases<['foo', Types.Type, string, Types.Type, Types.Type]>(
     //|
     //|  Int checks
@@ -125,46 +80,6 @@ describe('narrowed types', () => {
         expect(orType.get()).toEqual(falseyType)
       })
     })
-  })
-
-  it('foo: String? => foo is String and foo.length => false | Int', () => {
-    // throws without the type guard
-    runtimeTypes['foo'] = [Types.optional(Types.string()), Values.string('')]
-    expect(() => parse('foo.length').get().getType(typeRuntime).get()).toThrow()
-
-    // returns false (foo is null) or Int (foo is String)
-    const expression = parse('foo is String and foo.length').get()
-    const type = expression.getType(typeRuntime).get()
-    expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int({min: 0})]))
-  })
-
-  it('foo: {bar: String | Int} => foo.bar is String and foo.bar.length => false | Int', () => {
-    runtimeTypes['foo'] = [
-      Types.object([Types.namedProp('bar', Types.oneOf([Types.string(), Types.int()]))]),
-      Values.string(''),
-    ]
-    expect(() => parse('foo.bar.length').get().getType(typeRuntime).get()).toThrow()
-
-    const expression = parse('foo.bar is String and foo.bar.length').get()
-    const type = expression.getType(typeRuntime).get()
-    expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int({min: 0})]))
-  })
-
-  it('foo: {bar: {baz: String | Int}} => foo.bar.baz is String and foo.bar.baz.length => false | Int', () => {
-    runtimeTypes['foo'] = [
-      Types.object([
-        Types.namedProp(
-          'bar',
-          Types.object([Types.namedProp('baz', Types.oneOf([Types.string(), Types.int()]))]),
-        ),
-      ]),
-      Values.string(''),
-    ]
-    expect(() => parse('foo.bar.baz.length').get().getType(typeRuntime).get()).toThrow()
-
-    const expression = parse('foo.bar.baz is String and foo.bar.baz.length').get()
-    const type = expression.getType(typeRuntime).get()
-    expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int({min: 0})]))
   })
 
   it('infers return type', () => {

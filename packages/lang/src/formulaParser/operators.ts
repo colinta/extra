@@ -62,9 +62,10 @@ const PRECEDENCE = {
     '??': 5,
     or: 6,
     and: 7,
-    '^': 8,
-    '|': 9,
-    '&': 10,
+    '^': 8, // binary xor
+    '|': 9, // binary or
+    '&': 10, // binary and
+    // 'is' unary operator: 11
     matches: 12,
     '==': 12,
     '!=': 12,
@@ -73,10 +74,6 @@ const PRECEDENCE = {
     '<': 12,
     '<=': 12,
     '<=>': 12,
-    has: 12,
-    '!has': 12,
-    is: 12,
-    '!is': 12,
     '++': 13,
     '<>': 13,
     '~~': 13,
@@ -93,6 +90,11 @@ const PRECEDENCE = {
     '//': 15,
     '%': 15,
     '**': 16,
+    // meta data operators has/is
+    has: 17,
+    '!has': 17,
+    is: 17,
+    '!is': 17,
     // property chain operators
     '[]': 18,
     '?.[]': 18,
@@ -1548,23 +1550,11 @@ addBinaryOperator({
   },
 })
 
-abstract class TypeAssertionOperator extends BinaryOperator {
+abstract class MatchOperator extends BinaryOperator {
   abstract symbol: 'is' | '!is'
 
-  assumeTypeAssertion(
-    runtime: TypeRuntime,
-    fn: (lhsType: Types.Type, rhsType: Types.Type) => Types.Type,
-  ): GetRuntimeResult<TypeRuntime> {
-    const [lhsExpr, rhsExpr] = this.args
-    return rhsExpr
-      .getAsTypeExpression(runtime)
-      .map(rhsTypeAssertion =>
-        getChildType(this, lhsExpr, runtime).map(lhsType => [lhsType, rhsTypeAssertion]),
-      )
-      .map(([lhsType, rhsTypeAssertion]) => {
-        const assertType = fn(lhsType, rhsTypeAssertion)
-        return lhsExpr.replaceWithType(runtime, assertType)
-      })
+  rhsType(): GetTypeResult {
+    return ok(Types.AllType)
   }
 
   operatorType(
@@ -1574,7 +1564,11 @@ abstract class TypeAssertionOperator extends BinaryOperator {
     _lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
-    return rhsExpr.getAsTypeExpression(runtime).map(() => Types.BooleanType)
+    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr, rhs)))
+    }
+
+    return ok(Types.BooleanType)
   }
 
   operatorEval(
@@ -1590,19 +1584,59 @@ abstract class TypeAssertionOperator extends BinaryOperator {
   }
 }
 
-class MatchOperator extends TypeAssertionOperator {
+class MatchAssertionOperator extends MatchOperator {
   readonly symbol = 'is'
 
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.assumeTypeAssertion(runtime, (lhsType, rhsTypeAssertion) =>
-      Types.narrowTypeIs(lhsType, rhsTypeAssertion),
-    )
+    const [lhsExpr, rhsExpr] = this.args
+    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
+    }
+
+    return rhsExpr.assumeMatchAssertion(runtime, lhsExpr, true)
   }
 
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.assumeTypeAssertion(runtime, (lhsType, rhsTypeAssertion) =>
-      Types.narrowTypeIsNot(lhsType, rhsTypeAssertion),
-    )
+    const [lhsExpr, rhsExpr] = this.args
+    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
+    }
+
+    return rhsExpr.assumeMatchAssertion(runtime, lhsExpr, false)
+  }
+}
+
+class MatchRefutationOperator extends MatchOperator {
+  readonly symbol = '!is'
+
+  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    const [lhsExpr, rhsExpr] = this.args
+    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
+    }
+
+    return rhsExpr.assumeMatchAssertion(runtime, lhsExpr, false)
+  }
+
+  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    const [lhsExpr, rhsExpr] = this.args
+    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
+    }
+
+    return rhsExpr.assumeMatchAssertion(runtime, lhsExpr, true)
+  }
+
+  operatorEval(
+    runtime: ValueRuntime,
+    lhs: Values.Value,
+    rhs: () => GetValueResult,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
+    return super
+      .operatorEval(runtime, lhs, rhs, lhsExpr, rhsExpr)
+      .map(booleanValue => Values.booleanValue(!booleanValue.value))
   }
 }
 
@@ -1618,37 +1652,15 @@ addBinaryOperator({
     operator: Operator,
     args: Expression[],
   ) {
-    return new MatchOperator(range, precedingComments, followingOperatorComments, operator, args)
+    return new MatchAssertionOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
   },
 })
-
-class MatchRefutationOperator extends TypeAssertionOperator {
-  readonly symbol = '!is'
-
-  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.assumeTypeAssertion(runtime, (lhsType, rhsTypeAssertion) =>
-      Types.narrowTypeIsNot(lhsType, rhsTypeAssertion),
-    )
-  }
-
-  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.assumeTypeAssertion(runtime, (lhsType, rhsTypeAssertion) =>
-      Types.narrowTypeIs(lhsType, rhsTypeAssertion),
-    )
-  }
-
-  operatorEval(
-    runtime: ValueRuntime,
-    lhs: Values.Value,
-    rhs: () => GetValueResult,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ) {
-    return super
-      .operatorEval(runtime, lhs, rhs, lhsExpr, rhsExpr)
-      .map(booleanValue => Values.booleanValue(!booleanValue.value))
-  }
-}
 
 addBinaryOperator({
   name: 'is not match',

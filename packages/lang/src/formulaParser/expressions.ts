@@ -2083,6 +2083,10 @@ export class SetTypeIdentifier extends ContainerTypeIdentifier {
   readonly name = 'Set'
 }
 
+export class IgnorePlaceholder extends ReservedWord {
+  readonly name = '_'
+}
+
 export class FallbackIdentifier extends ReservedWord {
   readonly name = 'fallback'
 }
@@ -2660,19 +2664,19 @@ export class EnumMemberExpression extends Expression {
      * Uses FormulaLiteralArgumentDeclarations, which supports default arguments.
      * EnumMemberExpression acts very much like a formula literal.
      */
-    readonly args: FormulaLiteralArgumentDeclarations | undefined,
+    readonly args: FormulaLiteralArgumentAndTypeDeclaration[],
   ) {
     super(range, precedingComments)
   }
 
   dependencies() {
-    return this.args?.dependencies() ?? new Set<string>()
+    return this.args.reduce((set, type) => union(set, type.dependencies()), new Set<string>())
   }
 
   toLisp() {
     let code = '.' + this.name
-    if (this.args !== undefined) {
-      code += this.args.toLisp()
+    if (this.args.length) {
+      code += `(${this.args.map(arg => arg.toLisp()).join(' ')})`
     }
 
     return code
@@ -2680,8 +2684,8 @@ export class EnumMemberExpression extends Expression {
 
   toCode() {
     let code = '.' + this.name
-    if (this.args !== undefined) {
-      code += `(${this.args})`
+    if (this.args.length) {
+      code += `(${this.args.map(arg => arg.toCode()).join(', ')})`
     }
 
     return code
@@ -2712,6 +2716,39 @@ export abstract class EnumTypeExpression extends Expression {
     )
   }
 
+  getAsTypeExpression(runtime: TypeRuntime) {
+    return mapAll(
+      // get types of all args (combine with original member)
+      this.members.map(member =>
+        mapAll(
+          member.args.map(arg => arg.argType.getType(runtime).map(argType => ({arg, argType}))),
+        ).map(argTypes => ({
+          name: member.name,
+          args: argTypes,
+        })),
+      ),
+    ).map(members => {
+      const enumMembers = members.map(({name, args}) => {
+        // turn args into enumArgs (positional/named arguments)
+        const enumArgs = args.map(({arg, argType}) => {
+          if (arg.isPositional) {
+            return Types.positionalArgument({
+              name: arg.nameRef.name,
+              type: argType,
+              isRequired: true,
+            })
+          } else {
+            return Types.namedArgument({name: arg.nameRef.name, type: argType, isRequired: true})
+          }
+        })
+        // turn name + enumArgs into an enumCase
+        return Types.enumCase(name, enumArgs)
+      })
+
+      return Types.enumType(enumMembers)
+    })
+  }
+
   getType() {
     return err(new RuntimeError(this, 'EnumTypeExpression does not have a type'))
   }
@@ -2721,6 +2758,10 @@ export abstract class EnumTypeExpression extends Expression {
   }
 }
 
+/**
+ * This is the enum type used when declaring an enum type at the module level
+ * scope.
+ */
 export class NamedEnumTypeExpression extends EnumTypeExpression {
   constructor(
     range: Range,
@@ -2771,6 +2812,31 @@ export class NamedEnumTypeExpression extends EnumTypeExpression {
     code += indent(body)
     code += '}'
     return code
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime) {
+    const genericTypes: Types.GenericType[] = []
+    const mutableRuntime = new MutableTypeRuntime(runtime)
+    for (const generic of this.generics) {
+      const genericType = new Types.GenericType(generic)
+      genericTypes.push(genericType)
+      mutableRuntime.addLocalType(generic, genericType)
+    }
+
+    return super
+      .getAsTypeExpression(runtime)
+      .map(enumType => enumType.members)
+      .map(members => {
+        return Types.namedEnumType(this.nameRef.name, members, [], [], genericTypes)
+      })
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'NamedEnumTypeExpression does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'NamedEnumTypeExpression cannot be evaluated'))
   }
 }
 
@@ -4109,6 +4175,449 @@ export class MainFormulaExpression extends ViewFormulaExpression {
   }
 }
 
+//|
+//|  Match Expressions
+//|
+
+export abstract class MatchExpression extends Expression {
+  /**
+   * Calculates the type of the match expression, then calls `Type.narrowTypeIs` or
+   * `Type.narrowTypeIsNot` to determine the possible types of lhs. Returns the
+   * `TypeRuntime` that has the new type information, including the assignment of any
+   * match references.
+   */
+  abstract assumeMatchAssertion(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime>
+}
+
+/**
+ * foo is Int, foo is Int(>=0), foo is Array(Int(>1), length: >0), etc etc
+ */
+export class MatchTypeExpression extends MatchExpression {
+  constructor(readonly argType: Expression) {
+    super(argType.range, argType.precedingComments, argType.followingComments)
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return this.argType.getAsTypeExpression(runtime)
+  }
+
+  assumeMatchAssertion(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    return getChildType(this, lhsExpr, runtime)
+      .map(lhsType =>
+        this.getAsTypeExpression(runtime).map(rhsTypeAssertion => [lhsType, rhsTypeAssertion]),
+      )
+      .map(([lhsType, rhsTypeAssertion]) => {
+        const assertType = assumeTrue
+          ? Types.narrowTypeIs(lhsType, rhsTypeAssertion)
+          : Types.narrowTypeIsNot(lhsType, rhsTypeAssertion)
+        return lhsExpr.replaceWithType(runtime, assertType)
+      })
+  }
+
+  toLisp() {
+    return this.argType.toLisp()
+  }
+
+  toCode() {
+    return this.argType.toCode()
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'MatchTypeExpression does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'MatchTypeExpression cannot be evaluated'))
+  }
+}
+
+/**
+ * A value or named value within a match expression
+ *     [value]
+ *      ^^^^^
+ *     .something(named: value)
+ *                ^^^^^^^^^^^^
+ */
+export class MatchEnumReference extends Expression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly nameRef: Reference | undefined,
+    readonly reference: Identifier,
+  ) {
+    super(range, precedingComments)
+  }
+
+  provides() {
+    return new Set([this.reference.name])
+  }
+
+  toLisp() {
+    if (this.nameRef) {
+      return `(${this.nameRef.toLisp()}: ${this.reference.toLisp()})`
+    }
+    return this.reference.toLisp()
+  }
+
+  toCode() {
+    if (this.nameRef) {
+      return `${this.nameRef.toCode()}: ${this.reference.toCode()}`
+    }
+
+    return this.reference.toCode()
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'MatchReference does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'MatchReference cannot be evaluated'))
+  }
+}
+
+/**
+ * Used to ignore the rest of the match args.
+ *
+ * TODO: Support splat (assigning remaining args to a Tuple)
+ */
+export class MatchEnumRemainingExpression extends Expression {
+  constructor(range: Range, precedingComments: Comment[]) {
+    super(range, precedingComments)
+  }
+
+  toLisp() {
+    return this.toCode()
+  }
+
+  toCode() {
+    return '...'
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'MatchEnumRemainingExpression does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'MatchEnumRemainingExpression cannot be evaluated'))
+  }
+}
+
+/**
+ * foo is .some(arg1, named: arg2)
+ */
+export class MatchEnumMemberExpression extends MatchExpression {
+  private positionalCount: number = 0
+  private names = new Set<string>()
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly name: string,
+    readonly args: MatchEnumReference[],
+    readonly ignoreRemaining: boolean,
+  ) {
+    super(range, precedingComments)
+    for (const arg of args) {
+      if (arg.nameRef) {
+        this.names.add(arg.nameRef.name)
+      } else {
+        this.positionalCount += 1
+      }
+    }
+  }
+
+  provides() {
+    return this.args.reduce((set, arg) => union(set, arg.provides()), new Set<string>())
+  }
+
+  private findEnumTypeThatMatchesCase(
+    type: Types.Type,
+  ): [Types.EnumType, Types.EnumCase] | undefined {
+    if (!(type instanceof Types.EnumType)) {
+      return
+    }
+
+    const enumCase = type.members.find(({name}) => name === this.name)
+    if (!enumCase) {
+      return
+    }
+
+    if (this.args.length === 0) {
+      return [type, enumCase]
+    }
+
+    if (this.ignoreRemaining) {
+      // foo is .some(value, ...)
+      // => fine as long as EnumType has *at least* enough arguments to assign
+      if (
+        enumCase.positionalTypes.length < this.positionalCount ||
+        enumCase.namedTypes.size < this.names.size
+      ) {
+        return
+      }
+    } else if (
+      enumCase.positionalTypes.length !== this.positionalCount ||
+      enumCase.namedTypes.size !== this.names.size
+    ) {
+      return
+    }
+
+    // all named args must be present in the enumCase
+    for (const name of this.names) {
+      if (!enumCase.namedTypes.has(name)) {
+        return
+      }
+    }
+
+    return [type, enumCase]
+  }
+
+  assumeMatchAssertion(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    if (!assumeTrue) {
+      // (type: SomeEnum | Int)
+      //      type !is .specific
+      // no inference can be done here. type could still be SomeEnum, it
+      // could still be Int.
+      return ok(runtime)
+    }
+
+    return getChildType(this, lhsExpr, runtime).map(lhsType => {
+      let enumInfo: [Types.EnumType, Types.EnumCase] | undefined
+      if (lhsType instanceof Types.OneOfType) {
+        for (const type of lhsType.of) {
+          const oneInfo = this.findEnumTypeThatMatchesCase(type)
+          if (oneInfo && enumInfo) {
+            return err(
+              new RuntimeError(
+                this,
+                'TODO: Support more than one matching case expression in a one-of type',
+              ),
+            )
+          } else if (oneInfo) {
+            enumInfo = oneInfo
+          }
+        }
+      } else {
+        enumInfo = this.findEnumTypeThatMatchesCase(lhsType)
+      }
+      if (!enumInfo) {
+        return lhsExpr.replaceWithType(runtime, Types.NeverType)
+      }
+      const [enumType, enumCase] = enumInfo
+
+      const assertType = Types.narrowTypeIs(lhsType, enumType)
+
+      return lhsExpr.replaceWithType(runtime, assertType).map(nextRuntime => {
+        if (assumeTrue && this.args.length) {
+          const mutableRuntime = new MutableTypeRuntime(nextRuntime)
+          let index = 0
+          for (const arg of this.args) {
+            if (arg.reference instanceof IgnorePlaceholder) {
+              if (!arg.nameRef) {
+                index += 1
+              }
+              continue
+            }
+
+            let type: Types.Type
+            if (arg.nameRef) {
+              type = enumCase.namedTypes.get(arg.nameRef.name)!
+            } else {
+              type = enumCase.positionalTypes[index]
+              index += 1
+            }
+            mutableRuntime.addLocalType(arg.reference.name, type)
+          }
+
+          return mutableRuntime
+        }
+
+        return nextRuntime
+      })
+    })
+  }
+
+  toLisp() {
+    let code = '.' + this.name
+    const args = this.args.map(arg => arg.toLisp())
+    if (this.ignoreRemaining) {
+      args.push('...')
+    }
+
+    if (this.args.length) {
+      code += `(${args.join(' ')})`
+    }
+
+    return code
+  }
+
+  toCode() {
+    let code = '.' + this.name
+    const args = this.args.map(arg => arg.toCode())
+    if (this.ignoreRemaining) {
+      args.push('...')
+    }
+
+    if (args.length) {
+      code += `(${args.join(', ')})`
+    }
+
+    return code
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'MatchEnumMemberExpression does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'MatchEnumMemberExpression cannot be evaluated'))
+  }
+}
+
+/**
+ * foo is "prefix" <> value
+ * foo is value <> "suffix"
+ * foo is "pre" <> value <> "post"
+ */
+export class MatchStringExpression extends MatchExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly args: (StringLiteral | Reference)[],
+  ) {
+    super(range, precedingComments)
+  }
+
+  provides() {
+    return this.args.reduce((set, arg) => union(set, arg.provides()), new Set<string>())
+  }
+
+  assumeMatchAssertion(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    return err(new RuntimeError(this, 'TODO'))
+  }
+
+  toLisp() {
+    const args = this.args.map(arg => arg.toLisp())
+
+    return args.join(' <> ')
+  }
+
+  toCode() {
+    const args = this.args.map(arg => arg.toCode())
+
+    return args.join(' <> ')
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'MatchStringExpression does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'MatchStringExpression cannot be evaluated'))
+  }
+}
+
+/**
+ * [...]
+ * [...values]
+ */
+export class MatchArrayRemainingExpression extends Expression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly reference: Reference | IgnorePlaceholder | undefined,
+  ) {
+    super(range, precedingComments)
+  }
+
+  provides() {
+    if (this.reference) {
+      return new Set([this.reference.name])
+    }
+    return super.provides()
+  }
+
+  toLisp() {
+    return this.toCode()
+  }
+
+  toCode() {
+    if (this.reference) {
+      return `...${this.reference.name}`
+    }
+    return '...'
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'MatchArrayRemainingExpression does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'MatchArrayRemainingExpression cannot be evaluated'))
+  }
+}
+
+/**
+ * foo is [_, value, ...values]
+ */
+export class MatchArrayExpression extends MatchExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly args: (MatchArrayRemainingExpression | Reference | IgnorePlaceholder)[],
+  ) {
+    super(range, precedingComments)
+  }
+
+  provides() {
+    return this.args.reduce((set, arg) => union(set, arg.provides()), new Set<string>())
+  }
+
+  assumeMatchAssertion(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    return err(new RuntimeError(this, 'TODO'))
+  }
+
+  toLisp() {
+    const args = this.args.map(arg => arg.toLisp())
+
+    return `[${args.join(' ')}]`
+  }
+
+  toCode() {
+    const args = this.args.map(arg => arg.toCode())
+
+    return `[${args.join(', ')}]`
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'MatchArrayExpression does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'MatchArrayExpression cannot be evaluated'))
+  }
+}
 
 //|
 //|  Application Expressions
