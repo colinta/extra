@@ -942,7 +942,7 @@ We've seen many definitions already.
 
 Extra's functions are bonkers. They support _positional_ and _named_ arguments, along with all sorts of variadic arguments, and
 
-Positional arguments have a `#` prefix, `#like: This`. Named arguments `do: Not`. Named arguments can be aliased `like so: GotIt?`. Variadic arguments `...#are: LikeThis` or `...like: This`.
+Positional arguments have a `#` prefix, `#like: This`. Named arguments `do: Not`. Named arguments can be aliased `like so: GotIt?`. Variadic arguments `...#are: LikeThis` or `...like: This`. Keyword args are `**like: This`.
 
 Examples:
 
@@ -998,9 +998,9 @@ In the example above, `num` is a named argument, but `map` expects a function th
 
 There are _three_ brands of variadic arguments.
 
-- (1) variadic positional arguments - must be an `Array` type
-- (1) variadic named arguments - must be a `Dict` type
-- (N) repeated named arguments - must be an `Array` type
+- variadic positional arguments - must be an `Array` type, and there can only be one.
+- keyword argument list - must be a `Dict` type, and there can only be one
+- repeated named arguments - must be an `Array` type, and there can be multiple
 
 #### Variadic Positional Arguments
 
@@ -1021,22 +1021,25 @@ in
   add(...numbers)
 ```
 
-#### Variadic Named Arguments
+#### Keyword Argument List
 
-Any argument names that are not otherwise declared in the arguments will be put into `*remaining: Dict(String, T)`.
+Any named argument that are not otherwise declared can be put into a "keyword arguments list", `**remaining: Dict(String, T)`.
 
 ```extra
-fn list-people(greeting: String = 'Hi, ', *people: Dict(String)) =>
-  words.map((name, value) =>
-    `$greeting$name: $value`).join('\n')
+fn list-people(greeting: String = 'Hi,', **people: Dict(String)) =>
+  people.map((name, value) =>
+    `$greeting $name: $value`).join(' - ')
 
 
-list-people(greeting: 'Hello, ', jane: 'doctor', emily: 'dumb lawyer')
+list-people(greeting: 'Hello,', Jane: 'Doctor', Emily: 'Miss')
+--> "Hello, Doctor Jane - Hello, Miss Emily"
+
 
 let
-  people = Dict(jane: 'doctor', emily: 'dumb lawyer')
+  people = Dict(Jane: 'Doctor', Emily: 'Miss')
 in
-  list-people(*people)
+  list-people(**people)
+  --> "Hello, Doctor Jane - Hello, Miss Emily"
 ```
 
 #### Repeated Named Arguments

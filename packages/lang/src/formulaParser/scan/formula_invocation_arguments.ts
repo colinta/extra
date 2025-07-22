@@ -1,5 +1,13 @@
 import * as Expressions from '../expressions'
-import {ARGS_CLOSE, ARGS_OPEN, BLOCK_CLOSE, BLOCK_OPEN, isNamedArg} from '../grammars'
+import {
+  ARGS_CLOSE,
+  ARGS_OPEN,
+  BLOCK_CLOSE,
+  BLOCK_OPEN,
+  isNamedArg,
+  KWARG_OP,
+  SPLAT_OP,
+} from '../grammars'
 import {Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 import {scanValidName} from './identifier'
@@ -76,11 +84,11 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
 
       let isSpreadArg = false
       let isKwarg = false
-      if (scanner.is('...')) {
-        scanner.expectString('...')
+      if (scanner.is(SPLAT_OP)) {
+        scanner.expectString(SPLAT_OP)
         isSpreadArg = true
-      } else if (scanner.is('*')) {
-        scanner.expectString('*')
+      } else if (scanner.is(KWARG_OP)) {
+        scanner.expectString(KWARG_OP)
         isKwarg = true
       }
 
@@ -102,7 +110,7 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
         if (argName && isKwarg) {
           throw new ParseError(
             scanner,
-            `Keyword argument list operator '*' cannot be applied to named arguments.`,
+            `Keyword argument list operator ${KWARG_OP} cannot be applied to named arguments.`,
           )
         }
 

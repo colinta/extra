@@ -92,6 +92,8 @@ export const FN_KEYWORD = 'fn'
 export const VIEW_KEYWORD = 'view'
 export const STATIC_KEYWORD = 'static'
 export const TYPE_KEYWORD = 'type'
+export const SPLAT_OP = '...'
+export const KWARG_OP = '**'
 
 export const INCLUSION_OPERATOR = 'onlyif'
 export const NULL_COALESCING = '?.'

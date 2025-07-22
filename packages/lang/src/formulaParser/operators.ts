@@ -29,6 +29,7 @@ import {
   type Operator,
 } from './types'
 import {indent, SMALL_LEN} from './util'
+import {KWARG_OP} from '../types'
 
 export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
 export const BINARY_OP_ALIASES = {
@@ -4642,7 +4643,12 @@ function spreadKeywordArg(
     return [
       false,
       undefined,
-      err(new RuntimeError(providedArg, `Cannot use keyword list operator '*' on type ${type}`)),
+      err(
+        new RuntimeError(
+          providedArg,
+          `Cannot use keyword list operator '${KWARG_OP}' on type ${type}`,
+        ),
+      ),
     ]
   }
 }

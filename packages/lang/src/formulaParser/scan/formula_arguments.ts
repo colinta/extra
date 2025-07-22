@@ -1,6 +1,6 @@
 import * as Expressions from '../expressions'
 import {type Expression} from '../expressions'
-import {ARGS_CLOSE, ARGS_OPEN, isArgumentStartChar} from '../grammars'
+import {ARGS_CLOSE, ARGS_OPEN, KWARG_OP, SPLAT_OP, isArgumentStartChar} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
@@ -99,16 +99,16 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
        */
       let isSpreadPositionalArg = false
       if (scanner.test(scannerIsSpreadPositional)) {
-        scanner.expectString('...')
+        scanner.expectString(SPLAT_OP)
         scanner.scanAllWhitespace()
         isSpreadPositionalArg = true
         spreadArg = 'spread'
       } else if (scanner.test(scannerIsRepeatedNamed)) {
-        scanner.expectString('...')
+        scanner.expectString(SPLAT_OP)
         scanner.scanAllWhitespace()
         spreadArg = 'spread'
       } else if (scanner.test(scannerIsKeywordList)) {
-        scanner.expectString('*')
+        scanner.expectString(KWARG_OP)
         scanner.scanAllWhitespace()
         spreadArg = 'kwargs'
       }
@@ -125,7 +125,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         // we already have a spread positional arg
         throw new ParseError(
           scanner,
-          `Found second remaining arguments list '...#${argName.name}' after '...#${spreadPositionalArg}'`,
+          `Found second remaining arguments list '${SPLAT_OP}#${argName.name}' after '${SPLAT_OP}#${spreadPositionalArg}'`,
           argRange0,
         )
       }
@@ -133,7 +133,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       if (isPositional && spreadPositionalArg !== undefined) {
         throw new ParseError(
           scanner,
-          `Found positional argument '#${argName.name}' after '...#${spreadPositionalArg}'.`,
+          `Found positional argument '#${argName.name}' after '${SPLAT_OP}#${spreadPositionalArg}'.`,
           argRange0,
         )
       }
@@ -144,7 +144,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         if (kwargsNamedArg !== undefined) {
           throw new ParseError(
             scanner,
-            `Found second keyword arguments list '*${argName.name}' after '*${kwargsNamedArg}'`,
+            `Found second keyword arguments list '${KWARG_OP}${argName.name}' after '${KWARG_OP}${kwargsNamedArg}'`,
             argRange0,
           )
         }
@@ -153,7 +153,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       if (!isPositional && kwargsNamedArg !== undefined) {
         throw new ParseError(
           scanner,
-          `Found named argument '${argName.name}' after '*${kwargsNamedArg}'.`,
+          `Found named argument '${argName.name}' after '${KWARG_OP}${kwargsNamedArg}'.`,
           argRange0,
         )
       }
@@ -253,14 +253,14 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         if (spreadArg === 'spread' && !(argType instanceof Expressions.ArrayTypeExpression)) {
           throw new ParseError(
             scanner,
-            `Expected 'Array' type for '...${isSpreadPositionalArg ? '#' : ''}${
+            `Expected 'Array' type for '${SPLAT_OP}${isSpreadPositionalArg ? '#' : ''}${
               argName.name
             }', found '${argType}'. Remaining argument lists must use the Array type, e.g. 'Array(${argType})'.`,
           )
         } else if (spreadArg === 'kwargs' && !(argType instanceof Expressions.DictTypeExpression)) {
           throw new ParseError(
             scanner,
-            `Expected 'Dict' type for '*${argName.name}', found '${argType}'. Keyword arguments lists must use the Dict type, e.g. 'Dict(${argType})'.`,
+            `Expected 'Dict' type for '${KWARG_OP}${argName.name}', found '${argType}'. Keyword arguments lists must use the Dict type, e.g. 'Dict(${argType})'.`,
           )
         }
       }
@@ -270,7 +270,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         if (isPositional && spreadPositionalArg !== undefined) {
           throw new ParseError(
             scanner,
-            `Default values are not allowed on positional arguments following a spread positional argument ('...#${spreadPositionalArg}')`,
+            `Default values are not allowed on positional arguments following a spread positional argument ('${SPLAT_OP}#${spreadPositionalArg}')`,
           )
         }
 
@@ -349,7 +349,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
 }
 
 function scannerIsSpreadPositional(scanner: Scanner) {
-  if (!scanner.scanIfString('...')) {
+  if (!scanner.scanIfString(SPLAT_OP)) {
     return false
   }
 
@@ -358,7 +358,7 @@ function scannerIsSpreadPositional(scanner: Scanner) {
 }
 
 function scannerIsRepeatedNamed(scanner: Scanner) {
-  if (!scanner.scanIfString('...')) {
+  if (!scanner.scanIfString(SPLAT_OP)) {
     return false
   }
 
@@ -367,7 +367,7 @@ function scannerIsRepeatedNamed(scanner: Scanner) {
 }
 
 function scannerIsKeywordList(scanner: Scanner) {
-  if (!scanner.scanIfString('*')) {
+  if (!scanner.scanIfString(KWARG_OP)) {
     return false
   }
 

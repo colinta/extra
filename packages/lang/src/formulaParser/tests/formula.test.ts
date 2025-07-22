@@ -51,8 +51,8 @@ fn(
         '(fn ((#a: `Int`) (...#as: Array(`Int`))) : `Int` => 0)',
       ]),
       c([
-        'fn(#a: Int, *as: Dict(Int)): Int => 0',
-        '(fn ((#a: `Int`) (*as: Dict(`Int`))) : `Int` => 0)',
+        'fn(#a: Int, **as: Dict(Int)): Int => 0',
+        '(fn ((#a: `Int`) (**as: Dict(`Int`))) : `Int` => 0)',
       ]),
       c([
         'fn(#a: Int, ...a as: Array(Int)): Int => 0',
@@ -134,16 +134,16 @@ fn(
         "Expected 'Array' type for '...a', found 'Int'. Remaining argument lists must use the Array type, e.g. 'Array(Int)'.",
       ]),
       c([
-        'fn(#a: Int, *as: Int): Int => 0',
-        "Expected 'Dict' type for '*as', found 'Int'. Keyword arguments lists must use the Dict type, e.g. 'Dict(Int)'.",
+        'fn(#a: Int, **as: Int): Int => 0',
+        "Expected 'Dict' type for '**as', found 'Int'. Keyword arguments lists must use the Dict type, e.g. 'Dict(Int)'.",
       ]),
       c([
         'fn(...#a: Array(Int), ...#b: Array(Int)): Int => 0',
         "Found second remaining arguments list '...#b' after '...#a'",
       ]),
       c([
-        'fn(*a: Dict(Int), *b: Dict(Int)): Int => 0',
-        "Found second keyword arguments list '*b' after '*a'",
+        'fn(**a: Dict(Int), **b: Dict(Int)): Int => 0',
+        "Found second keyword arguments list '**b' after '**a'",
       ]),
       c([
         'fn(#arg: enum Foo { .a }): T => b()',

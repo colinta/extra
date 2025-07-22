@@ -14,6 +14,8 @@ export const OBJECT = 'Object'
 export const ARRAY = 'Array'
 export const DICT = 'Dict'
 export const SET = 'Set'
+export const SPLAT_OP = '...'
+export const KWARG_OP = '**'
 
 // constructor functions
 export function never() {
@@ -872,7 +874,7 @@ export class FormulaType extends Type {
 
         // spread === 'spread' =>  ...
         // spread === 'kwargs' =>  *
-        argDesc += spread === 'spread' ? '...' : spread === 'kwargs' ? '*' : ''
+        argDesc += spread === 'spread' ? SPLAT_OP : spread === 'kwargs' ? KWARG_OP : ''
 
         // alias === undefined =>  #name: type
         // alias === name      =>  name: type

@@ -9,6 +9,7 @@ import {
 } from '../runtime'
 import * as Narrowed from '../narrowed'
 import * as Types from '../types'
+import {SPLAT_OP, KWARG_OP} from '../types'
 import * as Values from '../values'
 
 import {dependencySort} from './dependencySort'
@@ -1719,15 +1720,15 @@ export class NamedArgument extends Argument {
  */
 export abstract class SpreadArgument extends Argument {
   toLisp() {
-    return `(... ${this.value.toLisp()})`
+    return `(${SPLAT_OP} ${this.value.toLisp()})`
   }
 
   toCode() {
     if (this.value instanceof Operation && this.value.operator.symbol !== 'onlyif') {
-      return `...(${this.value})`
+      return `${SPLAT_OP}(${this.value})`
     }
 
-    return `...${this.value}`
+    return `${SPLAT_OP}${this.value}`
   }
 }
 
@@ -3101,9 +3102,9 @@ export class FormulaLiteralArgumentAndTypeDeclaration extends ArgumentExpression
   toLisp() {
     let code = ''
     if (this.spreadArg === 'spread') {
-      code += '...'
+      code += SPLAT_OP
     } else if (this.spreadArg === 'kwargs') {
-      code += '*'
+      code += KWARG_OP
     }
 
     if (this.isPositional) {
@@ -3126,9 +3127,9 @@ export class FormulaLiteralArgumentAndTypeDeclaration extends ArgumentExpression
   toCode() {
     let code = ''
     if (this.spreadArg === 'spread') {
-      code += '...'
+      code += SPLAT_OP
     } else if (this.spreadArg === 'kwargs') {
-      code += '*'
+      code += KWARG_OP
     }
 
     if (this.isPositional) {
@@ -3231,9 +3232,9 @@ export class FormulaTypeArgumentAndType extends ArgumentExpression {
   toLisp() {
     let code = ''
     if (this.spreadArg === 'spread') {
-      code += '...'
+      code += SPLAT_OP
     } else if (this.spreadArg === 'kwargs') {
-      code += '*'
+      code += KWARG_OP
     }
 
     if (this.isPositional) {
@@ -3255,9 +3256,9 @@ export class FormulaTypeArgumentAndType extends ArgumentExpression {
   toCode() {
     let code = ''
     if (this.spreadArg === 'spread') {
-      code += '...'
+      code += SPLAT_OP
     } else if (this.spreadArg === 'kwargs') {
-      code += '*'
+      code += KWARG_OP
     }
 
     if (this.isPositional) {
@@ -4299,7 +4300,7 @@ export class MatchEnumRemainingExpression extends Expression {
   }
 
   toCode() {
-    return '...'
+    return SPLAT_OP
   }
 
   getType() {
@@ -4454,7 +4455,7 @@ export class MatchEnumMemberExpression extends MatchExpression {
     let code = '.' + this.name
     const args = this.args.map(arg => arg.toLisp())
     if (this.ignoreRemaining) {
-      args.push('...')
+      args.push(SPLAT_OP)
     }
 
     if (this.args.length) {
@@ -4468,7 +4469,7 @@ export class MatchEnumMemberExpression extends MatchExpression {
     let code = '.' + this.name
     const args = this.args.map(arg => arg.toCode())
     if (this.ignoreRemaining) {
-      args.push('...')
+      args.push(SPLAT_OP)
     }
 
     if (args.length) {
@@ -4560,9 +4561,9 @@ export class MatchArrayRemainingExpression extends Expression {
 
   toCode() {
     if (this.reference) {
-      return `...${this.reference.name}`
+      return `${SPLAT_OP}${this.reference.name}`
     }
-    return '...'
+    return SPLAT_OP
   }
 
   getType() {
