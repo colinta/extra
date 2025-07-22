@@ -293,10 +293,6 @@ Extra's "coerce to String" function is a unary operator `$`, and it's also the s
 "How many: $n"
 "How many: " <> $n
 
--- String coercion will happen in the case of
--- String interpolation and the concatenation operator <>,
--- but not for function arguments that expect a String
-
 -- because it's an _operator_, you can do things like
 [1, 2].join($(n + 1))
 ```
@@ -561,10 +557,10 @@ Lots of repetition here. The above is a whirlwind tour, now I'll try to be more 
 
 ```extra
 let
-  useful = 42
-  fn some-thing(answer: Int): String => `The answer is $answer`
+  the-answer = 42
+  fn propose-answer(answer: Int): String => `The answer is $answer`
 in
-  some-thing(really = useful)
+  propose-answer(answer: the-answer)
 ```
 
 ## Variable names
@@ -689,12 +685,13 @@ Double-quoted strings: Same as single-quoted, but support _String interpolation_
 
 ```extra
 "testing"           --> testing
-"$money"            --> replaces $money with the contents of `money` reference
-"${money.currency}" --> replaces ${…} with the contents of `money.currency` reference
+"$money"            --> replaces $money with the stringified contents of `money`
 
+"${money.currency}" --> replaces ${…} with the contents of `money.currency` reference
 `${money.currency}` --> same
 `$money.currency`   --> replaces $money with `money`, but leaves ".currency"
-`\$` / "\$"         --> If you need a dollar sign
+
+`\$`   "\$"         --> If you need a dollar sign
 
 "$123"              --> If '$' isn't followed by a reference, there's no need to escape it.
 ```
