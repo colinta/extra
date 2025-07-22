@@ -776,7 +776,7 @@ function parseInternal(
   } else if (expressionType === 'app_helper_definition') {
     expression = scanHelperDefinition(scanner, parseNext)
   } else if (expressionType === 'test_formula_arguments') {
-    expression = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext)
+    expression = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false)
   } else if (isScanningType(expressionType)) {
     // isScanningType => 'argument_type' | 'application_type'
     expression = scanArgumentType(scanner, expressionType, parseNext)

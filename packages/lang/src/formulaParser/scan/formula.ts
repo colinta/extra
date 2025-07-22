@@ -164,10 +164,12 @@ function _scanFormula(
   }
   scanner.whereAmI(`scanFormula generics = [${generics.join(', ')}]`)
 
+  const canInfer = expressionType === 'argument'
   const argDeclarations = scanFormulaArgumentDefinitions(
     scanner,
     isInView ? 'view' : 'fn',
     parseNext,
+    canInfer,
   )
   scanner.scanAllWhitespace()
   argDeclarations.followingComments.push(...scanner.flushComments())

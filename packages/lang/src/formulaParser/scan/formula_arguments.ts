@@ -19,12 +19,13 @@ export function scanFormulaArgumentDefinitions(
   scanner: Scanner,
   type: 'view' | 'fn',
   parseNext: ParseNext,
+  canInfer: boolean,
 ) {
   const range0 = scanner.charIndex - 1
   const precedingComments = scanner.flushComments()
   scanner.expectString(ARGS_OPEN, `Expected '${ARGS_OPEN}' to start arguments`)
   scanner.scanAllWhitespace()
-  const [args, range1] = _scanArgumentDeclarations(scanner, 'formula', type, parseNext)
+  const [args, range1] = _scanArgumentDeclarations(scanner, 'formula', type, parseNext, canInfer)
   return new Expressions.FormulaLiteralArgumentDeclarations(
     [range0, range1],
     precedingComments,
@@ -42,7 +43,7 @@ export function scanFormulaTypeArgumentDefinitions(scanner: Scanner, parseNext: 
   scanner.expectString(ARGS_OPEN)
   scanner.scanAllWhitespace()
 
-  const [args, range1] = _scanArgumentDeclarations(scanner, 'formula_type', 'fn', parseNext)
+  const [args, range1] = _scanArgumentDeclarations(scanner, 'formula_type', 'fn', parseNext, false)
   return new Expressions.FormulaTypeArgumentDeclarations([range0, range1], precedingComments, args)
 }
 
@@ -52,6 +53,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
   // view formulas cannot have positional arguments
   type: 'view' | 'fn',
   parseNext: ParseNext,
+  canInfer: boolean,
 ): [
   T extends 'formula'
     ? Expressions.FormulaLiteralArgumentAndTypeDeclaration[]
@@ -233,10 +235,14 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
 
       let argType: Expression
       if (is === 'formula' && !scanner.is(':')) {
-        // I know some programming languages are able to infer the argument type
-        // based on how it's *used* but that just sounds like a ton of work,
-        // for mediocre results.
-        throw new ParseError(scanner, `Expected type expression for '${argName.name}'`)
+        if (!canInfer) {
+          throw new ParseError(scanner, `Expected type expression for '${argName.name}'`)
+        }
+
+        argType = new Expressions.InferIdentifier(
+          [scanner.charIndex, scanner.charIndex],
+          scanner.flushComments(),
+        )
       } else {
         scanner.expectString(':', "Expected ':' followed by the argument type")
         scanner.scanAllWhitespace()
