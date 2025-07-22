@@ -2511,14 +2511,6 @@ export class ArrayType extends ContainerType<ArrayType> {
   }
 
   propAccessType(name: string) {
-    if (name === 'length') {
-      if (this.narrowedLength.min === this.narrowedLength.max) {
-        return new LiteralIntType(this.narrowedLength.min)
-      }
-
-      return new MetaIntType(this.narrowedLength)
-    }
-
     return ArrayType.types[name]?.(this)
   }
 }
@@ -4287,17 +4279,105 @@ function addRequirement(
   /* ArrayType */
   /*           */
   ArrayType.types = {
-    length: () => IntType,
-    map: (of: Type) =>
+    length: (arrayType: ArrayType) => {
+      if (arrayType.narrowedLength.min === arrayType.narrowedLength.max) {
+        return new LiteralIntType(arrayType.narrowedLength.min)
+      }
+
+      if (arrayType.narrowedLength.min === 0 && arrayType.narrowedLength.max === undefined) {
+        return IntType
+      }
+
+      return new MetaIntType(arrayType.narrowedLength)
+    },
+    // map(fn: fn(input: Of, index: Int): T): T[]
+    map: (arrayType: ArrayType) =>
       withGenericT(genericT =>
         namedFormula(
           'map',
           [
             positionalArgument({
-              name: FN,
+              name: 'apply',
               type: formula(
                 [
-                  positionalArgument({name: 'input', type: of, isRequired: true}),
+                  positionalArgument({name: 'input', type: arrayType.of, isRequired: true}),
+                  positionalArgument({
+                    name: 'index',
+                    type: int({
+                      min: 0,
+                      max:
+                        arrayType.narrowedLength.max === undefined
+                          ? undefined
+                          : arrayType.narrowedLength.max - 1,
+                    }),
+                    // TODO: I need a way to add a relationship here:
+                    //     index < arrayType.length
+                    isRequired: true,
+                  }),
+                ],
+                genericT,
+              ),
+              isRequired: true,
+            }),
+          ],
+          array(genericT, arrayType.narrowedLength),
+          [genericT],
+        ),
+      ),
+    // map(fn: fn(input: Of, index: Int): T[]): T[]
+    flatMap: (arrayType: ArrayType) =>
+      withGenericT(genericT =>
+        namedFormula(
+          'flatMap',
+          [
+            positionalArgument({
+              name: 'apply',
+              type: formula(
+                [
+                  positionalArgument({name: 'input', type: arrayType.of, isRequired: true}),
+                  positionalArgument({name: 'index', type: IntType, isRequired: true}),
+                ],
+                array(genericT),
+              ),
+              isRequired: true,
+            }),
+          ],
+          array(genericT),
+          [genericT],
+        ),
+      ),
+    // map(fn: fn(input: Of, index: Int): T?): T[]
+    compactMap: (arrayType: ArrayType) =>
+      withGenericT(genericT =>
+        namedFormula(
+          'compactMap',
+          [
+            positionalArgument({
+              name: 'apply',
+              type: formula(
+                [
+                  positionalArgument({name: 'input', type: arrayType.of, isRequired: true}),
+                  positionalArgument({name: 'index', type: IntType, isRequired: true}),
+                ],
+                optional(genericT),
+              ),
+              isRequired: true,
+            }),
+          ],
+          array(genericT),
+          [genericT],
+        ),
+      ),
+    reduce: (arrayType: ArrayType) =>
+      withGenericT(genericT =>
+        namedFormula(
+          'reduce',
+          [
+            positionalArgument({
+              name: 'apply',
+              type: formula(
+                [
+                  positionalArgument({name: 'input', type: arrayType.of, isRequired: true}),
                   positionalArgument({name: 'index', type: IntType, isRequired: true}),
                 ],
                 genericT,
@@ -4305,7 +4385,7 @@ function addRequirement(
               isRequired: true,
             }),
           ],
-          genericT,
+          array(genericT),
           [genericT],
         ),
       ),
@@ -4322,18 +4402,22 @@ function addRequirement(
           'map',
           [
             positionalArgument({
-              name: FN,
+              name: 'apply',
               type: formula(
                 [
                   positionalArgument({name: 'input', type: of, isRequired: true}),
-                  positionalArgument({name: 'index', type: StringType, isRequired: true}),
+                  positionalArgument({
+                    name: 'index',
+                    type: oneOf([StringType, IntType, NullType]),
+                    isRequired: true,
+                  }),
                 ],
                 genericT,
               ),
               isRequired: true,
             }),
           ],
-          genericT,
+          dict(genericT),
           [genericT],
         ),
       ),
@@ -4409,13 +4493,13 @@ function addRequirement(
   MetaStringType.types = {
     // length: Int
     length: () => IntType,
-    // mapChars(fn: fn(input: String): T): T[]
-    mapChars: () =>
+    // map(fn: fn(input: String): T): T[]
+    map: () =>
       withGenericT(genericT =>
         formula(
           [
             positionalArgument({
-              name: FN,
+              name: 'apply',
               type: formula(
                 [positionalArgument({name: 'input', type: StringType, isRequired: true})],
                 genericT,
@@ -4423,43 +4507,43 @@ function addRequirement(
               isRequired: true,
             }),
           ],
-          genericT,
+          array(genericT),
           [genericT],
         ),
       ),
-    // flatMapChars(fn: fn(input: String): T[]): T[]
-    flatMapChars: () =>
+    // flatMap(fn: fn(input: String): T[]): T[]
+    flatMap: () =>
       withGenericT(genericT =>
         formula(
           [
             positionalArgument({
-              name: FN,
+              name: 'apply',
               type: formula(
                 [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-                genericT,
+                array(genericT),
               ),
               isRequired: true,
             }),
           ],
-          genericT,
+          array(genericT),
           [genericT],
         ),
       ),
-    // compactMapChars(fn: fn(input: String): T | null): T[]
-    compactMapChars: () =>
+    // compactMap(fn: fn(input: String): T?): T[]
+    compactMap: () =>
       withGenericT(genericT =>
         formula(
           [
             positionalArgument({
-              name: FN,
+              name: 'apply',
               type: formula(
                 [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-                oneOf([genericT, NullType]),
+                optional(genericT),
               ),
               isRequired: true,
             }),
           ],
-          genericT,
+          array(genericT),
           [genericT],
         ),
       ),
@@ -4468,7 +4552,7 @@ function addRequirement(
       namedFormula(
         'indexOf',
         [positionalArgument({name: 'input', type: StringType, isRequired: true})],
-        oneOf([IntType, NullType]),
+        optional(IntType),
       ),
     // repeat(number): String
     repeat: () =>

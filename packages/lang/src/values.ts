@@ -1,4 +1,4 @@
-import {err, ok, type Result} from '@extra-lang/result'
+import {err, mapAll, ok, type Result} from '@extra-lang/result'
 import {RuntimeError} from './formulaParser/types'
 import {splitter} from './graphemes'
 import * as Types from './types'
@@ -1035,6 +1035,22 @@ export class ArrayValue extends Value {
   private static _props: Map<string, (value: ArrayValue) => Value> = new Map([])
   static init() {
     ArrayValue._props.set('length', (value: ArrayValue) => int(value.values.length))
+    ArrayValue._props.set('map', (array: ArrayValue) =>
+      namedFormula('map', args =>
+        args.at(0, FormulaValue).map(apply =>
+          mapAll(
+            array.values.map((val, index) =>
+              apply.call(
+                new FormulaArgs([
+                  [undefined, val],
+                  [undefined, int(index)],
+                ]),
+              ),
+            ),
+          ).map(values => new ArrayValue(values)),
+        ),
+      ),
+    )
   }
 
   propValue(propName: string): Value | undefined {
