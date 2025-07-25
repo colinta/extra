@@ -1952,9 +1952,45 @@ export class SpreadFunctionArgument extends SpreadArgument {
 //|  Let Expression
 //|
 
+/**
+ * Used to store 'let' declarations. I'm re-using NamedArgument for convenience.
+ *
+ *     let
+ *       name = value
+ *       ^^^^^^^^^^^^
+ *     in
+ */
+export class LetAssign extends NamedArgument {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    alias: string,
+    readonly type: Expression | undefined,
+    value: Expression,
+  ) {
+    super(range, precedingComments, alias, value)
+  }
+
+  toLisp() {
+    if (this.type === undefined) {
+      return `(${this.alias} = ${this.value.toLisp()})`
+    }
+
+    return `(${this.alias}: ${this.type.toLisp()} = ${this.value.toLisp()})`
+  }
+
+  toCode() {
+    if (this.type === undefined) {
+      return `${this.alias} = ${this.value}`
+    }
+
+    return `${this.alias}: ${this.type} = ${this.value}`
+  }
+}
+
 export class LetExpression extends Expression {
   readonly name = 'let'
-  readonly bindings: [string, NamedArgument | NamedFormulaExpression][]
+  readonly bindings: [string, LetAssign | NamedFormulaExpression][]
   private isSorted: boolean
 
   constructor(
@@ -1965,13 +2001,13 @@ export class LetExpression extends Expression {
      * - precedingInBodyComments: before 'in'
      */
     public precedingInBodyComments: Comment[],
-    bindings: (NamedArgument | NamedFormulaExpression)[],
+    bindings: (LetAssign | NamedFormulaExpression)[],
     readonly body: Expression,
   ) {
     super(range, precedingComments)
 
     const sorted = dependencySort(
-      bindings.map((arg): [string, NamedArgument | NamedFormulaExpression] => {
+      bindings.map((arg): [string, LetAssign | NamedFormulaExpression] => {
         if (arg instanceof NamedFormulaExpression) {
           return [arg.nameRef.name, arg]
         }
@@ -2002,15 +2038,7 @@ export class LetExpression extends Expression {
   }
 
   toLisp() {
-    const bindings = this.bindings
-      .map(([alias, arg]) => {
-        if (arg instanceof NamedFormulaExpression) {
-          return `${arg.toLisp()}`
-        }
-
-        return `(${alias + ': ' + arg.value.toLisp()})`
-      })
-      .join(' ')
+    const bindings = this.bindings.map(([alias, arg]) => arg.toLisp()).join(' ')
     return `(let ${bindings} ${this.body.toLisp()})`
   }
 
@@ -2023,7 +2051,11 @@ export class LetExpression extends Expression {
         line = ''
         exprCode = arg.toCode()
       } else {
-        line = alias + ' = '
+        line = alias
+        if (arg.type !== undefined) {
+          line += `: ${arg.type}`
+        }
+        line += ' = '
         exprCode = arg.value.toCode()
       }
 
@@ -2045,28 +2077,149 @@ export class LetExpression extends Expression {
     return code
   }
 
+  assignRelationships(
+    runtime: MutableTypeRuntime,
+    name: string,
+    assignment: LetAssign,
+    inferredType: Types.Type,
+    explicitType: Types.Type | undefined,
+  ) {
+    let localType: Types.Type
+    if (explicitType) {
+      localType = explicitType
+    } else {
+      localType = inferredType
+    }
+
+    runtime.addLocalType(name, localType)
+
+    const id = runtime.refId(name)
+    if (id) {
+      const refFormula = relationshipFormula.reference(name, id)
+      const lengthFormula = relationshipFormula.propertyAccess(refFormula, 'length')
+
+      // TODO: assign relationships based on explicitType
+      // IE `index: Int(0...5) = 2` should assign
+      //   index >= 0
+      //   index <= 5
+      // and not
+      //   index == 2
+      if (assignment instanceof LetAssign && localType === inferredType) {
+        const assignmentRelationship = assignment.value.relationshipFormula(runtime)
+        if (assignmentRelationship) {
+          runtime.addRelationshipFormula(refFormula, '==', assignmentRelationship)
+        }
+      }
+
+      if (localType.isFloat()) {
+        const isInt = localType.isInt()
+        if (localType.narrowed.min !== undefined) {
+          if (Array.isArray(localType.narrowed.min)) {
+            runtime.addRelationshipFormula(
+              refFormula,
+              '>',
+              relationshipFormula.float(localType.narrowed.min[0]),
+            )
+          } else {
+            runtime.addRelationshipFormula(
+              refFormula,
+              '>=',
+              relationshipFormula.number(localType.narrowed.min, isInt),
+            )
+          }
+        }
+
+        if (localType.narrowed.max !== undefined) {
+          if (Array.isArray(localType.narrowed.max)) {
+            runtime.addRelationshipFormula(
+              refFormula,
+              '<',
+              relationshipFormula.float(localType.narrowed.max[0]),
+            )
+          } else {
+            runtime.addRelationshipFormula(
+              refFormula,
+              '<=',
+              relationshipFormula.number(localType.narrowed.max, isInt),
+            )
+          }
+        }
+      } else if (localType.isString()) {
+        if (localType.narrowedString.length.min > 0) {
+          runtime.addRelationshipFormula(
+            lengthFormula,
+            '>=',
+            relationshipFormula.int(localType.narrowedString.length.min),
+          )
+        }
+
+        if (localType.narrowedString.length.max !== undefined) {
+          runtime.addRelationshipFormula(
+            lengthFormula,
+            '<=',
+            relationshipFormula.int(localType.narrowedString.length.max),
+          )
+        }
+      } else if (localType instanceof Types.ContainerType) {
+        if (localType.narrowedLength.min > 0) {
+          runtime.addRelationshipFormula(
+            lengthFormula,
+            '>=',
+            relationshipFormula.int(localType.narrowedLength.min),
+          )
+        }
+
+        if (localType.narrowedLength.max !== undefined) {
+          runtime.addRelationshipFormula(
+            lengthFormula,
+            '<=',
+            relationshipFormula.int(localType.narrowedLength.max),
+          )
+        }
+      }
+    }
+  }
+
   getType(runtime: TypeRuntime): GetTypeResult {
     let nextRuntime = new MutableTypeRuntime(runtime)
     return this.sortedBindings()
       .map(deps =>
         mapAll(
-          deps.map(([alias, dep]) =>
-            dep.getType(nextRuntime).map(type => {
-              nextRuntime.addLocalType(alias, type)
+          deps.map(([name, assignment]) =>
+            assignment
+              .getType(nextRuntime)
+              .map((inferredType): GetRuntimeResult<[Types.Type, Types.Type | undefined]> => {
+                if (assignment instanceof LetAssign && assignment.type) {
+                  return assignment.type
+                    .getAsTypeExpression(runtime)
+                    .mapResult(decorateError(this))
+                    .map(explicitType => [inferredType, explicitType])
+                } else {
+                  return ok([inferredType, undefined])
+                }
+              })
+              .map(([inferredType, explicitType]) => {
+                if (explicitType && !Types.canBeAssignedTo(inferredType, explicitType)) {
+                  return err(
+                    new RuntimeError(
+                      this,
+                      `Cannot assign inferred type '${inferredType.toCode()}' to '${explicitType.toCode()}'`,
+                    ),
+                  )
+                }
 
-              let depRel: RelationshipFormula | undefined
-              if (dep instanceof NamedFormulaExpression) {
-                depRel = dep.relationshipFormula(nextRuntime)
-              } else {
-                depRel = dep.value.relationshipFormula(nextRuntime)
-              }
+                if (assignment instanceof LetAssign) {
+                  this.assignRelationships(
+                    nextRuntime,
+                    name,
+                    assignment,
+                    inferredType,
+                    explicitType,
+                  )
+                }
 
-              if (depRel) {
-                nextRuntime.addRelationship(alias, '==', depRel)
-              }
-
-              return ok()
-            }),
+                return ok()
+              }),
           ),
         ),
       )
