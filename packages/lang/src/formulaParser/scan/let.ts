@@ -25,28 +25,37 @@ export function scanLet(
   scanner.expectString(LET_KEYWORD)
   scanner.scanAllWhitespace()
 
-  const bindings: (Expressions.NamedArgument | Expressions.NamedFormulaExpression)[] = []
+  const bindings: (Expressions.LetAssign | Expressions.NamedFormulaExpression)[] = []
   for (;;) {
     if (scanner.scanIfWord(LET_IN)) {
       break
     }
 
-    let entry: Expressions.NamedArgument | Expressions.NamedFormulaExpression
+    let entry: Expressions.LetAssign | Expressions.NamedFormulaExpression
     if (scanner.isWord(FN_KEYWORD)) {
       entry = scanNamedFormula(scanner, parseNext, 'let')
     } else {
       const name = scanValidName(scanner)
       scanner.scanAllWhitespace()
+      let type: Expressions.Expression | undefined
+      if (scanner.scanIfString(':')) {
+        scanner.scanAllWhitespace()
+        type = scanArgumentType(scanner, 'argument_type', parseNext)
+        scanner.scanAllWhitespace()
+      }
+
       const followingAliasComments = scanner.flushComments()
       scanner.expectString('=')
       scanner.scanAllWhitespace()
       const value = parseNext('let')
 
       scanner.whereAmI(`scanLet: ${name} = ${value}`)
-      entry = new Expressions.NamedArgument(
+
+      entry = new Expressions.LetAssign(
         [name.range[0], value.range[1]],
         name.precedingComments,
         name.name,
+        type,
         value,
       )
       entry.followingAliasComments = followingAliasComments
