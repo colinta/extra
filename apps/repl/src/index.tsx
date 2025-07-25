@@ -120,7 +120,7 @@ function App() {
             if (version === 1) {
               return object([
                 ['version', int],
-                ['desc', string],
+                ['desc', succeed('')],
                 ['formula', string],
                 [
                   'vars',

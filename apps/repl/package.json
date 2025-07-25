@@ -4,7 +4,8 @@
   "license": "MIT",
   "scripts": {
     "listen": "bun src/listen.ts",
-    "start": "bun tsc && bun src/index.tsx"
+    "start": "bun src/index.tsx",
+    "debug": "bun --inspect-wait src/index.tsx"
   },
   "dependencies": {
     "@extra-lang/lang": "workspace:*",
