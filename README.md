@@ -176,12 +176,12 @@ Here is a function definition using `lazy` arguments:
 ```extra
 fn doSomething<T>(condition: 1 | 2 | 3, one: lazy(T), two: lazy(T), three: lazy(T)) =>
   switch (condition) {
-  case:
-    1 => one()
-  case:
-    2 => two()
-  case:
-    3 => three()
+  case 1:
+    one()
+  case 2:
+    two()
+  case 3:
+    three()
   }
 
 -- usually you would call the function like this - "vanilla" extra code
@@ -197,29 +197,130 @@ doSomething(1) {
 
 ## Pattern Matching
 
-Obviously Extra supports pattern matching. `switch` is the most canonical way to group a bunch of matchers:
+Obviously Extra supports pattern matching. `switch` is the most canonical way to group a bunch of matchers. This was hard so you better like it!
 
+```
+foo --> matches everything, assigns to 'foo'
+_ --> same but ignore the value
+
+1, 1...2.5 --> matches numbers and ranges
+"foo" --> string literal
+"<" <> tag <> ">"  --> prefixed/suffixed string (assigns middle to 'tag')
+
+[] --> matches an empty array
+[a, _, b] --> matches an array with exactly least 3 items
+[a, ..., b] --> matches an array with at least 2 items, assigns the first to 'a', and the last to 'b'
+
+.blue --> matches an enum case
+.rgb(r,g,b) --> matches and assigns values
+```
+
+###### Numbers
 ```extra
+-- number matching works on literals and ranges
 switch (volume) {
-case:
-  0..<2 => 'turn it up!'
-case:
-  2..<5 => "that's enough"
+case 0:
+  'muted!?'
+case 1..<2:
+  'turn it up!'
+case 2..<5:
+  "that's enough"
 else:
   `$volume is too loud`
+}
+```
+
+###### Strings
+```extra
+-- strings can be matched against regexes, and will assign matches to named
+-- capture groups, or you can match against a prefix and assign the remainder
+switch (name) {
+case /(?<first>\w+) (?<last>\w+)/:
+  "Hello, $first $last!"
+case "Bob " <> last:
+  "Did you say Bab? Bab $last!?"
+case _ <> "!":
+  "Your name ends in an exclamation mark, wow, that's so cool 🙄"
+else:
+  "Hello, $name!"
+}
+```
+
+###### Arrays
+```extra
+-- match specific lengths, or any length using the spread operator
+switch (friends) {
+case []:
+  "Aww, I'll be your friend"
+case [one-friend]:
+  "$one-friend sounds like a great friend!"
+case [first, last]:
+  "Wow you know $first and $last!?"
+case [first, _, last]:
+  "Wow you know $first and $last!? And someone else, but I forgot their name."
+case [...some, last]:
+  "${some.join(", ")} and $last... that's too many friends."
+}
+```
+
+###### Enums
+```extra
+enum Permission {
+  .sudo
+  .sure-why-not
+  .readonly
+}
+
+switch (permission) {
+case .sudo, .readonly:
+  true
+else:
+  false
+}
+```
+
+###### Objects
+```extra
+-- match named or positional arguments, and you can *nest* matchers, which makes
+-- this really useful
+fn permission(user: User): Permission =>
+  switch (user) {
+  case {role: .admin}:
+    .sudo
+  case {name: "Colin"}:
+    .sure-why-not
+  case {name: name, role: .staff}:
+    .readonly(name)
+  else:
+    .none
+  }
+```
+
+###### Putting it all together
+```extra
+-- input: String | Array(String)
+switch (input) {
+case 'foo' <> bar:
+  bar -- bar: String, input: String (TODO: add 'prefix' info to String type)
+case [onlyOne]:
+  onlyOne  -- onlyOne: String, input: Array(String, length: =1)
+case [...many, last]:
+  many.join(',') <> " and $last"  -- many: Array(String), last: String, input: Array(String, length: >=1)
+else:
+  'not "foo…" or [a, …]'
 }
 ```
 
 ### Enums / Algebraic data types
 
 ```extra
-enum Result(Ok, Err) {
+enum Result<Ok, Err> {
   .ok(Ok)
   .err(Err)
 
   fn to-maybe() =>
     switch (this) {
-    case: .ok(value) => value
+    case .ok(value): value
     else: null
     }
 
@@ -231,6 +332,15 @@ enum Colour {
   .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
   .hex(String(length: =6))
   .name('red' | 'green' | 'blue')
+}
+
+switch (colour) {
+case .rgb(r, g, b):
+  "rgb($r, $g, $b)"
+case .hex(hex):
+  "hex(#$hex)"
+case .name(name):
+  "Colour named '$name'"
 }
 ```
 
@@ -250,37 +360,17 @@ fn print(
   if (color) { then: … }
 ```
 
-### Destructured matching
-
-This was hard so you better like it.
-
-```extra
--- foo: String | Array(String)
-switch (foo) {
-case:
-  'foo' <> bar => bar
-case:
-  [onlyOne] => onlyOne
-case:
-  [...many, last] => many.join(',') <> " and $last"
-else:
-    'not "foo…" or [a, …]'
-}
-```
-
-Not every operator is supported in this way, but I tried to support everything that makes sense. Values can be ignored using `_`.
-
 ## Unambiguous operators
 
 Minor thing: `+` is a mathematical operator that adds two numbers. Did you know that `a + b == b + a`? Except in Java and Javascript and Swift and many other languages. 🙄
 
-`++` is a computer science-y operator that concatenates two lists. `<>` does the same for strings.
+`++` is a computer science-y looking operator that concatenates two arrays. `<>` does the same for strings.
 
 Having distinct concatenation operators is either really nice for indicating intentionality, or an unnecessary distinction. I hate to side w/ PHP on this one, but I treat 'em differently. Or hey maybe I'm hitching my ride to PHP's weird and shocking resurgence!? Who knows!?
 
 Words (`and` `or` `not` `is` `has`) are used for logical operators, but not bitwise operators (`&` `|` `^` `~`).
 
-Actually `is` is the "match" operation, ie `if (x is .some(x))` will attempt to match the two sides. The left-hand side is evaluated, and must match the right-hand side (`.some(x) is x` will not compile). In this case, 'x' is also *reassigned* in the scope of the `then:` branch to have the unwrapped value.
+Actually `is` is the "match" operation (see "Destructured Matching"), ie `if (x is .some(val))` will attempt to match the two sides. The left-hand side is evaluated, and must match with the right-hand side (`.some(x) is x` will not compile). In this case, in the scope of the `then:` branch, `x` will have the unwrapped value of (if `x: Maybe<T>` and `x = .some(T)` then `val: T`).
 
 ## String coercion and interpolation
 
@@ -438,10 +528,10 @@ name
 
 -- of course it's also just very easy to pipe into a `switch` statement
 httpResponse |> switch(#) {
-  case:
-    .ok(success) => success.message
-  case:
-    .err(error) => error.message
+  case .ok(success):
+    success.message
+  case .err(error):
+    error.message
   } --> String
 ```
 
@@ -450,7 +540,7 @@ httpResponse |> switch(#) {
 In particular: **Sum Types**. Shoutout to [Justin Pombrio – but please get out of my head and stealing my rants](https://justinpombrio.net/2021/03/11/algebra-and-data-types.html#:~:text=The%20Baffling%20Lack%20of%20Sum%20Types) for a great writeup on Sum and Product types.
 
 ```extra
-enum RemoteData(Success, Failure) {
+enum RemoteData<Success, Failure> {
   .notAsked
   .loading
   .failure(error: Failure)
@@ -461,8 +551,7 @@ enum RemoteData(Success, Failure) {
 
   fn data(): Success? =>
     switch(this) {
-    case:
-      .success(value) => value
+    case .success(value): value
     else:
       null
     }
@@ -1047,12 +1136,14 @@ in
 You can specify the same argument by name, multiple times.
 
 ```extra
-fn switch<T, U>(#value: Y, ...case: Maybe<U>, else?: U): U
+fn returnIf<T>(#condition: Boolean, ...and: Array(Boolean), then: T): T?
 
-switch(1, case: 1 => 'one', case: 2 => 'two', else: 'who knows') --> 'one'
+returnIf(a == 1, and: b == 1, and: c == 2, then: 'yay!') --> 'yay!' | null
 ```
 
-#### Function overrides
+#### Proposal: Function overrides
+
+*Warning*: I haven't implemented this - and it requires that the *runtime* include *type information* (otherwise it can't disambiguate the arguments), which I don't like... so I'm considering this
 
 You can define separate function implementations if you want to have lots of different signatures all wrapped up in one function name. The Extra compiler will verify that the implementations are unambiguous.
 
