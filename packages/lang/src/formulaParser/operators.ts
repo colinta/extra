@@ -1579,6 +1579,10 @@ abstract class MatchOperator extends BinaryOperator {
     _lhsExpr: Expression,
     rhsExpr: Expression,
   ): GetRuntimeResult<Values.BooleanValue> {
+    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
+    }
+
     return rhsExpr.getAsTypeExpression(runtime).map(rhsType => {
       return Values.booleanValue(Types.canBeAssignedTo(lhs.getType(), rhsType))
     })
@@ -1594,7 +1598,7 @@ class MatchAssertionOperator extends MatchOperator {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
     }
 
-    return rhsExpr.assumeMatchAssertion(runtime, lhsExpr, true)
+    return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, true)
   }
 
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
@@ -1603,7 +1607,7 @@ class MatchAssertionOperator extends MatchOperator {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
     }
 
-    return rhsExpr.assumeMatchAssertion(runtime, lhsExpr, false)
+    return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, false)
   }
 }
 
@@ -1616,7 +1620,7 @@ class MatchRefutationOperator extends MatchOperator {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
     }
 
-    return rhsExpr.assumeMatchAssertion(runtime, lhsExpr, false)
+    return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, false)
   }
 
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
@@ -1625,7 +1629,7 @@ class MatchRefutationOperator extends MatchOperator {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
     }
 
-    return rhsExpr.assumeMatchAssertion(runtime, lhsExpr, true)
+    return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, true)
   }
 
   operatorEval(
@@ -2685,26 +2689,6 @@ class PropertyAccessOperator extends PropertyChainOperator {
 
         return lhsExpr.replaceWithType(runtime, result.value)
       })
-    })
-  }
-
-  isLengthExpression(runtime: TypeRuntime): GetRuntimeResult<boolean> {
-    const [lhs, rhs] = this.args
-    if (!(rhs instanceof Expressions.Identifier) || rhs.name !== 'length') {
-      return ok(false)
-    }
-
-    return getChildType(this, lhs, runtime).map(type => {
-      if (
-        type instanceof Types.ArrayType ||
-        type instanceof Types.DictType ||
-        type instanceof Types.SetType ||
-        type.isString()
-      ) {
-        return ok(true)
-      }
-
-      return ok(false)
     })
   }
 

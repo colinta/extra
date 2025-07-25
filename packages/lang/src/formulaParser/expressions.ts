@@ -143,8 +143,50 @@ export abstract class Expression {
     return undefined
   }
 
+  toLengthFormula(
+    runtime: TypeRuntime,
+  ): GetRuntimeResult<[RelationshipFormula, boolean] | undefined> {
+    return this.getType(runtime).map(type => {
+      const formula = this.relationshipFormula(runtime)
+      if (!formula) {
+        return
+      }
+
+      if (type.isFloat()) {
+        return [formula, false]
+      }
+
+      if (
+        type.isString() ||
+        type instanceof Types.ArrayType ||
+        type instanceof Types.DictType ||
+        type instanceof Types.SetType
+      ) {
+        return [relationshipFormula.propertyAccess(formula, 'length'), true]
+      }
+
+      return
+    })
+  }
+
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return ok(runtime)
+    const formula = this.relationshipFormula(runtime)
+    if (!formula) {
+      return ok(runtime)
+    }
+
+    return this.toLengthFormula(runtime).map(info => {
+      if (!info) {
+        return ok(runtime)
+      }
+
+      const [lengthFormula, isString] = info
+      if (isString) {
+        return assignNextRuntime(runtime, lengthFormula, '>', relationshipFormula.int(0))
+      } else {
+        return assignNextRuntime(runtime, formula, '!=', relationshipFormula.int(0))
+      }
+    })
   }
 
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
@@ -157,20 +199,6 @@ export abstract class Expression {
    */
   isInclusionOp(): this is Operation {
     return false
-  }
-
-  /**
-   * Expressions that return the size of the container:
-   *     [].length
-   *     dict().length
-   *     "".length
-   * e.g. `foo.length` where foo is an array, dict, or string.
-   *
-   * `foo > 5` is also a "length-expression" (naming is hard) because `foo` will be
-   * narrowed to a type with a minimum value of 5.
-   */
-  isLengthExpression(_runtime: TypeRuntime) {
-    return ok(false)
   }
 
   /**
@@ -486,52 +514,6 @@ export class Reference extends Identifier {
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.getType(runtime).map(type => {
       return type.fromTypeConstructor()
-    })
-  }
-
-  toLengthFormula(
-    runtime: TypeRuntime,
-  ): GetRuntimeResult<[RelationshipFormula, boolean] | undefined> {
-    return this.getType(runtime).map(type => {
-      const formula = this.relationshipFormula(runtime)
-      if (!formula) {
-        return
-      }
-
-      if (type.isFloat()) {
-        return [formula, false]
-      }
-
-      if (
-        type.isString() ||
-        type instanceof Types.ArrayType ||
-        type instanceof Types.DictType ||
-        type instanceof Types.SetType
-      ) {
-        return [relationshipFormula.propertyAccess(formula, 'length'), true]
-      }
-
-      return
-    })
-  }
-
-  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    const formula = this.relationshipFormula(runtime)
-    if (!formula) {
-      return ok(runtime)
-    }
-
-    return this.toLengthFormula(runtime).map(info => {
-      if (!info) {
-        return ok(runtime)
-      }
-
-      const [lengthFormula, isString] = info
-      if (isString) {
-        return assignNextRuntime(runtime, lengthFormula, '>', relationshipFormula.int(0))
-      } else {
-        return assignNextRuntime(runtime, formula, '!=', relationshipFormula.int(0))
-      }
     })
   }
 
@@ -4390,111 +4372,262 @@ export abstract class MatchExpression extends Expression {
    * `TypeRuntime` that has the new type information, including the assignment of any
    * match references.
    */
-  abstract assumeMatchAssertion(
+  abstract assumeMatchAssertionRuntime(
     runtime: TypeRuntime,
     lhsExpr: Expression,
     assumeTrue: boolean,
   ): GetRuntimeResult<TypeRuntime>
+
+  /**
+   * Similar to assumeMatchAssertionRuntime, but receives the lhsType instead of
+   * expression. This function is called on nested MatchExpressions.
+   */
+  abstract assumeNestedAssertionType(
+    runtime: MutableTypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult
+
+  /**
+   * The default implementation calls assigns the type from getAsTypeExpression and
+   * uses that to narrow lhsType, assigning it back to lhsExpr.
+   *
+   * Used in MatchTypeExpression and MatchStringLiteral.
+   */
+  defaultAssumeMatchAssertionRuntime(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    return getChildType(this, lhsExpr, runtime)
+      .map(lhsType => this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue))
+      .map(replaceType => lhsExpr.replaceWithType(runtime, replaceType))
+  }
+
+  /**
+   * The default implementation calls getAsTypeExpression, then uses that to narrow
+   * the lhsType.
+   *
+   * Used in MatchTypeExpression and MatchStringLiteral.
+   */
+  defaultAssumeNestedAssertionType(
+    runtime: TypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult {
+    return this.getAsTypeExpression(runtime).map(rhsTypeAssertion => {
+      return assumeTrue
+        ? Types.narrowTypeIs(lhsType, rhsTypeAssertion)
+        : Types.narrowTypeIsNot(lhsType, rhsTypeAssertion)
+    })
+  }
+
+  getType(): GetTypeResult {
+    return err(new RuntimeError(this, `${this.constructor.name} does not have a type`))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, `${this.constructor.name} cannot be evaluated`))
+  }
+
+  checkAssignRefs() {
+    const assignRefs = this.matchAssignReferences()
+    const found = new Set<string>()
+    for (const ref of assignRefs) {
+      if (found.has(ref)) {
+        return ref
+      }
+      found.add(ref)
+    }
+  }
+  abstract matchAssignReferences(): string[]
 }
 
 /**
  * foo is Int, foo is Int(>=0), foo is Array(Int(>1), length: >0), etc etc
  */
 export class MatchTypeExpression extends MatchExpression {
-  constructor(readonly argType: Expression) {
+  constructor(
+    readonly argType: Expression,
+    readonly assignRef: Reference | undefined,
+  ) {
     super(argType.range, argType.precedingComments, argType.followingComments)
+  }
+
+  matchAssignReferences() {
+    return this.assignRef ? [this.assignRef.name] : []
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.argType.getAsTypeExpression(runtime)
   }
 
-  assumeMatchAssertion(
+  assumeMatchAssertionRuntime(
     runtime: TypeRuntime,
     lhsExpr: Expression,
     assumeTrue: boolean,
   ): GetRuntimeResult<TypeRuntime> {
-    return getChildType(this, lhsExpr, runtime)
-      .map(lhsType =>
-        this.getAsTypeExpression(runtime).map(rhsTypeAssertion => [lhsType, rhsTypeAssertion]),
-      )
-      .map(([lhsType, rhsTypeAssertion]) => {
-        const assertType = assumeTrue
-          ? Types.narrowTypeIs(lhsType, rhsTypeAssertion)
-          : Types.narrowTypeIsNot(lhsType, rhsTypeAssertion)
-        return lhsExpr.replaceWithType(runtime, assertType)
-      })
+    return this.defaultAssumeMatchAssertionRuntime(runtime, lhsExpr, assumeTrue)
+  }
+
+  assumeNestedAssertionType(
+    runtime: MutableTypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult {
+    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue).map(type => {
+      if (type === Types.NeverType) {
+        return err(
+          new RuntimeError(this, `The expression '${lhsType} is ${this}' results in 'never' type.`),
+        )
+      }
+
+      if (this.assignRef) {
+        runtime.addLocalType(this.assignRef.name, type)
+      }
+
+      return ok(type)
+    })
   }
 
   toLisp() {
+    if (this.assignRef) {
+      return `(${this.argType.toLisp()} as ${this.assignRef.toLisp()})`
+    }
+
     return this.argType.toLisp()
   }
 
   toCode() {
+    if (this.assignRef) {
+      return `${this.argType} as ${this.assignRef}`
+    }
+
     return this.argType.toCode()
   }
+}
 
-  getType() {
-    return err(new RuntimeError(this, 'MatchTypeExpression does not have a type'))
+export abstract class MatchIdentifier extends MatchExpression {
+  abstract readonly reference?: Identifier
+
+  matchAssignReferences() {
+    return this.reference ? [this.reference.name] : []
   }
 
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'MatchTypeExpression cannot be evaluated'))
+  /**
+   * MatchIdentifier always assigns the lhs to the reference, with no type information
+   * added.
+   */
+  assumeMatchAssertionRuntime(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    if (!this.reference) {
+      return ok(runtime)
+    }
+
+    if (!assumeTrue) {
+      return err(
+        new RuntimeError(
+          this,
+          `The expression '${lhsExpr} !is ${this}' will never match (everything is assignable to ${this})`,
+        ),
+      )
+    }
+
+    const reference = this.reference
+    return getChildType(this, lhsExpr, runtime).map(lhsType => {
+      const mutableRuntime = new MutableTypeRuntime(runtime)
+      mutableRuntime.addLocalType(reference.name, lhsType)
+      return mutableRuntime
+    })
+  }
+
+  assumeNestedAssertionType(
+    runtime: MutableTypeRuntime,
+    lhsType: Types.Type,
+    _assumeTrue: boolean,
+  ): GetTypeResult {
+    if (!this.reference) {
+      return ok(lhsType)
+    }
+
+    runtime.addLocalType(this.reference.name, lhsType)
+    return ok(lhsType)
+  }
+
+  provides() {
+    if (!this.reference) {
+      return super.provides()
+    }
+
+    return new Set([this.reference.name])
   }
 }
 
 /**
- * A value or named value within a match expression
- *     [value]
- *      ^^^^^
- *     .something(named: value)
- *                ^^^^^^^^^^^^
+ * `_` will match anything, but will not assign it to scope.
  */
-export class MatchEnumReference extends Expression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly nameRef: Reference | undefined,
-    readonly reference: Identifier,
-  ) {
-    super(range, precedingComments)
+export class MatchIgnore extends MatchIdentifier {
+  readonly reference?: Identifier = undefined
+
+  toLisp() {
+    return '_'
   }
 
-  provides() {
-    return new Set([this.reference.name])
+  toCode() {
+    return '_'
+  }
+}
+
+/**
+ * `var-name` will match anything, and assigns it to scope. See MatchIdentifier for
+ * implementation.
+ */
+export class MatchReference extends MatchIdentifier {
+  constructor(readonly reference: Reference) {
+    super(reference.range, reference.precedingComments)
   }
 
   toLisp() {
-    if (this.nameRef) {
-      return `(${this.nameRef.toLisp()}: ${this.reference.toLisp()})`
-    }
     return this.reference.toLisp()
   }
 
   toCode() {
-    if (this.nameRef) {
-      return `${this.nameRef.toCode()}: ${this.reference.toCode()}`
-    }
-
     return this.reference.toCode()
-  }
-
-  getType() {
-    return err(new RuntimeError(this, 'MatchReference does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'MatchReference cannot be evaluated'))
   }
 }
 
 /**
- * Used to ignore the rest of the match args.
+ * Used to ignore the rest of the match args or array elements.
+ *     .some(arg1, ...)
+ *     [arg1, ...]
  *
  * TODO: Support splat (assigning remaining args to a Tuple)
+ *     .some(arg, ...remaining)
  */
-export class MatchEnumRemainingExpression extends Expression {
-  constructor(range: Range, precedingComments: Comment[]) {
+export class MatchIgnoreRemainingExpression extends MatchIdentifier {
+  readonly reference?: Identifier = undefined
+
+  toLisp() {
+    return SPLAT_OP
+  }
+
+  toCode() {
+    return SPLAT_OP
+  }
+}
+
+/**
+ * [...values]
+ */
+export class MatchAssignRemainingExpression extends MatchIdentifier {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly reference: Reference,
+  ) {
     super(range, precedingComments)
   }
 
@@ -4503,22 +4636,76 @@ export class MatchEnumRemainingExpression extends Expression {
   }
 
   toCode() {
-    return SPLAT_OP
-  }
-
-  getType() {
-    return err(new RuntimeError(this, 'MatchEnumRemainingExpression does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'MatchEnumRemainingExpression cannot be evaluated'))
+    return `${SPLAT_OP}${this.reference.name}`
   }
 }
 
 /**
- * foo is .some(arg1, named: arg2)
+ * A named reference within an enum match expression. Often contains a reference,
+ * but can contain any match expression.
+ *
+ *     .something(named: value)
+ *                ^^^^^^^^^^^^
+ *     .something(named: [value])
+ *                ^^^^^^^^^^^^^^
  */
-export class MatchEnumMemberExpression extends MatchExpression {
+export class MatchNamedArgument extends MatchExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly nameRef: Reference,
+    readonly matchExpr: MatchExpression,
+  ) {
+    super(range, precedingComments)
+  }
+
+  matchAssignReferences() {
+    return this.matchExpr.matchAssignReferences()
+  }
+
+  provides() {
+    return this.matchExpr.provides()
+  }
+
+  /**
+   * This is never called directly - only via MatchEnumExpression
+   */
+  assumeMatchAssertionRuntime(
+    runtime: TypeRuntime,
+    _lhsExpr: Expression,
+    _assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    return ok(runtime)
+  }
+
+  /**
+   * Called from MatchEnumExpression
+   */
+  assumeNestedAssertionType(
+    runtime: MutableTypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult {
+    return this.matchExpr.assumeNestedAssertionType(runtime, lhsType, assumeTrue)
+  }
+
+  toLisp() {
+    return `(${this.nameRef.toLisp()}: ${this.matchExpr.toLisp()})`
+  }
+
+  toCode() {
+    return `${this.nameRef.toCode()}: ${this.matchExpr.toCode()}`
+  }
+}
+
+/**
+ * Matches the case name and args.
+ *
+ *     foo is .some(arg1, named: arg2)
+ *     foo is .some(arg1, ...)
+ *     foo is .some([1, 2, ...], .red)
+ */
+export class MatchEnumExpression extends MatchExpression {
   private positionalCount: number = 0
   private names = new Set<string>()
 
@@ -4526,12 +4713,15 @@ export class MatchEnumMemberExpression extends MatchExpression {
     range: Range,
     precedingComments: Comment[],
     readonly name: string,
-    readonly args: MatchEnumReference[],
-    readonly ignoreRemaining: boolean,
+    readonly args: MatchExpression[],
   ) {
     super(range, precedingComments)
     for (const arg of args) {
-      if (arg.nameRef) {
+      if (arg instanceof MatchIgnoreRemainingExpression) {
+        break
+      }
+
+      if (arg instanceof MatchNamedArgument) {
         this.names.add(arg.nameRef.name)
       } else {
         this.positionalCount += 1
@@ -4539,27 +4729,99 @@ export class MatchEnumMemberExpression extends MatchExpression {
     }
   }
 
+  matchAssignReferences() {
+    return this.args.flatMap(match => match.matchAssignReferences())
+  }
+
   provides() {
     return this.args.reduce((set, arg) => union(set, arg.provides()), new Set<string>())
   }
 
+  /**
+   * Checks 'type' for an enum type with a case that matches the match data in
+   * `this`.
+   * - OneOfType searches all types for a matching enum
+   * - `this.name` must match EnumType.name
+   * - if `this.args` is empty only name needs to match.
+   * - if `this.args` includes 'MatchIgnoreRemaining', then there should be enough
+   *   positional args and names.
+   * - otherwise there should be the same number of positional args and names.
+   * - all the assigned names (in `this.names`) should be present in the enum case.
+   */
   private findEnumTypeThatMatchesCase(
     type: Types.Type,
-  ): [Types.EnumType, Types.EnumCase] | undefined {
+  ): GetRuntimeResult<[Types.EnumType, Types.EnumCase]> {
+    const result = this._findOptionalEnumTypeThatMatchesCase(type)
+    if (!result) {
+      return err(
+        new RuntimeError(
+          this,
+          `Invalid match expression - '${type}' does not match case expression '${this}'`,
+        ),
+      )
+    }
+
+    return result
+  }
+
+  /**
+   * See findEnumTypeThatMatchesCase, this function actually does the checking. Three
+   * possible return values:
+   * - `undefined` => no match found
+   * - Err => Multiple matches found
+   * - Ok([Types.EnumType, Types.EnumCase]) => match found
+   */
+  private _findOptionalEnumTypeThatMatchesCase(
+    type: Types.Type,
+  ): GetRuntimeResult<[Types.EnumType, Types.EnumCase]> | undefined {
+    if (type instanceof Types.OneOfType) {
+      let enumInfo: [Types.EnumType, Types.EnumCase] | undefined
+      for (const oneType of type.of) {
+        const oneCheckResult = this._findOptionalEnumTypeThatMatchesCase(oneType)
+        if (!oneCheckResult) {
+          continue
+        }
+
+        if (oneCheckResult.isErr()) {
+          return oneCheckResult
+        }
+
+        if (enumInfo) {
+          // TODO: could possibly support this, if all the matching enum cases have
+          // compatible arguments
+          return err(
+            new RuntimeError(
+              this,
+              `More than one matching case expression (${enumInfo[0]} and ${oneCheckResult.value[0]})`,
+            ),
+          )
+        } else {
+          enumInfo = oneCheckResult.value
+        }
+      }
+
+      return enumInfo ? ok(enumInfo) : undefined
+    }
+
+    // must be an enum
     if (!(type instanceof Types.EnumType)) {
       return
     }
 
+    // must have a case with this name
     const enumCase = type.members.find(({name}) => name === this.name)
     if (!enumCase) {
       return
     }
 
+    // if there are no args, then this is a match
     if (this.args.length === 0) {
-      return [type, enumCase]
+      return ok([type, enumCase])
     }
 
-    if (this.ignoreRemaining) {
+    // if not all args are matched, only check for enough args
+    const ignoreRemaining = this.args.at(-1) instanceof MatchIgnoreRemainingExpression
+    if (ignoreRemaining) {
       // foo is .some(value, ...)
       // => fine as long as EnumType has *at least* enough arguments to assign
       if (
@@ -4572,6 +4834,7 @@ export class MatchEnumMemberExpression extends MatchExpression {
       enumCase.positionalTypes.length !== this.positionalCount ||
       enumCase.namedTypes.size !== this.names.size
     ) {
+      // no ignore-remaining matcher, so counts of all args must equal
       return
     }
 
@@ -4582,10 +4845,10 @@ export class MatchEnumMemberExpression extends MatchExpression {
       }
     }
 
-    return [type, enumCase]
+    return ok([type, enumCase])
   }
 
-  assumeMatchAssertion(
+  assumeMatchAssertionRuntime(
     runtime: TypeRuntime,
     lhsExpr: Expression,
     assumeTrue: boolean,
@@ -4594,62 +4857,78 @@ export class MatchEnumMemberExpression extends MatchExpression {
       // (type: SomeEnum | Int)
       //      type !is .specific
       // no inference can be done here. type could still be SomeEnum, it
-      // could still be Int.
+      // could still be Int. *Technically* we could return a new Enum type
+      // that doesn't include .specific
       return ok(runtime)
     }
 
-    return getChildType(this, lhsExpr, runtime).map(lhsType => {
-      let enumInfo: [Types.EnumType, Types.EnumCase] | undefined
-      if (lhsType instanceof Types.OneOfType) {
-        for (const type of lhsType.of) {
-          const oneInfo = this.findEnumTypeThatMatchesCase(type)
-          if (oneInfo && enumInfo) {
-            return err(
-              new RuntimeError(
-                this,
-                'TODO: Support more than one matching case expression in a one-of type',
-              ),
-            )
-          } else if (oneInfo) {
-            enumInfo = oneInfo
-          }
-        }
-      } else {
-        enumInfo = this.findEnumTypeThatMatchesCase(lhsType)
-      }
-      if (!enumInfo) {
-        return lhsExpr.replaceWithType(runtime, Types.NeverType)
-      }
+    return getChildType(this, lhsExpr, runtime)
+      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
+      .map(([_lhsType, runtime]) => {
+        return runtime
+      })
+  }
+
+  assumeNestedAssertionType(
+    runtime: MutableTypeRuntime,
+    lhsType: Types.Type,
+    _assumeTrue: boolean,
+  ): GetTypeResult {
+    return this._assumeMatchAndNestedAssertionType(runtime, undefined, lhsType).map(
+      ([type, _runtime]) => type,
+    )
+  }
+
+  /**
+   * The price of code sharing here is quite high, but worth it if you look at
+   * assumeMatchAssertionRuntime and assumeNestedAssertionType. For
+   * assumeMatchAssertionRuntime we assign the new type to lhsExpr and all the
+   * matching arguments, and for assumeNestedAssertionType we only need to assign
+   * matching references.
+
+   * So this function accepts a runtime - which may be mutable - and lhsExpr - which
+   * may be undefined - and the lhsType, which will be used to search for a matching
+   * case and to examine its args for more matches.
+   */
+  private _assumeMatchAndNestedAssertionType(
+    runtime: TypeRuntime,
+    lhsExpr: Expression | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<[Types.Type, TypeRuntime]> {
+    return this.findEnumTypeThatMatchesCase(lhsType).map(enumInfo => {
       const [enumType, enumCase] = enumInfo
+      const replaceType = Types.narrowTypeIs(lhsType, enumType)
 
-      const assertType = Types.narrowTypeIs(lhsType, enumType)
-
-      return lhsExpr.replaceWithType(runtime, assertType).map(nextRuntime => {
-        if (assumeTrue && this.args.length) {
-          const mutableRuntime = new MutableTypeRuntime(nextRuntime)
-          let index = 0
-          for (const arg of this.args) {
-            if (arg.reference instanceof IgnorePlaceholder) {
-              if (!arg.nameRef) {
-                index += 1
-              }
-              continue
-            }
-
-            let type: Types.Type
-            if (arg.nameRef) {
-              type = enumCase.namedTypes.get(arg.nameRef.name)!
-            } else {
-              type = enumCase.positionalTypes[index]
-              index += 1
-            }
-            mutableRuntime.addLocalType(arg.reference.name, type)
-          }
-
-          return mutableRuntime
+      // if lhsExpr is passed in, assign it with replaceType
+      const nextRuntime = lhsExpr?.replaceWithType(runtime, replaceType) ?? ok(runtime)
+      return nextRuntime.map(runtime => {
+        if (!this.args.length) {
+          return ok([replaceType, runtime])
         }
 
-        return nextRuntime
+        const mutableRuntime =
+          runtime instanceof MutableTypeRuntime ? runtime : new MutableTypeRuntime(runtime)
+
+        let index = 0
+        for (const arg of this.args) {
+          let type: Types.Type
+          if (arg instanceof MatchNamedArgument) {
+            type = enumCase.namedTypes.get(arg.nameRef.name)!
+          } else {
+            type = enumCase.positionalTypes[index]
+            index += 1
+          }
+
+          // not doing anything with the type - in theory it could be used to further
+          // decorate lhsExpr, but realistically that will be too complicated to
+          // store in relationships.ts
+          const result = arg.assumeNestedAssertionType(mutableRuntime, type, true)
+          if (result.isErr()) {
+            return err(result.error)
+          }
+        }
+
+        return [replaceType, mutableRuntime]
       })
     })
   }
@@ -4657,9 +4936,6 @@ export class MatchEnumMemberExpression extends MatchExpression {
   toLisp() {
     let code = '.' + this.name
     const args = this.args.map(arg => arg.toLisp())
-    if (this.ignoreRemaining) {
-      args.push(SPLAT_OP)
-    }
 
     if (this.args.length) {
       code += `(${args.join(' ')})`
@@ -4671,9 +4947,6 @@ export class MatchEnumMemberExpression extends MatchExpression {
   toCode() {
     let code = '.' + this.name
     const args = this.args.map(arg => arg.toCode())
-    if (this.ignoreRemaining) {
-      args.push(SPLAT_OP)
-    }
 
     if (args.length) {
       code += `(${args.join(', ')})`
@@ -4681,17 +4954,54 @@ export class MatchEnumMemberExpression extends MatchExpression {
 
     return code
   }
+}
 
-  getType() {
-    return err(new RuntimeError(this, 'MatchEnumMemberExpression does not have a type'))
+export class MatchLiteral extends MatchExpression {
+  constructor(readonly literal: Literal) {
+    super(literal.range, literal.precedingComments)
   }
 
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'MatchEnumMemberExpression cannot be evaluated'))
+  matchAssignReferences() {
+    return []
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return this.literal.getAsTypeExpression()
+  }
+
+  assumeMatchAssertionRuntime(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    return this.defaultAssumeMatchAssertionRuntime(runtime, lhsExpr, assumeTrue)
+  }
+
+  assumeNestedAssertionType(
+    runtime: TypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult {
+    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
+  }
+
+  toLisp() {
+    return this.literal.toLisp()
+  }
+
+  toCode() {
+    return this.literal.toCode()
+  }
+}
+
+export class MatchStringLiteral extends MatchLiteral {
+  constructor(readonly literal: StringLiteral) {
+    super(literal)
   }
 }
 
 /**
+ * foo is "prefix"
  * foo is "prefix" <> value
  * foo is value <> "suffix"
  * foo is "pre" <> value <> "post"
@@ -4700,27 +5010,159 @@ export class MatchStringExpression extends MatchExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly args: (StringLiteral | Reference)[],
+    readonly args: (MatchStringLiteral | MatchReference)[],
   ) {
     super(range, precedingComments)
+  }
+
+  matchAssignReferences() {
+    return this.args.flatMap(match => match.matchAssignReferences())
   }
 
   provides() {
     return this.args.reduce((set, arg) => union(set, arg.provides()), new Set<string>())
   }
 
-  assumeMatchAssertion(
+  private calcMatchLength() {
+    return this.args.reduce((minLength, arg) => {
+      if (arg instanceof MatchStringLiteral) {
+        return minLength + arg.literal.value.length
+      }
+      return minLength
+    }, 0)
+  }
+
+  /**
+   * Add up all the string literals, the String is at least that length.
+   */
+  getAsTypeExpression(_runtime: TypeRuntime): GetTypeResult {
+    return ok(
+      Types.StringType.narrowString({
+        length: {min: this.calcMatchLength(), max: undefined},
+        regex: [],
+      }),
+    )
+  }
+
+  assumeMatchAssertionRuntime(
     runtime: TypeRuntime,
     lhsExpr: Expression,
     assumeTrue: boolean,
   ): GetRuntimeResult<TypeRuntime> {
-    return err(new RuntimeError(this, 'TODO'))
+    if (!assumeTrue) {
+      // (type: String | Int)
+      //      type !is "test" <> foo
+      // type => no inference - in fact, using the type information from
+      // getAsTypeExpression would be faulty, because it would be asserting
+      //      type !is String(length: >4)
+      // which is not at all the same
+      return ok(runtime)
+    }
+
+    return getChildType(this, lhsExpr, runtime)
+      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
+      .map(([_lhsType, runtime]) => {
+        return runtime
+      })
+  }
+
+  assumeNestedAssertionType(
+    runtime: MutableTypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult {
+    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
+  }
+
+  private _assumeMatchAndNestedAssertionType(
+    runtime: TypeRuntime,
+    lhsExpr: Expression | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<[Types.Type, TypeRuntime]> {
+    let stringType: Types.Type | undefined
+    let stringTypeMaxLength: number | undefined = undefined
+    if (lhsType instanceof Types.OneOfType) {
+      for (const type of lhsType.of) {
+        if (!type.isString()) {
+          continue
+        }
+
+        if (stringTypeMaxLength !== undefined) {
+          const maxTypeLength = type.narrowedString.length.max
+          stringTypeMaxLength =
+            maxTypeLength === undefined ? undefined : Math.min(stringTypeMaxLength, maxTypeLength)
+        }
+
+        if (!stringType) {
+          stringType = type
+        } else {
+          stringType = Types.compatibleWithBothTypes(stringType, type)
+        }
+      }
+    } else if (lhsType.isString()) {
+      stringType = lhsType
+      stringTypeMaxLength = lhsType.narrowedString.length.max
+    }
+
+    if (!stringType) {
+      return err(
+        new RuntimeError(
+          this,
+          `Invalid match expression - '${lhsExpr}: ${lhsType}' does not match string expression '${this}'`,
+        ),
+      )
+    }
+
+    const minMatchLength = this.calcMatchLength()
+    if (stringTypeMaxLength !== undefined && minMatchLength > stringTypeMaxLength) {
+      return err(
+        new RuntimeError(
+          this,
+          `Invalid match expression - '${lhsExpr}: ${lhsType}' always contains less characters than '${this}'`,
+        ),
+      )
+    }
+
+    const replaceType = Types.StringType.narrowString({
+      length: {
+        min: minMatchLength,
+        max: undefined,
+      },
+      regex: [],
+    })
+
+    const nextRuntime = lhsExpr?.replaceWithType(runtime, replaceType) ?? ok(runtime)
+    return nextRuntime.map(runtime => {
+      const mutableRuntime =
+        runtime instanceof MutableTypeRuntime ? runtime : new MutableTypeRuntime(runtime)
+
+      // all the assigned matches will have this length. They could be empty strings, but
+      // at most the will have this many characters
+      const remainingMaxLength =
+        stringTypeMaxLength === undefined ? undefined : stringTypeMaxLength - minMatchLength
+      const type = Types.StringType.narrowString({
+        length: {
+          min: 0,
+          max: remainingMaxLength,
+        },
+        regex: [],
+      })
+
+      for (const arg of this.args) {
+        const result = arg.assumeNestedAssertionType(mutableRuntime, type, true)
+        if (result.isErr()) {
+          return err(result.error)
+        }
+      }
+
+      return [replaceType, mutableRuntime]
+    })
   }
 
   toLisp() {
     const args = this.args.map(arg => arg.toLisp())
 
-    return args.join(' <> ')
+    return `(${args.join(' <> ')})`
   }
 
   toCode() {
@@ -4728,78 +5170,257 @@ export class MatchStringExpression extends MatchExpression {
 
     return args.join(' <> ')
   }
-
-  getType() {
-    return err(new RuntimeError(this, 'MatchStringExpression does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'MatchStringExpression cannot be evaluated'))
-  }
 }
 
 /**
- * [...]
- * [...values]
+ * Checks for the range of a number - 'foo' will be an int or float.
+ * There actually is no way to use 'is' to match a *range value*, ie
+ *     let
+ *       foo = 0...10 -- type: IntRange
+ *                    -- value: IntRange([0, false], [10, false])
+ *     in
+ *       foo is ?  -- yeah I got nothing for ya
+ *
+ * TODO: foo is IntRange I guess?
+ *
+ *                      [value, inclusive?, float?]
+ *                         min                   max
+ * foo is =0         [0, true, false]     [0, true, false]
+ * foo is <10.0         undefined         [10, false, true]
+ * foo is >10       [10, false, false]        undefined
+ * foo is 0..<1      [0, true, false]     [1, false, false]
+ * foo is 0...0.5    [0, true, false]     [0.5, true, true]
  */
-export class MatchArrayRemainingExpression extends Expression {
+export class MatchRangeExpression extends MatchExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly reference: Reference | IgnorePlaceholder | undefined,
+    // min value, whether it's inclusive, and whether it's a float
+    readonly min: [number, boolean, boolean] | undefined,
+    // max value, whether it's inclusive, and whether it's a float
+    readonly max: [number, boolean, boolean] | undefined,
   ) {
     super(range, precedingComments)
   }
 
-  provides() {
-    if (this.reference) {
-      return new Set([this.reference.name])
+  matchAssignReferences() {
+    return []
+  }
+
+  /**
+   * TODO: this logic of [number, boolean] should either be adopted by Narrowed
+   * types, or it should be moved into types.ts so that this logic isn't buried here.
+   */
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    // I don't have to explain myself
+    if ((this.min?.[2] ?? false) || (this.max?.[2] ?? false)) {
+      // narrowed types use number | [number], where number is inclusive and
+      // [number] is exclusive. If you know why I chose that convention, then
+      // you know you some high school math!
+      const narrowMin: number | [number] | undefined = this.min
+        ? this.min[1]
+          ? [this.min[0]] // exclusive
+          : this.min[0] // inclusive
+        : undefined // open
+      const narrowMax: number | [number] | undefined = this.max
+        ? this.max[1]
+          ? [this.max[0]] // exclusive
+          : this.max[0] // inclusive
+        : undefined // open
+      return ok(Types.FloatType.narrow(narrowMin, narrowMax))
     }
-    return super.provides()
+
+    // narrowed integers don't use the exclusive [number] syntax, because
+    // >0 is equivalent to >=1, <0 is equivalent to <=-1
+    const narrowMin: number | undefined = this.min
+      ? this.min[1]
+        ? this.min[0] + 1 // "exclusive"
+        : this.min[0] // inclusive
+      : undefined // open
+    const narrowMax: number | undefined = this.max
+      ? this.max[1]
+        ? this.max[0] - 1 // "exclusive"
+        : this.max[0] // inclusive
+      : undefined // open
+    return ok(Types.IntType.narrow(narrowMin, narrowMax))
+  }
+
+  assumeMatchAssertionRuntime(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    return this.defaultAssumeMatchAssertionRuntime(runtime, lhsExpr, assumeTrue)
+  }
+
+  assumeNestedAssertionType(
+    runtime: TypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult {
+    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
   }
 
   toLisp() {
-    return this.toCode()
+    return '<.TODO.>'
   }
 
   toCode() {
-    if (this.reference) {
-      return `${SPLAT_OP}${this.reference.name}`
-    }
-    return SPLAT_OP
-  }
-
-  getType() {
-    return err(new RuntimeError(this, 'MatchArrayRemainingExpression does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'MatchArrayRemainingExpression cannot be evaluated'))
+    return '<.TODO.>'
   }
 }
 
 /**
- * foo is [_, value, ...values]
+ * foo is [value, ...values]
+ * foo is [_, ...]
  */
 export class MatchArrayExpression extends MatchExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly args: (MatchArrayRemainingExpression | Reference | IgnorePlaceholder)[],
+    readonly args: MatchExpression[],
   ) {
     super(range, precedingComments)
+  }
+
+  matchAssignReferences() {
+    return this.args.flatMap(match => match.matchAssignReferences())
   }
 
   provides() {
     return this.args.reduce((set, arg) => union(set, arg.provides()), new Set<string>())
   }
 
-  assumeMatchAssertion(
+  private calcMatchLength(): [number, number | undefined] {
+    let minLength = 0
+    let maxLength: number | undefined = 0
+
+    for (const arg of this.args) {
+      if (arg instanceof MatchAssignRemainingExpression) {
+        maxLength = undefined
+      } else {
+        minLength += 1
+        maxLength = maxLength === undefined ? undefined : maxLength + 1
+      }
+    }
+
+    return [minLength, maxLength]
+  }
+
+  assumeMatchAssertionRuntime(
     runtime: TypeRuntime,
     lhsExpr: Expression,
     assumeTrue: boolean,
   ): GetRuntimeResult<TypeRuntime> {
-    return err(new RuntimeError(this, 'TODO'))
+    if (!assumeTrue) {
+      // (type: Array(Int) | Int)
+      //      type !is [a]
+      // type => Int | Array(Int, length: =0) | Array(Int, length >=1)
+      return ok(runtime)
+    }
+
+    return getChildType(this, lhsExpr, runtime)
+      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
+      .map(([_lhsType, runtime]) => {
+        return runtime
+      })
+  }
+
+  assumeNestedAssertionType(
+    runtime: MutableTypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult {
+    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
+  }
+
+  private _assumeMatchAndNestedAssertionType(
+    runtime: TypeRuntime,
+    lhsExpr: Expression | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<[Types.Type, TypeRuntime]> {
+    let arrayType: Types.ArrayType | undefined
+    if (lhsType instanceof Types.OneOfType) {
+      for (const type of lhsType.of) {
+        if (!(type instanceof Types.ArrayType)) {
+          continue
+        }
+
+        if (!arrayType) {
+          arrayType = type
+        } else {
+          arrayType = Types.compatibleWithBothTypes(arrayType, type) as Types.ArrayType
+        }
+      }
+    } else if (lhsType instanceof Types.ArrayType) {
+      arrayType = lhsType
+    }
+
+    if (!arrayType) {
+      return err(
+        new RuntimeError(
+          this,
+          `Invalid match expression - '${lhsExpr}: ${lhsType}' does not match array expression '${this}'`,
+        ),
+      )
+    }
+
+    const [minMatchLength, maxMatchLength] = this.calcMatchLength()
+    if (maxMatchLength !== undefined && maxMatchLength < arrayType.narrowedLength.min) {
+      return err(
+        new RuntimeError(
+          this,
+          `Invalid match expression - '${lhsExpr}: ${lhsType}' always contains more values than '${this}'`,
+        ),
+      )
+    }
+
+    if (
+      arrayType.narrowedLength.max !== undefined &&
+      minMatchLength > arrayType.narrowedLength.max
+    ) {
+      return err(
+        new RuntimeError(
+          this,
+          `Invalid match expression - '${lhsExpr}: ${lhsType}' always contains less values than '${this}'`,
+        ),
+      )
+    }
+
+    const replaceType = new Types.ArrayType(arrayType.of, {
+      min: minMatchLength,
+      max: maxMatchLength,
+    })
+
+    const nextRuntime = lhsExpr?.replaceWithType(runtime, replaceType) ?? ok(runtime)
+    return nextRuntime.map(runtime => {
+      const mutableRuntime =
+        runtime instanceof MutableTypeRuntime ? runtime : new MutableTypeRuntime(runtime)
+
+      // this code already supports [a, b, ...c, d, e]
+      // a,b,d,e would contribute to minMatchLength, and so the min/max
+      // calculation is correct
+      for (const arg of this.args) {
+        if (arg instanceof MatchAssignRemainingExpression) {
+          const min = Math.max(0, arrayType.narrowedLength.min - minMatchLength)
+          const max =
+            arrayType.narrowedLength.max === undefined
+              ? undefined
+              : Math.max(0, arrayType.narrowedLength.max - minMatchLength)
+          mutableRuntime.addLocalType(
+            arg.reference.name,
+            new Types.ArrayType(arrayType.of, {min, max}),
+          )
+        } else {
+          const result = arg.assumeNestedAssertionType(mutableRuntime, arrayType.of, true)
+          if (result.isErr()) {
+            return err(result.error)
+          }
+        }
+      }
+
+      return [replaceType, mutableRuntime]
+    })
   }
 
   toLisp() {
@@ -4813,13 +5434,49 @@ export class MatchArrayExpression extends MatchExpression {
 
     return `[${args.join(', ')}]`
   }
+}
 
-  getType() {
-    return err(new RuntimeError(this, 'MatchArrayExpression does not have a type'))
+export class CaseExpression extends MatchExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly matches: MatchExpression[],
+    readonly bodyExpression: MatchExpression,
+  ) {
+    super(range, precedingComments)
   }
 
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'MatchArrayExpression cannot be evaluated'))
+  matchAssignReferences() {
+    return this.matches.flatMap(match => match.matchAssignReferences())
+  }
+
+  assumeMatchAssertionRuntime(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    return err(new RuntimeError(this, 'TODO'))
+  }
+
+  assumeNestedAssertionType(
+    _runtime: MutableTypeRuntime,
+    lhsType: Types.Type,
+    _assumeTrue: boolean,
+  ): GetTypeResult {
+    return ok(lhsType)
+  }
+
+  toLisp() {
+    const caseCode = this.matches.map(match => match.toLisp()).join(' ')
+    return `(case ${caseCode} : ${this.bodyExpression.toCode()})`
+  }
+
+  toCode() {
+    let code = 'case ' + this.matches[0].toCode()
+    code += this.matches.slice(1).map(match => '\n' + indent(match.toCode()))
+    code += ':\n'
+    code += indent(this.bodyExpression.toCode())
+    return code
   }
 }
 
