@@ -7,7 +7,7 @@ import {
   type TypeRuntime,
   type ValueRuntime,
 } from '../runtime'
-import {combineConcatLengths} from '../narrowed'
+import {combineConcatLengths, combineSetLengths} from '../narrowed'
 import {
   assignNextRuntime,
   findEventualRef,
@@ -1782,6 +1782,11 @@ class AdditionOperator extends BinaryOperator {
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
+    if (lhs instanceof Types.SetType && rhs instanceof Types.SetType) {
+      const concatLength = combineSetLengths(lhs.narrowedLength, rhs.narrowedLength)
+      return ok(Types.set(Types.compatibleWithBothTypes(lhs.of, rhs.of), concatLength))
+    }
+
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
       return ok(Types.literal(lhs.value + rhs.value, anyFloaters(lhs, rhs)))
     }
@@ -2861,6 +2866,10 @@ class ArrayAccessOperator extends PropertyChainOperator {
         )
       }
 
+      if (lhs instanceof Types.MetaStringType) {
+        return this.accessInStringType(runtime, lhs, rhs, lhsExpr, rhsExpr)
+      }
+
       if (lhs instanceof Types.ArrayType) {
         return this.accessInArrayType(runtime, lhs, rhs, lhsExpr, rhsExpr)
       }
@@ -2877,20 +2886,7 @@ class ArrayAccessOperator extends PropertyChainOperator {
     })
   }
 
-  accessInArrayType(
-    runtime: TypeRuntime,
-    lhs: Types.ArrayType,
-    rhs: Types.Type,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ) {
-    if (rhs.isLiteral() && !(rhs.value instanceof RegExp)) {
-      const type = lhs.literalAccessType(rhs.value)
-      if (type) {
-        return ok(type)
-      }
-    }
-
+  checkLengthInRange(runtime: TypeRuntime, lhsExpr: Expression, rhsExpr: Expression) {
     const lhsRel = lhsExpr.relationshipFormula(runtime)
     const rhsRel = rhsExpr.relationshipFormula(runtime)
     if (lhsRel && rhsRel) {
@@ -2906,16 +2902,65 @@ class ArrayAccessOperator extends PropertyChainOperator {
         )
         const rhsIsLtLength = verifyRelationship(rhsRel, '<', lhsLength, getRelationships)
         if (rhsIsGtZero && rhsIsLtLength) {
-          return ok(lhs.of)
+          return true
         }
       }
     }
 
-    if (rhs.isInt()) {
-      const type = lhs.arrayAccessType(rhs)
+    return false
+  }
+
+  accessInStringType(
+    runtime: TypeRuntime,
+    lhs: Types.MetaStringType,
+    rhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
+    if (rhs.isLiteral() && !(rhs.value instanceof RegExp)) {
+      const type = lhs.literalAccessType(rhs.value)
       if (type) {
-        return ok(type)
+        return type
       }
+    }
+
+    const lengthCheck = this.checkLengthInRange(runtime, lhsExpr, rhsExpr)
+    if (lengthCheck) {
+      return Types.StringType
+    }
+
+    const type = lhs.arrayAccessType(rhs)
+    if (type) {
+      return type
+    }
+
+    return err(
+      new RuntimeError(rhsExpr, `Expected Int (Strings can only be indexed by Int), found ${lhs}`),
+    )
+  }
+
+  accessInArrayType(
+    runtime: TypeRuntime,
+    lhs: Types.ArrayType,
+    rhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
+    if (rhs.isLiteral() && !(rhs.value instanceof RegExp)) {
+      const type = lhs.literalAccessType(rhs.value)
+      if (type) {
+        return type
+      }
+    }
+
+    const lengthCheck = this.checkLengthInRange(runtime, lhsExpr, rhsExpr)
+    if (lengthCheck) {
+      return lhs.of
+    }
+
+    const type = lhs.arrayAccessType(rhs)
+    if (type) {
+      return type
     }
 
     return err(
@@ -2964,6 +3009,10 @@ class ArrayAccessOperator extends PropertyChainOperator {
     rhsExpr: Expression,
   ): GetValueResult {
     return rhs().map(rhs => {
+      if (lhs instanceof Values.StringValue) {
+        return this.accessInStringValue(lhs, rhs, rhsExpr)
+      }
+
       if (lhs instanceof Values.ArrayValue) {
         return this.accessInArrayValue(lhs, rhs, rhsExpr)
       }
@@ -2983,6 +3032,15 @@ class ArrayAccessOperator extends PropertyChainOperator {
         ),
       )
     })
+  }
+
+  accessInStringValue(lhs: Values.StringValue, rhs: Values.Value, rhsExpr: Expression) {
+    if (!rhs.isInt()) {
+      return err(new RuntimeError(rhsExpr, `${rhsExpr} is an invalid string index. Expected Int`))
+    }
+
+    const value = lhs.arrayAccessValue(rhs.value)
+    return ok(value ?? Values.NullValue)
   }
 
   accessInArrayValue(lhs: Values.ArrayValue, rhs: Values.Value, rhsExpr: Expression) {
@@ -3130,7 +3188,17 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
 
     const [lhsExpr, argListExpr] = this.args
     const [lhsCode, argListCode] = [lhsExpr.toCode(prevPrecedence), argListExpr.toCode(0)]
-    return `${lhsCode}${argListCode}`
+    if (
+      lhsExpr instanceof PropertyChainOperator ||
+      lhsExpr instanceof Expressions.Identifier ||
+      lhsExpr instanceof EnumLookupOperator
+    ) {
+      return `${lhsCode}${argListCode}`
+    }
+
+    console.log('=========== operators.ts at line 3234 ===========')
+    console.log({lhsExpr})
+    return `(${lhsCode})${argListCode}`
   }
 
   // unused in 'chain' operations
@@ -4176,36 +4244,32 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
     return `(guard ${this.argList.toLisp()})`
   }
 
-  toCode(prevPrecedence = 0): string {
-    if (prevPrecedence > this.operator.precedence) {
-      return `(${this.toCode(0)})`
+  toCode(): string {
+    if (!this.bodyExpr || !this.conditionExpr || !this.elseExpr) {
+      const argListCode = this.argList.toCode()
+      return `guard ${argListCode}`
     }
 
-    if (this.bodyExpr && this.conditionExpr && this.elseExpr) {
-      const condition = this.conditionExpr.toCode(0)
-      const elseCode = this.elseExpr.toCode(0)
-      const bodyCode = this.bodyExpr.toCode(0)
-      const hasNewline =
-        condition.includes('\n') || elseCode.includes('\n') || bodyCode.includes('\n')
-      let totalLength = 0
-      if (!hasNewline) {
-        totalLength += condition.length + elseCode.length + bodyCode.length
-        totalLength += ' (else: ):'.length
-      }
-      if (hasNewline || totalLength > SMALL_LEN) {
-        let code = 'guard (\n'
-        code += indent(condition) + '\n'
-        code += 'else:\n'
-        code += indent(elseCode) + '\n'
-        code += '):\n'
-        code += indent(this.bodyExpr.toCode())
-        return code
-      } else {
-        return `guard (${condition}, else: ${elseCode}): ${bodyCode}`
-      }
+    const condition = this.conditionExpr.toCode()
+    const elseCode = this.elseExpr.toCode()
+    const bodyCode = this.bodyExpr.toCode()
+    const hasNewline =
+      condition.includes('\n') || elseCode.includes('\n') || bodyCode.includes('\n')
+    let totalLength = 0
+    if (!hasNewline) {
+      totalLength += condition.length + elseCode.length + bodyCode.length
+      totalLength += ' else:'.length
+    }
+    if (hasNewline || totalLength > SMALL_LEN) {
+      let code = 'guard (\n'
+      code += indent(condition) + '\n'
+      code += 'else:\n'
+      code += indent(elseCode) + '\n'
+      code += '):\n'
+      code += indent(bodyCode)
+      return code
     } else {
-      const argListCode = this.argList.toCode(0)
-      return `guard ${argListCode}`
+      return `guard (${condition}, else: ${elseCode}): ${bodyCode}`
     }
   }
 
@@ -4296,6 +4360,75 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
   }
 }
 
+export class SwitchExpressionInvocation extends FunctionInvocationOperator {
+  symbol = 'switch'
+  argList: Expression
+  subjectExpr?: Expression
+  caseExprs?: Expression[]
+  elseExpr?: Expression
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    super(range, precedingComments, followingOperatorComments, operator, args)
+    this.argList = args[1]
+
+    if (this.argList instanceof Expressions.ArgumentsList) {
+      const args = this.argList.allPositionalArgs()
+      this.subjectExpr = args[0]
+      this.caseExprs = args.slice(1)
+      this.elseExpr = this.argList.namedArg('else')
+    }
+  }
+
+  /**
+   * No need to enclose function invocations in `(…)`
+   */
+  toViewPropCode() {
+    return this.toCode()
+  }
+
+  toLisp() {
+    return `(switch ${this.argList.toLisp()})`
+  }
+
+  toCode(): string {
+    if (!this.subjectExpr || !this.caseExprs) {
+      const argListCode = this.argList.toCode()
+      return `switch ${argListCode}`
+    }
+
+    const subjectCode = this.subjectExpr.toCode()
+    let code = 'switch (' + subjectCode + ') {\n'
+    for (const caseExpr of this.caseExprs) {
+      code += caseExpr.toCode() + '\n'
+    }
+    if (this.elseExpr) {
+      code += 'else:\n'
+      code += indent(this.elseExpr.toCode()) + '\n'
+    }
+    code += '}'
+    return code
+  }
+
+  // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+  rhsType(): GetTypeResult {
+    return ok(Types.AllType)
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    return err(new RuntimeError(this, 'TODO: SwitchExpressionInvocation.getType() not implemented'))
+  }
+
+  eval(runtime: ValueRuntime): GetValueResult {
+    return err(new RuntimeError(this, 'TODO: SwitchExpressionInvocation.eval() not implemented'))
+  }
+}
+
 addBinaryOperator({
   name: 'function invocation',
   symbol: 'fn',
@@ -4310,6 +4443,16 @@ addBinaryOperator({
   ) {
     if (args[0] instanceof Expressions.GuardIdentifier) {
       return new GuardExpressionInvocation(
+        range,
+        precedingComments,
+        followingOperatorComments,
+        operator,
+        args,
+      )
+    }
+
+    if (args[0] instanceof Expressions.SwitchIdentifier) {
+      return new SwitchExpressionInvocation(
         range,
         precedingComments,
         followingOperatorComments,

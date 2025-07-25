@@ -39,7 +39,7 @@ const HIGHEST_PRECEDENCE = 100
  */
 export abstract class Expression {
   resolvedType: Types.Type | undefined
-  #resolvedRuntime: TypeRuntime | undefined
+  // #resolvedRuntime: TypeRuntime | undefined
 
   constructor(
     readonly range: Range,
@@ -49,19 +49,19 @@ export abstract class Expression {
      */
     public followingComments: Comment[] = [],
   ) {
-    const getType: (runtime: TypeRuntime, ...rem: any[]) => GetTypeResult = this.getType.bind(this)
-    this.getType = (runtime: TypeRuntime, ...args: any[]) => {
-      if (this.#resolvedRuntime !== runtime) {
-        this.resolvedType = undefined
-      } else if (this.resolvedType) {
-        return ok(this.resolvedType)
-      }
-      return getType(runtime, ...args).map(type => {
-        this.resolvedType = type
-        return type
-      })
-    }
-    Object.defineProperty(this, 'getType', {enumerable: false})
+    // const getType: (runtime: TypeRuntime, ...rem: any[]) => GetTypeResult = this.getType.bind(this)
+    // this.getType = (runtime: TypeRuntime, ...args: any[]) => {
+    //   if (this.#resolvedRuntime !== runtime) {
+    //     this.resolvedType = undefined
+    //   } else if (this.resolvedType) {
+    //     return ok(this.resolvedType)
+    //   }
+    //   return getType(runtime, ...args).map(type => {
+    //     this.resolvedType = type
+    //     return type
+    //   })
+    // }
+    // Object.defineProperty(this, 'getType', {enumerable: false})
   }
 
   /**
@@ -2378,6 +2378,10 @@ export class SwitchIdentifier extends ReservedWord {
       ),
     )
   }
+}
+
+export class CaseIdentifier extends ReservedWord {
+  readonly name = 'case'
 }
 
 export class ObjectConstructorIdentifier extends ReservedWord {
@@ -5441,7 +5445,7 @@ export class CaseExpression extends MatchExpression {
     range: Range,
     precedingComments: Comment[],
     readonly matches: MatchExpression[],
-    readonly bodyExpression: MatchExpression,
+    readonly bodyExpression: Expression,
   ) {
     super(range, precedingComments)
   }

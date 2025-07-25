@@ -28,11 +28,20 @@ let
 in
   a + 1
 `,
-        '(let (a: 1) (+ a 1))',
+        '(let (a = 1) (+ a 1))',
+      ]),
+      c([
+        `\
+let
+  a: Int = 1
+in
+  a + 1
+`,
+        '(let (a: `Int` = 1) (+ a 1))',
       ]),
       c([
         `let a = 1 , b = 2 in a + b`,
-        '(let (a: 1) (b: 2) (+ a b))',
+        '(let (a = 1) (b = 2) (+ a b))',
         `\
 let
   a = 1
@@ -51,7 +60,7 @@ let
 in
   a + 1
 `,
-        '(let (a: (+ 1 2)) (+ a 1))',
+        '(let (a = (+ 1 2)) (+ a 1))',
         `\
 let
   a = 1 + 2
@@ -67,7 +76,7 @@ let
 in
   a + b
 `,
-        '(let (a: 1) (b: 2) (+ a b))',
+        '(let (a = 1) (b = 2) (+ a b))',
       ]),
       c([
         `\
@@ -77,7 +86,7 @@ let
 in
   a + b
 `,
-        '(let (a: 1) (b: a) (+ a b))',
+        '(let (a = 1) (b = a) (+ a b))',
       ]),
       c([
         `\
@@ -87,7 +96,7 @@ let
 in
   a + b
 `,
-        '(let (a: 1) (b: a) (+ a b))',
+        '(let (a = 1) (b = a) (+ a b))',
         `\
 let
   a = 1
@@ -108,7 +117,7 @@ in
   in
     a + b
 `,
-        '(let (a: (?. (. bla1 bla2) bla3)) (let (b: 2) (+ a b)))',
+        '(let (a = (?. (. bla1 bla2) bla3)) (let (b = 2) (+ a b)))',
         `\
 let
   a = bla1.bla2?.bla3

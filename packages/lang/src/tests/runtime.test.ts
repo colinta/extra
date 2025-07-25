@@ -8,7 +8,11 @@ describe('relationshipsThatReference', () => {
     runtime.addLocalType('b', Types.int())
     const aId = runtime.refId('a')!
     const bId = runtime.refId('b')!
-    runtime.addRelationship('b', '==', {type: 'reference', name: 'a', id: aId})
+    runtime.addRelationshipFormula({type: 'reference', name: 'b', id: bId}, '==', {
+      type: 'reference',
+      name: 'a',
+      id: aId,
+    })
     expect(runtime.getRelationships(aId)).toEqual([
       {
         formula: {

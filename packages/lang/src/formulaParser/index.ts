@@ -56,6 +56,9 @@ import {
   IMPORT_KEYWORD,
   REQUIRES_KEYWORD,
   TYPE_KEYWORD,
+  IS_KEYWORD,
+  NOT_IS_KEYWORD,
+  CASE_KEYWORD,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -86,7 +89,7 @@ import {scanBlockArgs, scanInvocationArgs} from './scan/formula_invocation_argum
 import {scanBinaryOperator} from './scan/binary_operator'
 import {scanUnaryOperator} from './scan/unary_operator'
 import {scanLet} from './scan/let'
-import {scanMatch} from './scan/match'
+import {scanCase, scanMatch} from './scan/match'
 
 const LOWEST_OP: Operator = {
   name: 'lowest op',
@@ -585,9 +588,16 @@ function parseInternal(
 
       if (isMatchingExpression) {
         scanner.whereAmI(`expressionType ${expressionType}`)
-        if (isOperator(prevOperator, 'is', 2) || isOperator(prevOperator, '!is', 2)) {
-          // a is Array(Int) <-- scanArgumentType('formula_type') will match `Array(Int)`
+        if (
+          isOperator(prevOperator, IS_KEYWORD, 2) ||
+          isOperator(prevOperator, NOT_IS_KEYWORD, 2)
+        ) {
           processExpression(scanMatch(scanner, parseNext))
+        } else if (
+          scanner.is(CASE_KEYWORD) &&
+          (expressionType === 'block_argument' || expressionType === 'argument')
+        ) {
+          processExpression(scanCase(scanner, parseNext))
         } else if (scanner.isInView && scanner.is('<') && isViewStart(scanner.remainingInput)) {
           processExpression(scanView(scanner, parseNext))
         } else if (isDiceStart(scanner.remainingInput)) {

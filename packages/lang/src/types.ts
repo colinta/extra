@@ -1746,6 +1746,61 @@ export class MetaStringType extends Type {
     return this.narrowString({length: {min: minLength, max: maxLength}, regex: []})
   }
 
+  /**
+   * MetaStringType.literalAccessType
+   */
+  literalAccessType(propName: Key): Type | undefined {
+    if (typeof propName !== 'number') {
+      return
+    }
+
+    // if N >= max(string.length)
+    // (length: <N) [N+]
+    if (
+      this.narrowedString.length.max !== undefined &&
+      this.narrowedString.length.max <= propName
+    ) {
+      return NullType
+    }
+
+    // if N < min(string.length)
+    // (length: <N) [0..N]
+    if (this.narrowedString.length.min > propName) {
+      return StringType
+    }
+
+    return optional(StringType)
+  }
+
+  /**
+   * MetaStringType.arrayAccessType
+   *     a = '...'
+   *     index: ?
+   *     a[index] => ?
+   */
+  arrayAccessType(rhs: Type) {
+    if (!rhs.isInt()) {
+      return
+    }
+
+    if (rhs instanceof LiteralIntType) {
+      return this.literalAccessType(rhs.value)
+    }
+
+    if (
+      rhs instanceof MetaIntType &&
+      rhs.narrowed.min !== undefined &&
+      rhs.narrowed.min >= 0 &&
+      rhs.narrowed.max !== undefined &&
+      this.narrowedString.length.max !== undefined &&
+      rhs.narrowed.max <= this.narrowedString.length.max
+    ) {
+      return StringType
+    }
+
+    return optional(StringType)
+  }
+
   toCode() {
     const isDefaultNarrowedLength = Narrowed.isDefaultNarrowedLength(this.narrowedString.length)
     if (isDefaultNarrowedLength && !this.narrowedString.regex.length) {
@@ -2000,10 +2055,12 @@ export abstract class LiteralBooleanType extends LiteralType {
 export class LiteralFloatType extends LiteralType {
   readonly is: 'literal-float' | 'literal-int' = 'literal-float'
 
+  readonly narrowed: Narrowed.NarrowedFloat
+
   constructor(public value: number) {
     super()
-
     this.value = value
+    this.narrowed = {min: value, max: value}
   }
 
   typeConstructor(): TypeConstructor {
@@ -2036,12 +2093,14 @@ export class LiteralFloatType extends LiteralType {
 
 export class LiteralIntType extends LiteralFloatType {
   readonly is = 'literal-int'
+  readonly narrowed: Narrowed.NarrowedInt
 
   constructor(
     value: number,
     readonly magnitude = 0,
   ) {
     super(Math.floor(value))
+    this.narrowed = {min: value, max: value}
   }
 
   typeConstructor(): TypeConstructor {
@@ -2066,6 +2125,7 @@ export class LiteralStringType extends LiteralType {
 
   readonly length: number
   readonly value: string
+  readonly narrowedString: Narrowed.NarrowedString
 
   constructor(value: string) {
     super()
@@ -2073,6 +2133,8 @@ export class LiteralStringType extends LiteralType {
     this.value = value
     const graphemes = splitter.splitGraphemes(value)
     this.length = graphemes.length
+    // TODO: regex could be [RegExp.escape(value)]
+    this.narrowedString = {length: {min: graphemes.length, max: graphemes.length}, regex: []}
   }
 
   typeConstructor(): TypeConstructor {

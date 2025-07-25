@@ -451,9 +451,11 @@ export const FalseValue = new MetaFalseValue()
 
 export class StringValue extends BasicValue {
   readonly is: 'string' | 'unicode' = 'string'
+  readonly length: number
 
   constructor(readonly value: string) {
     super()
+    this.length = value.length
   }
 
   removeIndent(indent: string, firstLineIsNewline: boolean): StringValue | undefined {
@@ -551,6 +553,20 @@ export class StringValue extends BasicValue {
     ],
   ])
 
+  /**
+   * Fetching value via `array[prop]` access operator
+   */
+  arrayAccessValue(index: Types.Key): Value | undefined {
+    if (typeof index !== 'number') {
+      return
+    }
+
+    const char = this.value[index]
+    if (char) {
+      return new StringValue(char)
+    }
+  }
+
   propValue(propName: string): Value | undefined {
     const prop = StringValue._stringProps.get(propName)
     return prop?.(this)
@@ -604,6 +620,20 @@ export class UnicodeStringValue extends StringValue {
   private static _unicodeProps = new Map<string, (value: UnicodeStringValue) => Value>([
     ['length', (value: UnicodeStringValue) => int(value.length)],
   ])
+
+  /**
+   * Fetching value via `array[prop]` access operator
+   */
+  arrayAccessValue(index: Types.Key): Value | undefined {
+    if (typeof index !== 'number') {
+      return
+    }
+
+    const char = this._chars[index]
+    if (char) {
+      return new UnicodeStringValue([char])
+    }
+  }
 
   propValue(propName: string): Value | undefined {
     const prop = UnicodeStringValue._unicodeProps.get(propName)
@@ -959,14 +989,10 @@ export class ArrayValue extends Value {
    */
   arrayAccessValue(index: Types.Key): Value | undefined {
     if (typeof index !== 'number') {
-      return undefined
+      return
     }
 
     return this.values[index]
-  }
-
-  concatenationOperator(values: ArrayValue) {
-    return new ArrayValue(this.values.concat(values.values))
   }
 
   isEqual(value: Value): boolean {
@@ -1199,10 +1225,6 @@ export class SetValue extends Value {
     for (const value of this.values) {
       yield value
     }
-  }
-
-  concatenationOperator(values: SetValue) {
-    return new SetValue(this.values.concat(values.values))
   }
 
   isEqual(value: Value): boolean {

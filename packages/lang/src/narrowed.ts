@@ -309,6 +309,29 @@ export function combineConcatLengths(
   return next
 }
 
+/**
+ * Two sets are combined; return the bigger of the min size, and the smaller of the
+ * max size.
+ */
+export function combineSetLengths(
+  narrowed: NarrowedLength,
+  nextNarrowed: NarrowedLength,
+): NarrowedLength {
+  const {min, max} = narrowed
+  const {min: nextMin, max: nextMax} = nextNarrowed
+
+  const next = {
+    min: Math.max(min, nextMin),
+    max: max === undefined || nextMax === undefined ? undefined : Math.min(max, nextMax),
+  }
+
+  if (isDefaultNarrowedLength(next)) {
+    return DEFAULT_NARROWED_LENGTH
+  }
+
+  return next
+}
+
 export function narrowLengths(
   narrowed: NarrowedLength,
   nextNarrowed: NarrowedLength,

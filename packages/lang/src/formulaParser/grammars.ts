@@ -86,6 +86,9 @@ export function isStringStartChar(char: string) {
 export const REQUIRES_KEYWORD = 'requires'
 export const PUBLIC_KEYWORD = 'public'
 export const IMPORT_KEYWORD = 'import'
+export const IS_KEYWORD = 'is'
+export const NOT_IS_KEYWORD = '!is'
+export const CASE_KEYWORD = 'case'
 export const LET_KEYWORD = 'let'
 export const LET_IN = 'in'
 export const FN_KEYWORD = 'fn'
@@ -202,6 +205,7 @@ export function expressionSupportsSplat(expressionType: ExpressionType) {
 export function treatNewlineAsComma(expressionType: ExpressionType) {
   return (
     expressionType === 'let' ||
+    expressionType === 'case' ||
     expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
@@ -218,6 +222,7 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
 export function terminatesWithComma(expressionType: ExpressionType) {
   return (
     expressionType === 'let' ||
+    expressionType === 'case' ||
     expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
@@ -250,6 +255,7 @@ export function terminatesWithCurlyBracket(expressionType: ExpressionType) {
     expressionType === 'interpolation' ||
     expressionType === 'object' ||
     expressionType === 'enum' ||
+    expressionType === 'case' ||
     expressionType === 'class'
   )
 }

@@ -2,6 +2,7 @@ import * as Expressions from '../expressions'
 import {FN_KEYWORD, LET_IN, LET_KEYWORD} from '../grammars'
 import {type Scanner} from '../scanner'
 import {type ExpressionType, type ParseNext} from '../types'
+import {scanArgumentType} from './argument_type'
 import {scanNamedFormula} from './formula'
 import {scanValidName} from './identifier'
 

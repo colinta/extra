@@ -230,14 +230,6 @@ export class MutableTypeRuntime {
     this.addLocalType('#', type)
   }
 
-  addRelationship(name: string, type: RelationshipComparison, rel: RelationshipFormula) {
-    const id = this.refId(name)
-    if (!id) {
-      return
-    }
-    this.addRelationshipFormula({type: 'reference', name, id}, type, rel)
-  }
-
   addRelationshipFormula(
     formula: RelationshipAssign,
     type: RelationshipComparison,

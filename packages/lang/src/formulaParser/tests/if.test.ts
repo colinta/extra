@@ -232,7 +232,7 @@ else:
 `,
         ['a', ''],
         ['b', true],
-        Types.oneOf([Types.string({min: 1}), Types.booleanType()]),
+        Types.oneOf([Types.string({min: 2}), Types.booleanType()]),
         Values.booleanValue(true),
       ]),
       c([
@@ -246,7 +246,7 @@ else:
 `,
         ['a', ''],
         ['b', false],
-        Types.oneOf([Types.string({min: 1}), Types.booleanType()]),
+        Types.oneOf([Types.string({min: 2}), Types.booleanType()]),
         Values.booleanValue(false),
       ]),
       c([
@@ -260,7 +260,7 @@ else:
 `,
         ['a', 'hi'],
         ['b', false],
-        Types.oneOf([Types.string(), Types.booleanType()]),
+        Types.oneOf([Types.string({min: 2}), Types.booleanType()]),
         Values.string('hihi'),
       ]),
       c([
@@ -272,7 +272,7 @@ elseif (a): a
         Types.formula(
           [],
           Types.oneOf([
-            Types.tuple([Types.LiteralTrueType, Types.string()]),
+            Types.tuple([Types.LiteralTrueType, Types.string({min: 1})]),
             Types.tuple([Types.LiteralFalseType, Types.NullType]),
           ]),
         ),
@@ -285,7 +285,7 @@ elseif (a): a
         ['a', 'hi'],
         ['b', false],
         Types.oneOf([
-          Types.tuple([Types.LiteralTrueType, Types.string()]),
+          Types.tuple([Types.LiteralTrueType, Types.string({min: 1})]),
           Types.tuple([Types.LiteralFalseType, Types.NullType]),
         ]),
         Values.tuple([Values.booleanValue(true), Values.string('hi')]),
@@ -297,7 +297,7 @@ elseif (a): a
         ['a', ''],
         ['b', false],
         Types.oneOf([
-          Types.tuple([Types.LiteralTrueType, Types.string()]),
+          Types.tuple([Types.LiteralTrueType, Types.string({min: 1})]),
           Types.tuple([Types.LiteralFalseType, Types.NullType]),
         ]),
         Values.tuple([Values.booleanValue(false), Values.NullValue]),

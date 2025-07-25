@@ -73,6 +73,12 @@ export const relationshipFormula = {
   float(value: number): RelationshipFloat {
     return {type: 'float', value}
   },
+  number(value: number, isInt: boolean): RelationshipInt | RelationshipFloat {
+    if (isInt) {
+      return relationshipFormula.int(value)
+    }
+    return relationshipFormula.float(value)
+  },
   string(value: string): RelationshipString {
     return {type: 'string', value}
   },
@@ -165,11 +171,11 @@ export function assignNextRuntime(
         nextTypes.push(mergeAssignableType(oneOfType, comparison, formula))
       }
       const nextOneOfType = Types.oneOf(nextTypes)
-      mutateRuntime(nextRuntime, assignable, nextOneOfType)
+      replaceType(nextRuntime, assignable, nextOneOfType)
     } else {
       const nextType = mergeAssignableType(prevType, comparison, formula)
       if (nextType !== prevType) {
-        mutateRuntime(nextRuntime, assignable, nextType)
+        replaceType(nextRuntime, assignable, nextType)
       }
     }
   }
@@ -248,43 +254,6 @@ function mergeAssignableType(
 
   throw `TODO - do something with ${assignableType} in mergeAssignableType (or ignore?)`
   return assignableType
-}
-
-function mutateRuntime(
-  runtime: MutableTypeRuntime,
-  assignable: RelationshipAssign,
-  nextType: Types.Type,
-) {
-  if (assignable.type === 'reference') {
-    runtime.replaceTypeByName(assignable.name, nextType)
-  } else if (assignable.type === 'array-access') {
-    if (!isAssign(assignable.of)) {
-      return
-    }
-
-    const type = runtimeLookup(runtime, assignable.of)
-    if (!type) {
-      return
-    }
-
-    throw 'todo - assign array access type'
-  } else if (assignable.type === 'property-access') {
-    if (!isAssign(assignable.of)) {
-      return
-    }
-
-    const type = runtimeLookup(runtime, assignable.of)
-    if (!type) {
-      return
-    }
-
-    const nextAssignableType = type.replacingProp(assignable.name, nextType)
-    if (nextAssignableType.isErr()) {
-      throw `todo - error assigning property-access type '${assignable.name}' to '${nextType}': ${nextAssignableType.error}`
-    }
-
-    mutateRuntime(runtime, assignable.of, nextAssignableType.get())
-  }
 }
 
 /**
@@ -1055,50 +1024,52 @@ function handleComparisonRelationship(
 
 function replaceType(
   mutableRuntime: MutableTypeRuntime,
-  prevRef: RelationshipAssign,
+  assignable: RelationshipAssign,
   nextType: Types.Type,
 ) {
-  if (prevRef.type === 'array-access') {
-    if (!isAssign(prevRef.of)) {
+  if (assignable.type === 'array-access') {
+    if (!isAssign(assignable.of)) {
       return
     }
 
-    if (!isLiteral(prevRef.index) || !isString(prevRef.index)) {
+    if (!isLiteral(assignable.index) || !isString(assignable.index)) {
       return
     }
 
-    const type = runtimeLookup(mutableRuntime, prevRef.of)
+    const type = runtimeLookup(mutableRuntime, assignable.of)
     if (!type) {
       return
     }
 
-    const nextAssignableType = type.replacingProp(prevRef.index.value, nextType)
+    const nextAssignableType = type.replacingProp(assignable.index.value, nextType)
     if (nextAssignableType.isErr()) {
-      throw `todo - error assigning property-access type '${prevRef.index.value}' to '${nextType}': ${nextAssignableType.error}`
+      throw `todo - error assigning ${assignable.type} type '${assignable.index.value}' to '${nextType}': ${nextAssignableType.error}`
     }
 
-    return replaceType(mutableRuntime, prevRef.of, nextAssignableType.get())
+    return replaceType(mutableRuntime, assignable.of, nextAssignableType.get())
   }
 
-  if (prevRef.type === 'property-access') {
-    if (!isAssign(prevRef.of)) {
+  if (assignable.type === 'property-access') {
+    if (!isAssign(assignable.of)) {
       return
     }
 
-    const type = runtimeLookup(mutableRuntime, prevRef.of)
+    const type = runtimeLookup(mutableRuntime, assignable.of)
     if (!type) {
       return
     }
 
-    const nextAssignableType = type.replacingProp(prevRef.name, nextType)
+    const nextAssignableType = type.replacingProp(assignable.name, nextType)
     if (nextAssignableType.isErr()) {
-      throw `todo - error assigning property-access type '${prevRef.name}' to '${nextType}': ${nextAssignableType.error}`
+      console.log('=========== relationship.ts at line 1058 ===========')
+      console.log({type, 'assignable.name': assignable.name, nextType})
+      throw `todo - error assigning ${assignable.type} type '${assignable.name}' to '${nextType}': ${nextAssignableType.error}`
     }
 
-    return replaceType(mutableRuntime, prevRef.of, nextAssignableType.get())
+    return replaceType(mutableRuntime, assignable.of, nextAssignableType.get())
   }
 
-  return mutableRuntime.replaceTypeById(prevRef.id, nextType)
+  return mutableRuntime.replaceTypeById(assignable.id, nextType)
 }
 
 /**
@@ -1344,20 +1315,83 @@ export function verifyRelationship(
     }
 
     switch (comparison) {
+      case '==':
+        return verifyRelationshipIsEq(rel, right)
       case '>=':
-        return verifyRelationshipIsGte(right, rel)
+        return verifyRelationshipIsGte(rel, right)
+      case '>':
+        return verifyRelationshipIsGt(rel, right)
       case '<':
-        return verifyRelationshipIsLt(right, rel)
+        return verifyRelationshipIsLt(rel, right)
+      case '<=':
+        return verifyRelationshipIsLte(rel, right)
       default:
+        console.log('=========== relationship.ts at line 1317 ===========')
+        console.log({comparison})
         throw `TODO - implement '${comparison}' in verifyRelationship`
     }
   })
 }
 
+function verifyRelationshipIsEq(
+  //
+  relationship: AssignedRelationship,
+  target: RelationshipFormula,
+) {
+  if (!['=='].includes(relationship.type)) {
+    return false
+  }
+
+  if (isNumeric(target) && isNumeric(relationship.right)) {
+    return relationship.right.value == target.value
+  }
+
+  // target: 'foo' or 'foo.length' or 'foo[key]'
+  if (isAssign(target)) {
+    if (isEqualFormula(target, relationship.right)) {
+      // relationship: [foo] [==] [target]
+      // query:        [foo] == target
+      return true
+    }
+
+    if (isAddition(relationship.right)) {
+      if (isNumeric(relationship.right.lhs) && !isNumeric(relationship.right.rhs)) {
+        // swap order and defer to below (non-numeric is on lhs)
+        return verifyRelationshipIsEq(
+          {
+            formula: relationship.formula,
+            type: relationship.type,
+            right: relationshipFormula.addition(relationship.right.rhs, relationship.right.lhs),
+          },
+          target,
+        )
+      }
+
+      if (isAssign(relationship.right.lhs) && isNumeric(relationship.right.rhs)) {
+        if (!isEqualFormula(target, relationship.right.lhs)) {
+          return false
+        }
+
+        // relationship.right is an addition
+        // relationship.right.lhs == target
+        // relationship.right.rhs is a number
+
+        // relationship: [foo] [==] [target] + relationship.right.rhs
+        // query:        [foo] == target
+        return false
+      }
+    }
+  }
+
+  console.log('=========== relationship.ts at line 1368 ===========')
+  console.log({comparison: '>=', right: target, relationship})
+  throw `TODO - verifyRelationshipIsEq(right: ${relationshipFormula.toString(target)}, formula: ${relationshipFormula.toString(relationship.formula)} ${relationship.type} ${relationshipFormula.toString(relationship.formula)})`
+}
+
 function verifyRelationshipIsGte(
   //
-  target: RelationshipFormula,
   relationship: AssignedRelationship,
+  target: RelationshipFormula,
 ) {
   if (!['==', '>', '>='].includes(relationship.type)) {
     return false
@@ -1389,13 +1423,148 @@ function verifyRelationshipIsGte(
     }
   }
 
+  // target: 'foo' or 'foo.length' or 'foo[key]'
+  if (isAssign(target)) {
+    if (isEqualFormula(target, relationship.right)) {
+      // relationship: [foo] [> == >=] [target]
+      // query:        [foo] >= target
+      return true
+    }
+
+    if (isAddition(relationship.right)) {
+      if (isNumeric(relationship.right.lhs) && !isNumeric(relationship.right.rhs)) {
+        // swap order and defer to below (non-numeric is on lhs)
+        return verifyRelationshipIsGte(
+          {
+            formula: relationship.formula,
+            type: relationship.type,
+            right: relationshipFormula.addition(relationship.right.rhs, relationship.right.lhs),
+          },
+          target,
+        )
+      }
+
+      if (isAssign(relationship.right.lhs) && isNumeric(relationship.right.rhs)) {
+        if (!isEqualFormula(target, relationship.right.lhs)) {
+          return false
+        }
+
+        // relationship.right is an addition
+        // relationship.right.lhs == target
+        // relationship.right.rhs is a number
+
+        // relationship: [foo] [> == >=] [target] + relationship.right.rhs
+        // query:        [foo] >= target
+        return relationship.right.rhs.value >= 0
+      }
+    }
+  }
+
+  console.log('=========== relationship.ts at line 1368 ===========')
+  console.log({comparison: '>=', right: target, relationship})
   throw `TODO - verifyRelationshipIsGte(right: ${relationshipFormula.toString(target)}, formula: ${relationshipFormula.toString(relationship.formula)} ${relationship.type} ${relationshipFormula.toString(relationship.formula)})`
 }
 
+/**
+ * return true if `relationship.formula` is less-than target,
+ * based on relationship.formula.rght
+ */
+function verifyRelationshipIsGt(
+  //
+  relationship: AssignedRelationship,
+  target: RelationshipFormula,
+) {
+  if (!['==', '>', '>='].includes(relationship.type)) {
+    return false
+  }
+
+  if (isNumeric(target) && isNumeric(relationship.right)) {
+    switch (relationship.type) {
+      case '==':
+        // relationship: formula == N (eg x == 1)
+        // verify: formula > target   (eg x >= 1)
+        // return: N > target   (eg 1 == 1)
+        return relationship.right.value > target.value
+      case '>=':
+        // relationship: formula >= N (eg x >= 0, x >= 0.1)
+        // verify: formula > target   (eg x > 0)
+        // return: N > target   (eg 0 > 0)
+        return relationship.right.value > target.value
+      case '>':
+        // relationship: formula > N (eg x > -1)
+        // verify: formula > target   (eg x > 0)
+        return relationship.right.value > target.value
+    }
+  }
+
+  // target: 'foo' or 'foo.length' or 'foo[key]'
+  if (isAssign(target)) {
+    if (isEqualFormula(target, relationship.right)) {
+      switch (relationship.type) {
+        case '==':
+        case '>=':
+          return false
+        case '>':
+          return true
+      }
+    }
+
+    if (isAddition(relationship.right)) {
+      if (isNumeric(relationship.right.lhs) && !isNumeric(relationship.right.rhs)) {
+        // swap order and defer to below (non-numeric is on lhs)
+        return verifyRelationshipIsLt(
+          {
+            formula: relationship.formula,
+            type: relationship.type,
+            right: relationshipFormula.addition(relationship.right.rhs, relationship.right.lhs),
+          },
+          target,
+        )
+      }
+
+      if (isAssign(relationship.right.lhs) && isNumeric(relationship.right.rhs)) {
+        if (!isEqualFormula(target, relationship.right.lhs)) {
+          return false
+        }
+
+        // relationship.type: [ == >= > ]
+        // relationship.right is an addition
+        // relationship.right.lhs == target
+        // relationship.right.rhs is a number
+        switch (relationship.type) {
+          case '==':
+          case '>=':
+            // relationship: formula == target + N
+            // or
+            // relationship: formula >= target + N
+            //
+            // if relationship.right.rhs is > 0,
+            // then the formula is less than the target
+            return relationship.right.rhs.value > 0
+          case '>':
+            // relationship: formula > target + N
+            // relationship: formula > length + N (eg x > length - 1)
+            // verify: formula > right   (eg x > length)
+            // return: length + N > right   (eg N >= 0)
+            return relationship.right.rhs.value >= 0
+        }
+      }
+    }
+  }
+
+  console.log('=========== relationship.ts at line 1463 ===========')
+  console.log({comparison: '>', right: target, relationship})
+  throw `TODO - verifyRelationshipIsLt(right is '${target.type}', formula is '${relationshipFormula.toString(relationship.formula)}')`
+}
+
+/**
+ * return true if `relationship.formula` is less-than target,
+ * based on relationship.formula.rght
+ */
 function verifyRelationshipIsLt(
   //
-  target: RelationshipFormula,
   relationship: AssignedRelationship,
+  target: RelationshipFormula,
 ) {
   if (!['==', '<', '<='].includes(relationship.type)) {
     return false
@@ -1420,7 +1589,7 @@ function verifyRelationshipIsLt(
     }
   }
 
-  // target is something like 'foo' or 'foo.length' or 'foo[key]'
+  // target: 'foo' or 'foo.length' or 'foo[key]'
   if (isAssign(target)) {
     if (isEqualFormula(target, relationship.right)) {
       switch (relationship.type) {
@@ -1434,12 +1603,15 @@ function verifyRelationshipIsLt(
 
     if (isAddition(relationship.right)) {
       if (isNumeric(relationship.right.lhs) && !isNumeric(relationship.right.rhs)) {
-        // swap order and defer to below
-        return verifyRelationshipIsLt(target, {
-          formula: relationship.formula,
-          type: relationship.type,
-          right: relationshipFormula.addition(relationship.right.rhs, relationship.right.lhs),
-        })
+        // swap order and defer to below (non-numeric is on lhs)
+        return verifyRelationshipIsLt(
+          {
+            formula: relationship.formula,
+            type: relationship.type,
+            right: relationshipFormula.addition(relationship.right.rhs, relationship.right.lhs),
+          },
+          target,
+        )
       }
 
       if (isAssign(relationship.right.lhs) && isNumeric(relationship.right.rhs)) {
@@ -1468,14 +1640,92 @@ function verifyRelationshipIsLt(
             // return: length + N < right   (eg N <= 0)
             return relationship.right.rhs.value <= 0
         }
-        return
+      }
+    }
+
+    return false
+  }
+
+  console.log('=========== relationship.ts at line 1463 ===========')
+  console.log({comparison: '<', relationship, right: target})
+  throw `TODO - verify(formula is '${relationshipFormula.toString(relationship.formula)} ${relationship.type} ${relationshipFormula.toString(relationship.right)}' <? right is '${target.type}')`
+}
+
+function verifyRelationshipIsLte(
+  //
+  relationship: AssignedRelationship,
+  target: RelationshipFormula,
+) {
+  if (!['==', '<', '<='].includes(relationship.type)) {
+    return false
+  }
+
+  if (isNumeric(target) && isNumeric(relationship.right)) {
+    switch (relationship.type) {
+      case '==':
+        // relationship: formula == N (eg x == 1)
+        // verify: formula <= target   (eg x <= 1)
+        // return: N <= target   (eg 1 == 1)
+        return relationship.right.value <= target.value
+      case '<=':
+        // relationship: formula <= N (eg x <= 0)
+        // verify: formula <= target   (eg x <= 0)
+        // return: N <= target   (eg 0 <= 0)
+        return relationship.right.value <= target.value
+      case '<':
+        // relationship: formula < N (eg x < -1)
+        // verify: formula <= target   (eg x <= 0)
+        if (isInt(target) && isInt(relationship.right)) {
+          // relationship: formula < N (eg x < -1)
+          // =<          : x <= N + 1 (eg x < 0)
+          // return: N <= target - 1
+          return relationship.right.value <= target.value - 1
+        }
+
+        return relationship.right.value <= target.value
+    }
+  }
+
+  // target: 'foo' or 'foo.length' or 'foo[key]'
+  if (isAssign(target)) {
+    if (isEqualFormula(target, relationship.right)) {
+      // relationship: [foo] [< == <=] [target]
+      // query:        [foo] <= target
+      return true
+    }
+
+    if (isAddition(relationship.right)) {
+      if (isNumeric(relationship.right.lhs) && !isNumeric(relationship.right.rhs)) {
+        // swap order and defer to below (non-numeric is on lhs)
+        return verifyRelationshipIsGte(
+          {
+            formula: relationship.formula,
+            type: relationship.type,
+            right: relationshipFormula.addition(relationship.right.rhs, relationship.right.lhs),
+          },
+          target,
+        )
+      }
+
+      if (isAssign(relationship.right.lhs) && isNumeric(relationship.right.rhs)) {
+        if (!isEqualFormula(target, relationship.right.lhs)) {
+          return false
+        }
+
+        // relationship.right is an addition
+        // relationship.right.lhs == target
+        // relationship.right.rhs is a number
+
+        // relationship: [foo] [< == <=] [target] + relationship.right.rhs
+        // query:        [foo] <= target
+        return relationship.right.rhs.value <= 0
       }
     }
   }
 
-  console.log('=========== relationship.ts at line 1323 ===========')
-  console.log({comparison: '<', right: target, relationship})
-  throw `TODO - verifyRelationshipIsLt(right is '${target.type}', formula is '${relationshipFormula.toString(relationship.formula)}')`
+  console.log('=========== relationship.ts at line 1368 ===========')
+  console.log({comparison: '<=', right: target, relationship})
+  throw `TODO - verifyRelationshipIsGte(right: ${relationshipFormula.toString(target)}, formula: ${relationshipFormula.toString(relationship.formula)} ${relationship.type} ${relationshipFormula.toString(relationship.formula)})`
 }
 
 export function isEqualFormula(lhs: RelationshipFormula, rhs: RelationshipFormula): boolean {

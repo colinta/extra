@@ -58,6 +58,7 @@ describe('match operator', () => {
       c(['foo is [value1, ..., value2]']),
       c(['foo is [value1, ...value2, value3]']),
       c(['foo is [value1, ...value2]']),
+      c(['foo is [a] or foo is [a, _]']),
       c.skip(['foo is {}']),
       c.skip(['foo is {name: name}']),
       c.skip(['foo is {name: _}']),
@@ -76,46 +77,6 @@ describe('match operator', () => {
     beforeEach(() => {
       runtimeTypes['Ints'] = [Types.typeConstructor('Ints', Ints), Values.string('test')]
       runtimeTypes['input'] = [Types.literal('test'), Values.string('test')]
-    })
-
-    it('foo: String? => foo is String and foo.length => false | Int', () => {
-      // throws without the type guard
-      runtimeTypes['foo'] = [Types.optional(Types.string()), Values.string('')]
-      expect(() => parse('foo.length').get().getType(typeRuntime).get()).toThrow()
-
-      // returns false (foo is null) or Int (foo is String)
-      const expression = parse('foo is String and foo.length').get()
-      const type = expression.getType(typeRuntime).get()
-      expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int({min: 0})]))
-    })
-
-    it('foo: {bar: String | Int} => foo.bar is String and foo.bar.length => false | Int', () => {
-      runtimeTypes['foo'] = [
-        Types.object([Types.namedProp('bar', Types.oneOf([Types.string(), Types.int()]))]),
-        Values.string(''),
-      ]
-      expect(() => parse('foo.bar.length').get().getType(typeRuntime).get()).toThrow()
-
-      const expression = parse('foo.bar is String and foo.bar.length').get()
-      const type = expression.getType(typeRuntime).get()
-      expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int({min: 0})]))
-    })
-
-    it('foo: {bar: {baz: String | Int}} => foo.bar.baz is String and foo.bar.baz.length => false | Int', () => {
-      runtimeTypes['foo'] = [
-        Types.object([
-          Types.namedProp(
-            'bar',
-            Types.object([Types.namedProp('baz', Types.oneOf([Types.string(), Types.int()]))]),
-          ),
-        ]),
-        Values.string(''),
-      ]
-      expect(() => parse('foo.bar.baz.length').get().getType(typeRuntime).get()).toThrow()
-
-      const expression = parse('foo.bar.baz is String and foo.bar.baz.length').get()
-      const type = expression.getType(typeRuntime).get()
-      expect(type).toEqual(Types.oneOf([Types.literal(false), Types.int({min: 0})]))
     })
 
     cases<[Types.Type, string, {truthy: Types.Type; falsey: Types.Type}]>(
@@ -144,8 +105,16 @@ describe('match operator', () => {
         },
       ]),
       c([
-        Types.oneOf([Types.array(Types.string()), Types.array(Types.int())]),
+        Types.oneOf([Types.string(), Types.int()]),
         'foo is Array(Int)',
+        {
+          truthy: Types.never(),
+          falsey: Types.oneOf([Types.string(), Types.int()]),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.array(Types.string()), Types.array(Types.int())]),
+        'foo is Array(Int) as a',
         {
           truthy: Types.array(Types.int()),
           falsey: Types.array(Types.string()),
@@ -188,23 +157,60 @@ describe('match operator', () => {
       ),
     )
 
+    cases<[Types.Type, string, Types.Type, string]>(
+      c([
+        Types.optional(Types.string()),
+        'foo is String and foo.length',
+        Types.oneOf([Types.literal(false), Types.int({min: 0})]),
+        'foo.length',
+      ]),
+      c([
+        Types.object([Types.namedProp('bar', Types.oneOf([Types.string(), Types.int()]))]),
+        'foo.bar is String and foo.bar.length',
+        Types.oneOf([Types.literal(false), Types.int({min: 0})]),
+        'foo.bar.length',
+      ]),
+      c([
+        Types.object([
+          Types.namedProp(
+            'bar',
+            Types.object([Types.namedProp('baz', Types.oneOf([Types.string(), Types.int()]))]),
+          ),
+        ]),
+        'foo.bar.baz is String and foo.bar.baz.length',
+        Types.oneOf([Types.literal(false), Types.int({min: 0})]),
+        'foo.bar.baz.length',
+      ]),
+    ).run(([fooType, formula, expectedType, expectedFail], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(
+        `(foo: ${fooType}) '${formula}' => ${expectedType} (and fails on ${expectedFail})`,
+        () => {
+          runtimeTypes['foo'] = [fooType, Values.nullValue()]
+          const expression = parse(formula).get()
+          const type = expression.getType(typeRuntime)
+          expect(type.get()).toEqual(expectedType)
+
+          if (expectedFail) {
+            const failExpression = parse(expectedFail).get()
+            expect(() => {
+              failExpression.getType(typeRuntime).get()
+            }).toThrow("Property 'length' does not exist")
+          }
+        },
+      ),
+    )
     // describe('assigns enum values')
   })
 
   describe('invalid parse', () => {
     cases<[string, string]>(
       c(['foo is 1', 'Invalid match expression']),
-      c(['foo is "test"', 'Invalid match expression']),
-      c([`foo is "" <> value`, 'Empty string makes no sense in a match expression']),
       c([`foo is "$foo" <> value`, 'Interpolation is not enabled in this context']),
       c([
         `foo is value1 <> value2 <> "test"`,
         'In a match expression, after every reference you must concatenate a string',
       ]),
-      c([
-        `foo is value1 <> "" <> value2 <> "test"`,
-        'Empty string makes no sense in a match expression',
-      ]),
+      c([`foo is value1 <> "" <> value2 <> "test"`, 'Empty string is invalid in match expression']),
       c([
         `foo is value1 <> "test" <> "test"`,
         'In a match expression, after every string you must concatenate a reference',

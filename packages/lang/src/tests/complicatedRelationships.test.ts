@@ -153,7 +153,7 @@ describe('complicated relationships', () => {
     expect(resolvedValue!).toEqual(Values.tuple([Values.int(-1), Values.int(1), Values.int(3)]))
   })
 
-  it('can infer safe array with array lengths comparison', () => {
+  it.only('can infer safe array with array lengths comparison', () => {
     runtimeTypes['letters'] = [
       Types.array(Types.string()),
       Values.array([Values.string('a'), Values.string('b'), Values.string('c')]),

@@ -42,6 +42,7 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case 'elseif':
     case 'guard':
     case 'switch':
+    case 'case':
     case 'infer':
     case 'fallback':
     case 'null':
@@ -151,6 +152,9 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
       break
     case 'switch':
       identifier = new Expressions.SwitchIdentifier(range, scanner.flushComments())
+      break
+    case 'case':
+      identifier = new Expressions.CaseIdentifier(range, scanner.flushComments())
       break
     case 'infer':
       identifier = new Expressions.InferIdentifier(range, scanner.flushComments())
