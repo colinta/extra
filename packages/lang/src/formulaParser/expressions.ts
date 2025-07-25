@@ -22,7 +22,7 @@ import {
   type GetValueResult,
   type GetRuntimeResult,
 } from './types'
-import {relationshipFormula, type RelationshipFormula} from '../relationship'
+import {assignNextRuntime, relationshipFormula, type RelationshipFormula} from '../relationship'
 import {indent, MAX_INNER_LEN, MAX_LEN, NEWLINE_INDENT, wrapStrings} from './util'
 
 export type Range = [number, number]
@@ -489,9 +489,49 @@ export class Reference extends Identifier {
     })
   }
 
-  isLengthExpression(runtime: TypeRuntime) {
+  toLengthFormula(
+    runtime: TypeRuntime,
+  ): GetRuntimeResult<[RelationshipFormula, boolean] | undefined> {
     return this.getType(runtime).map(type => {
-      return type.isFloat()
+      const formula = this.relationshipFormula(runtime)
+      if (!formula) {
+        return
+      }
+
+      if (type.isFloat()) {
+        return [formula, false]
+      }
+
+      if (
+        type.isString() ||
+        type instanceof Types.ArrayType ||
+        type instanceof Types.DictType ||
+        type instanceof Types.SetType
+      ) {
+        return [relationshipFormula.propertyAccess(formula, 'length'), true]
+      }
+
+      return
+    })
+  }
+
+  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    const formula = this.relationshipFormula(runtime)
+    if (!formula) {
+      return ok(runtime)
+    }
+
+    return this.toLengthFormula(runtime).map(info => {
+      if (!info) {
+        return ok(runtime)
+      }
+
+      const [lengthFormula, isString] = info
+      if (isString) {
+        return assignNextRuntime(runtime, lengthFormula, '>', relationshipFormula.int(0))
+      } else {
+        return assignNextRuntime(runtime, formula, '!=', relationshipFormula.int(0))
+      }
     })
   }
 
