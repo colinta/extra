@@ -1048,7 +1048,7 @@ export abstract class OneOfType extends Type {
   }
 
   isOptional() {
-    return this.of.some(type => type.isOptional())
+    return this.of.some(type => type === NullType)
   }
 
   static createOneOf(types: Type[]): Type {
@@ -1692,6 +1692,11 @@ export class MetaStringType extends Type {
     // make sure the literal is a string,
     // with a length that fits the narrowed length
     // and matches any regex
+    //
+    // otherwise, compatibleWithBothTypes will default to OneOf, which works here
+    // because the literal is not assignable to the String
+    //
+    // "test" | String(length: >=8) => these two are not in overlapping Sets
     if (!literal.isString()) {
       return
     }
@@ -1781,6 +1786,10 @@ export class MetaStringType extends Type {
    * new MetaStringType.
    */
   replacingProp(propName: string, type: Type): Result<Type, string> {
+    if (type === NeverType) {
+      return ok(NeverType)
+    }
+
     if (propName === 'length') {
       if (type instanceof LiteralIntType) {
         return ok(this.narrowLength(Math.max(type.value, 0), type.value))
@@ -2079,12 +2088,13 @@ export class LiteralStringType extends LiteralType {
   toFalseyType(): Type {
     return new LiteralStringType('')
   }
+
   /**
    * If propName is length and type is MetaIntType (with narrowedLength), return a
    * new MetaStringType.
    */
   replacingProp(propName: string, type: Type): Result<Type, string> {
-    return err(`I didn't bother implementing replacingProp on ${type.toCode()}`)
+    return err(`I didn't bother implementing replacingProp on ${this}`)
   }
 
   propAccessType(name: string): Type | undefined {
@@ -2120,7 +2130,7 @@ export class LiteralRegexType extends LiteralType {
   }
 }
 
-abstract class ContainerType<T extends ContainerType<T>> extends Type {
+export abstract class ContainerType<T extends ContainerType<T>> extends Type {
   abstract is: 'array' | 'dict' | 'set'
 
   readonly narrowedLength: Narrowed.NarrowedLength
@@ -2399,7 +2409,11 @@ export class ObjectType extends Type {
    * Returns a copy of the ObjectType, replacing the type of one property. This is
    * used by the type narrowing and relationship code.
    */
-  replacingProp(propName: string, type: Type): Result<ObjectType, string> {
+  replacingProp(propName: string, type: Type): Result<Type, string> {
+    if (type === NeverType) {
+      return ok(NeverType)
+    }
+
     return ok(
       new ObjectType(
         this.props.map(prop => {
@@ -2521,6 +2535,10 @@ export class ArrayType extends ContainerType<ArrayType> {
    * new ArrayType with that length.
    */
   replacingProp(propName: string, type: Type): Result<Type, string> {
+    if (type === NeverType) {
+      return ok(NeverType)
+    }
+
     if (propName === 'length') {
       if (type instanceof LiteralIntType) {
         return ok(this.narrowLength(Math.max(type.value, 0), type.value))
@@ -2809,7 +2827,11 @@ export class ClassType extends Type {
    * Returns a copy of the ClassType, replacing the type of one property. This is
    * used by the type narrowing code to return a more specific type.
    */
-  replacingProp(prop: string, type: Type): Result<ClassType, string> {
+  replacingProp(prop: string, type: Type): Result<Type, string> {
+    if (type === NeverType) {
+      return ok(NeverType)
+    }
+
     const props = new Map(this.props)
     props.set(prop, type)
     return ok(new ClassType(props, this.parent))
@@ -2849,7 +2871,11 @@ export class NamedClassType extends ClassType {
     super(props, parent)
   }
 
-  replacingProp(prop: string, type: Type): Result<NamedClassType, string> {
+  replacingProp(prop: string, type: Type): Result<Type, string> {
+    if (type === NeverType) {
+      return ok(NeverType)
+    }
+
     const props = new Map(this.props)
     props.set(prop, type)
     return ok(new NamedClassType(this.name, props, this.parent))
@@ -2917,7 +2943,11 @@ export class EnumType extends Type {
     return `.${member.name}`
   }
 
-  toCode() {
+  toCode(embedded = false): string {
+    if (embedded) {
+      return `(${this.toCode(false)})`
+    }
+
     return this.members.map(member => this.toCodeMember(member)).join(' | ')
   }
 }
@@ -3533,7 +3563,7 @@ export function canBeAssignedTo(
   }
 
   if (testType instanceof OneOfType) {
-    // every type in testType must be assignable to *one of* the types in assignTo
+    // every type in testType must be assignable to assignTo
     return testType.of.every(lhType =>
       canBeAssignedTo(lhType, assignTo, resolvedGenericsMap, reason),
     )
@@ -3549,12 +3579,12 @@ export function canBeAssignedTo(
       [[], []] as [Type[], Type[]],
     )
 
+    // testType must be assignable to any of the types in assignTo
+    // (ie testType is a *narrowed* type of assignTo)
     if (nonGeneric.some(rhType => canBeAssignedTo(testType, rhType, resolvedGenericsMap, reason))) {
       return true
     }
 
-    // testType must be assignable to one of the types in assignTo
-    // (ie testType is a *narrowed* type of assignTo)
     return why(
       generic.some(rhType => canBeAssignedTo(testType, rhType, resolvedGenericsMap, reason)),
       `'${testType}' is not assignable to '${assignTo}'.`,
@@ -3979,8 +4009,8 @@ function _checkFormulaArguments(
   // the argument list, so they are separated out.
   //     example: foo(...manyUsers)
   spreadPositionalArguments: Type[],
-  // similar - these are ...name: values (Array(Type))
-  //     example: foo(...case: manyCases)
+  // similar - these are ...bar: values (Array(Type))
+  //     example: foo(...bar: manyCases)
   spreadDictArguments: Map<string, Type[]>,
   // remaining named args *args (Dict(Type))
   //     example: foo(*kwargs1, *kwargs2)
@@ -4408,10 +4438,6 @@ function addRequirement(
         return new LiteralIntType(arrayType.narrowedLength.min)
       }
 
-      if (arrayType.narrowedLength.min === 0 && arrayType.narrowedLength.max === undefined) {
-        return IntType
-      }
-
       return new MetaIntType(arrayType.narrowedLength)
     },
     // map(fn: fn(input: Of, index: Int): T): T[]
@@ -4519,7 +4545,13 @@ function addRequirement(
   /* DictType */
   /*           */
   DictType.types = {
-    length: () => IntType,
+    length: (type: DictType) => {
+      if (type.narrowedLength.min === type.narrowedLength.max) {
+        return new LiteralIntType(type.narrowedLength.min)
+      }
+
+      return new MetaIntType(type.narrowedLength)
+    },
     map: (of: Type) =>
       withGenericT(genericT =>
         namedFormula(
@@ -4615,8 +4647,13 @@ function addRequirement(
   /* StringType */
   /*            */
   MetaStringType.types = {
-    // length: Int
-    length: () => IntType,
+    length: (type: MetaStringType) => {
+      if (type.narrowedString.length.min === type.narrowedString.length.max) {
+        return new LiteralIntType(type.narrowedString.length.min)
+      }
+
+      return new MetaIntType(type.narrowedString.length)
+    },
     // map(fn: fn(input: String): T): T[]
     map: () =>
       withGenericT(genericT =>

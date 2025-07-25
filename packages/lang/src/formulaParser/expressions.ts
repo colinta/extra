@@ -220,7 +220,10 @@ export abstract class Operation extends Expression {
 //|
 
 /**
- * Literal of any kind: Boolean, Int, Float, String, Regex
+ * Literal of any kind: Boolean, Int, Float, Regex, null
+ *
+ * StringLiteral has its own type, which has to do with String interpolation
+ * literals.
  */
 export class Literal extends Expression {
   constructor(
@@ -270,7 +273,11 @@ export class Literal extends Expression {
     return this.value.toCode()
   }
 
-  getType() {
+  getAsTypeExpression(): GetTypeResult {
+    return this.getType()
+  }
+
+  getType(): GetTypeResult {
     return ok(this.value.getType())
   }
 
@@ -798,7 +805,7 @@ export class DictEntry extends Expression {
     return `${name}: ${value}`
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'DictEntry does not have a type'))
   }
 
@@ -1198,7 +1205,7 @@ export class NamespaceAccessExpression extends TypeExpression {
     }
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'NamespaceAccessExpression has no intrinsic type'))
   }
 
@@ -1377,7 +1384,7 @@ export class ArrayTypeExpression extends TypeExpression {
     return Types.ArrayType.desc(this.of.toCode(0), this.narrowed)
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'ArrayType has no intrinsic type'))
   }
 
@@ -1420,7 +1427,7 @@ export class DictTypeExpression extends TypeExpression {
     return Types.DictType.desc(this.of.toCode(0), this.narrowedNames, this.narrowedLength)
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'DictType has no intrinsic type'))
   }
 
@@ -1457,7 +1464,7 @@ export class SetTypeExpression extends TypeExpression {
     return Types.SetType.desc(this.of.toCode(0), this.narrowedLength)
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'SetType has no intrinsic type'))
   }
 
@@ -1551,7 +1558,7 @@ export abstract class ArgumentExpression extends Expression {
     return new Set([this.aliasRef.name])
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'ArgumentExpression has no intrinsic type'))
   }
 
@@ -1675,16 +1682,17 @@ export class PositionalArgument extends Argument {
 }
 
 /**
- * A named argument passed to a function, object, class, or view. Also used to store
- * 'let' declarations
+ * A named argument passed to a function, object, class, or view.
  *
  *     foo(name: 'value')
  *         ^^^^^^^^^^^^^
  *
+ * Also used to store 'let' declarations (via LetAssign)
+ *
  *     let
  *       name = value
  *       ^^^^^^^^^^^^
- *     in
+ *     in …
  */
 export class NamedArgument extends Argument {
   /**
@@ -2096,10 +2104,10 @@ export class InferIdentifier extends ReservedWord {
   readonly name = 'infer'
 }
 
-export class IfExpression extends ReservedWord {
+export class IfIdentifier extends ReservedWord {
   readonly name = 'if'
 
-  getType() {
+  getType(): GetTypeResult {
     return ok(
       Types.withGenericT(T =>
         Types.namedFormula(
@@ -2121,10 +2129,10 @@ export class IfExpression extends ReservedWord {
   }
 }
 
-export class ElseIfExpression extends ReservedWord {
+export class ElseIfIdentifier extends ReservedWord {
   readonly name = 'elseif'
 
-  getType() {
+  getType(): GetTypeResult {
     return ok(
       Types.withGenericT(T =>
         Types.namedFormula(
@@ -2148,10 +2156,10 @@ export class ElseIfExpression extends ReservedWord {
   }
 }
 
-export class GuardExpression extends ReservedWord {
+export class GuardIdentifier extends ReservedWord {
   readonly name = 'guard'
 
-  getType() {
+  getType(): GetTypeResult {
     return ok(
       Types.withGenericT(T =>
         Types.namedFormula(
@@ -2176,7 +2184,7 @@ export class GuardExpression extends ReservedWord {
 export class SwitchIdentifier extends ReservedWord {
   readonly name = 'switch'
 
-  getType() {
+  getType(): GetTypeResult {
     return ok(
       Types.withGenericT(T =>
         Types.namedFormula(
@@ -2198,25 +2206,25 @@ export class SwitchIdentifier extends ReservedWord {
 }
 
 export class ObjectConstructorIdentifier extends ReservedWord {
-  readonly name = 'object'
+  readonly name = 'Object'
 }
 
 export class ArrayConstructorIdentifier extends ReservedWord {
-  readonly name = 'array'
+  readonly name = 'Array'
 }
 
 export class DictConstructorIdentifier extends ReservedWord {
-  readonly name = 'dict'
+  readonly name = 'Dict'
 }
 
 export class SetConstructorIdentifier extends ReservedWord {
-  readonly name = 'set'
+  readonly name = 'Set'
 }
 
 export class ThisIdentifier extends ReservedWord {
   readonly name = 'this'
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
   }
 
@@ -2566,7 +2574,7 @@ export class ClassPropertyExpression extends Expression {
     return code
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'ClassPropertyExpression does not have a type'))
   }
 
@@ -2692,7 +2700,7 @@ export class EnumMemberExpression extends Expression {
     return code
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'EnumEntryExpression does not have a type'))
   }
 
@@ -2750,7 +2758,7 @@ export abstract class EnumTypeExpression extends Expression {
     })
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'EnumTypeExpression does not have a type'))
   }
 
@@ -2832,7 +2840,7 @@ export class NamedEnumTypeExpression extends EnumTypeExpression {
       })
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'NamedEnumTypeExpression does not have a type'))
   }
 
@@ -2963,7 +2971,7 @@ export class ArgumentsList extends Expression {
     return insideCode + ' ' + blockCode
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'ArgumentsList do not have a type'))
   }
 
@@ -3329,7 +3337,7 @@ export class FormulaTypeExpression extends Expression {
     )
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'FormulaTypeExpression does not have a type'))
   }
 
@@ -4650,7 +4658,7 @@ export class ImportSpecific extends Expression {
     return this.name.name
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'ImportSpecific does not have a type'))
   }
 
@@ -4680,7 +4688,7 @@ export class RequiresStatement extends Expression {
     return `requires ${this.envs.join(', ')}`
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'RequiresStatement does not have a type'))
   }
 
@@ -4741,7 +4749,7 @@ export class ImportSource extends Expression {
     return code
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'ImportStatement does not have a type'))
   }
 
@@ -4807,7 +4815,7 @@ export class ImportStatement extends Expression {
     return code
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'ImportStatement does not have a type'))
   }
 
@@ -4934,7 +4942,7 @@ export class StateDefinition extends Expression {
     return code
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'StateDefinition does not have a type'))
   }
 
@@ -4958,7 +4966,7 @@ export class BuiltinActionExpression extends Identifier {
     return '&'
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, '& does not have a type'))
   }
 
@@ -5108,7 +5116,7 @@ export class DiceExpression extends Expression {
     super(range, precedingComments)
   }
 
-  getType() {
+  getType(): GetTypeResult {
     return err(new RuntimeError(this, 'not sure yet'))
   }
 

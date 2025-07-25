@@ -662,6 +662,8 @@ export class RangeValue extends Value {
   readonly is = 'range'
 
   constructor(
+    // value (could be IntValue, because IntValue is a subclass of FloatValue) and
+    // whether it's exclusive. [__, true] => exclusive range
     readonly start: [FloatValue, boolean] | undefined,
     readonly stop: [FloatValue, boolean] | undefined,
   ) {

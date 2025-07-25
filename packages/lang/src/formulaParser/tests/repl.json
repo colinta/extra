@@ -6,7 +6,12 @@
       "expectedCode": "test",
       "expectedType": "\"test\"",
       "expectedValue": "'test'",
-      "variables": [["test", "'test'"]]
+      "variables": [
+        [
+          "test",
+          "'test'"
+        ]
+      ]
     },
     {
       "desc": "tuples",
@@ -15,8 +20,14 @@
       "expectedType": "{Int, Int}",
       "expectedValue": "{2, 4}",
       "variables": [
-        ["formula1", "fn(#one: Int) => one + 1"],
-        ["formula2", "fn(two: Int) => two + 2"]
+        [
+          "formula1",
+          "fn(#one: Int) => one + 1"
+        ],
+        [
+          "formula2",
+          "fn(two: Int) => two + 2"
+        ]
       ]
     },
     {
@@ -25,7 +36,12 @@
       "expectedCode": "f(a: 'heeey')",
       "expectedType": "String",
       "expectedValue": "'<heeey>'",
-      "variables": [["f", "fn(a: String) => \"<${a}>\""]]
+      "variables": [
+        [
+          "f",
+          "fn(a: String) => \"<${a}>\""
+        ]
+      ]
     },
     {
       "desc": "formula1",
@@ -33,7 +49,12 @@
       "expectedCode": "formula1(1)",
       "expectedType": "Int",
       "expectedValue": "2",
-      "variables": [["formula1", "fn(#one: Int) => one + 1"]]
+      "variables": [
+        [
+          "formula1",
+          "fn(#one: Int) => one + 1"
+        ]
+      ]
     },
     {
       "desc": "formula2",
@@ -41,7 +62,12 @@
       "expectedCode": "formula2(two: 2)",
       "expectedType": "Int",
       "expectedValue": "4",
-      "variables": [["formula2", "fn(two: Int) => two + 2"]]
+      "variables": [
+        [
+          "formula2",
+          "fn(two: Int) => two + 2"
+        ]
+      ]
     },
     {
       "desc": "formula2",
@@ -49,7 +75,12 @@
       "expectedCode": "formula2(two: 2)",
       "expectedType": "Int",
       "expectedValue": "4",
-      "variables": [["formula2", "fn(two num: Int) => num + 2"]]
+      "variables": [
+        [
+          "formula2",
+          "fn(two num: Int) => num + 2"
+        ]
+      ]
     },
     {
       "desc": "formula3",
@@ -57,7 +88,12 @@
       "expectedCode": "formula3(1, two: 2)",
       "expectedType": "Int",
       "expectedValue": "3",
-      "variables": [["formula3", "fn(#one: Int, two: Int) => one + two"]]
+      "variables": [
+        [
+          "formula3",
+          "fn(#one: Int, two: Int) => one + two"
+        ]
+      ]
     },
     {
       "desc": "formula3",
@@ -65,7 +101,12 @@
       "expectedCode": "formula3(two: 2, 1)",
       "expectedType": "Int",
       "expectedValue": "3",
-      "variables": [["formula3", "fn(#one: Int, two: Int) => one + two"]]
+      "variables": [
+        [
+          "formula3",
+          "fn(#one: Int, two: Int) => one + two"
+        ]
+      ]
     },
     {
       "desc": "formula3-rev",
@@ -73,7 +114,12 @@
       "expectedCode": "formula3(two: 2, 1)",
       "expectedType": "Int",
       "expectedValue": "3",
-      "variables": [["formula3", "fn(two: Int, #one: Int) => one + two"]]
+      "variables": [
+        [
+          "formula3",
+          "fn(two: Int, #one: Int) => one + two"
+        ]
+      ]
     },
     {
       "desc": "formula4",
@@ -81,7 +127,12 @@
       "expectedCode": "formula4(1)",
       "expectedType": "Int(>=0)",
       "expectedValue": "1",
-      "variables": [["formula4", "fn(...#ints: Array(Int)) => ints.length"]]
+      "variables": [
+        [
+          "formula4",
+          "fn(...#ints: Array(Int)) => ints.length"
+        ]
+      ]
     },
     {
       "desc": "formula4",
@@ -89,7 +140,12 @@
       "expectedCode": "formula4(1, 2)",
       "expectedType": "Int(>=0)",
       "expectedValue": "2",
-      "variables": [["formula4", "fn(...#ints: Array(Int)) => ints.length"]]
+      "variables": [
+        [
+          "formula4",
+          "fn(...#ints: Array(Int)) => ints.length"
+        ]
+      ]
     },
     {
       "desc": "formula4",
@@ -97,7 +153,12 @@
       "expectedCode": "formula4(1, 2, 2)",
       "expectedType": "Int(>=0)",
       "expectedValue": "3",
-      "variables": [["formula4", "fn(...#ints: Array(Int)) => ints.length"]]
+      "variables": [
+        [
+          "formula4",
+          "fn(...#ints: Array(Int)) => ints.length"
+        ]
+      ]
     },
     {
       "desc": "formula5",
@@ -105,7 +166,12 @@
       "expectedCode": "formula5(5, 1, 2)",
       "expectedType": "Int",
       "expectedValue": "7",
-      "variables": [["formula5", "fn(#one: Int, ...#ints: Array(Int)) => one + ints.length"]]
+      "variables": [
+        [
+          "formula5",
+          "fn(#one: Int, ...#ints: Array(Int)) => one + ints.length"
+        ]
+      ]
     },
     {
       "desc": "formula6",
@@ -155,7 +221,7 @@
       "variables": [
         [
           "formula7",
-          "fn(#one: Int, *namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
+          "fn(#one: Int, **namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
         ]
       ]
     },
@@ -168,7 +234,7 @@
       "variables": [
         [
           "formula7",
-          "fn(#one: Int, *namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
+          "fn(#one: Int, **namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
         ]
       ]
     },
@@ -181,7 +247,7 @@
       "variables": [
         [
           "formula7",
-          "fn(#one: Int, *namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
+          "fn(#one: Int, **namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
         ]
       ]
     },
@@ -194,7 +260,7 @@
       "variables": [
         [
           "formula7",
-          "fn(#one: Int, *namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
+          "fn(#one: Int, **namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
         ]
       ]
     },
@@ -207,7 +273,7 @@
       "variables": [
         [
           "formula8",
-          "fn(#one: Int, two: Int, ...#posInts: Array(Int), ...int repInts: Array(Int), *namedInts: Dict(Int)) => one + two + posInts.length + repInts.length + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
+          "fn(#one: Int, two: Int, ...#posInts: Array(Int), ...int repInts: Array(Int), **namedInts: Dict(Int)) => one + two + posInts.length + repInts.length + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
         ]
       ]
     },
@@ -218,8 +284,14 @@
       "expectedType": "Int",
       "expectedValue": "12",
       "variables": [
-        ["foo", "fn(...#numbers: Array(Int)) => (numbers[0] ?? 0) + (numbers[1] ?? 0)"],
-        ["values", "[10, 2]"]
+        [
+          "foo",
+          "fn(...#numbers: Array(Int)) => (numbers[0] ?? 0) + (numbers[1] ?? 0)"
+        ],
+        [
+          "values",
+          "[10, 2]"
+        ]
       ]
     },
     {
@@ -229,8 +301,14 @@
       "expectedType": "Int",
       "expectedValue": "12",
       "variables": [
-        ["foo", "fn(...values: Array(Int)) => (values[0] ?? 0) + (values[1] ?? 0)"],
-        ["values", "[10, 2]"]
+        [
+          "foo",
+          "fn(...values: Array(Int)) => (values[0] ?? 0) + (values[1] ?? 0)"
+        ],
+        [
+          "values",
+          "[10, 2]"
+        ]
       ]
     },
     {
@@ -240,8 +318,14 @@
       "expectedType": "String",
       "expectedValue": "'test0'",
       "variables": [
-        ["foo", "fn(#a: Int, b: String) => b <> $a"],
-        ["tuple", "{0, b: 'test'}"]
+        [
+          "foo",
+          "fn(#a: Int, b: String) => b <> $a"
+        ],
+        [
+          "tuple",
+          "{0, b: 'test'}"
+        ]
       ]
     },
     {
@@ -263,8 +347,14 @@
       "expectedType": "Array(82 | 247 | -215 | -116, length: =4)",
       "expectedValue": "[82, 247, -215, -116]",
       "variables": [
-        ["bits", "0b11010110"],
-        ["bobs", "0b01110011"]
+        [
+          "bits",
+          "0b11010110"
+        ],
+        [
+          "bobs",
+          "0b01110011"
+        ]
       ]
     },
     {
@@ -285,7 +375,7 @@
     {
       "desc": "map identity",
       "formula": "map(1, map: identity)",
-      "only": true,
+      "only": false,
       "skip": false,
       "expectedCode": "map(1, map: identity)",
       "expectedType": "1",
@@ -304,6 +394,16 @@
           "fn<T, U>(#input: T, map: fn(#in: T): U) => map(input)"
         ]
       ]
+    },
+    {
+      "desc": "safe array index",
+      "formula": "let\n  ones: Array(1, length: 1...5) = [1, 1, ]\n  twos: Array(2, length: 2...6) = [2, 2, 2,]\n  all = ones ++ twos\n  index: Int = 0\nin\n  if (index >= 0 and index < all.length) { \n  then: \n    all[index] \n  else:\n    0\n  }\n",
+      "only": false,
+      "skip": false,
+      "expectedCode": "let\n  ones: Array(1, length: 1...5) = [1, 1]\n  twos: Array(2, length: 2...6) = [2, 2, 2]\n  all = ones ++ twos\n  index: Int = 0\nin\n  if (index >= 0 and index < all.length) {\n  then:\n    all[index]\n  else:\n    0\n  }",
+      "expectedType": "1 | 2 | 0",
+      "expectedValue": "1",
+      "variables": []
     }
   ]
 }

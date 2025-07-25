@@ -1,7 +1,7 @@
 import {c, cases} from '@extra-lang/cases'
 import {parseInternalTest} from '../../formulaParser'
 
-describe('types', () => {
+describe('application types', () => {
   cases<[string, string] | [string, string, string]>(
     c(['type Age = Int', '(type Age `Int`)']),
     c(['public type Age = Int(>=0)', '(public type Age `Int(>=0)`)']),
@@ -78,9 +78,11 @@ enum RemoteData<Tsuccess, Tfail> {
   .failure(#value: Tfail)
 
   fn toMaybe(): Maybe(Tsuccess) =>
-      switch(this) {
-      case: .success(value) => .some(value)
-      else: .none
+      switch (this) {
+      case .success(value):
+        .some(value)
+      else:
+        .none
       }
 }
 `,
@@ -93,7 +95,12 @@ enum RemoteData<Tsuccess, Tfail> {
   .failure(#value: Tfail)
 
   fn toMaybe(): Maybe(Tsuccess) =>
-    switch(this) { case: .success(value) => .some(value), else: .none }
+    switch (this) {
+    case .success(value):
+      .some(value)
+    else:
+      .none
+    }
 }`,
     ]),
     c([

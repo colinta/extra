@@ -74,7 +74,7 @@ import {scanString} from './string'
  *     fn (#name: Int): String
  *   enum shorthand (does not support generics):
  *     .notLoaded | .loading | .success(String) | .failure(HttpError)
- *     ❌ enum RemoteData(Tsuccess, Tfailure) { .notLoaded, .loading, .success(Tsuccess), .failure(Tfailure) }
+ *     ❌ enum RemoteData<Tsuccess, Tfailure> { .notLoaded, .loading, .success(Tsuccess), .failure(Tfailure) }
  */
 export function scanArgumentType(
   scanner: Scanner,

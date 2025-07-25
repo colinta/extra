@@ -144,19 +144,19 @@ describe('newline-as-comma', () => {
     ]),
     c([
       `\
-dict( foo: 1
+Dict( foo: 1
   bar: 2
 )`,
-      'dict(foo: 1, bar: 2)',
+      'Dict(foo: 1, bar: 2)',
     ]),
     c([
       `\
-dict( foo: 1
+Dict( foo: 1
   bar: 2
 
 
  )`,
-      'dict(foo: 1, bar: 2)',
+      'Dict(foo: 1, bar: 2)',
     ]),
     c([
       `\

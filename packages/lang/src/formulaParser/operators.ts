@@ -1796,6 +1796,10 @@ class AdditionOperator extends BinaryOperator {
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
+    if (lhs instanceof Values.SetValue && rhs instanceof Values.SetValue) {
+      return ok(new Values.SetValue(lhs.values.concat(rhs.values)))
+    }
+
     return rhs().map(rhs => numericOperation(this, lhs, rhs, (a, b) => a + b))
   }
 }
@@ -1883,11 +1887,11 @@ class ArrayConcatenationOperator extends BinaryOperator {
     rhsExpr: Expression,
   ) {
     if (!(lhs instanceof Types.ArrayType)) {
-      return err(new RuntimeError(lhsExpr, expectedType('array concatenation', lhsExpr, lhs)))
+      return err(new RuntimeError(lhsExpr, expectedType('Array', lhsExpr, lhs)))
     }
 
     if (!(rhs instanceof Types.ArrayType)) {
-      return err(new RuntimeError(rhsExpr, expectedType('array concatenation', rhsExpr, rhs)))
+      return err(new RuntimeError(rhsExpr, expectedType('Array', rhsExpr, rhs)))
     }
 
     const concatLength = combineConcatLengths(lhs.narrowedLength, rhs.narrowedLength)
@@ -1903,10 +1907,10 @@ class ArrayConcatenationOperator extends BinaryOperator {
   ) {
     return rhs().map((rhs): GetValueResult => {
       if (lhs instanceof Values.ArrayValue && rhs instanceof Values.ArrayValue) {
-        return ok(lhs.concatenationOperator(rhs))
+        return ok(new Values.ArrayValue(lhs.values.concat(rhs.values)))
       }
 
-      return err(new RuntimeError(rhsExpr, expectedType('array concatenation', rhsExpr, rhs)))
+      return err(new RuntimeError(rhsExpr, expectedType('Array', rhsExpr, rhs)))
     })
   }
 }
@@ -1952,11 +1956,11 @@ class StringConcatenationOperator extends BinaryOperator {
     rhsExpr: Expression,
   ) {
     if (!lhs.isString()) {
-      return err(new RuntimeError(lhsExpr, expectedType('string to concatenate', lhsExpr, lhs)))
+      return err(new RuntimeError(lhsExpr, expectedType('String', lhsExpr, lhs)))
     }
 
     if (!rhs.isString()) {
-      return err(new RuntimeError(rhsExpr, expectedType('string to concatenate', rhsExpr, rhs)))
+      return err(new RuntimeError(rhsExpr, expectedType('String', rhsExpr, rhs)))
     }
 
     // both literals -> return a literal
@@ -2003,10 +2007,10 @@ class StringConcatenationOperator extends BinaryOperator {
   ) {
     return rhs().map((rhs): GetValueResult => {
       if (!lhs.isString()) {
-        return err(new RuntimeError(lhsExpr, expectedType('string to concatenate', lhsExpr, lhs)))
+        return err(new RuntimeError(lhsExpr, expectedType('String', lhsExpr, lhs)))
       }
       if (!rhs.isString()) {
-        return err(new RuntimeError(rhsExpr, expectedType('string to concatenate', rhsExpr, rhs)))
+        return err(new RuntimeError(rhsExpr, expectedType('String', rhsExpr, rhs)))
       }
 
       return ok(Values.string(lhs.value + rhs.value))
@@ -2047,11 +2051,11 @@ class ObjectMergeOperator extends BinaryOperator {
     rhsExpr: Expression,
   ) {
     if (!lhs.isObject()) {
-      return err(new RuntimeError(lhsExpr, expectedType('object to merge', lhsExpr, lhs)))
+      return err(new RuntimeError(lhsExpr, expectedType('Object', lhsExpr, lhs)))
     }
 
     if (!rhs.isObject()) {
-      return err(new RuntimeError(rhsExpr, expectedType('object to merge', rhsExpr, rhs)))
+      return err(new RuntimeError(rhsExpr, expectedType('Object', rhsExpr, rhs)))
     }
 
     return ok(Types.object([...lhs.props, ...rhs.props]))
@@ -2066,11 +2070,11 @@ class ObjectMergeOperator extends BinaryOperator {
   ) {
     return rhs().map((rhs): GetValueResult => {
       if (!lhs.isObject()) {
-        return err(new RuntimeError(lhsExpr, expectedType('object to merge', lhsExpr, lhs)))
+        return err(new RuntimeError(lhsExpr, expectedType('Object', lhsExpr, lhs)))
       }
 
       if (!rhs.isObject()) {
-        return err(new RuntimeError(rhsExpr, expectedType('object to merge', rhsExpr, rhs)))
+        return err(new RuntimeError(rhsExpr, expectedType('Object', rhsExpr, rhs)))
       }
 
       const tupleValues = lhs.tupleValues.concat(rhs.tupleValues)
@@ -2136,20 +2140,10 @@ class RangeOperator extends BinaryOperator {
     }
 
     if (!lhs.isFloat()) {
-      return err(
-        new RuntimeError(
-          lhsExpr,
-          expectedType(`number before range operator '${this.symbol}'`, lhsExpr, lhs),
-        ),
-      )
+      return err(new RuntimeError(lhsExpr, expectedType('Int', lhsExpr, lhs)))
     }
 
-    return err(
-      new RuntimeError(
-        lhsExpr,
-        expectedType(`number before range operator '${this.symbol}'`, rhsExpr, rhs),
-      ),
-    )
+    return err(new RuntimeError(lhsExpr, expectedType('Int', rhsExpr, rhs)))
   }
 
   operatorEval(
@@ -2680,7 +2674,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
   replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
     const [lhsExpr, rhsExpr] = this.args
     if (!(rhsExpr instanceof Expressions.Identifier)) {
-      return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
+      return err(new RuntimeError(rhsExpr, expectedType('property name', rhsExpr)))
     }
 
     return getChildType(this, lhsExpr, runtime).map(lhsType => {
@@ -2725,7 +2719,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
     rhsExpr: Expression,
   ): GetTypeResult {
     if (!(rhsExpr instanceof Expressions.Identifier)) {
-      return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
+      return err(new RuntimeError(rhsExpr, expectedType('property name', rhsExpr)))
     }
 
     const rhType = lhs.propAccessType(rhsExpr.name)
@@ -2746,7 +2740,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
     rhsExpr: Expression,
   ): GetValueResult {
     if (!(rhsExpr instanceof Expressions.Identifier)) {
-      return err(new RuntimeError(rhsExpr, expectedPropertyName(rhsExpr)))
+      return err(new RuntimeError(rhsExpr, expectedType('property name', rhsExpr)))
     }
 
     const value = lhs.propValue(rhsExpr.name)
@@ -4330,7 +4324,7 @@ addBinaryOperator({
     operator: Operator,
     args: Expression[],
   ) {
-    if (args[0] instanceof Expressions.GuardExpression) {
+    if (args[0] instanceof Expressions.GuardIdentifier) {
       return new GuardExpressionInvocation(
         range,
         precedingComments,
@@ -4340,7 +4334,7 @@ addBinaryOperator({
       )
     }
 
-    if (args[0] instanceof Expressions.IfExpression) {
+    if (args[0] instanceof Expressions.IfIdentifier) {
       return new IfExpressionInvocation(
         range,
         precedingComments,
@@ -4350,7 +4344,7 @@ addBinaryOperator({
       )
     }
 
-    if (args[0] instanceof Expressions.ElseIfExpression) {
+    if (args[0] instanceof Expressions.ElseIfIdentifier) {
       return new ElseIfExpressionInvocation(
         range,
         precedingComments,
@@ -4372,10 +4366,6 @@ addBinaryOperator({
 
 function unexpectedOnlyType(conditionType: Types.Type, only: boolean): string {
   return `Type '${conditionType}' is invalid as an if condition, because it is always ${only ? 'true' : 'false'}.`
-}
-
-function expectedPropertyName(found: Expression) {
-  return expectedType('property name', found)
 }
 
 function expectedNumberMessage(found: Expression, type?: Types.Type | Values.Value) {

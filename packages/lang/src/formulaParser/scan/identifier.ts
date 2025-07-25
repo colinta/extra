@@ -141,13 +141,13 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
       identifier = new Expressions.IgnorePlaceholder(range, scanner.flushComments())
       break
     case 'if':
-      identifier = new Expressions.IfExpression(range, scanner.flushComments())
+      identifier = new Expressions.IfIdentifier(range, scanner.flushComments())
       break
     case 'elseif':
-      identifier = new Expressions.ElseIfExpression(range, scanner.flushComments())
+      identifier = new Expressions.ElseIfIdentifier(range, scanner.flushComments())
       break
     case 'guard':
-      identifier = new Expressions.GuardExpression(range, scanner.flushComments())
+      identifier = new Expressions.GuardIdentifier(range, scanner.flushComments())
       break
     case 'switch':
       identifier = new Expressions.SwitchIdentifier(range, scanner.flushComments())
