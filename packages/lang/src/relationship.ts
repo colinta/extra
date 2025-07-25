@@ -106,7 +106,11 @@ export const relationshipFormula = {
   arrayConcat(lhs: RelationshipFormula, rhs: RelationshipFormula): RelationshipArrayConcat {
     return {type: 'array-concat', lhs, rhs}
   },
-  toString(rel: RelationshipFormula): string {
+  toString(rel: RelationshipFormula | Relationship): string {
+    if (isRelationship(rel)) {
+      return `${this.toString(rel.formula)} ${rel.type} ${this.toString(rel.right)}`
+    }
+
     if (isLiteral(rel)) {
       return JSON.stringify(rel.value)
     }
@@ -136,6 +140,10 @@ export const relationshipFormula = {
     return x
   },
 } as const
+
+function toS(rel: RelationshipFormula | Relationship): string {
+  return relationshipFormula.toString(rel)
+}
 
 /**
  * Adjust the runtime, assuming that `lhs <lhsComparison> rhs` is true.
@@ -963,6 +971,12 @@ function handleRelationship(
     }
 
     return updatedRelationships
+  } else if (newRelationship.type === '==') {
+    // type needs to be "turned around" because prevRelationship.formula
+    // is on the left of prevRelationship.symbol, and prevRelationship.formula
+    // equals newRelationship.formula
+    let type: RelationshipComparison = reverseComparison(prevRelationship.type)
+    return handleComparisonRelationship(mutableRuntime, prevRelationship, newRelationship, type)
   } else if (
     (prevRelationship.type === '<' || prevRelationship.type === '<=') &&
     (newRelationship.type === '>' || newRelationship.type === '>=')
@@ -1061,8 +1075,6 @@ function replaceType(
 
     const nextAssignableType = type.replacingProp(assignable.name, nextType)
     if (nextAssignableType.isErr()) {
-      console.log('=========== relationship.ts at line 1058 ===========')
-      console.log({type, 'assignable.name': assignable.name, nextType})
       throw `todo - error assigning ${assignable.type} type '${assignable.name}' to '${nextType}': ${nextAssignableType.error}`
     }
 
@@ -1228,6 +1240,12 @@ function isAssign(formula: RelationshipFormula): formula is RelationshipAssign {
   )
 }
 
+function isRelationship(formula: Relationship | RelationshipFormula): formula is Relationship {
+  return (
+    typeof formula === 'object' && 'formula' in formula && 'type' in formula && 'right' in formula
+  )
+}
+
 function isLiteral(formula: RelationshipFormula): formula is RelationshipLiteral {
   return (
     formula.type === 'null' ||
@@ -1326,8 +1344,6 @@ export function verifyRelationship(
       case '<=':
         return verifyRelationshipIsLte(rel, right)
       default:
-        console.log('=========== relationship.ts at line 1317 ===========')
-        console.log({comparison})
         throw `TODO - implement '${comparison}' in verifyRelationship`
     }
   })
@@ -1383,9 +1399,7 @@ function verifyRelationshipIsEq(
     }
   }
 
-  console.log('=========== relationship.ts at line 1368 ===========')
-  console.log({comparison: '>=', right: target, relationship})
-  throw `TODO - verifyRelationshipIsEq(right: ${relationshipFormula.toString(target)}, formula: ${relationshipFormula.toString(relationship.formula)} ${relationship.type} ${relationshipFormula.toString(relationship.formula)})`
+  throw `TODO - verifyRelationshipIsEq(right: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.type} ${toS(relationship.formula)})`
 }
 
 function verifyRelationshipIsGte(
@@ -1460,9 +1474,7 @@ function verifyRelationshipIsGte(
     }
   }
 
-  console.log('=========== relationship.ts at line 1368 ===========')
-  console.log({comparison: '>=', right: target, relationship})
-  throw `TODO - verifyRelationshipIsGte(right: ${relationshipFormula.toString(target)}, formula: ${relationshipFormula.toString(relationship.formula)} ${relationship.type} ${relationshipFormula.toString(relationship.formula)})`
+  throw `TODO - verifyRelationshipIsGte(right: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.type} ${toS(relationship.formula)})`
 }
 
 /**
@@ -1552,9 +1564,7 @@ function verifyRelationshipIsGt(
     }
   }
 
-  console.log('=========== relationship.ts at line 1463 ===========')
-  console.log({comparison: '>', right: target, relationship})
-  throw `TODO - verifyRelationshipIsLt(right is '${target.type}', formula is '${relationshipFormula.toString(relationship.formula)}')`
+  throw `TODO - verifyRelationshipIsLt(right is '${target.type}', formula is '${toS(relationship.formula)}')`
 }
 
 /**
@@ -1646,9 +1656,7 @@ function verifyRelationshipIsLt(
     return false
   }
 
-  console.log('=========== relationship.ts at line 1463 ===========')
-  console.log({comparison: '<', relationship, right: target})
-  throw `TODO - verify(formula is '${relationshipFormula.toString(relationship.formula)} ${relationship.type} ${relationshipFormula.toString(relationship.right)}' <? right is '${target.type}')`
+  throw `TODO - verify(formula is '${toS(relationship.formula)} ${relationship.type} ${toS(relationship.right)}' <? right is '${target.type}')`
 }
 
 function verifyRelationshipIsLte(
@@ -1723,9 +1731,7 @@ function verifyRelationshipIsLte(
     }
   }
 
-  console.log('=========== relationship.ts at line 1368 ===========')
-  console.log({comparison: '<=', right: target, relationship})
-  throw `TODO - verifyRelationshipIsGte(right: ${relationshipFormula.toString(target)}, formula: ${relationshipFormula.toString(relationship.formula)} ${relationship.type} ${relationshipFormula.toString(relationship.formula)})`
+  throw `TODO - verifyRelationshipIsGte(right: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.type} ${toS(relationship.formula)})`
 }
 
 export function isEqualFormula(lhs: RelationshipFormula, rhs: RelationshipFormula): boolean {

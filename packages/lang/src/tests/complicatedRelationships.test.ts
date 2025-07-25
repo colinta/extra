@@ -153,30 +153,24 @@ describe('complicated relationships', () => {
     expect(resolvedValue!).toEqual(Values.tuple([Values.int(-1), Values.int(1), Values.int(3)]))
   })
 
-  it.only('can infer safe array with array lengths comparison', () => {
-    runtimeTypes['letters'] = [
-      Types.array(Types.string()),
-      Values.array([Values.string('a'), Values.string('b'), Values.string('c')]),
-    ]
-    runtimeTypes['numbers'] = [
-      Types.array(Types.int()),
-      Values.array([Values.int(-1), Values.int(0), Values.int(1)]),
-    ]
-    runtimeTypes['index'] = [Types.int(), Values.int(1)]
+  it('can infer safe array with == array lengths comparison', () => {
     const code = `
-      -- letters: Array(String), from runtime
-      -- numbers: Array(Int), from runtime
-      -- index: Int, from runtime
       let
-        prev = index - 1
-        next = index + 1
+        letters: Array(String) = ['a', 'b', 'c']
+        numbers: Array(Int) = [-1, 0, 1]
+        index: Int = 1
       in
-        if (index > 0 and index < letters.length and letters.length == numbers.length) {
+        if (
+          index > 0
+          and index < letters.length
+          and letters.length == numbers.length
+        ) {
           then: {
-            letters[index]
-            numbers[index]
+            letters[index],
+            numbers[index],
           }
-        }`
+        }
+    `
     const currentExpression = parse(code).get()
     const resolvedType = currentExpression.getType(typeRuntime).get()
     const resolvedValue = currentExpression.eval(valueRuntime).get()
@@ -184,6 +178,36 @@ describe('complicated relationships', () => {
     expect(resolvedType!).toEqual(
       Types.oneOf([Types.tuple([Types.string(), Types.int()]), Types.nullType()]),
     )
-    expect(resolvedValue!).toEqual(Values.tuple([Values.int(-1), Values.int(1), Values.int(3)]))
+    expect(resolvedValue!).toEqual(Values.tuple([Values.string('b'), Values.int(0)]))
+  })
+
+  it('can infer safe array with <= array lengths comparison', () => {
+    const code = `
+      let
+        letters: Array(String) = ['a', 'b', 'c']
+        numbers: Array(Int) = [-1, 0, 1]
+        index: Int = 1
+      in
+        if (
+          index > 0
+          and index < letters.length
+          and letters.length <= numbers.length
+        ) {
+          then: {
+            letters[index],
+            numbers[index],
+          }
+        }
+    `
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
+    const resolvedValue = currentExpression.eval(valueRuntime).get()
+
+    console.log('' + resolvedType)
+    console.log('' + resolvedValue)
+    expect(resolvedType!).toEqual(
+      Types.oneOf([Types.tuple([Types.string(), Types.int()]), Types.nullType()]),
+    )
+    expect(resolvedValue!).toEqual(Values.tuple([Values.string('b'), Values.int(0)]))
   })
 })
