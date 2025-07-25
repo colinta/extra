@@ -3807,23 +3807,25 @@ export class FormulaExpression extends Expression {
       if (this.returnType instanceof InferIdentifier) {
         returnTypeResult = bodyReturnType
       } else {
-        returnTypeResult = mapAll([
-          bodyReturnType,
-          getChildType(this, this.returnType, mutableRuntime),
-        ]).map(([bodyType, typeConstructor]) => {
-          const returnType = typeConstructor.fromTypeConstructor()
+        const returnType = this.returnType
+          .getAsTypeExpression(mutableRuntime)
+          .mapResult(decorateError(this))
+        returnTypeResult = mapAll([bodyReturnType, returnType]).map(
+          ([bodyType, typeConstructor]) => {
+            const returnType = typeConstructor.fromTypeConstructor()
 
-          if (!Types.canBeAssignedTo(bodyType, returnType)) {
-            return err(
-              new RuntimeError(
-                this,
-                `Function body result type '${bodyType.toCode()}' is not assignable to explicit return type '${returnType.toCode()}'`,
-              ),
-            )
-          }
+            if (!Types.canBeAssignedTo(bodyType, returnType)) {
+              return err(
+                new RuntimeError(
+                  this,
+                  `Function body result type '${bodyType.toCode()}' is not assignable to explicit return type '${returnType.toCode()}'`,
+                ),
+              )
+            }
 
-          return returnType
-        })
+            return returnType
+          },
+        )
       }
 
       return returnTypeResult.map(returnType => {
@@ -3983,13 +3985,13 @@ export class FormulaExpression extends Expression {
         }
         value = result.get()
       }
-      mutableRuntime.addLocalValue(arg.aliasRef.name, value)
+      mutableRuntime.addLocalValue(arg.nameRef.name, value)
     }
 
     for (const [name, arg] of repeatNamed) {
       allNames.delete(name)
       let value = invokedArgs.safeAllNamed(name)
-      mutableRuntime.addLocalValue(arg.aliasRef.name, new Values.ArrayValue(value))
+      mutableRuntime.addLocalValue(arg.nameRef.name, new Values.ArrayValue(value))
     }
 
     if (kwargs) {
@@ -4001,7 +4003,7 @@ export class FormulaExpression extends Expression {
         }
         kwargValues.set(name, value)
       }
-      mutableRuntime.addLocalValue(kwargs.aliasRef.name, new Values.DictValue(kwargValues))
+      mutableRuntime.addLocalValue(kwargs.nameRef.name, new Values.DictValue(kwargValues))
     }
 
     return ok(mutableRuntime)
