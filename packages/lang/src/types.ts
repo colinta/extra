@@ -1746,6 +1746,10 @@ export class MetaStringType extends Type {
     return this.narrowString({length: {min: minLength, max: maxLength}, regex: []})
   }
 
+  narrowRegex(regex: RegExp): Type {
+    return this.narrowString({length: Narrowed.DEFAULT_NARROWED_LENGTH, regex: [regex]})
+  }
+
   /**
    * MetaStringType.literalAccessType
    */

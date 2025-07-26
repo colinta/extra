@@ -1,18 +1,43 @@
-import * as Values from '../../values'
 import {isRegexFlag} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
 import * as Expressions from '../expressions'
+import {scanValidName} from './identifier'
 
-export function scanRegex(scanner: Scanner) {
+/**
+ * Called recursively in capture groups, to associate the capture group with the
+ * inner regex, which is pretty damn cool.
+ */
+export function scanRegex(scanner: Scanner, embedded = false) {
   scanner.whereAmI('scanRegex')
-  scanner.expectString('/')
+  if (!embedded) {
+    scanner.expectString('/')
+  }
 
   const bufferRange0 = scanner.charIndex
+  const groups = new Map<string, string>()
+  const [stringBuffer, flags] = scanRegexString(scanner, embedded, groups)
+
+  scanner.whereAmI('scanRegex (literal): ' + stringBuffer)
+  return new Expressions.RegexLiteral(
+    [bufferRange0, scanner.charIndex],
+    scanner.flushComments(),
+    stringBuffer,
+    flags,
+    groups,
+  )
+}
+
+function scanRegexString(
+  scanner: Scanner,
+  embedded: boolean,
+  groups: Map<string, string>,
+): [string, string] {
   let stringBuffer = ''
   let escapeBuffer = ''
   let escaping: '' | 'single' | 'hex' | 'unicode' = ''
   let flags = ''
+  let parensCount = 0
   for (;;) {
     if (scanner.isEOF()) {
       throw new ParseError(scanner, 'Unexpected end of string')
@@ -69,7 +94,14 @@ export function scanRegex(scanner: Scanner) {
       }
     } else if (scanner.is('\\')) {
       escaping = 'single'
-    } else if (scanner.is('/')) {
+    } else if (embedded && scanner.is('(')) {
+      parensCount += 1
+    } else if (embedded && scanner.is(')')) {
+      if (parensCount === 0) {
+        break
+      }
+      parensCount -= 1
+    } else if (!embedded && scanner.is('/')) {
       scanner.charIndex++
       while (isRegexFlag(scanner.char)) {
         if (!flags.includes(scanner.char)) {
@@ -78,6 +110,33 @@ export function scanRegex(scanner: Scanner) {
         scanner.charIndex++
       }
       break
+    } else if (scanner.scanIfString('(?<')) {
+      if (embedded) {
+        throw new ParseError(
+          scanner,
+          'Named capture groups are not allowed inside named capture groups',
+        )
+      }
+
+      stringBuffer += '(?<'
+      const startIndex = scanner.charIndex
+      const reference = scanValidName(scanner)
+      stringBuffer += reference.name
+      scanner.expectString('>')
+      stringBuffer += '>'
+
+      if (groups.has(reference.name)) {
+        throw new ParseError(
+          scanner,
+          `Duplicate capture group name '${reference.name}'`,
+          startIndex,
+        )
+      }
+
+      const [inner] = scanRegexString(scanner, true, groups)
+      stringBuffer += inner
+      groups.set(reference.name, inner)
+      continue
     } else {
       stringBuffer += scanner.char
     }
@@ -85,10 +144,5 @@ export function scanRegex(scanner: Scanner) {
     scanner.charIndex++
   }
 
-  scanner.whereAmI('scanRegex (literal): ' + stringBuffer)
-  return new Expressions.Literal(
-    [bufferRange0, scanner.charIndex],
-    scanner.flushComments(),
-    Values.regex(stringBuffer, flags),
-  )
+  return [stringBuffer, flags]
 }

@@ -197,15 +197,25 @@ doSomething(1) {
 
 ## Pattern Matching
 
-Obviously Extra supports pattern matching. `switch` is the most canonical way to group a bunch of matchers. This was hard so you better like it!
+*Obviously* Extra supports pattern matching. `switch` is the most canonical way to group a bunch of matchers, but `is` is handy in a pinch. This was hard so you better like it!
 
 ```
+-- Syntax:
+--     [subject] is [matcher]
+-- Or
+--     switch ([subject]) { case [matcher]: expr}
+-- Ex:
+   subject is .some(value)
+   switch (subject) { case .some(value): value }
+
 foo --> matches everything, assigns to 'foo'
 _ --> same but ignore the value
 
 1, 1...2.5 --> matches numbers and ranges
 "foo" --> string literal
 "<" <> tag <> ">"  --> prefixed/suffixed string (assigns middle to 'tag')
+
+/^<(?<tag>.*)>$/   --> matches a regex, assigns 'tag' the named capture group contents
 
 [] --> matches an empty array
 [a, _, b] --> matches an array with exactly least 3 items
@@ -230,10 +240,12 @@ else:
 }
 ```
 
-###### Strings
+###### Strings and Regex
+
+Strings can be matched against regexes, and will assign matches to named capture
+groups, or you can match against a prefix and assign the remainder.
+
 ```extra
--- strings can be matched against regexes, and will assign matches to named
--- capture groups, or you can match against a prefix and assign the remainder
 switch (name) {
 case /(?<first>\w+) (?<last>\w+)/:
   "Hello, $first $last!"

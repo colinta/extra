@@ -59,6 +59,8 @@ describe('match operator', () => {
       c(['foo is [value1, ...value2, value3]']),
       c(['foo is [value1, ...value2]']),
       c(['foo is [a] or foo is [a, _]']),
+      c(['foo is /a/']),
+      c(['foo is /(?<name>a+)/']),
       c.skip(['foo is {}']),
       c.skip(['foo is {name: name}']),
       c.skip(['foo is {name: _}']),
@@ -79,7 +81,7 @@ describe('match operator', () => {
       runtimeTypes['input'] = [Types.literal('test'), Values.string('test')]
     })
 
-    cases<[Types.Type, string, {truthy: Types.Type; falsey: Types.Type}]>(
+    cases<[Types.Type, string, {truthy: Types.Type; falsey: Types.Type, notTruthy?: Types.Type, notFalsey?: Types.Type}]>(
       c([
         Types.oneOf([Types.string(), Types.int()]),
         'foo is Int',
@@ -136,6 +138,34 @@ describe('match operator', () => {
           falsey: Types.optional(Ints),
         },
       ]),
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
+        'foo is /test/',
+        {
+          truthy: Types.string({regex: [/test/]}),
+          falsey: Types.oneOf([Types.string(), Types.int()]),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
+        'foo is /<(?<foo>\\w+)>/ and foo',
+        {
+          // the regex by itself only guarantees regex: [...], the min: 1 comes
+          // from 'and foo'
+          truthy: Types.string({min: 1, regex: [/\w+/]}),
+          falsey: Types.oneOf([Types.string(), Types.int()]),
+          // this one took me a bit - but yes; the inverse case is:
+          //     foo !is /.../ and foo
+          // if this is false, that means *the first condition* as false, ie
+          // `foo is /.../` - it matched!
+          //
+          // OK so why is min: 0? because we don't eval the rhs of the 'and',
+          // and matching the regex doesn't guarantee string length (this would
+          // involve parsing the regex to make sure it always matches N
+          // characters)
+          notFalsey: Types.string({min: 0, regex: [/\w+/]}),
+        },
+      ]),
     ).run(([fooType, formula, expectedTypes], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
         `(foo: ${fooType}) '${formula}' => truthy: ${expectedTypes.truthy}, falsey: ${expectedTypes.falsey}`,
@@ -150,8 +180,8 @@ describe('match operator', () => {
           {
             const expression = parse(formula.replace(' is ', ' !is ')).get()
             const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
-            expect(truthy).toEqual(expectedTypes.falsey)
-            expect(falsey).toEqual(expectedTypes.truthy)
+            expect(truthy).toEqual(expectedTypes.notTruthy ?? expectedTypes.falsey)
+            expect(falsey).toEqual(expectedTypes.notFalsey ?? expectedTypes.truthy)
           }
         },
       ),

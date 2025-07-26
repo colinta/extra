@@ -257,6 +257,9 @@ export abstract class Operation extends Expression {
  *
  * StringLiteral has its own type, which has to do with String interpolation
  * literals.
+ *
+ * RegexLiteral is its own type because it stores capture group names (for use
+ * in matching expressions).
  */
 export class Literal extends Expression {
   constructor(
@@ -342,6 +345,22 @@ export class LiteralKey extends Literal {
   }
 }
 
+export class RegexLiteral extends Literal {
+  readonly value: Values.RegexValue
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly pattern: string,
+    readonly flags: string,
+    readonly groups: Map<string, string>,
+  ) {
+    const value = Values.regex(pattern, flags)
+    super(range, precedingComments, value)
+    this.value = value
+  }
+}
+
 //|
 //|  String Expressions
 //|
@@ -393,13 +412,13 @@ export class StringLiteral extends Literal {
  * A string literal starting with `:` and only containing letters, numbers, dashes,
  * and underscores.
  */
-export class StringAtomLiteral extends Literal {
+export class StringAtomLiteral extends StringLiteral {
   constructor(
     range: Range,
     precedingComments: Comment[],
     readonly stringValue: string,
   ) {
-    super(range, precedingComments, Values.string(stringValue))
+    super(range, precedingComments, stringValue)
   }
 }
 
@@ -455,7 +474,14 @@ export class StringTemplateOperation extends Operation {
 
   getType(): GetTypeResult {
     // todo scan all values in the string template and return a narrowed string type
-    return ok(Types.StringType)
+    const minLength = this.args.reduce((length, expression) => {
+      if (!(expression instanceof StringLiteral)) {
+        return length
+      }
+      return length + expression.value.length
+    }, 0)
+
+    return ok(Types.StringType.narrowLength(minLength, undefined))
   }
 
   eval(runtime: ValueRuntime) {
@@ -4401,7 +4427,12 @@ export abstract class MatchExpression extends Expression {
    * The default implementation calls assigns the type from getAsTypeExpression and
    * uses that to narrow lhsType, assigning it back to lhsExpr.
    *
-   * Used in MatchTypeExpression and MatchStringLiteral.
+   * Used in "simple" matcher
+   *     MatchTypeExpression
+   *     MatchLiteral
+   *     MatchStringExpression
+   *     MatchRangeExpression
+   *     MatchArrayExpression
    */
   defaultAssumeMatchAssertionRuntime(
     runtime: TypeRuntime,
@@ -4873,9 +4904,7 @@ export class MatchEnumExpression extends MatchExpression {
 
     return getChildType(this, lhsExpr, runtime)
       .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
-      .map(([_lhsType, runtime]) => {
-        return runtime
-      })
+      .map(([_lhsType, runtime]) => runtime)
   }
 
   assumeNestedAssertionType(
@@ -5009,6 +5038,85 @@ export class MatchStringLiteral extends MatchLiteral {
   }
 }
 
+export class MatchRegexLiteral extends MatchLiteral {
+  constructor(readonly literal: RegexLiteral) {
+    super(literal)
+  }
+
+  getAsTypeExpression(_runtime: TypeRuntime): GetTypeResult {
+    return ok(Types.StringType.narrowRegex(this.literal.value.value))
+  }
+
+  assumeMatchAssertionRuntime(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    if (!assumeTrue) {
+      // (type: String | Int)
+      //      type !is /test/
+      // type => String | Int, no change
+      return ok(runtime)
+    }
+
+    return getChildType(this, lhsExpr, runtime)
+      .map(lhsType =>
+        this.getAsTypeExpression(runtime).map(rhsTypeAssertion =>
+          Types.narrowTypeIs(lhsType, rhsTypeAssertion),
+        ),
+      )
+      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
+      .map(([_lhsType, runtime]) => runtime)
+  }
+
+  assumeNestedAssertionType(
+    runtime: MutableTypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult {
+    if (!assumeTrue) {
+      // (type: String | Int)
+      //      type !is /test/
+      // type => String | Int, no change
+      return ok(lhsType)
+    }
+
+    return this.getAsTypeExpression(runtime)
+      .map(rhsTypeAssertion =>
+        this._assumeMatchAndNestedAssertionType(
+          runtime,
+          undefined,
+          Types.narrowTypeIs(lhsType, rhsTypeAssertion),
+        ),
+      )
+      .map(([type, _runtime]) => type)
+  }
+
+  private _assumeMatchAndNestedAssertionType(
+    runtime: TypeRuntime,
+    lhsExpr: Expression | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<[Types.Type, TypeRuntime]> {
+    const nextRuntime = lhsExpr?.replaceWithType(runtime, lhsType) ?? ok(runtime)
+    if (!this.literal.groups.size) {
+      return nextRuntime.map(runtime => [lhsType, runtime])
+    }
+
+    return nextRuntime.map(runtime => {
+      const mutableRuntime =
+        runtime instanceof MutableTypeRuntime ? runtime : new MutableTypeRuntime(runtime)
+
+      for (const [name, pattern] of this.literal.groups) {
+        const regex = new RegExp(pattern, this.literal.flags)
+        const type = Types.StringType.narrowRegex(regex)
+        mutableRuntime.addLocalType(name, type)
+      }
+
+      return [lhsType, mutableRuntime]
+    })
+  }
+}
+
 /**
  * foo is "prefix"
  * foo is "prefix" <> value
@@ -5070,9 +5178,7 @@ export class MatchStringExpression extends MatchExpression {
 
     return getChildType(this, lhsExpr, runtime)
       .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
-      .map(([_lhsType, runtime]) => {
-        return runtime
-      })
+      .map(([_lhsType, runtime]) => runtime)
   }
 
   assumeNestedAssertionType(
@@ -5330,9 +5436,7 @@ export class MatchArrayExpression extends MatchExpression {
 
     return getChildType(this, lhsExpr, runtime)
       .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
-      .map(([_lhsType, runtime]) => {
-        return runtime
-      })
+      .map(([_lhsType, runtime]) => runtime)
   }
 
   assumeNestedAssertionType(

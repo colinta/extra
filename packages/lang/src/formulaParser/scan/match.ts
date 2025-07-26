@@ -16,6 +16,7 @@ import {scanArgumentType} from './argument_type'
 
 import {unexpectedToken} from './basics'
 import {scanAnyReference, scanValidName} from './identifier'
+import {scanRegex} from './regex'
 import {scanString} from './string'
 
 /**
@@ -49,6 +50,10 @@ import {scanString} from './string'
  *     foo <> "suffix" -- string ends with "suffix", prefix assigned
  *     "<<" <> foo <> ">>" -- string starts with "<<", ends with ">>", middle assigned
  *     "<<" <> foo <> "--" <> ">>" -- string starts with "<<", ends with ">>", middle assigned
+ *   Regex:
+ *     /foo/ -- regex literal
+ *     /foo/i -- regex literal with flags
+ *     /(?<name>foo)/ -- regex with named group - foo is assigned that matching regular expression
  */
 export function scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchExpression {
   scanner.whereAmI('scanMatch')
@@ -83,6 +88,8 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
     return new Expressions.MatchTypeExpression(argType, assignRef)
   } else if (scanner.is('_')) {
     return scanMatchIgnore(scanner)
+  } else if (scanner.is('/')) {
+    return scanMatchRegex(scanner)
   } else if (isArgumentStartChar(scanner)) {
     return scanMatchReference(scanner, parseNext)
   } else if (scanner.is('.')) {
@@ -90,7 +97,7 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
   } else if (scanner.is(/[\'"`]/)) {
     return scanMatchString(scanner, parseNext)
   } else if (scanner.is(ARRAY_OPEN)) {
-    return scanArrayEnum(scanner, parseNext)
+    return scanMatchArray(scanner, parseNext)
   } else {
     throw new ParseError(scanner, `Invalid match expression (else) '${unexpectedToken(scanner)}'`)
   }
@@ -251,8 +258,14 @@ function scanMatchString(scanner: Scanner, parseNext: ParseNext) {
   return new Expressions.MatchStringExpression([range0, scanner.charIndex], precedingComments, args)
 }
 
-function scanArrayEnum(scanner: Scanner, parseNext: ParseNext) {
-  scanner.whereAmI('scanArrayEnum')
+function scanMatchRegex(scanner: Scanner) {
+  scanner.whereAmI('scanMatchRegex')
+  const regex = scanRegex(scanner)
+  return new Expressions.MatchRegexLiteral(regex)
+}
+
+function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
+  scanner.whereAmI('scanMatchArray')
   const precedingComments = scanner.flushComments()
   const args: Expressions.MatchExpression[] = []
   const range0 = scanner.charIndex
