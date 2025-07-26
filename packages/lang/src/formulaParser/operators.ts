@@ -75,6 +75,7 @@ const PRECEDENCE = {
     '<': 12, //  if these change
     '<=': 12,
     '<=>': 12,
+    '::': 13,
     '++': 13,
     '<>': 13,
     '~~': 13,
@@ -1937,6 +1938,63 @@ addBinaryOperator({
     args: Expression[],
   ) {
     return new ArrayConcatenationOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class ArrayConsOperator extends BinaryOperator {
+  symbol = '::'
+
+  operatorType(
+    _runtime: TypeRuntime,
+    lhs: Types.Type,
+    rhs: Types.Type,
+    _lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
+    if (!(rhs instanceof Types.ArrayType)) {
+      return err(new RuntimeError(rhsExpr, expectedType('Array', rhsExpr, rhs)))
+    }
+
+    const concatLength = combineConcatLengths({min: 1, max: 1}, rhs.narrowedLength)
+    return ok(Types.array(Types.compatibleWithBothTypes(lhs, rhs.of), concatLength))
+  }
+
+  operatorEval(
+    _runtime: ValueRuntime,
+    lhs: Values.Value,
+    rhs: () => GetValueResult,
+    _lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
+    return rhs().map((rhs): GetValueResult => {
+      if (rhs instanceof Values.ArrayValue) {
+        return ok(new Values.ArrayValue([lhs].concat(rhs.values)))
+      }
+
+      return err(new RuntimeError(rhsExpr, expectedType('Array', rhsExpr, rhs)))
+    })
+  }
+}
+
+addBinaryOperator({
+  name: 'array-cons',
+  symbol: '::',
+  precedence: PRECEDENCE.BINARY['::'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new ArrayConsOperator(
       range,
       precedingComments,
       followingOperatorComments,
