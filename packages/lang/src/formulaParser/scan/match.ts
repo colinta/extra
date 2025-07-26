@@ -26,7 +26,7 @@ import {scanString} from './string'
  *     Int, String, String(length: =8)
  *     Array(Int), Array(String, length: >5)
  *     Int | String, (Int | String)
- *     fn (#name: Int): String
+ *     fn (# name: Int): String
  *
  *   also:
  *     Int as a -- checks 'Int' and assigns to 'a'

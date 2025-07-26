@@ -59,7 +59,7 @@ import {scanString} from './string'
  *   Object:
  *     { … }
  *   Object:
- *     TODO: Object(age: Int), Object(#name: String), etc
+ *     TODO: Object(age: Int), Object(# name: String), etc
  *   Array:
  *     Array(Int), Array(String), etc
  *   Dict:
@@ -71,7 +71,7 @@ import {scanString} from './string'
  *   oneOf supports initial '|'
  *     | Int | String, (Int | String)
  *   function:
- *     fn (#name: Int): String
+ *     fn (# name: Int): String
  *   enum shorthand (does not support generics):
  *     .notLoaded | .loading | .success(String) | .failure(HttpError)
  *     ❌ enum RemoteData<Tsuccess, Tfailure> { .notLoaded, .loading, .success(Tsuccess), .failure(Tfailure) }

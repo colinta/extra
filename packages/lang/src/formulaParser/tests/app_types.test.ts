@@ -56,17 +56,17 @@ type User = {first-name: String(length: >=1), last-name: String(length: >=1), fu
 enum RemoteData<Tsuccess, Tfail> {
   .notLoaded
   .loading
-  .success(#value: Tsuccess)
-  .failure(#value: Tfail)
+  .success(# value: Tsuccess)
+  .failure(# value: Tfail)
 }
 `,
-      '((enum RemoteData) <Tsuccess Tfail> (.notLoaded .loading .success((#value: Tsuccess)) .failure((#value: Tfail))))',
+      '((enum RemoteData) <Tsuccess Tfail> (.notLoaded .loading .success((# value: Tsuccess)) .failure((# value: Tfail))))',
       `\
 enum RemoteData<Tsuccess, Tfail> {
   .notLoaded
   .loading
-  .success(#value: Tsuccess)
-  .failure(#value: Tfail)
+  .success(# value: Tsuccess)
+  .failure(# value: Tfail)
 }`,
     ]),
     c([
@@ -74,8 +74,8 @@ enum RemoteData<Tsuccess, Tfail> {
 enum RemoteData<Tsuccess, Tfail> {
   .notLoaded
   .loading
-  .success(#value: Tsuccess)
-  .failure(#value: Tfail)
+  .success(# value: Tsuccess)
+  .failure(# value: Tfail)
 
   fn toMaybe(): Maybe(Tsuccess) =>
       switch (this) {
@@ -86,13 +86,13 @@ enum RemoteData<Tsuccess, Tfail> {
       }
 }
 `,
-      '((enum RemoteData) <Tsuccess Tfail> (.notLoaded .loading .success((#value: Tsuccess)) .failure((#value: Tfail))))',
+      '((enum RemoteData) <Tsuccess Tfail> (.notLoaded .loading .success((# value: Tsuccess)) .failure((# value: Tfail))))',
       `\
 enum RemoteData<Tsuccess, Tfail> {
   .notLoaded
   .loading
-  .success(#value: Tsuccess)
-  .failure(#value: Tfail)
+  .success(# value: Tsuccess)
+  .failure(# value: Tfail)
 
   fn toMaybe(): Maybe(Tsuccess) =>
     switch (this) {

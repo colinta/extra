@@ -4681,7 +4681,7 @@ function functionInvocationOperatorType(
   if (!resolvedGenerics) {
     // this could easily be a generic type, for example, resolving the return type of a
     // generic formula:
-    //     fn<T, U>(#v: T, #apply: fn(#in: T): U) => apply(v)
+    //     fn<T, U>(# v: T, # apply: fn(# in: T): U) => apply(v)
     // resolves to 'U'. It's not until *this* formula is invoked that all the generics
     // will (hopefully!) be resolved.
     return ok(formulaType.returnType)
@@ -4781,7 +4781,7 @@ function expectedType(expected: string, expr: Expression, type?: Types.Type | Va
 }
 
 function expectedGuardArguments() {
-  return "Missing '#condition: Condition' and '#body: T' in 'guard()' expression"
+  return "Missing '# condition: Condition' and '# body: T' in 'guard()' expression"
 }
 
 function expectedGuardElseResult() {
@@ -4789,7 +4789,7 @@ function expectedGuardElseResult() {
 }
 
 function expectedIfCondition() {
-  return "Missing '#condition: Condition' in 'if()' expression"
+  return "Missing '# condition: Condition' in 'if()' expression"
 }
 
 function expectedIfThenResult() {
@@ -4797,7 +4797,7 @@ function expectedIfThenResult() {
 }
 
 function expectedElseIfCondition() {
-  return "Missing '#condition: Condition' in 'elseif()' expression"
+  return "Missing '# condition: Condition' in 'elseif()' expression"
 }
 
 function expectedElseIfThenResult() {

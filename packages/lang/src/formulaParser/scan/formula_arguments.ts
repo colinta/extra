@@ -12,8 +12,8 @@ import {scanValidName} from './identifier'
 
 // Formulas can have default values, Formula Types can have optional arguments.
 //
-// fn plusOne(#arg: Int = 0) => foo + 1
-//            ^^^^^^^^^^^^^
+// fn plusOne(# arg: Int = 0) => foo + 1
+//            ^^^^^^^^^^^^^^
 
 export function scanFormulaArgumentDefinitions(
   scanner: Scanner,
@@ -35,8 +35,8 @@ export function scanFormulaArgumentDefinitions(
 
 // _Formula Types_ cannot have default values, only optional args
 //
-// fn visit(func: fn(#arg?: Int): Int) => func(0) + func()
-//                  ^^^^^^^^^^^^
+// fn visit(func: fn(# arg?: Int): Int) => func(0) + func()
+//                  ^^^^^^^^^^^^^
 export function scanFormulaTypeArgumentDefinitions(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
@@ -75,7 +75,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
     /**
      * The name of the first (and only) positional spread arg
      *
-     *     fn(...#foo: Int): Int -> foo[0] ?? 0
+     *     fn(...# foo: Int): Int -> foo[0] ?? 0
      */
     let spreadPositionalArg: string | undefined
     /**
@@ -114,6 +114,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       }
 
       const isPositional = scanner.scanIfString('#')
+      scanner.scanSpaces()
 
       const argNameRange0 = scanner.charIndex
       let argName = scanValidName(scanner)
@@ -125,7 +126,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         // we already have a spread positional arg
         throw new ParseError(
           scanner,
-          `Found second remaining arguments list '${SPLAT_OP}#${argName.name}' after '${SPLAT_OP}#${spreadPositionalArg}'`,
+          `Found second remaining arguments list '${SPLAT_OP}# ${argName.name}' after '${SPLAT_OP}# ${spreadPositionalArg}'`,
           argRange0,
         )
       }
@@ -208,7 +209,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
 
       // formula types can have optional args - the function passed to this can either
       // not have the argument at all, or it can have a default value
-      //     callback: fn(#arg1: T, #arg2?: U)
+      //     callback: fn(# arg1: T, # arg2?: U)
       // will be called with either:
       //     callback(t, u)
       //     callback(t)
@@ -228,7 +229,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       } else if (!prevIsRequired && isPositional) {
         throw new ParseError(
           scanner,
-          `Required argument '#${argName.name}' must appear before optional argument "#${firstOptionalArg}".\nAll required arguments must come before optional arguments.`,
+          `Required argument '# ${argName.name}' must appear before optional argument '# ${firstOptionalArg}'.\nAll required arguments must come before optional arguments.`,
           scanner.charIndex - argName.name.length,
         )
       }
@@ -253,7 +254,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         if (spreadArg === 'spread' && !(argType instanceof Expressions.ArrayTypeExpression)) {
           throw new ParseError(
             scanner,
-            `Expected 'Array' type for '${SPLAT_OP}${isSpreadPositionalArg ? '#' : ''}${
+            `Expected 'Array' type for '${SPLAT_OP}${isSpreadPositionalArg ? '# ' : ''}${
               argName.name
             }', found '${argType}'. Remaining argument lists must use the Array type, e.g. 'Array(${argType})'.`,
           )
@@ -270,7 +271,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         if (isPositional && spreadPositionalArg !== undefined) {
           throw new ParseError(
             scanner,
-            `Default values are not allowed on positional arguments following a spread positional argument ('${SPLAT_OP}#${spreadPositionalArg}')`,
+            `Default values are not allowed on positional arguments following a spread positional argument ('${SPLAT_OP}# ${spreadPositionalArg}')`,
           )
         }
 
@@ -293,7 +294,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         // value (this error doesn't apply to named arguments)
         throw new ParseError(
           scanner,
-          `Required argument '#${argName.name}' must appear before '#${firstDefaultName}', which has a default value.\nRequired positional arguments must come before optional positional arguments.`,
+          `Required argument '# ${argName.name}' must appear before '# ${firstDefaultName}', which has a default value.\nRequired positional arguments must come before optional positional arguments.`,
         )
       }
 

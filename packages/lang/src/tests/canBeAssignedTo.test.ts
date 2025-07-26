@@ -10,7 +10,7 @@ describe('canBeAssignedTo', () => {
   const dog = Types.klass(new Map([['name', Types.string()]]), animal)
 
   const simpleRequiredFormula = Types.formula(
-    args({name: '#age', type: Types.int()}),
+    args({name: '# age', type: Types.int()}),
     Types.string(),
   )
   const simpleRequiredNamedFormula = Types.formula(
@@ -19,8 +19,8 @@ describe('canBeAssignedTo', () => {
   )
   const multipleArgsFormula = Types.formula(
     args(
-      {name: '#age', type: Types.int()},
-      {name: '#name', type: Types.optional(Types.string())},
+      {name: '# age', type: Types.int()},
+      {name: '# name', type: Types.optional(Types.string())},
       {name: 'isFoo', type: Types.booleanType(), isRequired: false},
       {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
     ),
@@ -79,7 +79,7 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         // identical
-        args({name: '#age', type: Types.int()}),
+        args({name: '# age', type: Types.int()}),
         Types.string(),
       ),
       simpleRequiredFormula,
@@ -99,7 +99,7 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         // indifferent to positional argument name
-        args({name: '#how-old', type: Types.int()}),
+        args({name: '# how-old', type: Types.int()}),
         Types.string(),
       ),
       simpleRequiredFormula,
@@ -108,7 +108,7 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         // indifferent to compatible argument type
-        args({name: '#age', type: Types.float()}),
+        args({name: '# age', type: Types.float()}),
         Types.string(),
       ),
       simpleRequiredFormula,
@@ -117,7 +117,7 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         // indifferent to compatible return type
-        args({name: '#age', type: Types.float()}),
+        args({name: '# age', type: Types.float()}),
         Types.literal('test'),
       ),
       simpleRequiredFormula,
@@ -126,7 +126,7 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         // indifferent to optionality
-        args({name: '#age', type: Types.optional(Types.float())}),
+        args({name: '# age', type: Types.optional(Types.float())}),
         Types.string(),
       ),
       simpleRequiredFormula,
@@ -135,7 +135,7 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         // X incompatible argument type
-        args({name: '#name', type: Types.string()}),
+        args({name: '# name', type: Types.string()}),
         Types.string(),
       ),
       simpleRequiredFormula,
@@ -144,7 +144,7 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         // X incompatible return type
-        args({name: '#age', type: Types.int()}),
+        args({name: '# age', type: Types.int()}),
         Types.float(),
       ),
       simpleRequiredFormula,
@@ -153,7 +153,7 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         // X optional wrong argument type
-        args({name: '#name', type: Types.optional(Types.string())}),
+        args({name: '# name', type: Types.optional(Types.string())}),
         Types.string(),
       ),
       simpleRequiredFormula,
@@ -207,7 +207,7 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         // named arguments can't be called positionally
-        args({name: '#age', type: Types.int()}),
+        args({name: '# age', type: Types.int()}),
         Types.string(),
       ),
       simpleRequiredNamedFormula,
@@ -250,14 +250,14 @@ describe('canBeAssignedTo', () => {
       false,
     ]),
     /*
-      fn(#age: int, #name?: string, isFoo?: boolean, args: 1 | 2): int[]
+      fn(# age: int, # name?: string, isFoo?: boolean, args: 1 | 2): int[]
      */
     c([
       // this is a copy of multipleArgsFormula
       Types.formula(
         args(
-          {name: '#age', type: Types.int()},
-          {name: '#name', type: Types.optional(Types.string())},
+          {name: '# age', type: Types.int()},
+          {name: '# name', type: Types.optional(Types.string())},
           {name: 'isFoo', type: Types.booleanType(), isRequired: false},
           {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
         ),
@@ -269,9 +269,9 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         args(
-          {name: '#age', type: Types.int()},
+          {name: '# age', type: Types.int()},
           // X require argument instead of optional
-          {name: '#name', type: Types.optional(Types.string()), isRequired: false},
+          {name: '# name', type: Types.optional(Types.string()), isRequired: false},
           {name: 'isFoo', type: Types.booleanType()},
           {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
         ),
@@ -283,8 +283,8 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         args(
-          {name: '#age', type: Types.int()},
-          {name: '#name', type: Types.optional(Types.string())},
+          {name: '# age', type: Types.int()},
+          {name: '# name', type: Types.optional(Types.string())},
           // missing optional argument
           {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
         ),
@@ -296,9 +296,9 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         args(
-          {name: '#age', type: Types.int()},
+          {name: '# age', type: Types.int()},
           // any type
-          {name: '#name', type: Types.all()},
+          {name: '# name', type: Types.all()},
           {name: 'isFoo', type: Types.booleanType(), isRequired: false},
           {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
         ),
@@ -310,8 +310,8 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         args(
-          {name: '#age', type: Types.int()},
-          {name: '#name', type: Types.optional(Types.string())},
+          {name: '# age', type: Types.int()},
+          {name: '# name', type: Types.optional(Types.string())},
           // missing optional named argument
           {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
         ),
@@ -323,7 +323,7 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         args(
-          {name: '#age', type: Types.int()},
+          {name: '# age', type: Types.int()},
           // missing multiple arguments
         ),
         Types.array(Types.int()),
@@ -334,8 +334,8 @@ describe('canBeAssignedTo', () => {
     c([
       Types.formula(
         args(
-          {name: '#age', type: Types.int()},
-          {name: '#name', type: Types.optional(Types.string())},
+          {name: '# age', type: Types.int()},
+          {name: '# name', type: Types.optional(Types.string())},
         ),
         Types.array(Types.literal(1)), // compatible return type
       ),

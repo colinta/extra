@@ -113,7 +113,7 @@ export abstract class Expression {
    *
    * - `Int` as a value is a function that accepts a `String|Int|Float` and returns
    *   `Int?`: `Int(value) --> Int?`
-   * - and a type expression: `foo(#a: Int) --> foo(123)`
+   * - and a type expression: `foo(# a: Int) --> foo(123)`
    */
   getAsTypeExpression(_runtime: TypeRuntime): GetTypeResult {
     return err(new RuntimeError(this, `Invalid argument type ${this}`))
@@ -1543,17 +1543,17 @@ export class TypeConstructorExpression extends TypeExpression {
  * An argument declaration, as part of a formula definition.
  *
  * - required positional:
- *     #name: Int
+ *     # name: Int
  * - optional positional:
- *     #name?: Int
- *     #name: Int = 1
+ *     # name?: Int
+ *     # name: Int = 1
  * - named; required or optional:
  *     name: Int
  *     name: Int = 1
  *     alias name: Int
  *     alias name: Int = 1
  * - spread positional argument:
- *     ...#name: Array(Int)
+ *     ...# name: Array(Int)
  * - repeated named argument:
  *     ...name: Array(Int)
  * - keyword list argument:
@@ -1744,7 +1744,7 @@ export class NamedArgument extends Argument {
  *
  *     foo(...a)
  *     -- can be object (the values are "spread" as if they were passed to the function)
- *     -- or array *if* the function accepts spread args `fn(...#args: Array(T))`
+ *     -- or array *if* the function accepts spread args `fn(...# args: Array(T))`
  *     -- (or repeated-named args `fn(...args: Array(T))`, `foo(...args: args)`)
  *     -- or dict *if* the function accepts keyword list `fn(*kwargs: Dict(T))`
  */
@@ -2312,7 +2312,7 @@ export class ElseIfIdentifier extends ReservedWord {
       Types.withGenericT(T =>
         Types.namedFormula(
           'elseif',
-          // elseif<T>(#cond: Condition, #then: T)
+          // elseif<T>(# cond: Condition, # then: T)
           [
             Types.positionalArgument({name: 'cond', type: Types.ConditionType, isRequired: true}),
             Types.positionalArgument({name: 'then', type: T, isRequired: true}),
@@ -3261,10 +3261,10 @@ export class FormulaLiteralArgumentDeclarations extends ArgumentDeclarations {
  * aliased), spread, and keyword-args. Position and named arguments can have a
  * default value.
  *
- *     #name: Type [=value]
+ *     # name: Type [=value]
  *     alias name: Type [= value]
  *     name: Type [= value]
- *     ...#spread: Array(Type)
+ *     ...# spread: Array(Type)
  *     ...spread: Array(Type)
  *     *kwargs: Dict(Type)
  */
@@ -3295,7 +3295,7 @@ export class FormulaLiteralArgumentAndTypeDeclaration extends ArgumentExpression
     }
 
     if (this.isPositional) {
-      code += '#' + this.nameRef.name
+      code += '# ' + this.nameRef.name
     } else if (this.aliasRef.name !== this.nameRef.name) {
       code += this.aliasRef.name + ' ' + this.nameRef.name
     } else {
@@ -3320,7 +3320,7 @@ export class FormulaLiteralArgumentAndTypeDeclaration extends ArgumentExpression
     }
 
     if (this.isPositional) {
-      code += '#' + this.nameRef.name
+      code += '# ' + this.nameRef.name
     } else if (this.aliasRef.name !== this.nameRef.name) {
       code += this.aliasRef.name + ' ' + this.nameRef.name
     } else {
@@ -3425,7 +3425,7 @@ export class FormulaTypeArgumentAndType extends ArgumentExpression {
     }
 
     if (this.isPositional) {
-      code += '#' + this.nameRef.name
+      code += '# ' + this.nameRef.name
     } else if (this.aliasRef.name !== this.nameRef.name) {
       code += this.aliasRef.name + ' ' + this.nameRef.name
     } else {
@@ -3449,7 +3449,7 @@ export class FormulaTypeArgumentAndType extends ArgumentExpression {
     }
 
     if (this.isPositional) {
-      code += '#' + this.nameRef.name
+      code += '# ' + this.nameRef.name
     } else if (this.aliasRef.name !== this.nameRef.name) {
       code += this.aliasRef.name + ' ' + this.nameRef.name
     } else {
@@ -3528,7 +3528,7 @@ export class FormulaTypeExpression extends Expression {
 /**
  * An instance of a function (named or anonymous function, with explicit types)
  *
- *     fn [name](#arg0: type, #arg1: type = value, name: type = value): type => body
+ *     fn [name](# arg0: type, # arg1: type = value, name: type = value): type => body
  */
 export class FormulaExpression extends Expression {
   prefix = 'fn'

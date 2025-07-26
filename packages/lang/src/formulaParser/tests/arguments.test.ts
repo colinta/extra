@@ -6,8 +6,8 @@ describe('argument parser', () => {
     cases<[string, string] | [string, string, string]>(
       c(['', '()']),
       c(['number: Int', '((number: `Int`))']),
-      c(['#number: Int', '((#number: `Int`))']),
-      c(['#number: Int = 0', '((#number: `Int` 0))']),
+      c(['# number: Int', '((# number: `Int`))']),
+      c(['# number: Int = 0', '((# number: `Int` 0))']),
       c(['count number: Int', '((count number: `Int`))']),
       c(['count number: Int = 0', '((count number: `Int` 0))']),
       c(['number: Array(Int)', '((number: Array(`Int`)))']),
@@ -35,22 +35,22 @@ describe('argument parser', () => {
         'number: Int?, name: String',
       ]),
       c(["number: Int = 0, name: String = ''", "((number: `Int` 0) (name: `String` ''))"]),
-      c(['#number: Int, #name: String', '((#number: `Int`) (#name: `String`))']),
+      c(['# number: Int, # name: String', '((# number: `Int`) (# name: `String`))']),
       c([
         '#number: {foo: (Int | null)}',
-        '((#number: {(foo: (`Int` | `null`))}))',
-        '#number: {foo: Int?}',
+        '((# number: {(foo: (`Int` | `null`))}))',
+        '# number: {foo: Int?}',
       ]),
-      c(['#number: {(Int | null)}', '((#number: {(`Int` | `null`)}))', '#number: {Int?}']),
+      c(['#number: {(Int | null)}', '((# number: {(`Int` | `null`)}))', '# number: {Int?}']),
       c([
         '#number: {(Int | null), String}',
-        '((#number: {(`Int` | `null`) `String`}))',
-        '#number: {Int?, String}',
+        '((# number: {(`Int` | `null`) `String`}))',
+        '# number: {Int?, String}',
       ]),
       c([
-        '#number: {foo: (Int | null), String}',
-        '((#number: {(foo: (`Int` | `null`)) `String`}))',
-        '#number: {foo: Int?, String}',
+        '# number: {foo: (Int | null), String}',
+        '((# number: {(foo: (`Int` | `null`)) `String`}))',
+        '# number: {foo: Int?, String}',
       ]),
       c([
         'a: {(A | B) & C | D & E, String}',
@@ -58,21 +58,21 @@ describe('argument parser', () => {
         'a: {(A | B) & C | D & E, String}',
       ]),
       c([
-        "#number: Int, #number2: Int = 0, foo: String = '', bar: String",
-        "((#number: `Int`) (#number2: `Int` 0) (foo: `String` '') (bar: `String`))",
+        "# number: Int, # number2: Int = 0, foo: String = '', bar: String",
+        "((# number: `Int`) (# number2: `Int` 0) (foo: `String` '') (bar: `String`))",
       ]),
       c([
         'number: Int, name: String, score: Score',
         '((number: `Int`) (name: `String`) (score: Score))',
       ]),
       c([
-        'reduce: fn(#initial: String, #callback: fn(#memo: String, #value: Int): String, values: Array(Int)): String',
+        'reduce: fn(# initial: String, # callback: fn(# memo: String, # value: Int): String, values: Array(Int)): String',
         '(' + // <arg-def-list>
           '(reduce: ' + // <reduce>
           '(fn ' + // <reduce-type>
           '(' + // <args>
-          '(#initial: `String`) ' + // arg0
-          '(#callback: (fn ((#memo: `String`) (#value: `Int`)) : (`String`))) ' + // arg1
+          '(# initial: `String`) ' + // arg0
+          '(# callback: (fn ((# memo: `String`) (# value: `Int`)) : (`String`))) ' + // arg1
           '(values: Array(`Int`))' + // arg2
           ') ' + //</args>
           ': (`String`)' + // </return-type>
@@ -94,11 +94,11 @@ describe('argument parser', () => {
     )
 
     cases<[string, string]>(
-      c(['#count: int', "Expected a type name, found 'int'"]),
-      c(['#count number: Int', "Expected type expression for 'count'"]),
+      c(['# count: int', "Expected a type name, found 'int'"]),
+      c(['# count number: Int', "Expected type expression for 'count'"]),
       c([
-        '#count1: Int = 0, #count2: Int',
-        "Required argument '#count2' must appear before '#count1'",
+        '# count1: Int = 0, # count2: Int',
+        "Required argument '# count2' must appear before '# count1'",
       ]),
     ).run(([formula, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
@@ -135,8 +135,8 @@ describe('argument parser', () => {
     cases<[string, string]>(
       c(['123', "Expected a reference, found '123)'"]),
       c(['123: Int', "Expected a reference, found '123:'"]),
-      c(['#foo: Int, foo: String', "Found second argument with the same name 'foo'"]),
-      c(['#foo: Int, bar foo: String', "Found second argument with the same name 'foo'"]),
+      c(['# foo: Int, foo: String', "Found second argument with the same name 'foo'"]),
+      c(['# foo: Int, bar foo: String', "Found second argument with the same name 'foo'"]),
       c(['foo bar: Int, foo baz: Int', "Found second argument with the same name 'foo'"]),
       c([
         'foo: fn(bar: Int = 0): Int',

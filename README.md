@@ -58,7 +58,7 @@ pretty-darn-good™ programming language!
 let
   name = "Extra"
   someNumber = 2 * 1 + 40
-  fn format(#name: String, age: Int) =>
+  fn format(# name: String, age: Int) =>
     "Hello, $name!"
 in
   format(name, age: someNumber)
@@ -324,7 +324,7 @@ enum Result<Ok, Err> {
     else: null
     }
 
-  static from-maybe<T>(#value: T?): Result<T, null> =>
+  static from-maybe<T>(# value: T?): Result<T, null> =>
     if (value, then: .ok(value), else: .err(null))
 }
 
@@ -349,7 +349,7 @@ argument type (you cannot use generics in that case):
 
 ```extra
 fn print(
-  #text: String
+  # text: String
   color:
     -- initial '|' is optional, but looks nice in multilines
     | .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
@@ -460,8 +460,8 @@ If `b` is specified, use it, otherwise use the default.
 
 ```extra
 let
-  fn bar(#a: Int, #b: Int = 10) => a + b
-  fn foo(#a: Int, #b: Int | null) =>
+  fn bar(# a: Int, # b: Int = 10) => a + b
+  fn foo(# a: Int, # b: Int | null) =>
     bar(a, b ?? fallback)
 in
 [
@@ -474,8 +474,8 @@ In other languages, in order to avoid hard-coding b's default value 10 you would
 have to provide two separate calls to bar:
 
 ```extra
-fn foo(#a: Int, #b: Int | null) =>
-  if (#b == null) {
+fn foo(# a: Int, # b: Int | null) =>
+  if (b == null) {
   then:
     bar(a)
   else:
@@ -504,7 +504,7 @@ Also available is the "null coalescing pipe". If the value is `null`, it skips t
 
 ```
 let
-  fn example(#foo: String?) => foo ?|> # <> "!"
+  fn example(# foo: String?) => foo ?|> # <> "!"
 in
   [
     example('bang') --> 'bang!'
@@ -546,7 +546,7 @@ enum RemoteData<Success, Failure> {
   .failure(error: Failure)
   .success(value: Success)
 
-  static maybe<S, F>(#value: S?): RemoteData(S, F) =>
+  static maybe<S, F>(# value: S?): RemoteData(S, F) =>
     if (value, then: .success(value), else: .notAsked)
 
   fn data(): Success? =>
@@ -791,10 +791,10 @@ Unlike in Js, though, each "part" is passed as its own arg (the string literals 
 
 ```extra
 let
-  calculator = fn(#a: Int, #op: String, #b: Int, #out: String) =>
+  calculator = fn(# a: Int, # op: String, # b: Int, # out: String) =>
     let
       result =
-        if (#op is /^\s*\+\s*$/) {
+        if (op is /^\s*\+\s*$/) {
         then:
           a + b
         else:
@@ -1031,12 +1031,12 @@ We've seen many definitions already.
 
 Extra's functions are bonkers. They support _positional_ and _named_ arguments, along with all sorts of variadic arguments, and
 
-Positional arguments have a `#` prefix, `#like: This`. Named arguments `do: Not`. Named arguments can be aliased `like so: GotIt?`. Variadic arguments `...#are: LikeThis` or `...like: This`. Keyword args are `**like: This`.
+Positional arguments have a `#` prefix, `# like: This`. Named arguments `do: Not`. Named arguments can be aliased `like so: GotIt?`. Variadic arguments `...# are: LikeThis` or `...like: This`. Keyword args are `**like: This`.
 
 Examples:
 
 ```extra
-fn doEeet(#count: Int, #name: String = '', age: Int = 0, reason why: String) => …fn body…
+fn doEeet(# count: Int, # name: String = '', age: Int = 0, reason why: String) => …fn body…
 -- #count is required
 -- #name is optional (default value provided)
 -- age is optional, and is a named argument
@@ -1047,14 +1047,14 @@ doEeet(1, reason: '')                   -- name = '', age = 0
 doEeet(1, 'foo', reason: '')            -- name = 'foo', age = 0
 doEeet(1, 'foo', reason: '', age: 42)   -- name = 'foo', age = 42
 
-❌ doEeet(reason: '')                    -- #count is required
+❌ doEeet(reason: '')                    -- count is required
 ❌ doEeet(1)                             -- reason is required
 ```
 
 If the argument type is null-able, you can make the argument optional `like?: This` (`like: This | null`). If the argument is _generic_, it will be made optional only if the type is null-able. In other words:
 
 ```extra
-fn first-or<T>(#array: Array(T), else fallback?: T) =>
+fn first-or<T>(# array: Array(T), else fallback?: T) =>
   if (array) {
   then:
     array[0]
@@ -1081,7 +1081,7 @@ The return type can always be inferred. Argument types are required when you are
 [1, 2, 3].map(fn(num) => num + 1) --> [2, 3, 4]
 ```
 
-In the example above, `num` is a named argument, but `map` expects a function that accepts two positional arguments `#value: T, index: Int`. Since the first named argument is compatible with `#value: Int`, the compiler figures out what to do.
+In the example above, `num` is a named argument, but `map` expects a function that accepts two positional arguments `# value: T, index: Int`. Since the first named argument is compatible with `# value: Int`, the compiler figures out what to do.
 
 ### Variadic Arguments
 
@@ -1096,7 +1096,7 @@ There are _three_ brands of variadic arguments.
 These combine well with refined Array types, for instance, we can implement `add` as a variadic function, but require a minimum number of arguments.
 
 ```extra
-fn add(...#numbers: Array(Int, >=2)) =>
+fn add(...# numbers: Array(Int, >=2)) =>
   numbers.reduce(0, fn(memo, num) => memo + num)
 
 add(1, 10) --> 11
@@ -1136,7 +1136,7 @@ in
 You can specify the same argument by name, multiple times.
 
 ```extra
-fn returnIf<T>(#condition: Boolean, ...and: Array(Boolean), then: T): T?
+fn returnIf<T>(# condition: Boolean, ...and: Array(Boolean), then: T): T?
 
 returnIf(a == 1, and: b == 1, and: c == 2, then: 'yay!') --> 'yay!' | null
 ```
@@ -1149,13 +1149,13 @@ You can define separate function implementations if you want to have lots of dif
 
 ```extra
 fn add {
-  fn(#a: Int, #b: Int) => a + b
-  fn(#a: String, #b: String) => a <> b
+  fn(# a: Int, # b: Int) => a + b
+  fn(# a: String, # b: String) => a <> b
   -- if the types are ambiguous, the compiler will complain
   -- this function cannot be disambiguated w/ the previous one
-  ❌ fn(#a: String, #b?: String) => a <> (b ?? a)
+  ❌ fn(# a: String, # b?: String) => a <> (b ?? a)
   -- easily resolved, and you can even invoke a previous implementation:
-  fn(#a: String) => add(a, a)
+  fn(# a: String) => add(a, a)
 }
 
 add(1, 2) --> 3
@@ -1210,7 +1210,7 @@ if (test1 or test2) {
 then:  -- a required named argument
   result_1
 elseif (test2): -- this looks like special syntax, but actually it's just function invocation:
-  result_2      -- `elseif (#condition): #then` (the elseif clauses are variadic in the 'if' function)
+  result_2      -- `elseif (# condition): # then` (the elseif clauses are variadic in the 'if' function)
 else:  -- optional named argument
   result_3
 }
@@ -1220,20 +1220,20 @@ For the curious, the function signature of `if` would be *something like*:
 
 ```extra
 fn if<T>(
-  #condition: Boolean
+  # condition: Boolean
   then: lazy T
-  ...#elseif: Array(lazy T)
+  ...# elseif: Array(lazy T)
   else?: lazy T
 ): T
 
-fn elseif<T>(#condition: lazy Boolean, #then: lazy T)
+fn elseif<T>(# condition: lazy Boolean, # then: lazy T)
 ```
 
 In the future I'd like to try to support an `implication` type, but I'm not sure I'll ever be able to support the variadic `elseif` array, such that each subsequent invocation implies all the previous ones are false. The `implication` type, in a simple `if/else` version, would look something like this:
 
 ```extra
 fn if<T, C is Implication>(
-  #condition: C
+  # condition: C
   then: Implies(C, T)
   else?: Implies(not C, T)): T
 => …
@@ -1246,7 +1246,7 @@ Guard expressions are useful in any language, but the `guard` syntax in Swift wa
 All of the
 
 ```extra
-fn(#name: String?, hobbies: Array(String)): String =>
+fn(# name: String?, hobbies: Array(String)): String =>
   guard(
     name != null
   else:
@@ -1264,9 +1264,9 @@ Like `if`, you could imagine that this was implemented after the fact as an Extr
 
 ```extra
 fn guard<T>(
-  #condition: Boolean
-  else: lazy T
-  #do: lazy T
+  # condition: Boolean
+else: lazy T
+  # do: lazy T
 ): T
 ```
 

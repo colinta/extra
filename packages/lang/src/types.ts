@@ -527,13 +527,13 @@ export class GenericType extends Type {
      * can be derived from the hints, or given explicitly.
      *
      * @example
-     *     example: <T>(#callback: (input: T): [T], #arg: T)
+     *     example: <T>(# callback: (input: T): [T], # arg: T)
      *
      * Derived:
-     *     example((#foo: Int | String): [String], '')
+     *     example((# foo: Int | String): [String], '')
      *
      * Explicit:
-     *     example<String>((#foo: Int | String): [String], '')
+     *     example<String>((# foo: Int | String): [String], '')
      */
     public resolvedType?: Type | undefined,
     /**
@@ -547,12 +547,12 @@ export class GenericType extends Type {
      * the resolved type, but the resolved type must be assignable to them.
      *
      * @example
-     *     example: <T>(#callback: (input: T): Array(T), #arg: T)
-     *     callback: fn(#foo: Int | String): Array(String)
+     *     example: <T>(# callback: (input: T): Array(T), # arg: T)
+     *     callback: fn(# foo: Int | String): Array(String)
      *
      *     example(callback, '')
      *
-     * --> `#foo: Int | String` is a requirement
+     * --> `# foo: Int | String` is a requirement
      * --> `[String]` is a hint
      * --> `''` is a hint
      *
@@ -677,7 +677,7 @@ export type Argument =
  * - may be optional or required
  *
  * Example:
- *     fn filterUsers(#user: User): String
+ *     fn filterUsers(# user: User): String
  *
  *     filterUsers(kevin)
  */
@@ -876,10 +876,10 @@ export class FormulaType extends Type {
         // spread === 'kwargs' =>  *
         argDesc += spread === 'spread' ? SPLAT_OP : spread === 'kwargs' ? KWARG_OP : ''
 
-        // alias === undefined =>  #name: type
+        // alias === undefined =>  # name: type
         // alias === name      =>  name: type
         // alias !== name      =>  alias name: type
-        argDesc += alias ? (alias === name ? '' : alias + ' ') : '#'
+        argDesc += alias ? (alias === name ? '' : alias + ' ') : '# '
         argDesc += name
         argDesc += ': ' + type.toCode(false)
 
@@ -3878,23 +3878,23 @@ function canBeAssignedToSet(testType: SetType, assignTo: SetType) {
  * *requirements* to a generic.
  *
  * For instance, if we are executing the formula
- *     run<T>(fn: fn(#input: T): Int, #arg: T)
+ *     run<T>(fn: fn(# input: T): Int, # arg: T)
  * and we are resolving the first argument, say we get the function
- *     toInt(#input: String | Float): Int
+ *     toInt(# input: String | Float): Int
  *
- * This function is compatible with `(#input: T): Int`, but doesn't resolve the type T,
+ * This function is compatible with `(# input: T): Int`, but doesn't resolve the type T,
  * it just adds a requirement that T be String | Float
  *
- * The next argument, `#arg: T` is expected to resolve T.
- *     #arg: Int --> T : Int
- *     #arg: String --> T : String
- *     #arg: Float --> T : Float
- *     #arg: String | Int --> T : String | Int
+ * The next argument, `# arg: T` is expected to resolve T.
+ *     arg: Int --> T : Int
+ *     arg: String --> T : String
+ *     arg: Float --> T : Float
+ *     arg: String | Int --> T : String | Int
  *
  * Formula arguments must resolve all of their generics, but they need not resolve
  * the *formulaArgumentType*'s generics. For instance
  *
- *     run<T, U>(#fn: fn(#input: T): U, #arg: T)
+ *     run<T, U>(# fn: fn(# input: T): U, # arg: T)
  *
  * Can be "resolved" with the identity function `<W>(input: W): W`. When the first
  * argument resolves, `resolveGenerics` will return the formula `(input: T): T`,
@@ -3904,7 +3904,7 @@ function canBeAssignedToSet(testType: SetType, assignTo: SetType) {
  *     T --> [unresolved]
  *     U --> T "resolved"
  *
- * The next argument, `#arg: T`, will resolve T to something concrete.
+ * The next argument, `# arg: T`, will resolve T to something concrete.
  */
 export function checkFormulaArguments(
   assignToFormula: FormulaType,
@@ -3951,13 +3951,13 @@ export function checkFormulaArguments(
  * - formula *definition* is the expected FormulaType, as defined by the receiving formula
  *
  *     let
- *       mapFunc = fn(#a: Int, #b: Int) => a * b
- *       --        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ implementation
- *       fn mapNumbers(#func: fn(#a: Int, #b): Int) => func(1, 2)
- *       --            ^^^^^^^^^^^^^^^^^^^^^^^^^^^ definition
+ *       mapFunc = fn(# a: Int, # b: Int) => a * b
+ *       --        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ implementation
+ *       fn mapNumbers(# func: fn(# a: Int, # b): Int) => func(1, 2)
+ *       --            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ definition
  *     in
  *       mapNumbers(mapFunc)
- *       --> `mapFunc` is type checked against the `#func` argument type
+ *       --> `mapFunc` is type checked against the `# func` argument type
  *
  * @param formulaArgument The function being passed as an argument
  * @param formulaType The expected formula type
@@ -4030,7 +4030,7 @@ function canBeAssignedToFormula(
  * mapping function. Here, `intToString` is the "outer" formula, which expects a
  * formula.
  *
- *     intToString: fn(#originalMap fn(#a: Int): String ) =>
+ *     intToString: fn(# originalMap fn(# a: Int): String ) =>
  *       originalMap(0)
  *
  *     let

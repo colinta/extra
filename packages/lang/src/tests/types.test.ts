@@ -86,9 +86,9 @@ describe('toCode', () => {
     c([
       Types.formula(
         args(
-          {name: '#name', type: Types.optional(Types.string())},
+          {name: '# name', type: Types.optional(Types.string())},
           {
-            name: '#age',
+            name: '# age',
             type: Types.optional(Types.int()),
           },
         ),
@@ -97,12 +97,12 @@ describe('toCode', () => {
           Types.namedProp('age', Types.int()),
         ]),
       ),
-      'fn(#name: String?, #age: Int?): {name: String, age: Int}',
+      'fn(# name: String?, # age: Int?): {name: String, age: Int}',
     ]),
     c([
       Types.formula(
         args(
-          {name: '#name', type: Types.string()},
+          {name: '# name', type: Types.string()},
           {name: 'age', type: Types.optional(Types.int())},
         ),
         Types.object([
@@ -110,7 +110,7 @@ describe('toCode', () => {
           Types.namedProp('age', Types.int()),
         ]),
       ),
-      'fn(#name: String, age: Int?): {name: String, age: Int}',
+      'fn(# name: String, age: Int?): {name: String, age: Int}',
     ]),
   ).run(([type, expected], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
@@ -196,7 +196,7 @@ describe('arrayAccess', () => {
 })
 
 describe('checkFormulaArguments (argument checking and generics resolution)', () => {
-  // fn<T>(#arg: T): T
+  // fn<T>(# arg: T): T
   describe('formula', () => {
     const genericTypeT = Types.generic('T')
 
@@ -238,7 +238,7 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
   describe('mapFormula', () => {
     const genericTypeT = Types.generic('T')
     const genericTypeU = Types.generic('U')
-    // fn<T, U>(#callback: fn(#input: T): U, #values: T[]): U[]
+    // fn<T, U>(# callback: fn(# input: T): U, # values: T[]): U[]
     const mapFormula = Types.formula(
       [
         Types.positionalArgument({
@@ -261,7 +261,7 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
     describe(mapFormula.toCode(), () => {
       it(`toCode`, () => {
         expect(mapFormula.toCode()).toEqual(
-          'fn<T, U>(#callback: fn(#input: T): U, #values: Array(T)): Array(U)',
+          'fn<T, U>(# callback: fn(# input: T): U, # values: Array(T)): Array(U)',
         )
       })
 
@@ -336,7 +336,7 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
   describe('compactMapFormula', () => {
     const genericTypeT = Types.generic('T')
     const genericTypeU = Types.generic('U')
-    // fn<T, U>(#callback: fn(#input: T): U | null, #values: T[]): U[]
+    // fn<T, U>(# callback: fn(# input: T): U | null, # values: T[]): U[]
     const compactMapFormula = Types.formula(
       [
         Types.positionalArgument({
@@ -359,7 +359,7 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
     describe(compactMapFormula.toCode(), () => {
       it('toCode', () => {
         expect(compactMapFormula.toCode()).toEqual(
-          'fn<T, U>(#callback: fn(#input: T): U?, #values: Array(T)): Array(U)',
+          'fn<T, U>(# callback: fn(# input: T): U?, # values: Array(T)): Array(U)',
         )
       })
 
@@ -367,16 +367,16 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
 
       it(`successfully derives T: ${expectedT.toCode()} and U: ${expectedU.toCode()}`, () => {
         // fn<T, U>(
-        //   #callback: fn(#input: T): U?,
-        //   #values: Array(T),
+        //   # callback: fn(# input: T): U?,
+        //   # values: Array(T),
         // ): Array(U)
         //
-        // #callback => fn(#value: Int): String?
+        // # callback => fn(# value: Int): String?
         // Int => requirement for T (must be Int or "smaller")
         // String? => hint for U?
         // (String => hint for U) (U could be "larger" than String)
         //
-        // #values => Array(Int)
+        // # values => Array(Int)
         // Array(Int) => hint for Array(T) (T could be "larger" than Int)
         // (Int => hint for T)
         //
@@ -422,7 +422,11 @@ function args(
 ): Types.Argument[] {
   return args.map(({name, type, alias, isRequired}) => {
     if (name[0] === '#') {
-      return Types.positionalArgument({name: name.slice(1), type, isRequired: isRequired ?? true})
+      return Types.positionalArgument({
+        name: name.slice(1).trim(),
+        type,
+        isRequired: isRequired ?? true,
+      })
     } else {
       alias = alias ?? name
 

@@ -29,7 +29,7 @@ import {scanValidName} from './identifier'
  * positional spread argument defined to handle "the rest". An exception is made if
  * the array is refined to be of a compatible length
  *     foo(...array)  -- Array = ["a", b, 123]
- *     -- fn foo(#a: String)
+ *     -- fn foo(# a: String)
  *
  * In the case of passing an array to a repeated named argument, there *must* be a
  * repeated named argument, this won't be treated as arguments to the function.
