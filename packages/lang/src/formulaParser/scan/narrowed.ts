@@ -42,7 +42,7 @@ export function scanNarrowedFloat(scanner: Scanner): Narrowed.NarrowedFloat {
     return {min: [count], max: undefined}
   } else if (
     scanner.is('-') ||
-    (isNumberChar(scanner.char) && isNumberStart(scanner.remainingInput))
+    (isNumberChar(scanner.char) && isNumberStart(scanner))
   ) {
     let min = (scanNumber(scanner, 'float').value as Values.FloatValue).value
     let max: number | undefined
@@ -110,7 +110,7 @@ export function scanNarrowedInt(scanner: Scanner): Narrowed.NarrowedInt {
     return {min: count + 1, max: undefined}
   } else if (
     scanner.is('-') ||
-    (isNumberChar(scanner.char) && isNumberStart(scanner.remainingInput))
+    (isNumberChar(scanner.char) && isNumberStart(scanner))
   ) {
     let min = Math.floor((scanNumber(scanner, 'int').value as Values.IntValue).value)
     let max: number | undefined
@@ -250,7 +250,7 @@ export function scanNarrowedLength(scanner: Scanner): Narrowed.NarrowedLength {
     scanner.scanAllWhitespace()
     const count = Math.floor((scanNumber(scanner, 'length').value as Values.IntValue).value)
     return {min: count + 1, max: undefined}
-  } else if (isNumberChar(scanner.char) && isNumberStart(scanner.remainingInput)) {
+  } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
     let min = Math.floor((scanNumber(scanner, 'length').value as Values.IntValue).value)
     let max: number | undefined
     scanner.scanAllWhitespace()

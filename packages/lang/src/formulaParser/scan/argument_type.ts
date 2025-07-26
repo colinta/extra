@@ -111,7 +111,7 @@ export function scanArgumentType(
         `Expected '${PARENS_CLOSE}' closing the argument type group`,
       )
       scanner.whereAmI(`scanArgumentType: () ${argType.toCode()}`)
-    } else if (isNumberChar(scanner.char) && isNumberStart(scanner.remainingInput)) {
+    } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
       argType = scanNumber(scanner, 'float')
     } else if (isStringStartChar(scanner.char)) {
       argType = scanString(scanner, false, parseNext)

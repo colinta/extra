@@ -308,7 +308,7 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
     } else {
       let name: Expression
       let value: Expression
-      if (isNumberStart(scanner.char)) {
+      if (isNumberStart(scanner)) {
         name = value = scanNumber(scanner, 'float')
       } else if (isStringStartChar(scanner.char)) {
         name = value = scanString(scanner, true, parseNext)

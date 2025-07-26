@@ -55,8 +55,8 @@ export function isNumberChar(char: string) {
   return char && /^[\d.oxb_a-fA-F]/.test(char)
 }
 
-export function isNumberStart(input: string) {
-  return /^(\d|\.\d)/.test(input)
+export function isNumberStart(scanner: Scanner) {
+  return scanner.is(/(\d|\.\d)/)
 }
 
 export function isNumber(input: string) {

@@ -602,7 +602,7 @@ function parseInternal(
           processExpression(scanView(scanner, parseNext))
         } else if (isDiceStart(scanner.remainingInput)) {
           processExpression(scanDice(scanner))
-        } else if (isNumberChar(scanner.char) && isNumberStart(scanner.remainingInput)) {
+        } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
           processExpression(scanNumber(scanner, 'float'))
         } else if (scanner.isWord(FN_KEYWORD)) {
           processExpression(scanFormula(scanner, expressionType, parseNext))

@@ -3196,8 +3196,6 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
       return `${lhsCode}${argListCode}`
     }
 
-    console.log('=========== operators.ts at line 3234 ===========')
-    console.log({lhsExpr})
     return `(${lhsCode})${argListCode}`
   }
 
