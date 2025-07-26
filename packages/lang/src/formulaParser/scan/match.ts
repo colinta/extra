@@ -9,6 +9,7 @@ import {
   isRefChar,
   CASE_KEYWORD,
   isArgumentStartChar,
+  isNumberStart,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -16,6 +17,7 @@ import {scanArgumentType} from './argument_type'
 
 import {unexpectedToken} from './basics'
 import {scanAnyReference, scanValidName} from './identifier'
+import {scanNumber} from './number'
 import {scanRegex} from './regex'
 import {scanString} from './string'
 
@@ -90,6 +92,8 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
     return scanMatchIgnore(scanner)
   } else if (scanner.is('/')) {
     return scanMatchRegex(scanner)
+  } else if (isNumberStart(scanner) || scanner.is(/[<=>]/)) {
+    return scanMatchRange(scanner)
   } else if (isArgumentStartChar(scanner)) {
     return scanMatchReference(scanner, parseNext)
   } else if (scanner.is('.')) {
@@ -192,6 +196,72 @@ function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
     enumCaseName,
     args,
   )
+}
+
+function scanMatchRange(scanner: Scanner) {
+  const range0 = scanner.charIndex
+  if (scanner.is(/[<=>]/)) {
+    let unaryOp: '=' | '>' | '>=' | '<' | '<='
+    if (scanner.scanIfString('=')) {
+      unaryOp = '='
+    } else if (scanner.scanIfString('>=')) {
+      unaryOp = '>='
+    } else if (scanner.scanIfString('>')) {
+      unaryOp = '>'
+    } else if (scanner.scanIfString('<=')) {
+      unaryOp = '<='
+    } else if (scanner.scanIfString('<')) {
+      unaryOp = '<'
+    } else {
+      throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
+    }
+
+    scanner.scanAllWhitespace()
+    const precedingComments = scanner.flushComments()
+    const start = scanNumber(scanner, 'float')
+    return new Expressions.MatchUnaryRange(
+      [range0, scanner.charIndex],
+      precedingComments,
+      unaryOp,
+      start,
+    )
+  }
+
+  const precedingComments = scanner.flushComments()
+  const start = scanNumber(scanner, 'float')
+  if (!scanner.test(isRange)) {
+    return new Expressions.MatchLiteral(start)
+  }
+  scanner.scanSpaces()
+
+  let op: '...' | '<..' | '..<' | '<.<'
+  if (scanner.scanIfString('...')) {
+    op = '...'
+  } else if (scanner.scanIfString('<..')) {
+    op = '<..'
+  } else if (scanner.scanIfString('..<')) {
+    op = '..<'
+  } else if (scanner.scanIfString('<.<')) {
+    op = '<.<'
+  } else {
+    throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
+  }
+
+  scanner.scanSpaces()
+  const stop = scanNumber(scanner, 'float')
+
+  return new Expressions.MatchBinaryRange(
+    [range0, scanner.charIndex],
+    precedingComments,
+    op,
+    start,
+    stop,
+  )
+}
+
+function isRange(scanner: Scanner) {
+  scanner.scanAllWhitespace()
+  return scanner.is(/[<.]/)
 }
 
 function scanMatchString(scanner: Scanner, parseNext: ParseNext) {

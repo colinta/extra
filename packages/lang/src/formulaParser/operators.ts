@@ -71,8 +71,8 @@ const PRECEDENCE = {
     '==': 12,
     '!=': 12,
     '>': 12,
-    '>=': 12,
-    '<': 12,
+    '>=': 12, // please update MatchBinaryExpression
+    '<': 12, //  if these change
     '<=': 12,
     '<=>': 12,
     '++': 13,
@@ -108,8 +108,8 @@ const PRECEDENCE = {
     // unary range operators
     '=': 12,
     '>': 12,
-    '>=': 12,
-    '<': 12,
+    '>=': 12, // please update MatchUnaryExpression
+    '<': 12, //  if these change
     '<=': 12,
     // unary logic
     not: 16,
@@ -2143,16 +2143,50 @@ class RangeOperator extends BinaryOperator {
     rhsExpr: Expression,
   ) {
     if (lhs.isInt() && rhs.isInt()) {
-      return ok(Types.IntRangeType)
+      let min: number | undefined
+      if (lhs.isLiteral('int')) {
+        min = lhs.value
+        if (this.symbol === '<..' || this.symbol === '<.<') {
+          min += 1
+        }
+      }
+
+      let max: number | undefined
+      if (rhs.isLiteral('int')) {
+        max = rhs.value
+        if (this.symbol === '..<' || this.symbol === '<.<') {
+          max -= 1
+        }
+      }
+
+      return ok(Types.intRange({min, max}))
     } else if (lhs.isFloat() && rhs.isFloat()) {
-      return ok(Types.FloatRangeType)
+      let min: number | [number] | undefined
+      if (lhs.isLiteral('float')) {
+        if (this.symbol === '<..' || this.symbol === '<.<') {
+          min = [lhs.value]
+        } else {
+          min = lhs.value
+        }
+      }
+
+      let max: number | [number] | undefined
+      if (rhs.isLiteral('float')) {
+        if (this.symbol === '..<' || this.symbol === '<.<') {
+          max = [rhs.value]
+        } else {
+          max = rhs.value
+        }
+      }
+
+      return ok(Types.floatRange({min, max}))
     }
 
     if (!lhs.isFloat()) {
-      return err(new RuntimeError(lhsExpr, expectedType('Int', lhsExpr, lhs)))
+      return err(new RuntimeError(lhsExpr, expectedType('Float or Int', lhsExpr, lhs)))
     }
 
-    return err(new RuntimeError(lhsExpr, expectedType('Int', rhsExpr, rhs)))
+    return err(new RuntimeError(rhsExpr, expectedType('Float or Int', rhsExpr, rhs)))
   }
 
   operatorEval(
@@ -2182,6 +2216,7 @@ class RangeOperator extends BinaryOperator {
           exclusiveStop = true
           break
       }
+
       if (lhs.isFloat() && rhs.isFloat()) {
         return ok(Values.range([lhs, exclusiveStart], [rhs, exclusiveStop]))
       }
@@ -3600,13 +3635,59 @@ class UnaryRangeOperator extends UnaryOperator {
   }
 
   operatorType(_runtime: TypeRuntime, type: Types.Type, expr: Expression) {
-    if (!type.isFloat()) {
-      return err(
-        new RuntimeError(expr, `Invalid type '${type}' passed to range operator '${this.symbol}'`),
-      )
+    if (type.isInt()) {
+      let min: number | undefined
+      let max: number | undefined
+      if (type.isLiteral('int')) {
+        switch (this.symbol) {
+          case '=':
+            min = type.value
+            max = type.value
+            break
+          case '<':
+            max = type.value - 1
+            break
+          case '<=':
+            max = type.value
+            break
+          case '>=':
+            min = type.value
+            break
+          case '>':
+            min = type.value + 1
+            break
+        }
+      }
+
+      return ok(Types.intRange({min, max}))
+    } else if (type.isFloat()) {
+      let min: number | [number] | undefined
+      let max: number | [number] | undefined
+      if (type.isLiteral('float')) {
+        switch (this.symbol) {
+          case '=':
+            min = type.value
+            max = type.value
+            break
+          case '<':
+            max = [type.value]
+            break
+          case '<=':
+            max = type.value
+            break
+          case '>=':
+            min = type.value
+            break
+          case '>':
+            min = [type.value]
+            break
+        }
+      }
+
+      return ok(Types.floatRange({min, max}))
     }
 
-    return ok(Types.range(type.isInt() ? Types.int() : Types.float()))
+    return err(new RuntimeError(expr, expectedType('Float or Int', expr, type)))
   }
 
   operatorEval(_runtime: ValueRuntime, value: Values.Value, expr: Expression) {

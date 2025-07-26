@@ -37,6 +37,8 @@ describe('match operator', () => {
       c(['foo is true']),
       c(['foo is false']),
       c(['foo is null']),
+      c(['foo is 0']),
+      c(["foo is 'test'"]),
       c(['foo is .some']),
       c(['foo is .some(_)']),
       c(['foo is .some(_, _)']),
@@ -81,7 +83,13 @@ describe('match operator', () => {
       runtimeTypes['input'] = [Types.literal('test'), Values.string('test')]
     })
 
-    cases<[Types.Type, string, {truthy: Types.Type; falsey: Types.Type, notTruthy?: Types.Type, notFalsey?: Types.Type}]>(
+    cases<
+      [
+        Types.Type,
+        string,
+        {truthy: Types.Type; falsey: Types.Type; notTruthy?: Types.Type; notFalsey?: Types.Type},
+      ]
+    >(
       c([
         Types.oneOf([Types.string(), Types.int()]),
         'foo is Int',
@@ -136,6 +144,94 @@ describe('match operator', () => {
         {
           truthy: Ints,
           falsey: Types.optional(Ints),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
+        'foo is 0',
+        {
+          truthy: Types.literal(0),
+          falsey: Types.oneOf([Types.string(), Types.int()]),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
+        'foo is >0',
+        {
+          truthy: Types.int({min: 1}),
+          falsey: Types.oneOf([Types.string(), Types.int({max: 0})]),
+        },
+      ]),
+      c([
+        Types.int({min: 200}),
+        'foo is >100',
+        {
+          truthy: Types.int({min: 200}),
+          falsey: Types.never(),
+        },
+      ]),
+      c([
+        Types.intRange({min: 0}),
+        'foo is <10',
+        {
+          truthy: Types.never(),
+          falsey: Types.intRange({min: 0}),
+        },
+      ]),
+      c([
+        Types.intRange({max: 0}),
+        'foo is <10',
+        {
+          truthy: Types.intRange({max: 0}),
+          falsey: Types.never(),
+        },
+      ]),
+      c([
+        Types.intRange({max: 20}),
+        'foo is <10',
+        {
+          truthy: Types.intRange({max: 9}),
+          falsey: Types.intRange({max: 20}),
+        },
+      ]),
+      c([
+        Types.int(),
+        'foo is <0.0',
+        {
+          truthy: Types.int({max: -1}),
+          falsey: Types.int({min: 0}),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
+        'foo is >0',
+        {
+          truthy: Types.int({min: 1}),
+          falsey: Types.oneOf([Types.string(), Types.int({max: 0})]),
+        },
+      ]),
+      c([
+        Types.int(),
+        'foo is 1<..4',
+        {
+          truthy: Types.int({min: 2, max: 4}),
+          falsey: Types.int(),
+        },
+      ]),
+      c([
+        Types.int(),
+        'foo is 0...10',
+        {
+          truthy: Types.int({min: 0, max: 10}),
+          falsey: Types.int(),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
+        "foo is 'test'",
+        {
+          truthy: Types.literal('test'),
+          falsey: Types.oneOf([Types.string(), Types.int()]),
         },
       ]),
       c([
@@ -234,7 +330,6 @@ describe('match operator', () => {
 
   describe('invalid parse', () => {
     cases<[string, string]>(
-      c(['foo is 1', 'Invalid match expression']),
       c([`foo is "$foo" <> value`, 'Interpolation is not enabled in this context']),
       c([
         `foo is value1 <> value2 <> "test"`,

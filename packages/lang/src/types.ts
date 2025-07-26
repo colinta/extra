@@ -132,8 +132,28 @@ export function set(type: Type, narrowed?: Partial<Narrowed.NarrowedLength>) {
   )
 }
 
-export function range(type: Type) {
-  return new RangeType(type)
+export function intRange(narrowed?: Partial<Narrowed.NarrowedInt>) {
+  if (narrowed) {
+    return new MetaIntRangeType(
+      narrowed
+        ? {...Narrowed.DEFAULT_NARROWED_NUMBER, ...narrowed}
+        : Narrowed.DEFAULT_NARROWED_NUMBER,
+    )
+  }
+
+  return IntRangeType
+}
+
+export function floatRange(narrowed?: Partial<Narrowed.NarrowedFloat>) {
+  if (narrowed) {
+    return new MetaFloatRangeType(
+      narrowed
+        ? {...Narrowed.DEFAULT_NARROWED_NUMBER, ...narrowed}
+        : Narrowed.DEFAULT_NARROWED_NUMBER,
+    )
+  }
+
+  return FloatRangeType
 }
 
 // TODO: rename to classType
@@ -379,7 +399,7 @@ export abstract class Type {
     return false
   }
 
-  isRange() {
+  isRange(): this is MetaFloatRangeType | MetaIntRangeType {
     return false
   }
 
@@ -1906,25 +1926,128 @@ class MetaRegexType extends Type {
   }
 }
 
-class RangeType extends Type {
-  readonly is = 'range'
-
-  declare static types: Record<string, ((object: RangeType) => Type) | undefined>
-
-  constructor(readonly type: Type) {
+abstract class RangeType<T extends Narrowed.NarrowedInt | Narrowed.NarrowedFloat> extends Type {
+  constructor(
+    readonly type: Type,
+    readonly narrowed: T,
+  ) {
     super()
   }
 
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('Range', this, this, [])
-  }
-
-  isRange() {
+  isRange(): this is MetaFloatRangeType | MetaIntRangeType {
     return true
   }
 
-  propAccessType(name: string) {
-    return RangeType.types[name]?.(this)
+  toCode() {
+    let code = this.is
+    if (this.narrowed.min !== undefined || this.narrowed.max !== undefined) {
+      code += '('
+      if (this.narrowed.min !== undefined && this.narrowed.max !== undefined) {
+        if (Array.isArray(this.narrowed.min) && Array.isArray(this.narrowed.max)) {
+          code += `${this.narrowed.min[0]}<.<${this.narrowed.max[0]}`
+        } else if (Array.isArray(this.narrowed.min)) {
+          code += `${this.narrowed.min[0]}<..${this.narrowed.max}`
+        } else if (Array.isArray(this.narrowed.max)) {
+          code += `${this.narrowed.min}..<${this.narrowed.max[0]}`
+        }
+      } else if (this.narrowed.min !== undefined) {
+        if (Array.isArray(this.narrowed.min)) {
+          code += `>${this.narrowed.min[0]}`
+        } else {
+          code += `>=${this.narrowed.min}`
+        }
+      } else if (this.narrowed.max !== undefined) {
+        if (Array.isArray(this.narrowed.max)) {
+          code += `<${this.narrowed.max[0]}`
+        } else {
+          code += `<=${this.narrowed.max}`
+        }
+      }
+      code += ')'
+    }
+    return code
+  }
+}
+
+export class MetaFloatRangeType extends RangeType<Narrowed.NarrowedFloat> {
+  readonly is = 'FloatRange'
+
+  // declare static types: Record<string, ((object: RangeType) => Type) | undefined>
+
+  constructor(narrowed: Narrowed.NarrowedFloat = Narrowed.DEFAULT_NARROWED_NUMBER) {
+    super(FloatType, narrowed)
+  }
+
+  typeConstructor(): TypeConstructor {
+    return new TypeConstructor('FloatRange', this, this, [])
+  }
+
+  propAccessType(_name: string) {
+    // return MetaFloatRangeType.types[name]?.(this)
+    return undefined
+  }
+
+  narrow(min: number | [number] | undefined, max: number | [number] | undefined) {
+    const next = Narrowed.narrowFloats(this.narrowed, {min, max})
+
+    if (next === undefined) {
+      return NeverType
+    }
+
+    if (Narrowed.isDefaultNarrowedNumber(next)) {
+      return FloatRangeType
+    }
+
+    return new MetaFloatType(next)
+  }
+
+  isFloatRange(): this is MetaFloatRangeType {
+    return true
+  }
+
+  isIntRange(): this is MetaIntRangeType {
+    return false
+  }
+}
+
+export class MetaIntRangeType extends RangeType<Narrowed.NarrowedInt> {
+  readonly is = 'IntRange'
+
+  // declare static types: Record<string, ((object: RangeType) => Type) | undefined>
+
+  constructor(narrowed: Narrowed.NarrowedInt = Narrowed.DEFAULT_NARROWED_NUMBER) {
+    super(IntType, narrowed)
+  }
+
+  typeConstructor(): TypeConstructor {
+    return new TypeConstructor('IntRange', this, this, [])
+  }
+
+  propAccessType(_name: string) {
+    // return RangeType.types[name]?.(this)
+    return undefined
+  }
+
+  narrow(min: number | undefined, max: number | undefined) {
+    const next = Narrowed.narrowInts(this.narrowed, {min, max})
+
+    if (next === undefined) {
+      return NeverType
+    }
+
+    if (Narrowed.isDefaultNarrowedNumber(next)) {
+      return IntRangeType
+    }
+
+    return new MetaIntType(next)
+  }
+
+  isFloatRange(): this is MetaFloatRangeType {
+    return true
+  }
+
+  isIntRange(): this is MetaIntRangeType {
+    return true
   }
 }
 
@@ -2295,8 +2418,8 @@ export const FloatType = new MetaFloatType()
 export const IntType = new MetaIntType()
 export const StringType = new MetaStringType()
 export const RegexType = new MetaRegexType()
-export const IntRangeType = new RangeType(IntType)
-export const FloatRangeType = new RangeType(FloatType)
+export const FloatRangeType = new MetaFloatRangeType()
+export const IntRangeType = new MetaIntRangeType()
 
 export const LiteralTrueType = new (class LiteralTrueType extends LiteralBooleanType {
   readonly value: boolean = true
@@ -3088,12 +3211,48 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
     )
   }
 
-  // covers "(String | Int) is Float --> Int", because Int can be assigned to Float
-  // also covers "(student | null) is human --> human" because student can be assigned to human
-  if (canBeAssignedTo(lhsType, typeAssertion)) {
-    return typeAssertion
+  // covers "5.0 is 0...10 --> 5.0"
+  // Yeah so this doesn't really work as a 'canBeAssignedTo' case, and it was
+  // just easier to put it in here than work it into canBeAssignedTo (where it
+  // definitely doesn't belong)
+  if (lhsType.isFloat() && typeAssertion.isRange()) {
+    // if lhsType is already assignable to the typeAssertion range, return lhsType
+    if (Narrowed.testNumber(lhsType.narrowed, typeAssertion.narrowed)) {
+      return lhsType
+    }
+
+    if (Narrowed.testNumber(typeAssertion.narrowed, lhsType.narrowed)) {
+      if (lhsType.isInt()) {
+        let min: number | undefined
+        if (Array.isArray(typeAssertion.narrowed.min)) {
+          min = Math.floor(typeAssertion.narrowed.min[0]) + 1
+        } else {
+          min = typeAssertion.narrowed.min
+        }
+
+        let max: number | undefined
+        if (Array.isArray(typeAssertion.narrowed.max)) {
+          max = Math.ceil(typeAssertion.narrowed.max[0]) - 1
+        } else {
+          max = typeAssertion.narrowed.max
+        }
+        return int({min, max})
+      }
+
+      return float(typeAssertion.narrowed)
+    }
+
+    return NeverType
   }
 
+  // preserves the more specific type - if lhsType can already be assigned to
+  // typeAssertion, it doesn't need to be further narrowed.
+  //
+  // covers "5|6 is Int --> 5|6", because 5|6 can be assigned to Int also covers
+  // "Student is Human --> Student" because student can be assigned to human
+  if (canBeAssignedTo(lhsType, typeAssertion)) {
+    return lhsType
+  }
   // covers type narrowing, e.g. "(human) is student --> student"
   // these types are only used _when the eval() value is true,
   // so in this case we got the runtime type of the value,
@@ -3134,6 +3293,38 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
         }
       }),
     )
+  }
+
+  if (lhsType.isFloat() && typeAssertion.isRange()) {
+    if (Narrowed.testNumber(lhsType.narrowed, typeAssertion.narrowed)) {
+      return NeverType
+    }
+
+    if (typeAssertion.narrowed.min === undefined && typeAssertion.narrowed.max !== undefined) {
+      let min: number | [number] = Array.isArray(typeAssertion.narrowed.max)
+        ? typeAssertion.narrowed.max[0]
+        : [typeAssertion.narrowed.max]
+      if (lhsType.isInt()) {
+        if (Array.isArray(min)) {
+          min = Math.floor(min[0]) + 1
+        }
+        return int({min})
+      }
+      return float({min})
+    }
+
+    if (typeAssertion.narrowed.max === undefined && typeAssertion.narrowed.min !== undefined) {
+      let max: number | [number] = Array.isArray(typeAssertion.narrowed.min)
+        ? typeAssertion.narrowed.min[0]
+        : [typeAssertion.narrowed.min]
+      if (lhsType.isInt()) {
+        if (Array.isArray(max)) {
+          max = Math.ceil(max[0]) - 1
+        }
+        return int({max})
+      }
+      return float({max})
+    }
   }
 
   if (canBeAssignedTo(lhsType, typeAssertion)) {
@@ -3584,6 +3775,35 @@ export function canBeAssignedTo(
     return false
   }
 
+  if (testType instanceof OneOfType) {
+    // every type in testType must be assignable to assignTo
+    return testType.of.every(lhType =>
+      canBeAssignedTo(lhType, assignTo, resolvedGenericsMap, reason),
+    )
+  } else if (assignTo instanceof OneOfType) {
+    const [nonGeneric, generic] = assignTo.of.reduce(
+      ([nonGeneric, generic], current: Type) => {
+        if (current.hasGeneric()) {
+          return [nonGeneric, generic.concat([current])]
+        } else {
+          return [nonGeneric.concat([current]), generic]
+        }
+      },
+      [[], []] as [Type[], Type[]],
+    )
+
+    // testType must be assignable to any of the types in assignTo
+    // (ie testType is a *narrowed* type of assignTo)
+    if (nonGeneric.some(rhType => canBeAssignedTo(testType, rhType, resolvedGenericsMap, reason))) {
+      return true
+    }
+
+    return why(
+      generic.some(rhType => canBeAssignedTo(testType, rhType, resolvedGenericsMap, reason)),
+      `'${testType}' is not assignable to '${assignTo}'.`,
+    )
+  }
+
   if (testType === NeverType || assignTo === NeverType) {
     return why(false, `Encountered unexpected type 'never'.`)
   }
@@ -3628,35 +3848,6 @@ export function canBeAssignedTo(
     return true
   }
 
-  if (testType instanceof OneOfType) {
-    // every type in testType must be assignable to assignTo
-    return testType.of.every(lhType =>
-      canBeAssignedTo(lhType, assignTo, resolvedGenericsMap, reason),
-    )
-  } else if (assignTo instanceof OneOfType) {
-    const [nonGeneric, generic] = assignTo.of.reduce(
-      ([nonGeneric, generic], current: Type) => {
-        if (current.hasGeneric()) {
-          return [nonGeneric, generic.concat([current])]
-        } else {
-          return [nonGeneric.concat([current]), generic]
-        }
-      },
-      [[], []] as [Type[], Type[]],
-    )
-
-    // testType must be assignable to any of the types in assignTo
-    // (ie testType is a *narrowed* type of assignTo)
-    if (nonGeneric.some(rhType => canBeAssignedTo(testType, rhType, resolvedGenericsMap, reason))) {
-      return true
-    }
-
-    return why(
-      generic.some(rhType => canBeAssignedTo(testType, rhType, resolvedGenericsMap, reason)),
-      `'${testType}' is not assignable to '${assignTo}'.`,
-    )
-  }
-
   if (testType.isLiteral() && assignTo.isLiteral()) {
     // note: int can be assigned to float, but float cannot be assigned to int
     if (testType.is === assignTo.is || (testType.isInt() && assignTo.isFloat())) {
@@ -3674,6 +3865,8 @@ export function canBeAssignedTo(
     return canBeAssignedTo(testType.valueType(), assignTo, resolvedGenericsMap, reason)
   } else if (assignTo.isLiteral()) {
     return why(false, `'${testType}' is not assignable to literal type '${assignTo.toCode()}'.`)
+  } else if (testType.isRange() && assignTo.isRange()) {
+    return canBeAssignedToRange(testType, assignTo)
   } else if (testType.isFloat() && assignTo.isFloat()) {
     // canBeAssignedToFloat checks the narrowed types,
     // and whether testType canBeAssignedTo assignTo (Int can be assigned to Float,
@@ -3780,19 +3973,28 @@ export function canBeAssignedTo(
   return why(false, `Type '${testType}' cannot be assigned to '${assignTo}'.`)
 }
 
+function canBeAssignedToRange(
+  testType: MetaFloatRangeType | MetaIntRangeType,
+  assignTo: MetaFloatRangeType | MetaIntRangeType,
+) {
+  if (assignTo.isIntRange() && !testType.isIntRange()) {
+    return false
+  }
+
+  return Narrowed.testNumber(testType.narrowed, assignTo.narrowed)
+}
+
 function canBeAssignedToFloat(
   testType: LiteralFloatType | MetaFloatType | MetaIntType,
   assignTo: LiteralFloatType | MetaFloatType | MetaIntType,
 ) {
-  if (assignTo instanceof LiteralFloatType) {
-    if (testType instanceof LiteralIntType) {
-      return testType.value === assignTo.value
-    } else if (testType instanceof LiteralFloatType) {
-      return !(assignTo instanceof LiteralIntType) && testType.value === assignTo.value
-    }
+  if (assignTo.isInt() && !testType.isInt()) {
+    return false
+  }
 
-    if (assignTo instanceof LiteralIntType && !(testType instanceof MetaIntType)) {
-      return false
+  if (assignTo instanceof LiteralFloatType) {
+    if (testType instanceof LiteralIntType || testType instanceof LiteralFloatType) {
+      return testType.value === assignTo.value
     }
 
     return Narrowed.testNumber(testType.narrowed, {

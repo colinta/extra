@@ -4455,11 +4455,11 @@ export abstract class MatchExpression extends Expression {
     lhsType: Types.Type,
     assumeTrue: boolean,
   ): GetTypeResult {
-    return this.getAsTypeExpression(runtime).map(rhsTypeAssertion => {
-      return assumeTrue
+    return this.getAsTypeExpression(runtime).map(rhsTypeAssertion =>
+      assumeTrue
         ? Types.narrowTypeIs(lhsType, rhsTypeAssertion)
-        : Types.narrowTypeIsNot(lhsType, rhsTypeAssertion)
-    })
+        : Types.narrowTypeIsNot(lhsType, rhsTypeAssertion),
+    )
   }
 
   getType(): GetTypeResult {
@@ -5029,6 +5029,163 @@ export class MatchLiteral extends MatchExpression {
 
   toCode() {
     return this.literal.toCode()
+  }
+}
+
+export class MatchUnaryRange extends MatchExpression {
+  readonly precedence = 12 // from operators.ts
+
+  constructor(
+    readonly range: Range,
+    public precedingComments: Comment[],
+    readonly op: '=' | '>' | '>=' | '<' | '<=',
+    readonly start: Literal,
+  ) {
+    super(range, precedingComments)
+  }
+
+  matchAssignReferences() {
+    return []
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    if (this.start.value.isInt()) {
+      switch (this.op) {
+        case '=':
+          return ok(Types.intRange({min: this.start.value.value, max: this.start.value.value}))
+        case '>':
+          return ok(Types.intRange({min: this.start.value.value + 1}))
+        case '>=':
+          return ok(Types.intRange({min: this.start.value.value}))
+        case '<':
+          return ok(Types.intRange({max: this.start.value.value - 1}))
+        case '<=':
+          return ok(Types.intRange({max: this.start.value.value}))
+      }
+    }
+
+    if (this.start.value.isFloat()) {
+      switch (this.op) {
+        case '=':
+          return ok(Types.floatRange({min: this.start.value.value, max: this.start.value.value}))
+        case '>':
+          return ok(Types.floatRange({min: [this.start.value.value]}))
+        case '>=':
+          return ok(Types.floatRange({min: this.start.value.value}))
+        case '<':
+          return ok(Types.floatRange({max: [this.start.value.value]}))
+        case '<=':
+          return ok(Types.floatRange({max: this.start.value.value}))
+      }
+    }
+
+    return ok(Types.NeverType)
+  }
+
+  assumeMatchAssertionRuntime(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    return this.defaultAssumeMatchAssertionRuntime(runtime, lhsExpr, assumeTrue)
+  }
+
+  assumeNestedAssertionType(
+    runtime: TypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult {
+    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
+  }
+
+  toLisp() {
+    return `(${this.op}${this.start.toLisp()})`
+  }
+
+  toCode(prevPrecedence = 0): string {
+    if (prevPrecedence > this.precedence) {
+      return `(${this.toCode(0)})`
+    }
+
+    return this.op + this.start.toCode()
+  }
+}
+
+export class MatchBinaryRange extends MatchExpression {
+  readonly precedence = 12 // from operators.ts
+
+  constructor(
+    readonly range: Range,
+    public precedingComments: Comment[],
+    readonly op: '...' | '<..' | '..<' | '<.<',
+    readonly start: Literal,
+    readonly stop: Literal,
+  ) {
+    super(range, precedingComments)
+  }
+
+  matchAssignReferences() {
+    return []
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    if (this.start.value.isInt() && this.stop.value.isInt()) {
+      switch (this.op) {
+        case '...':
+          return ok(Types.intRange({min: this.start.value.value, max: this.stop.value.value}))
+        case '<..':
+          return ok(Types.intRange({min: this.start.value.value + 1, max: this.stop.value.value}))
+        case '..<':
+          return ok(Types.intRange({min: this.start.value.value, max: this.stop.value.value - 1}))
+        case '<.<':
+          return ok(
+            Types.intRange({min: this.start.value.value + 1, max: this.stop.value.value - 1}),
+          )
+      }
+    }
+
+    if (this.start.value.isFloat() && this.stop.value.isFloat()) {
+      switch (this.op) {
+        case '...':
+          return ok(Types.floatRange({min: this.start.value.value, max: this.stop.value.value}))
+        case '<..':
+          return ok(Types.floatRange({min: [this.start.value.value], max: this.stop.value.value}))
+        case '..<':
+          return ok(Types.floatRange({min: this.start.value.value, max: [this.stop.value.value]}))
+        case '<.<':
+          return ok(Types.floatRange({min: [this.start.value.value], max: [this.stop.value.value]}))
+      }
+    }
+
+    return ok(Types.NeverType)
+  }
+
+  assumeMatchAssertionRuntime(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    assumeTrue: boolean,
+  ): GetRuntimeResult<TypeRuntime> {
+    return this.defaultAssumeMatchAssertionRuntime(runtime, lhsExpr, assumeTrue)
+  }
+
+  assumeNestedAssertionType(
+    runtime: TypeRuntime,
+    lhsType: Types.Type,
+    assumeTrue: boolean,
+  ): GetTypeResult {
+    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
+  }
+
+  toLisp() {
+    return `(${this.start.toCode()}${this.op}${this.stop.toLisp()})`
+  }
+
+  toCode(prevPrecedence = 0): string {
+    if (prevPrecedence > this.precedence) {
+      return `(${this.toCode(0)})`
+    }
+
+    return this.start.toCode() + this.op + this.stop.toCode()
   }
 }
 

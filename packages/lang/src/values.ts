@@ -800,32 +800,51 @@ export class RangeValue extends Value {
   }
 
   getType(): Types.Type {
-    if (this.start === undefined && this.stop === undefined) {
-      return Types.range(Types.never())
-    }
-
-    // both are int
+    // determine int vs float range, and convert to narrowed types
+    //     number | [number] | undefined
     if (
-      this.start &&
-      this.stop &&
-      this.start[0] instanceof IntValue &&
-      this.stop[0] instanceof IntValue
+      (this.start === undefined || this.start[0] instanceof IntValue) &&
+      (this.stop === undefined || this.stop[0] instanceof IntValue)
     ) {
-      return Types.range(Types.IntType)
+      let min: number | undefined
+      if (this.start) {
+        min = this.start[0].value
+        if (this.start[1]) {
+          min += 1
+        }
+      }
+
+      let max: number | undefined
+      if (this.stop) {
+        max = this.stop[0].value
+        if (this.stop[1]) {
+          max -= 1
+        }
+      }
+
+      return Types.intRange({min, max})
     }
 
-    // start is int, no end value
-    if (this.start && !this.stop && this.start[0] instanceof IntValue) {
-      return Types.range(Types.IntType)
+    let min: number | [number] | undefined
+    if (this.start) {
+      if (this.start[1]) {
+        min = [this.start[0].value]
+      } else {
+        min = this.start[0].value
+      }
     }
 
-    // stop is int, no start value
-    if (!this.start && this.stop && this.stop[0] instanceof IntValue) {
-      return Types.range(Types.IntType)
+    let max: number | [number] | undefined
+    if (this.stop) {
+      if (this.stop[1]) {
+        max = [this.stop[0].value]
+      } else {
+        max = this.stop[0].value
+      }
     }
 
     // float in there somewhere
-    return Types.range(Types.FloatType)
+    return Types.floatRange({min, max})
   }
 
   private static _props: Map<string, (value: RangeValue) => Value> = new Map([])
