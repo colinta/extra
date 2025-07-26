@@ -195,7 +195,7 @@ describe('getType', () => {
   describe('StringTemplateOperation', () => {
     it('`test ${ing}` => String', () => {
       const expression = parse('`test ${ing}`').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.string())
+      expect(expression.getType(typeRuntime).get()).toEqual(Types.string({min: 5}))
     })
   })
 

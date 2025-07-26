@@ -143,17 +143,15 @@ export abstract class Expression {
     return undefined
   }
 
-  toLengthFormula(
-    runtime: TypeRuntime,
-  ): GetRuntimeResult<[RelationshipFormula, boolean] | undefined> {
+  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
     return this.getType(runtime).map(type => {
       const formula = this.relationshipFormula(runtime)
       if (!formula) {
-        return
+        return runtime
       }
 
       if (type.isFloat()) {
-        return [formula, false]
+        return assignNextRuntime(runtime, formula, '!=', relationshipFormula.int(0))
       }
 
       if (
@@ -162,35 +160,42 @@ export abstract class Expression {
         type instanceof Types.DictType ||
         type instanceof Types.SetType
       ) {
-        return [relationshipFormula.propertyAccess(formula, 'length'), true]
+        return assignNextRuntime(
+          runtime,
+          relationshipFormula.propertyAccess(formula, 'length'),
+          '>',
+          relationshipFormula.int(0),
+        )
       }
 
-      return
-    })
-  }
-
-  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    const formula = this.relationshipFormula(runtime)
-    if (!formula) {
-      return ok(runtime)
-    }
-
-    return this.toLengthFormula(runtime).map(info => {
-      if (!info) {
-        return ok(runtime)
-      }
-
-      const [lengthFormula, isString] = info
-      if (isString) {
-        return assignNextRuntime(runtime, lengthFormula, '>', relationshipFormula.int(0))
-      } else {
-        return assignNextRuntime(runtime, formula, '!=', relationshipFormula.int(0))
-      }
+      return runtime
     })
   }
 
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return ok(runtime)
+    return this.getType(runtime).map(type => {
+      const formula = this.relationshipFormula(runtime)
+      if (!formula) {
+        return runtime
+      }
+
+      if (
+        type.isFloat() ||
+        type.isString() ||
+        type instanceof Types.ArrayType ||
+        type instanceof Types.DictType ||
+        type instanceof Types.SetType
+      ) {
+        return assignNextRuntime(
+          runtime,
+          relationshipFormula.propertyAccess(formula, 'length'),
+          '==',
+          relationshipFormula.int(0),
+        )
+      }
+
+      return runtime
+    })
   }
 
   /**

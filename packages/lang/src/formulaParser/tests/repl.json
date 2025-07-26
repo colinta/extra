@@ -34,7 +34,7 @@
       "desc": "arg scope",
       "formula": "f(a: 'heeey')",
       "expectedCode": "f(a: 'heeey')",
-      "expectedType": "String",
+      "expectedType": "String(length: >=2)",
       "expectedValue": "'<heeey>'",
       "variables": [
         [
