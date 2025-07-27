@@ -10,6 +10,7 @@ import {
   CASE_KEYWORD,
   isArgumentStartChar,
   isNumberStart,
+  IGNORE_TOKEN,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -88,7 +89,7 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
       assignRef = scanValidName(scanner)
     }
     return new Expressions.MatchTypeExpression(argType, assignRef)
-  } else if (scanner.is('_')) {
+  } else if (scanner.is(IGNORE_TOKEN)) {
     return scanMatchIgnore(scanner)
   } else if (scanner.is('/')) {
     return scanMatchRegex(scanner)
@@ -110,8 +111,8 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
 function scanMatchIgnore(scanner: Scanner) {
   scanner.whereAmI('scanMatchIgnore')
   const arg0 = scanner.charIndex
-  scanner.expectString('_')
-  while (scanner.scanIfString('_')) {}
+  scanner.expectString(IGNORE_TOKEN)
+  while (scanner.scanIfString(IGNORE_TOKEN)) {}
 
   return new Expressions.MatchIgnore([arg0, scanner.charIndex], scanner.flushComments())
 }
@@ -357,7 +358,7 @@ function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
         if (scanner.is(/_+\b/)) {
           throw new ParseError(
             scanner,
-            "Ignore placeholder '_' is not necessary here, just '...' is enough",
+            "Ignore placeholder '${IGNORE_TOKEN}' is not necessary here, just '...' is enough",
           )
         }
 

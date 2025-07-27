@@ -1,5 +1,5 @@
 import * as Expressions from '../expressions'
-import {isRef, isRefChar} from '../grammars'
+import {IGNORE_TOKEN, isRef, isRefChar} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
 import {unexpectedToken} from './basics'
@@ -138,7 +138,7 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
   scanner.whereAmI(`scanIdentifier: ${currentToken}`)
   let identifier: Expressions.Identifier | undefined
   switch (currentToken) {
-    case '_':
+    case IGNORE_TOKEN:
       identifier = new Expressions.IgnorePlaceholder(range, scanner.flushComments())
       break
     case 'if':

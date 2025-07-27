@@ -2,7 +2,64 @@ import {BINARY_OP_ALIASES, BINARY_OP_NAMES, BINARY_OP_SYMBOLS, UNARY_OP_NAMES} f
 import {type Scanner} from './scanner'
 import {type ArgumentType, type ExpressionType} from './types'
 
-// I've been moving these functions into 'scanner' as instance methods
+export const REQUIRES_KEYWORD = 'requires'
+export const PUBLIC_KEYWORD = 'public'
+export const IMPORT_KEYWORD = 'import'
+export const IS_KEYWORD = 'is'
+export const NOT_IS_KEYWORD = '!is'
+export const CASE_KEYWORD = 'case'
+export const LET_KEYWORD = 'let'
+export const LET_IN = 'in'
+export const IGNORE_TOKEN = '_'
+export const FN_KEYWORD = 'fn'
+export const VIEW_KEYWORD = 'view'
+export const STATIC_KEYWORD = 'static'
+export const TYPE_KEYWORD = 'type'
+export const SPLAT_OP = '...'
+export const KWARG_OP = '**'
+
+export const INCLUSION_OPERATOR = 'onlyif'
+export const NULL_COALESCING = '?.'
+
+export const ARGS_OPEN = '('
+export const ARGS_CLOSE = ')'
+
+export const IMPORTS_OPEN = '{'
+export const IMPORTS_CLOSE = '}'
+
+export const SINGLE_BLOCK_OPEN = ':'
+export const BLOCK_OPEN = '{'
+export const BLOCK_CLOSE = '}'
+
+export const PARENS_OPEN = '('
+export const PARENS_CLOSE = ')'
+
+export const GENERIC_OPEN = '<'
+export const GENERIC_CLOSE = '>'
+
+export const OBJECT_WORD_START = 'object'
+export const OBJECT_OPEN = '{'
+export const OBJECT_CLOSE = '}'
+
+export const ARRAY_WORD_START = 'Array'
+export const ARRAY_OPEN = '['
+export const ARRAY_CLOSE = ']'
+
+export const DICT_WORD_START = 'Dict'
+export const SET_WORD_START = 'Set'
+export const REGEX_START = '/'
+export const ATOM_START = ':'
+export const FUNCTION_BODY_START = '=>'
+
+export const ENUM_KEYWORD = 'enum'
+export const ENUM_START = '.'
+export const ENUM_OPEN = '{'
+export const ENUM_CLOSE = '}'
+
+export const CLASS_KEYWORD = 'class'
+export const CLASS_EXTENDS = 'extends'
+export const CLASS_OPEN = '{'
+export const CLASS_CLOSE = '}'
 
 export function isCommentStart(input: string) {
   const code = input.charCodeAt(0)
@@ -118,66 +175,9 @@ export function isStringStartChar(char: string) {
   return char === '"' || char === "'" || char === '`' || char === ATOM_START
 }
 
-export const REQUIRES_KEYWORD = 'requires'
-export const PUBLIC_KEYWORD = 'public'
-export const IMPORT_KEYWORD = 'import'
-export const IS_KEYWORD = 'is'
-export const NOT_IS_KEYWORD = '!is'
-export const CASE_KEYWORD = 'case'
-export const LET_KEYWORD = 'let'
-export const LET_IN = 'in'
-export const FN_KEYWORD = 'fn'
-export const VIEW_KEYWORD = 'view'
-export const STATIC_KEYWORD = 'static'
-export const TYPE_KEYWORD = 'type'
-export const SPLAT_OP = '...'
-export const KWARG_OP = '**'
-
-export const INCLUSION_OPERATOR = 'onlyif'
-export const NULL_COALESCING = '?.'
-
-export const ARGS_OPEN = '('
-export const ARGS_CLOSE = ')'
-
-export const IMPORTS_OPEN = '{'
-export const IMPORTS_CLOSE = '}'
-
-export const SINGLE_BLOCK_OPEN = ':'
-export const BLOCK_OPEN = '{'
-export const BLOCK_CLOSE = '}'
-
-export const PARENS_OPEN = '('
-export const PARENS_CLOSE = ')'
-
-export const GENERIC_OPEN = '<'
-export const GENERIC_CLOSE = '>'
-
-export const OBJECT_WORD_START = 'object'
-export const OBJECT_OPEN = '{'
-export const OBJECT_CLOSE = '}'
 export function isObjectLiteralStart(input: string) {
   return input[0] === OBJECT_OPEN
 }
-
-export const ARRAY_WORD_START = 'Array'
-export const ARRAY_OPEN = '['
-export const ARRAY_CLOSE = ']'
-
-export const DICT_WORD_START = 'Dict'
-export const SET_WORD_START = 'Set'
-export const REGEX_START = '/'
-export const ATOM_START = ':'
-export const FUNCTION_BODY_START = '=>'
-
-export const ENUM_KEYWORD = 'enum'
-export const ENUM_START = '.'
-export const ENUM_OPEN = '{'
-export const ENUM_CLOSE = '}'
-
-export const CLASS_KEYWORD = 'class'
-export const CLASS_EXTENDS = 'extends'
-export const CLASS_OPEN = '{'
-export const CLASS_CLOSE = '}'
 
 export function isRegexFlag(char: string) {
   return /^[gims]/.test(char)
