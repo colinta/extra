@@ -6,7 +6,7 @@ import {FUNCTION_BODY_START, GENERIC_CLOSE, GENERIC_OPEN, isArgumentStartChar} f
 
 import {scanArgumentType} from './argument_type'
 import {scanFormulaArgumentDefinitions} from './formula_arguments'
-import {scanValidName} from './identifier'
+import {scanValidFormulaName, scanValidTypeName, scanValidViewName} from './identifier'
 
 export function scanFormula(
   scanner: Scanner,
@@ -143,7 +143,11 @@ function _scanFormula(
   let precedingNameComments: Comment[] = []
   if (isArgumentStartChar(scanner)) {
     precedingNameComments = scanner.flushComments()
-    nameRef = scanValidName(scanner)
+    if (type === 'view') {
+      nameRef = scanValidViewName(scanner)
+    } else {
+      nameRef = scanValidFormulaName(scanner)
+    }
   }
   scanner.whereAmI(`scanFormula name = ${nameRef}`)
 
@@ -280,7 +284,7 @@ export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
   const generics: string[] = []
   scanner.scanAllWhitespace()
   for (;;) {
-    const generic = scanValidName(scanner).name
+    const generic = scanValidTypeName(scanner).name
     if (generics.includes(generic)) {
       throw new ParseError(
         scanner,

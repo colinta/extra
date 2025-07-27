@@ -4,7 +4,7 @@ import {type Scanner} from '../scanner'
 import {type ExpressionType, type ParseNext} from '../types'
 import {scanArgumentType} from './argument_type'
 import {scanNamedFormula} from './formula'
-import {scanValidName} from './identifier'
+import {scanValidReferenceName} from './identifier'
 
 /**
  *     let
@@ -36,7 +36,7 @@ export function scanLet(
     if (scanner.isWord(FN_KEYWORD)) {
       entry = scanNamedFormula(scanner, parseNext, 'let')
     } else {
-      const name = scanValidName(scanner)
+      const name = scanValidReferenceName(scanner)
       scanner.scanAllWhitespace()
       let type: Expressions.Expression | undefined
       if (scanner.scanIfString(':')) {

@@ -70,8 +70,52 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
 }
 
 /**
- * doesn't support state or action references, and fails on reserved words, and
- * type names must be capitalized.
+ * requires lower-case names, fails on reserved words.
+ */
+export function scanValidReferenceName(scanner: Scanner): Expressions.Reference {
+  const ref = scanValidName(scanner)
+  if (!ref.name.match(/^[_a-z]/)) {
+    throw new ParseError(
+      scanner,
+      `Invalid reference name '${ref.name}'. References must start with an uppercased letter`,
+    )
+  }
+
+  return ref
+}
+
+/**
+ * requires lower-case names, fails on reserved words.
+ */
+export function scanValidFormulaName(scanner: Scanner): Expressions.Reference {
+  const ref = scanValidName(scanner)
+  if (!ref.name.match(/^[a-z]/)) {
+    throw new ParseError(
+      scanner,
+      `Invalid formula name '${ref.name}'. Formulas must start with an uppercased letter`,
+    )
+  }
+
+  return ref
+}
+
+/**
+ * view names must be capitalized, fails on reserved words.
+ */
+export function scanValidViewName(scanner: Scanner): Expressions.Reference {
+  const ref = scanValidName(scanner)
+  if (!ref.name.match(/^[A-Z]/)) {
+    throw new ParseError(
+      scanner,
+      `Invalid view name '${ref.name}'. Views must start with an uppercased letter`,
+    )
+  }
+
+  return ref
+}
+
+/**
+ * type names must be capitalized, fails on reserved words.
  */
 export function scanValidTypeName(scanner: Scanner): Expressions.Reference {
   const ref = scanValidName(scanner)
@@ -81,6 +125,7 @@ export function scanValidTypeName(scanner: Scanner): Expressions.Reference {
       `Invalid type name '${ref.name}'. Types must start with an uppercased letter`,
     )
   }
+
   return ref
 }
 

@@ -27,7 +27,7 @@ describe('state', () => {
 describe('bad states', () => {
   cases<[string, string]>(
     c(['asdf = ""', "States must start with the at '@' symbol"]),
-    c(['@Asdf = ""', "States must start with a lowercased letter, found 'Asdf'"]),
+    c(['@Asdf = ""', 'References must start with an uppercased letter']),
   ).run(([formula, error], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
       `should error parsing State definitions ${formula}`,

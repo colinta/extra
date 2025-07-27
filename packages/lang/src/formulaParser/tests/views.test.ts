@@ -126,7 +126,7 @@ describe('view', () => {
 describe('bad views', () => {
   cases<[string, string]>(
     c(['asdf() => <></>', "Expected 'view(' to start the formula expression"]),
-    c(['view asdf() => <></>', "Views must start with an uppercased letter, found 'asdf'"]),
+    c(['view asdf() => <></>', 'Views must start with an uppercased letter']),
   ).run(([formula, error], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
       `should error parsing View definitions ${formula}`,

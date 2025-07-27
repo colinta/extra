@@ -17,7 +17,7 @@ import {ParseError, type ParseNext} from '../types'
 import {scanArgumentType} from './argument_type'
 
 import {unexpectedToken} from './basics'
-import {scanAnyReference, scanValidName} from './identifier'
+import {scanAnyReference, scanValidReferenceName} from './identifier'
 import {scanNumber} from './number'
 import {scanRegex} from './regex'
 import {scanString} from './string'
@@ -86,7 +86,7 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
       scanner.scanSpaces()
       scanner.expectString('as')
       scanner.scanSpaces()
-      assignRef = scanValidName(scanner)
+      assignRef = scanValidReferenceName(scanner)
     }
     return new Expressions.MatchTypeExpression(argType, assignRef)
   } else if (scanner.is(IGNORE_TOKEN)) {
@@ -122,7 +122,7 @@ function scanMatchReference(scanner: Scanner, parseNext: ParseNext) {
   if (scanner.test(isReferenceThenConcat)) {
     return scanMatchString(scanner, parseNext)
   }
-  const reference = scanValidName(scanner)
+  const reference = scanValidReferenceName(scanner)
   return new Expressions.MatchReference(reference)
 }
 
@@ -294,7 +294,7 @@ function scanMatchString(scanner: Scanner, parseNext: ParseNext) {
       }
       prev = 'ref'
 
-      const reference = scanValidName(scanner)
+      const reference = scanValidReferenceName(scanner)
       const matchExpression = new Expressions.MatchReference(reference)
       args.push(matchExpression)
     } else {
@@ -363,7 +363,7 @@ function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
         }
 
         if (isRefStartChar(scanner)) {
-          const reference = scanValidName(scanner)
+          const reference = scanValidReferenceName(scanner)
           args.push(
             new Expressions.MatchAssignRemainingExpression(
               [arg0, scanner.charIndex],

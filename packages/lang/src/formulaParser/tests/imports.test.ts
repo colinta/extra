@@ -17,35 +17,35 @@ describe('import parser', () => {
       c(['import Foo/Bar/Baz as Bar']),
       c(['import Foo : {bar}']),
       c(['import Foo as Foo : {bar}']),
-      c(['import Foo : {bar as Bar}']),
+      c(['import Foo : {bar as barr}']),
       c([
-        'import Foo : {bar as Bar,bax,bux as buzz}',
-        'import Foo : {bar as Bar, bax, bux as buzz}',
+        'import Foo : {bar as barr,bax,bux as buzz}',
+        'import Foo : {bar as barr, bax, bux as buzz}',
       ]),
       c([
         `\
 import Foo : {
-bar as Bar
+bar as barr
 }`,
-        'import Foo : {bar as Bar}',
+        'import Foo : {bar as barr}',
       ]),
       c([
         `\
 import Foo : {
-bar as Bar
+bar as barr
 bax
 bux as buzz}`,
-        'import Foo : {bar as Bar, bax, bux as buzz}',
+        'import Foo : {bar as barr, bax, bux as buzz}',
       ]),
       c([
         `\
 import Foo : {
-bar as Bar
+bar as barr
 bax
 bux as buzz, a-very-long-name-as-well-as-this-one-too-and-this-one-as-well-as-this-one-too-and-this-one-as-well}`,
         `\
 import Foo : {
-  bar as Bar
+  bar as barr
   bax
   bux as buzz
   a-very-long-name-as-well-as-this-one-too-and-this-one-as-well-as-this-one-too-and-this-one-as-well

@@ -6,7 +6,7 @@ import {
   BINARY_OP_ALIASES,
   BINARY_OP_NAMES,
 } from '../operators'
-import {isBinaryOperatorName, isBinaryOperatorSymbol, scanBinaryOperatorSymbol} from '../grammars'
+import {scanBinaryOperatorSymbol} from '../grammars'
 
 export function scanBinaryOperator(scanner: Scanner): Operator {
   scanner.whereAmI('scanBinaryOperator')

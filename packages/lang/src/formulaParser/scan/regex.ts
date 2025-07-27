@@ -2,7 +2,7 @@ import {isRegexFlag} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
 import * as Expressions from '../expressions'
-import {scanValidName} from './identifier'
+import {scanValidReferenceName} from './identifier'
 
 /**
  * Called recursively in capture groups, to associate the capture group with the
@@ -120,7 +120,7 @@ function scanRegexString(
 
       stringBuffer += '(?<'
       const startIndex = scanner.charIndex
-      const reference = scanValidName(scanner)
+      const reference = scanValidReferenceName(scanner)
       stringBuffer += reference.name
       scanner.expectString('>')
       stringBuffer += '>'

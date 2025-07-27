@@ -1,7 +1,12 @@
 import {type Scanner} from '../scanner'
 import * as Expressions from '../expressions'
 
-import {scanAnyReference, scanValidName, scanValidTypeName} from './identifier'
+import {
+  scanAnyReference,
+  scanValidName,
+  scanValidReferenceName,
+  scanValidTypeName,
+} from './identifier'
 import {type Comment, ParseError, type ParseNext} from '../types'
 import {type Expression} from '../expressions'
 import {
@@ -139,7 +144,7 @@ export function scanImportStatement(scanner: Scanner) {
         }
 
         const specific0 = scanner.charIndex
-        const nameRef = scanValidName(scanner)
+        const nameRef = scanValidReferenceName(scanner)
         if (scanner.lookAhead('as')) {
           scanner.scanAllWhitespace()
         } else {
@@ -150,7 +155,7 @@ export function scanImportStatement(scanner: Scanner) {
         let specificAlias: Expressions.Reference | undefined
         if (scanner.scanIfWord('as')) {
           scanner.expectWhitespace()
-          specificAlias = scanValidName(scanner)
+          specificAlias = scanValidReferenceName(scanner)
           scanner.scanSpaces()
           specificAlias.followingComments.push(...scanner.flushComments())
         }
@@ -249,11 +254,8 @@ export function scanStateDefinition(scanner: Scanner, parseNext: ParseNext) {
   }
 
   scanner.expectString('@', "States must start with the at '@' symbol")
-  const name = scanValidName(scanner).name
+  const name = scanValidReferenceName(scanner).name
   scanner.whereAmI(`scanState ${isPublic ? 'public ' : ''} ${name}`)
-  if (!name.match(/^[a-z]/)) {
-    throw new ParseError(scanner, `States must start with a lowercased letter, found '${name}'`)
-  }
   scanner.scanAllWhitespace()
 
   let type: Expression = new Expressions.InferIdentifier([scanner.charIndex, scanner.charIndex], [])

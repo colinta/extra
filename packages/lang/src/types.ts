@@ -3354,7 +3354,7 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
  * - Arrays return another Array type, combining the two types of each array
  * - Dicts: ditto
  * - Objects return a type with all the properties from both objects, with each prop being compatible.
- * - LiteralTypes will combine with their value-type, e.g. literal(1) & Int => Int
+ * - LiteralTypes will combine with their value-type, e.g. literal(1) | Int => Int
  * - otherwise LiteralTypes will be preserved in a OneOfType
  */
 export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
@@ -3473,8 +3473,8 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     }
   } else if (lhs instanceof ArrayType && rhs instanceof ArrayType) {
     // merge the types if they are compatible, otherwise retain their types
-    // e.g. Array(Int) & Array(Float) --> Array(Float)
-    // e.g. Array(Int) & Array(String) --> Array(Int) | Array(String)
+    // e.g. Array(Int) | Array(Float) --> Array(Float)
+    // e.g. Array(Int) | Array(String) --> Array(Int) | Array(String)
     const common = compatibleWithBothTypes(lhs.of, rhs.of)
     if (!(common instanceof OneOfType)) {
       // try not to create a new ArrayType (optimize for lhs === rhs comparisons)
@@ -3580,8 +3580,8 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
 function compatibleWithBothObjects(lhs: ObjectType, rhs: ObjectType): ObjectType | undefined {
   // If all properties of lhs and rhs are compatible, merge the two types.
   //
-  // e.g. Object(foo: Int) & Object(foo: Float) --> Object(foo: Float)
-  // e.g. Object(foo: Int) & Object(bar: String) --> Object(foo: Int) | Object(bar: String)
+  // e.g. Object(foo: Int) | Object(foo: Float) --> Object(foo: Float)
+  // e.g. Object(foo: Int) | Object(bar: String) --> Object(foo: Int) | Object(bar: String)
   const lhsPositionalArguments: PositionalProp[] = []
   const lhsNamedArguments: Map<string, NamedProp> = new Map()
   for (const arg of lhs.props) {
@@ -4651,7 +4651,7 @@ function addHint(
   if (type instanceof GenericType) {
     // TODO: should the GenericType's hints and requirements be added here?
     if (type.hints.length || type.requirements.length) {
-      throw `TODO: do something with the hints & requirements on ${type}`
+      throw `TODO: do something with the hints and requirements on ${type}`
     }
   }
 
@@ -4681,7 +4681,7 @@ function addRequirement(
   if (type instanceof GenericType) {
     // TODO: should the GenericType's hints and requirements be added here?
     if (type.hints.length || type.requirements.length) {
-      throw `TODO: do something with the hints & requirements on ${type}`
+      throw `TODO: do something with the hints and requirements on ${type}`
     }
   }
 

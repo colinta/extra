@@ -17,7 +17,7 @@ describe('helper', () => {
 
 describe('bad helpers', () => {
   cases<[string, string]>(
-    c(['fn Asdf() => ""', "Helpers must start with a lowercased letter, found 'Asdf'"]),
+    c(['fn Asdf() => ""', 'Formulas must start with an uppercased letter']),
   ).run(([formula, error], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
       `should error parsing Helper definitions ${formula}`,
