@@ -2396,9 +2396,8 @@ export class SwitchIdentifier extends ReservedWord {
         Types.namedFormula(
           'switch',
           [
-            Types.repeatedNamedArgument({
+            Types.spreadPositionalArgument({
               name: 'cases',
-              alias: 'case',
               type: Types.array(Types.ConditionType),
             }),
             Types.namedArgument({name: 'else', type: T, isRequired: false}),
@@ -5738,12 +5737,20 @@ export class CaseExpression extends MatchExpression {
 
   toLisp() {
     const caseCode = this.matches.map(match => match.toLisp()).join(' ')
-    return `(case ${caseCode} : ${this.bodyExpression.toCode()})`
+    return `(case (${caseCode}) : ${this.bodyExpression.toCode()})`
   }
 
   toCode() {
-    let code = 'case ' + this.matches[0].toCode()
-    code += this.matches.slice(1).map(match => '\n' + indent(match.toCode()))
+    const cases = this.matches.map(match => match.toCode()).join(' or ')
+    const hasNewline = cases.includes('\n') || cases.length > MAX_LEN
+
+    let code = 'case '
+    if (hasNewline) {
+      code += this.matches[0].toCode()
+      code += this.matches.slice(1).map(match => ' or\n' + indent(match.toCode()))
+    } else {
+      code += cases
+    }
     code += ':\n'
     code += indent(this.bodyExpression.toCode())
     return code

@@ -412,12 +412,15 @@ export function scanCase(scanner: Scanner, parseNext: ParseNext): Expression {
     const match = scanMatch(scanner, parseNext)
     matches.push(match)
 
-    const shouldBreak = scanner.scanCommaOrBreak(
-      ':',
-      "Expected ',' separating items in the case list",
-    )
+    scanner.scanAllWhitespace()
 
-    if (shouldBreak) {
+    if (scanner.isWord('or')) {
+      scanner.expectString('or')
+      scanner.scanAllWhitespace()
+      scanner.whereAmI('scanCase or')
+      continue
+    } else {
+      scanner.expectString(':')
       break
     }
   }

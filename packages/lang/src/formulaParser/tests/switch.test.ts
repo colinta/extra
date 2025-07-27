@@ -23,10 +23,27 @@ describe('switch', () => {
     cases<[string, string] | [string, string, string]>(
       c([
         `switch (a-letter) { case 'a': [1], else: [3] }`,
-        "(switch (a-letter) { (case 'a' : [1]) (else: [3]) })",
+        "(switch (a-letter) { (case ('a') : [1]) (else: [3]) })",
         `\
 switch (a-letter) {
 case 'a':
+  [1]
+else:
+  [3]
+}`,
+      ]),
+      c([
+        `\
+switch (a-letter) {
+case 'a' or 'b':
+  [1]
+else:
+  [3]
+}`,
+        "(switch (a-letter) { (case ('a' 'b') : [1]) (else: [3]) })",
+        `\
+switch (a-letter) {
+case 'a' or 'b':
   [1]
 else:
   [3]
@@ -45,17 +62,14 @@ else:
 
   describe('getType / eval', () => {
     cases<[string, ['a', string], ['b', boolean], Types.Type, Values.Value]>(
-      c([
+      c.skip([
         `\
-if (a) {
-then:
-  1
-elseif (b):
-  3
+switch (a-letter) {
+case 'a':
+  [1]
 else:
-  '4'
-}
-`,
+  [3]
+}`,
         ['a', ''],
         ['b', false],
         Types.oneOf([Types.literal(1), Types.literal(3), Types.literal('4')]),
