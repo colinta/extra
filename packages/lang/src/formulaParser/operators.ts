@@ -9,11 +9,11 @@ import {
 } from '../runtime'
 import {combineConcatLengths, combineSetLengths} from '../narrowed'
 import {
-  assignNextRuntime,
+  assignRelationshipsToRuntime,
   findEventualRef,
-  relationshipFormula,
   verifyRelationship,
-  type RelationshipComparison,
+  relationshipFormula,
+  type RelationshipComparisonSymbol,
   type RelationshipFormula,
 } from '../relationship'
 import * as Expressions from './expressions'
@@ -58,21 +58,23 @@ export const UNARY_OP_SYMBOLS = ['=', '>', '>=', '<', '<=', '-', '~', '$', '.', 
 
 const PRECEDENCE = {
   BINARY: {
-    onlyif: 1,
-    '=': 2,
-    '|>': 3,
-    '?|>': 3,
+    onlyif: 0,
+    '=': 1,
+    '|>': 2,
+    '?|>': 2,
     // I had ternary operators at one point;
-    // then: 4,
-    // else: 4,
-    '??': 5,
-    or: 6,
-    and: 7,
+    // then: 3,
+    // else: 3,
+    '??': 4,
+    or: 5,
+    and: 6,
+    // match operators is
+    is: 7,
+    '!is': 7,
     '^': 8, // binary xor
     '|': 9, // binary or
     '&': 10, // binary and
     // 'is' unary operator: 11
-    matches: 12,
     '==': 12,
     '!=': 12,
     '>': 12,
@@ -97,12 +99,9 @@ const PRECEDENCE = {
     '//': 15,
     '%': 15,
     '**': 16,
-    // meta data operators has/is
+    // property chain operators
     has: 17,
     '!has': 17,
-    is: 17,
-    '!is': 17,
-    // property chain operators
     '[]': 18,
     '?.[]': 18,
     fn: 18,
@@ -414,7 +413,7 @@ abstract class BinaryOperator extends OperatorOperation {
     return this.toCode(HIGHEST_PRECEDENCE)
   }
 
-  getRelationshipFormulas(runtime: TypeRuntime) {
+  getRelationshipFormulas(runtime: TypeRuntime): [RelationshipFormula, RelationshipFormula] | [] {
     const [lhsExpr, rhsExpr] = this.args
     const lhsFormula = lhsExpr.relationshipFormula(runtime)
     const rhsFormula = rhsExpr.relationshipFormula(runtime)
@@ -721,14 +720,34 @@ addBinaryOperator({
 class LogicalOrOperator extends BinaryOperator {
   symbol = 'or'
 
-  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+  gimmeTrueStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
     return lhsExpr
-      .assumeFalse(runtime)
-      .map(truthyRuntime => rhsExpr.assumeFalse(truthyRuntime).map(finalRuntime => finalRuntime))
+      .gimmeTrueStuff(runtime)
+      .map(lhsStuff => rhsExpr.gimmeTrueStuff(runtime).map(rhsStuff => lhsStuff.concat(rhsStuff)))
+      .map(stuff => {
+        console.log('=========== operators.ts at line 732 ===========')
+        console.log({lhsExpr: lhsExpr.toCode(), rhsExpr: rhsExpr.toCode(), stuff})
+        throw 'hey now'
+        return stuff
+      })
   }
 
-  rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+  gimmeFalseStuff(runtime: TypeRuntime) {
+    const [lhsExpr, rhsExpr] = this.args
+    return lhsExpr
+      .gimmeFalseStuff(runtime)
+      .map(lhsStuff => {
+        return assignRelationshipsToRuntime(runtime, lhsStuff)
+      })
+      .map(falseyRuntime =>
+        rhsExpr
+          .gimmeFalseStuff(falseyRuntime)
+          .map(rhsStuff => assignRelationshipsToRuntime(runtime, rhsStuff)),
+      )
+  }
+
+  rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
     return lhsExpr
       .assumeFalse(runtime)
       .map(falseyRuntime => getChildType(this, rhsExpr, falseyRuntime))
@@ -747,7 +766,7 @@ class LogicalOrOperator extends BinaryOperator {
       }
     }
 
-    return ok(Types.oneOf([lhs, rhs]))
+    return ok(Types.oneOf([lhs.toTruthyType(), rhs]))
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
@@ -784,20 +803,24 @@ addBinaryOperator({
 class LogicalAndOperator extends BinaryOperator {
   symbol = 'and'
 
-  /**
-   * We can only assume that the LHS was false (*maybe* the right hand side was
-   * false, too - can't be sure, though)
-   */
-  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    const [lhsExpr] = this.args
-    return lhsExpr.assumeFalse(runtime)
+  gimmeTrueStuff(runtime: TypeRuntime) {
+    const [lhsExpr, rhsExpr] = this.args
+    return lhsExpr.assumeTrue(runtime).map(runtime => {
+      return lhsExpr
+        .gimmeTrueStuff(runtime)
+        .map(lhsStuff => rhsExpr.gimmeTrueStuff(runtime).map(rhsStuff => lhsStuff.concat(rhsStuff)))
+    })
   }
 
-  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+  gimmeFalseStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
-    return lhsExpr
-      .assumeTrue(runtime)
-      .map(truthyRuntime => rhsExpr.assumeTrue(truthyRuntime).map(finalRuntime => finalRuntime))
+    return lhsExpr.assumeFalse(runtime).map(runtime => {
+      return lhsExpr
+        .gimmeFalseStuff(runtime)
+        .map(lhsStuff =>
+          rhsExpr.gimmeFalseStuff(runtime).map(rhsStuff => lhsStuff.concat(rhsStuff)),
+        )
+    })
   }
 
   rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
@@ -807,10 +830,6 @@ class LogicalAndOperator extends BinaryOperator {
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
-    if (lhs.isLiteral() && rhs.isLiteral()) {
-      return ok(Types.literal(lhs.value && rhs.value))
-    }
-
     return ok(Types.oneOf([lhs.toFalseyType(), rhs]))
   }
 
@@ -953,94 +972,26 @@ addBinaryOperator({
   },
 })
 
-class RegexMatchesOperator extends BinaryOperator {
-  symbol = 'matches'
-
-  operatorType(
-    _runtime: TypeRuntime,
-    lhs: Types.Type,
-    rhs: Types.Type,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ) {
-    if (lhs.isLiteral('string') && rhs.isLiteral('regex')) {
-      return ok(Types.literal(rhs.value.test(lhs.value)))
-    }
-
-    if (!lhs.isString()) {
-      return err(new RuntimeError(lhsExpr, expectedType('String', lhsExpr, lhs)))
-    }
-
-    if (!rhs.isRegex()) {
-      return err(new RuntimeError(rhsExpr, expectedType('Regex', rhsExpr, rhs)))
-    }
-
-    return ok(Types.BooleanType)
-  }
-
-  operatorEval(
-    runtime: ValueRuntime,
-    lhs: Values.Value,
-    rhs: () => GetValueResult,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ) {
-    if (!lhs.isString()) {
-      return err(new RuntimeError(lhsExpr, expectedType('String', lhsExpr, lhs)))
-    }
-
-    return rhs().map(rhs => {
-      if (rhs.isRegex()) {
-        const stringify = lhs.value
-        return stringify.match(rhs.value)
-      } else {
-        return err(new RuntimeError(rhsExpr, expectedType('Regex', rhsExpr, rhs)))
-      }
-    })
-  }
-}
-
-addBinaryOperator({
-  name: 'regex matches',
-  symbol: 'matches',
-  precedence: PRECEDENCE.BINARY['matches'],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new RegexMatchesOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
 abstract class ComparisonOperator extends BinaryOperator {
-  abstract symbol: RelationshipComparison
-  abstract inverseSymbol: RelationshipComparison
+  abstract symbol: RelationshipComparisonSymbol
+  abstract inverseSymbol: RelationshipComparisonSymbol
 
-  assumeSymbolIsTrue(runtime: TypeRuntime, symbol: RelationshipComparison) {
+  gimmeTrueStuff(runtime: TypeRuntime) {
     const [lhsFormula, rhsFormula] = this.getRelationshipFormulas(runtime)
     if (!lhsFormula || !rhsFormula) {
-      return ok(runtime)
+      return ok([])
     }
 
-    return assignNextRuntime(runtime, lhsFormula, symbol, rhsFormula)
+    return ok([{formula: lhsFormula, comparison: {type: this.symbol, rhs: rhsFormula}}])
   }
 
-  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.assumeSymbolIsTrue(runtime, this.symbol)
-  }
+  gimmeFalseStuff(runtime: TypeRuntime) {
+    const [lhsFormula, rhsFormula] = this.getRelationshipFormulas(runtime)
+    if (!lhsFormula || !rhsFormula) {
+      return ok([])
+    }
 
-  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.assumeSymbolIsTrue(runtime, this.inverseSymbol)
+    return ok([{formula: lhsFormula, comparison: {type: this.inverseSymbol, rhs: rhsFormula}}])
   }
 }
 
@@ -1564,6 +1515,28 @@ abstract class MatchOperator extends BinaryOperator {
     return ok(Types.AllType)
   }
 
+  gimmeTrueStuff(runtime: TypeRuntime) {
+    const [lhsExpr, rhsExpr] = this.args
+
+    const formula = lhsExpr.relationshipFormula(runtime)
+    if (!formula || !(rhsExpr instanceof Expressions.MatchExpression)) {
+      return ok([])
+    }
+
+    return rhsExpr.gimmeTrueStuffWith(runtime, formula, lhsExpr)
+  }
+
+  gimmeFalseStuff(runtime: TypeRuntime) {
+    const [lhsExpr, rhsExpr] = this.args
+
+    const formula = lhsExpr.relationshipFormula(runtime)
+    if (!formula || !(rhsExpr instanceof Expressions.MatchExpression)) {
+      return ok([])
+    }
+
+    return rhsExpr.gimmeFalseStuffWith(runtime, formula)
+  }
+
   operatorType(
     runtime: TypeRuntime,
     _lhs: Types.Type,
@@ -1598,45 +1571,69 @@ abstract class MatchOperator extends BinaryOperator {
 class MatchAssertionOperator extends MatchOperator {
   readonly symbol = 'is'
 
+  /**
+   * Copy/Paste of default implementation for reference.
+   * TODO: delete
+   */
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    const [lhsExpr, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
-      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
-    }
-
-    return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, true)
+    return this.gimmeTrueStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
   }
 
+  /**
+   * Copy/Paste of default implementation for reference.
+   * TODO: delete
+   */
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    const [lhsExpr, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
-      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
-    }
-
-    return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, false)
+    return this.gimmeFalseStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
   }
+
+  // assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+  //   const [lhsExpr, rhsExpr] = this.args
+  //   if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+  //     return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
+  //   }
+
+  //   return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, true)
+  // }
+
+  // assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+  //   const [lhsExpr, rhsExpr] = this.args
+  //   if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+  //     return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
+  //   }
+
+  //   return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, false)
+  // }
 }
 
 class MatchRefutationOperator extends MatchOperator {
   readonly symbol = '!is'
 
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    const [lhsExpr, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
-      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
-    }
-
-    return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, false)
+    return this.gimmeFalseStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
   }
 
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    const [lhsExpr, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
-      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
-    }
-
-    return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, true)
+    return this.gimmeTrueStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
   }
+
+  // assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+  //   const [lhsExpr, rhsExpr] = this.args
+  //   if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+  //     return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
+  //   }
+
+  //   return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, false)
+  // }
+
+  // assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+  //   const [lhsExpr, rhsExpr] = this.args
+  //   if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+  //     return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
+  //   }
+
+  //   return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, true)
+  // }
 
   operatorEval(
     runtime: ValueRuntime,
@@ -1787,27 +1784,27 @@ class AdditionOperator extends BinaryOperator {
     }
   }
 
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
+  operatorType(
+    _runtime: TypeRuntime,
+    lhs: Types.Type,
+    rhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
     if (lhs instanceof Types.SetType && rhs instanceof Types.SetType) {
       const concatLength = combineSetLengths(lhs.narrowedLength, rhs.narrowedLength)
       return ok(Types.set(Types.compatibleWithBothTypes(lhs.of, rhs.of), concatLength))
     }
 
-    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
-      return ok(Types.literal(lhs.value + rhs.value, anyFloaters(lhs, rhs)))
+    if (!lhs.isFloat()) {
+      return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr, lhs)))
     }
 
-    // x: Int(>=1), x + 1 => Int(>=2)
-    if (lhs instanceof Types.NumberType && rhs.isLiteral('float')) {
-      return ok(lhs.adjustNarrow(rhs.value))
+    if (!rhs.isFloat()) {
+      return err(new RuntimeError(rhsExpr, expectedNumberMessage(rhsExpr, rhs)))
     }
 
-    // x: Int(>=1), 1 + x => x + 1 => Int(>=2)
-    if (lhs.isLiteral('float') && rhs instanceof Types.NumberType) {
-      return ok(rhs.adjustNarrow(lhs.value))
-    }
-
-    return numericType(this, lhs, rhs)
+    return ok(Types.numericAdditionType(lhs, rhs))
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
@@ -1846,22 +1843,26 @@ class SubtractionOperator extends BinaryOperator {
     }
   }
 
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
+  operatorType(
+    _runtime: TypeRuntime,
+    lhs: Types.Type,
+    rhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
     if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
       return ok(Types.literal(lhs.value - rhs.value, anyFloaters(lhs, rhs)))
     }
 
-    // x: Int(>=1), x - 1 => Int(>=0)
-    if (lhs instanceof Types.NumberType && rhs.isLiteral('float')) {
-      return ok(lhs.adjustNarrow(-rhs.value))
+    if (!lhs.isFloat()) {
+      return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr, lhs)))
     }
 
-    // x: Int(>=1), 1 - x => Int(>=0)
-    if (lhs.isLiteral('float') && rhs instanceof Types.NumberType) {
-      return ok(rhs.negateNarrow(lhs.value))
+    if (!rhs.isFloat()) {
+      return err(new RuntimeError(rhsExpr, expectedNumberMessage(rhsExpr, rhs)))
     }
 
-    return numericType(this, lhs, rhs)
+    return ok(Types.numericSubtractionType(lhs, rhs))
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
@@ -2035,39 +2036,7 @@ class StringConcatenationOperator extends BinaryOperator {
       return err(new RuntimeError(rhsExpr, expectedType('String', rhsExpr, rhs)))
     }
 
-    // both literals -> return a literal
-    if (lhs.isLiteral('string') && rhs.isLiteral('string')) {
-      return ok(Types.literal(lhs.value + rhs.value))
-    }
-
-    // both strings, neither is literal
-    // return a string, combining the lengths
-    // we have to discard the 'regex' narrow, because there's no (reasonable) way to
-    // determine whether the regex's are in any way compatible
-    if (lhs.isString() && !lhs.isLiteral('string') && rhs.isString() && !rhs.isLiteral('string')) {
-      return ok(
-        Types.string(combineConcatLengths(lhs.narrowedString.length, rhs.narrowedString.length)),
-      )
-    }
-
-    const anyLiteral = lhs.isLiteral('string') ? lhs : rhs.isLiteral('string') ? rhs : undefined
-    if (anyLiteral) {
-      const anyString =
-        lhs.isString() && !lhs.isLiteral('string')
-          ? lhs
-          : rhs.isString() && !rhs.isLiteral('string')
-            ? rhs
-            : undefined
-      if (anyString) {
-        const min = anyString.narrowedString.length.min + anyLiteral.value.length
-        return ok(Types.string({min}))
-      }
-
-      // unreachable, but TS doesn't know that
-      return ok(Types.string({min: anyLiteral.value.length}))
-    }
-
-    return ok(Types.StringType)
+    return ok(Types.stringConcatenationType(lhs, rhs))
   }
 
   operatorEval(

@@ -20,11 +20,13 @@ describe('relationshipsThatReference', () => {
           name: 'a',
           type: 'reference',
         },
-        type: '==',
-        right: {
-          id: bId,
-          name: 'b',
-          type: 'reference',
+        comparison: {
+          type: '==',
+          rhs: {
+            id: bId,
+            name: 'b',
+            type: 'reference',
+          },
         },
       },
     ])
@@ -35,11 +37,13 @@ describe('relationshipsThatReference', () => {
           name: 'b',
           type: 'reference',
         },
-        type: '==',
-        right: {
-          id: aId,
-          name: 'a',
-          type: 'reference',
+        comparison: {
+          type: '==',
+          rhs: {
+            id: aId,
+            name: 'a',
+            type: 'reference',
+          },
         },
       },
     ])

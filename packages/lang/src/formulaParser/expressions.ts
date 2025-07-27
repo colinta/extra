@@ -22,7 +22,15 @@ import {
   type GetValueResult,
   type GetRuntimeResult,
 } from './types'
-import {assignNextRuntime, relationshipFormula, type RelationshipFormula} from '../relationship'
+import {
+  assignRelationshipsToRuntime,
+  formulaToFalseStuff,
+  formulaToTrueStuff,
+  type Relationship,
+  relationshipFormula,
+  type RelationshipFormula,
+  reverseComparison,
+} from '../relationship'
 import {indent, MAX_INNER_LEN, MAX_LEN, NEWLINE_INDENT, wrapStrings} from './util'
 
 export type Range = [number, number]
@@ -139,68 +147,70 @@ export abstract class Expression {
     return ok(runtime)
   }
 
+  /**
+   * If possible, returns a formula suitable for assignNextRuntime, used in
+   * assumeTrue/assumeFalse.
+   */
   relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
     return undefined
   }
 
+  /**
+   * relationshipFormula and assumeTrue work very similar to replaceWithType, I
+   * tried to merge the two but replaceWithType works with specific type
+   * assertions and relationshipFormula/assumeTrue work (partly) with formulas
+   * (comparisons < <= > >= == !=).
+   */
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.getType(runtime).map(type => {
-      const formula = this.relationshipFormula(runtime)
-      if (!formula) {
-        return runtime
-      }
-
-      if (type.isFloat()) {
-        return assignNextRuntime(runtime, formula, '!=', relationshipFormula.int(0))
-      }
-
-      if (
-        type.isString() ||
-        type instanceof Types.ArrayType ||
-        type instanceof Types.DictType ||
-        type instanceof Types.SetType
-      ) {
-        return assignNextRuntime(
-          runtime,
-          relationshipFormula.propertyAccess(formula, 'length'),
-          '>',
-          relationshipFormula.int(0),
-        )
-      }
-
-      return runtime
-    })
+    return this.gimmeTrueStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
   }
 
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
+    return this.gimmeFalseStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
+  }
+
+  /**
+   * 'or' operator uses this to find all the assertions on the lhs, and compares
+   * them with all the assestions on the rhs. If all the assertions are on the
+   * same relationship (i.e. x is Int || x is String) then something about the two
+   * conditions can be inferred (x is Int | String). If the two are unrelated
+   * comparisons, no inference can be made.
+   *
+   * This returns an array of true-stuff - 'and' returns all it's conditions,
+   * and things like `x?.foo == 1` returns `[x != null, x.foo == 1]`, so
+   * sometimes conditions can have inferences not based on the subjects
+   *     x?.foo == 1 || x?.bar == 1
+   *        => x != null (regardless of which branch was true)
+   */
+  gimmeTrueStuff(runtime: TypeRuntime): GetRuntimeResult<Relationship[]> {
     return this.getType(runtime).map(type => {
       const formula = this.relationshipFormula(runtime)
       if (!formula) {
-        return runtime
+        return []
       }
 
-      if (
-        type.isFloat() ||
-        type.isString() ||
-        type instanceof Types.ArrayType ||
-        type instanceof Types.DictType ||
-        type instanceof Types.SetType
-      ) {
-        return assignNextRuntime(
-          runtime,
-          relationshipFormula.propertyAccess(formula, 'length'),
-          '==',
-          relationshipFormula.int(0),
-        )
+      return formulaToTrueStuff(formula, type)
+    })
+  }
+
+  /**
+   * 'and' operator uses this to find false assertions just like 'or' uses
+   * gimmeTrueStuff to find true assertions.
+   */
+  gimmeFalseStuff(runtime: TypeRuntime): GetRuntimeResult<Relationship[]> {
+    return this.getType(runtime).map(type => {
+      const formula = this.relationshipFormula(runtime)
+      if (!formula) {
+        return []
       }
 
-      return runtime
+      return formulaToFalseStuff(formula, type)
     })
   }
 
   /**
    * Ideally this would be an instanceof check on InclusionOperator, but then import
-   * ordering would be impossible, so it's just a method.
+   * ordering would be impossible, so it's a method.
    */
   isInclusionOp(): this is Operation {
     return false
@@ -4363,6 +4373,27 @@ export class MainFormulaExpression extends ViewFormulaExpression {
 
 export abstract class MatchExpression extends Expression {
   /**
+   * Called from MatchOperator with the formula and expression of lhs.
+   */
+  gimmeTrueStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula,
+    lhsExpr: Expression,
+  ): GetRuntimeResult<Relationship[]> {
+    return ok([])
+  }
+
+  /**
+   * Called from MatchOperator with the formula and expression of lhs.
+   */
+  gimmeFalseStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula,
+  ): GetRuntimeResult<Relationship[]> {
+    return ok([])
+  }
+
+  /**
    * Calculates the type of the match expression, then calls `Type.narrowTypeIs` or
    * `Type.narrowTypeIsNot` to determine the possible types of lhs. Returns the
    * `TypeRuntime` that has the new type information, including the assignment of any
@@ -4453,6 +4484,28 @@ export class MatchTypeExpression extends MatchExpression {
     readonly assignRef: Reference | undefined,
   ) {
     super(argType.range, argType.precedingComments, argType.followingComments)
+  }
+
+  gimmeTrueStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula,
+  ): GetRuntimeResult<Relationship[]> {
+    return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
+      const relationships: Relationship[] = [{formula, comparison: {type: 'instanceof', rhs: type}}]
+      if (this.assignRef) {
+        // return relationships.concat([relationshipFormula.])
+      }
+      return relationships
+    })
+  }
+
+  gimmeFalseStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula,
+  ): GetRuntimeResult<Relationship[]> {
+    return this.getAsTypeExpression(runtime).map(type => [
+      {formula, comparison: {type: '!instanceof', rhs: type}},
+    ])
   }
 
   matchAssignReferences() {
@@ -4849,6 +4902,29 @@ export class MatchEnumExpression extends MatchExpression {
     return ok([type, enumCase])
   }
 
+  // cannot infer anything in the 'false' case (or _at most_ the one matching
+  // case could be excluded, when 'Exclude' is implemented).
+  gimmeTrueStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula,
+    lhsExpr: Expression,
+  ): GetRuntimeResult<Relationship[]> {
+    return getChildType(this, lhsExpr, runtime)
+      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
+      .map(([type]) => [{formula, comparison: {type: 'instanceof', rhs: type}}])
+  }
+
+  // cannot infer anything in the 'false' case (or _at most_ the one matching
+  // case could be excluded, when 'Exclude' is implemented).
+  gimmeFalseStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula,
+  ): GetRuntimeResult<Relationship[]> {
+    return getChildType(this, lhsExpr, runtime)
+      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
+      .map(([type]) => [{formula, type: 'instanceof', right: relationshipFormula.type(type)}])
+  }
+
   assumeMatchAssertionRuntime(
     runtime: TypeRuntime,
     lhsExpr: Expression,
@@ -4918,9 +4994,9 @@ export class MatchEnumExpression extends MatchExpression {
             index += 1
           }
 
-          // not doing anything with the type - in theory it could be used to further
-          // decorate lhsExpr, but realistically that will be too complicated to
-          // store in relationships.ts
+          // not doing anything with the returned type - in theory it could be
+          // used to further decorate lhsExpr, but realistically that will be
+          // too complicated to store in relationships.ts
           const result = arg.assumeNestedAssertionType(mutableRuntime, type, true)
           if (result.isErr()) {
             return err(result.error)
@@ -5041,6 +5117,32 @@ export class MatchUnaryRange extends MatchExpression {
     }
 
     return ok(Types.NeverType)
+  }
+
+  gimmeTrueStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula,
+  ): GetRuntimeResult<Relationship[]> {
+    const rhs = this.start.relationshipFormula(runtime)
+    if (!rhs) {
+      return ok([])
+    }
+
+    const type = this.op === '=' ? '==' : this.op
+    return ok([{formula, comparison: {type, rhs}}])
+  }
+
+  gimmeFalseStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula,
+  ): GetRuntimeResult<Relationship[]> {
+    const rhs = this.start.relationshipFormula(runtime)
+    if (!rhs) {
+      return ok([])
+    }
+
+    const type = this.op === '=' ? '==' : this.op
+    return ok([{formula, comparison: {type: reverseComparison(type), rhs}}])
   }
 
   assumeMatchAssertionRuntime(

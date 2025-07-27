@@ -505,9 +505,24 @@ export abstract class Type {
   }
 
   /**
-   * The PropertyAccessOperator '.' calls this method to get properties.
+   * The ArrayAccessOperator 'expr[index]' calls this method to get properties.
+   */
+  arrayAccessType(_rhs: Type): Type | undefined {
+    return undefined
+  }
+
+  /**
+   * The PropertyAccessOperator 'expr.prop' calls this method to get properties.
    */
   abstract propAccessType(name: string): Type | undefined
+
+  safeArrayAccessType(rhs: Type) {
+    return this.arrayAccessType(rhs)
+  }
+
+  safePropAccessType(name: string) {
+    return this.propAccessType(name)
+  }
 }
 
 /**
@@ -1107,6 +1122,43 @@ export abstract class OneOfType extends Type {
 
     return types.reduce((previous, current) => compatibleWithBothTypes(previous, current))
   }
+
+  mergeAccessTypes<T>(
+    types: Type[],
+    mapAccessType: (type: Type) => Type | undefined,
+  ): Type | undefined {
+    let mergedType: Type | undefined
+    for (const ofType of this.of) {
+      const accessType = mapAccessType(ofType)
+      if (!accessType) {
+        return
+      }
+      mergedType = mergedType ? compatibleWithBothTypes(mergedType, accessType) : accessType
+    }
+    return mergedType
+  }
+
+  safeArrayAccessType(rhs: Type) {
+    return this.mergeAccessTypes(
+      this.of.filter(type => type !== NullType),
+      (ofType: Type) => ofType.arrayAccessType(rhs),
+    )
+  }
+
+  safePropAccessType(name: string) {
+    return this.mergeAccessTypes(
+      this.of.filter(type => type !== NullType),
+      (ofType: Type) => ofType.propAccessType(name),
+    )
+  }
+
+  arrayAccessType(rhs: Type) {
+    return this.mergeAccessTypes(this.of, (ofType: Type) => ofType.arrayAccessType(rhs))
+  }
+
+  propAccessType(name: string) {
+    return this.mergeAccessTypes(this.of, (ofType: Type) => ofType.propAccessType(name))
+  }
 }
 
 export function _privateOneOf(types: Type[]): __OneOfType {
@@ -1123,10 +1175,6 @@ class __OneOfType extends OneOfType {
 
   constructor(types: Type[]) {
     super(types)
-  }
-
-  propAccessType(name: string) {
-    return undefined
   }
 }
 Object.defineProperty(__OneOfType, 'name', {value: 'OneOfType'})
@@ -1165,10 +1213,6 @@ export class OptionalType extends OneOfType {
   toCode() {
     const type = this.of[0].toCode(true)
     return `${type}?`
-  }
-
-  propAccessType(name: string) {
-    return undefined
   }
 }
 
@@ -3332,6 +3376,163 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
   }
 
   return lhsType
+}
+
+export function numericAdditionType(
+  lhs: MetaFloatType | MetaIntType | LiteralFloatType,
+  rhs: MetaFloatType | MetaIntType | LiteralFloatType,
+) {
+  if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
+    return literal(
+      lhs.value + rhs.value,
+      lhs.is === 'literal-float' || rhs.is === 'literal-float' ? 'float' : undefined,
+    )
+  }
+
+  // x: Int(>=1), x + 1 => Int(>=2)
+  if (lhs instanceof NumberType && rhs.isLiteral('float')) {
+    return lhs.adjustNarrow(rhs.value)
+  }
+
+  // x: Int(>=1), 1 + x => x + 1 => Int(>=2)
+  if (lhs.isLiteral('float') && rhs instanceof NumberType) {
+    return rhs.adjustNarrow(lhs.value)
+  }
+
+  if (lhs.isInt() && rhs.isInt()) {
+    const min =
+      lhs.narrowed.min === undefined || rhs.narrowed.min === undefined
+        ? undefined
+        : lhs.narrowed.min + rhs.narrowed.min
+    const max =
+      lhs.narrowed.max === undefined || rhs.narrowed.max === undefined
+        ? undefined
+        : lhs.narrowed.max + rhs.narrowed.max
+    return IntType.narrow(min, max)
+  }
+
+  return FloatType
+}
+
+export function numericSubtractionType(
+  lhs: MetaFloatType | MetaIntType | LiteralFloatType,
+  rhs: MetaFloatType | MetaIntType | LiteralFloatType,
+) {
+  if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
+    return literal(
+      lhs.value - rhs.value,
+      lhs.is === 'literal-float' || rhs.is === 'literal-float' ? 'float' : undefined,
+    )
+  }
+
+  // x: Int(>=1), x - 1 => Int(>=0)
+  if (lhs instanceof NumberType && rhs.isLiteral('float')) {
+    return lhs.adjustNarrow(-rhs.value)
+  }
+
+  // x: Int(>=1), 1 - x => x - 1 => Int(>=0)
+  if (lhs.isLiteral('float') && rhs instanceof NumberType) {
+    return rhs.negateNarrow(lhs.value)
+  }
+
+  if (lhs.isInt() && rhs.isInt()) {
+    const min =
+      lhs.narrowed.min === undefined || rhs.narrowed.max === undefined
+        ? undefined
+        : lhs.narrowed.min - rhs.narrowed.max
+    const max =
+      lhs.narrowed.max === undefined || rhs.narrowed.min === undefined
+        ? undefined
+        : lhs.narrowed.max - rhs.narrowed.min
+    return IntType.narrow(min, max)
+  }
+
+  const lhsMin =
+    lhs.narrowed.min === undefined
+      ? undefined
+      : Array.isArray(lhs.narrowed.min)
+        ? lhs.narrowed.min[0]
+        : lhs.narrowed.min
+  const lhsMinIsExclusive = Array.isArray(lhs.narrowed.min)
+  const lhsMax =
+    lhs.narrowed.max === undefined
+      ? undefined
+      : Array.isArray(lhs.narrowed.max)
+        ? lhs.narrowed.max[0]
+        : lhs.narrowed.max
+  const lhsMaxIsExclusive = Array.isArray(lhs.narrowed.max)
+  const rhsMin =
+    rhs.narrowed.min === undefined
+      ? undefined
+      : Array.isArray(rhs.narrowed.min)
+        ? rhs.narrowed.min[0]
+        : rhs.narrowed.min
+  const rhsMinIsExclusive = Array.isArray(rhs.narrowed.min)
+  const rhsMax =
+    rhs.narrowed.max === undefined
+      ? undefined
+      : Array.isArray(rhs.narrowed.max)
+        ? rhs.narrowed.max[0]
+        : rhs.narrowed.max
+  const rhsMaxIsExclusive = Array.isArray(rhs.narrowed.max)
+
+  let min: number | [number] | undefined
+  let max: number | [number] | undefined
+
+  if (lhsMin !== undefined && rhsMax !== undefined) {
+    min = lhsMin - rhsMax
+    if (lhsMinIsExclusive || rhsMaxIsExclusive) {
+      min = [min]
+    }
+  }
+
+  if (lhsMax !== undefined && rhsMin !== undefined) {
+    max = lhsMax - rhsMin
+    if (lhsMaxIsExclusive || rhsMinIsExclusive) {
+      max = [max]
+    }
+  }
+
+  return FloatType.narrow(min, max)
+}
+
+export function stringConcatenationType(
+  lhs: MetaStringType | LiteralStringType,
+  rhs: MetaStringType | LiteralStringType,
+) {
+  // both literals -> return a literal
+  if (lhs.isLiteral('string') && rhs.isLiteral('string')) {
+    return literal(lhs.value + rhs.value)
+  }
+
+  // both strings, neither is literal
+  // return a string, combining the lengths
+  // we have to discard the 'regex' narrow, because there's no (reasonable) way to
+  // determine whether the regex's are in any way compatible
+  if (lhs.isString() && !lhs.isLiteral('string') && rhs.isString() && !rhs.isLiteral('string')) {
+    return string(
+      Narrowed.combineConcatLengths(lhs.narrowedString.length, rhs.narrowedString.length),
+    )
+  }
+
+  const anyLiteral = lhs.isLiteral('string') ? lhs : rhs.isLiteral('string') ? rhs : undefined
+  if (anyLiteral) {
+    const anyString =
+      lhs.isString() && !lhs.isLiteral('string')
+        ? lhs
+        : rhs.isString() && !rhs.isLiteral('string')
+          ? rhs
+          : undefined
+    if (anyString) {
+      const min = anyString.narrowedString.length.min + anyLiteral.value.length
+      return string({min})
+    }
+
+    // unreachable, but TS doesn't know that
+    return string({min: anyLiteral.value.length})
+  }
+
+  return StringType
 }
 
 /**

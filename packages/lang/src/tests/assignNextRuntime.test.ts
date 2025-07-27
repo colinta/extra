@@ -2,16 +2,16 @@ import {c, cases} from '@extra-lang/cases'
 import {
   assignNextRuntime,
   type RelationshipLiteral,
-  type RelationshipComparison,
+  type RelationshipComparisonSymbol,
   relationshipFormula,
 } from '../relationship'
 import * as Types from '../types'
 import * as Values from '../values'
 import {parse} from '../formulaParser'
-import {type TypeRuntime} from '../runtime'
+import {type MutableTypeRuntime} from '../runtime'
 import {mockTypeRuntime} from './mockTypeRuntime'
 
-let typeRuntime: TypeRuntime
+let typeRuntime: MutableTypeRuntime
 let runtimeTypes: {[K in string]: [Types.Type, any]}
 
 beforeEach(() => {
@@ -70,8 +70,8 @@ describe('comparisons', () => {
   //|
   describe('strings', () => {
     cases<
-      | [Types.Type, RelationshipComparison, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparison, RelationshipLiteral]
+      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral]
     >(
       c([Types.string(), '==', relationshipFormula.string('a'), Types.literal('a')]),
       c([Types.string({min: 10}), '==', relationshipFormula.string('a'), Types.never()]),
@@ -93,10 +93,11 @@ describe('comparisons', () => {
         () => {
           runtimeTypes['x'] = [lhs, '']
           const xRef = relationshipFormula.reference('x', typeRuntime.refId('x')!)
-          const nextRuntimeResult = assignNextRuntime(typeRuntime, xRef, lhsComparison, rhs)
-          expect(nextRuntimeResult.isOk()).toBe(true)
-          let nextRuntime = nextRuntimeResult.get()
-          const x = nextRuntime.getLocalType('x')
+          assignNextRuntime(typeRuntime, {
+            formula: xRef,
+            comparison: {type: lhsComparison, rhs},
+          })
+          const x = typeRuntime.getLocalType('x')
           expect(x?.toCode()).toEqual((expected ?? lhs).toCode())
         },
       ),
@@ -108,8 +109,8 @@ describe('comparisons', () => {
   //|
   describe('floats', () => {
     cases<
-      | [Types.Type, RelationshipComparison, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparison, RelationshipLiteral]
+      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral]
     >(
       //|
       //|  Float
@@ -204,10 +205,11 @@ describe('comparisons', () => {
         () => {
           runtimeTypes['x'] = [lhs, '']
           const xRef = relationshipFormula.reference('x', typeRuntime.refId('x')!)
-          const nextRuntimeResult = assignNextRuntime(typeRuntime, xRef, lhsComparison, rhs)
-          expect(nextRuntimeResult.isOk()).toBe(true)
-          let nextRuntime = nextRuntimeResult.get()
-          const x = nextRuntime.getLocalType('x')
+          assignNextRuntime(typeRuntime, {
+            formula: xRef,
+            comparison: {type: lhsComparison, rhs},
+          })
+          const x = typeRuntime.getLocalType('x')
           expect(x?.toCode()).toEqual((expected ?? lhs).toCode())
         },
       ),
@@ -219,8 +221,8 @@ describe('comparisons', () => {
   //|
   describe('ints', () => {
     cases<
-      | [Types.Type, RelationshipComparison, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparison, RelationshipLiteral]
+      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral]
     >(
       //|
       //|  Int
@@ -321,10 +323,11 @@ describe('comparisons', () => {
         () => {
           runtimeTypes['x'] = [lhs, '']
           const xRef = relationshipFormula.reference('x', typeRuntime.refId('x')!)
-          const nextRuntimeResult = assignNextRuntime(typeRuntime, xRef, lhsComparison, rhs)
-          expect(nextRuntimeResult.isOk()).toBe(true)
-          let nextRuntime = nextRuntimeResult.get()
-          const x = nextRuntime.getLocalType('x')
+          assignNextRuntime(typeRuntime, {
+            formula: xRef,
+            comparison: {type: lhsComparison, rhs},
+          })
+          const x = typeRuntime.getLocalType('x')
           expect(x?.toCode()).toEqual((expected ?? lhs).toCode())
         },
       ),
@@ -336,8 +339,8 @@ describe('comparisons', () => {
   //|
   describe('booleans', () => {
     cases<
-      | [Types.Type, RelationshipComparison, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparison, RelationshipLiteral]
+      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral]
     >(
       c([Types.booleanType(), '==', relationshipFormula.boolean(true), Types.literal(true)]),
       c([Types.booleanType(), '!=', relationshipFormula.boolean(true), Types.literal(false)]),
@@ -355,10 +358,11 @@ describe('comparisons', () => {
         () => {
           runtimeTypes['x'] = [lhs, '']
           const xRef = relationshipFormula.reference('x', typeRuntime.refId('x')!)
-          const nextRuntimeResult = assignNextRuntime(typeRuntime, xRef, lhsComparison, rhs)
-          expect(nextRuntimeResult.isOk()).toBe(true)
-          let nextRuntime = nextRuntimeResult.get()
-          const x = nextRuntime.getLocalType('x')
+          assignNextRuntime(typeRuntime, {
+            formula: xRef,
+            comparison: {type: lhsComparison, rhs},
+          })
+          const x = typeRuntime.getLocalType('x')
           expect(x?.toCode()).toEqual((expected ?? lhs).toCode())
         },
       ),
@@ -370,8 +374,8 @@ describe('comparisons', () => {
   //|
   describe('null', () => {
     cases<
-      | [Types.Type, RelationshipComparison, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparison, RelationshipLiteral]
+      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral]
     >(
       c([Types.nullType(), '==', relationshipFormula.null()]),
       c([Types.nullType(), '==', relationshipFormula.int(1), Types.never()]),
@@ -381,10 +385,11 @@ describe('comparisons', () => {
         () => {
           runtimeTypes['x'] = [lhs, '']
           const xRef = relationshipFormula.reference('x', typeRuntime.refId('x')!)
-          const nextRuntimeResult = assignNextRuntime(typeRuntime, xRef, lhsComparison, rhs)
-          expect(nextRuntimeResult.isOk()).toBe(true)
-          let nextRuntime = nextRuntimeResult.get()
-          const x = nextRuntime.getLocalType('x')
+          assignNextRuntime(typeRuntime, {
+            formula: xRef,
+            comparison: {type: lhsComparison, rhs},
+          })
+          const x = typeRuntime.getLocalType('x')
           expect(x?.toCode()).toEqual((expected ?? lhs).toCode())
         },
       ),

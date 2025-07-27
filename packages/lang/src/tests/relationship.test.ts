@@ -24,19 +24,18 @@ function ref(name: string) {
 
 function rel(
   name: string,
-  symbol: Relationship.RelationshipComparison,
+  symbol: Relationship.RelationshipComparisonSymbol,
   formula: Relationship.RelationshipFormula,
 ): Relationship.Relationship {
   const rel: Relationship.Relationship = {
     formula: ref(name),
-    type: symbol,
-    right: formula,
+    comparison: {type: symbol, rhs: formula},
   }
   return rel
 }
 
 function splitFormula(formula: string) {
-  const symbol = formula.match(/([<=>]+)/)![1] as Relationship.RelationshipComparison
+  const symbol = formula.match(/([<=>]+)/)![1] as Relationship.RelationshipComparisonSymbol
   const [lhs, rhs] = formula.split(symbol, 2).map(s => s.trim())
   return {lhs, rhs, symbol}
 }
@@ -144,8 +143,7 @@ describe('simplifyRelationships', () => {
         const newRelationships = new Set(
           simplifyRelationships({
             formula: lhs,
-            type: symbol,
-            right: rhs,
+            comparison: {type: symbol, rhs},
           }),
         )
 
@@ -197,13 +195,11 @@ describe('isEqualRelationship', () => {
         Relationship.isEqualRelationship(
           {
             formula: lhsFormula,
-            type: lhsSymbol,
-            right: lhsRight,
+            comparison: {type: lhsSymbol, rhs: lhsRight},
           },
           {
             formula: rhsFormula,
-            type: rhsSymbol,
-            right: rhsRight,
+            comparison: {type: rhsSymbol, rhs: rhsRight},
           },
         ),
       ).toBe(expectedEqual)

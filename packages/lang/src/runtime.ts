@@ -3,7 +3,7 @@ import {
   findEventualRef,
   type RelationshipFormula,
   type AssignedRelationship,
-  type RelationshipComparison,
+  type RelationshipComparisonSymbol,
   simplifyRelationships,
   isEqualRelationship,
   RelationshipAssign,
@@ -215,13 +215,12 @@ export class MutableTypeRuntime {
 
   addRelationshipFormula(
     formula: RelationshipAssign,
-    type: RelationshipComparison,
+    type: RelationshipComparisonSymbol,
     rel: RelationshipFormula,
   ) {
     for (const relationship of simplifyRelationships({
       formula,
-      type,
-      right: rel,
+      comparison: {type, rhs: rel},
     })) {
       const ref = findEventualRef(relationship.formula)
       const prevRelationships = this.relationships.get(ref.id) ?? []

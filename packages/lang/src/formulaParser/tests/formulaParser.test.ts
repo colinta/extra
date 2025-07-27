@@ -36,9 +36,9 @@ describe('function parser', () => {
       c(['null ?? true or false', '(?? `null` (or `true` `false`))']),
       c(["any(type: 'foo', kit: 1, three: 3)", "(fn any ((type: 'foo') (kit: 1) (three: 3)))"]),
       c(['foo.bar().thing', '(. (fn (. foo bar) ()) thing)']),
-      c(['foo matches /test/', '(matches foo /test/)']),
-      c(['foo matches /test/gims', '(matches foo /test/gims)']),
-      c(['foo matches /\\d+/ggimss', '(matches foo /\\d+/gims)', 'foo matches /\\d+/gims']),
+      c(['foo is /test/', '(is foo /test/)']),
+      c(['foo is /test/gims', '(is foo /test/gims)']),
+      c(['foo is /\\d+/ggimss', '(is foo /\\d+/gims)', 'foo is /\\d+/gims']),
       c(['lhs is Array(Int) and foo', '(and (is lhs Array(`Int`)) foo)']),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
