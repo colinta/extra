@@ -91,9 +91,15 @@ export class Scanner {
     return this.input.slice(this.charIndex)
   }
 
-  is(search: string | RegExp) {
+  is(search: string | RegExp): boolean {
     if (this.isEOF() || search === '') {
       return false
+    }
+
+    if (search instanceof RegExp && !search.source.startsWith('^')) {
+      const regex = new RegExp(`^(?:${search.source})`, search.flags)
+      const found = this.is(regex)
+      return found
     }
 
     if (typeof search === 'string') {
@@ -366,7 +372,9 @@ export class Scanner {
     }
     const comments = this.#comments.map(([_, comment]) => comment)
     this.#comments = []
-    this.whereAmI('flushComments: ' + comments.map(({comment}) => comment).join(', '))
+    if (comments.length) {
+      this.whereAmI('flushComments: ' + comments.map(({comment}) => comment).join(', '))
+    }
     return comments
   }
 

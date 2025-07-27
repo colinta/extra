@@ -14,7 +14,7 @@ import {
   type Options,
 } from './types'
 import {
-  isBinaryOperatorChar,
+  isBinaryOperatorSymbol,
   isBinaryOperatorName,
   isCommentStart,
   isDiceStart,
@@ -528,13 +528,11 @@ function parseInternal(
               }
 
               if (scanner.is(INCLUSION_OPERATOR) && expressionSupportsSplat(expressionType)) {
-                scanner.whereAmI('INCLUSION_OPERATOR if foo')
+                scanner.whereAmI('INCLUSION_OPERATOR')
                 return true
               }
 
-              return (
-                isBinaryOperatorChar(scanner.char) || isBinaryOperatorName(scanner.remainingInput)
-              )
+              return isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)
             })
           ) {
             scanner.scanAllWhitespace()
@@ -672,10 +670,7 @@ function parseInternal(
           scanner.expectString(NULL_COALESCING)
           processOperator(binaryOperatorNamed('?.[]', scanner.flushComments()))
           processExpression(scanArrayAccess(scanner, parseNext))
-        } else if (
-          isBinaryOperatorChar(scanner.char) ||
-          isBinaryOperatorName(scanner.remainingInput)
-        ) {
+        } else if (isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)) {
           processOperator(scanBinaryOperator(scanner))
         } else if (
           expressionSupportsSplat(expressionType) &&

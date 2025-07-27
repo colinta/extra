@@ -1,4 +1,4 @@
-import {NAMED_BINARY_OPS, NAMED_UNARY_OPS} from './operators'
+import {BINARY_OP_ALIASES, BINARY_OP_NAMES, BINARY_OP_SYMBOLS, UNARY_OP_NAMES} from './operators'
 import {type Scanner} from './scanner'
 import {type ArgumentType, type ExpressionType} from './types'
 
@@ -27,20 +27,55 @@ export function isWord(input: string): boolean {
   return /^\b\w+\b$/.test(input)
 }
 
-export function isBinaryOperatorChar(char: string) {
-  return /^[~?.&|!<=>≤≥≠*+#%/^-]/.test(char)
+const BINARY_OPS = new Set<string>(BINARY_OP_SYMBOLS)
+const BINARY_OP_CHARS = new Set(
+  BINARY_OP_SYMBOLS.join('')
+    .split('')
+    .filter(c => !/[a-zA-Z]/.test(c)),
+)
+export function isBinaryOperatorSymbol(scanner: Scanner) {
+  return BINARY_OP_SYMBOLS.some(symbol => scanner.is(symbol))
 }
 
-const namedBinaryOpRegex = new RegExp(`^(${NAMED_BINARY_OPS.join('|')})\\b`)
-export function isBinaryOperatorName(input: string) {
-  return namedBinaryOpRegex.test(input)
+// cnanot just iterate BINARY_OP_SYMBOLS and return the one that matches - many
+// operators share a prefix (< and <=, > and >=), and so ordering would matter.
+// I suppose this could be reconciled by length, but instead we just scan as
+// many op characters as we can, and then make a special exception for
+// '-' (to support ...-1 and similar).
+export function scanBinaryOperatorSymbol(scanner: Scanner) {
+  const alias = Object.keys(BINARY_OP_ALIASES).find(alias => scanner.is(alias))
+  if (alias) {
+    scanner.expectString(alias)
+    return alias
+  }
+
+  let op = ''
+  let rewind = scanner.charIndex
+  while (BINARY_OP_CHARS.has(scanner.char)) {
+    op += scanner.char
+    scanner.charIndex += 1
+  }
+  if (op.endsWith('-') && !BINARY_OPS.has(op)) {
+    op = op.slice(0, -1)
+    scanner.rewindTo(scanner.charIndex - 1)
+  }
+  if (!BINARY_OPS.has(op)) {
+    scanner.rewindTo(rewind)
+    return undefined
+  }
+
+  return op
+}
+
+export function isBinaryOperatorName(scanner: Scanner) {
+  return BINARY_OP_NAMES.some(name => scanner.isWord(name))
 }
 
 export function isUnaryOperatorChar(char: string) {
   return /^[!~$.<=>≤≥-]/.test(char)
 }
 
-const namedUnaryOpRegex = new RegExp(`^(${NAMED_UNARY_OPS.join('|')})\\b`)
+const namedUnaryOpRegex = new RegExp(`^(${UNARY_OP_NAMES.join('|')})\\b`)
 export function isUnaryOperatorName(input: string) {
   return namedUnaryOpRegex.test(input)
 }
@@ -56,7 +91,7 @@ export function isNumberChar(char: string) {
 }
 
 export function isNumberStart(scanner: Scanner) {
-  return scanner.is(/(\d|\.\d)/)
+  return scanner.is(/^(\d|\.\d)/)
 }
 
 export function isNumber(input: string) {
@@ -76,7 +111,7 @@ export function isDice(input: string) {
 }
 
 export function isTaggedString(scanner: Scanner) {
-  return scanner.is(/[a-zA-Z_][a-zA-Z0-9_-]*`/)
+  return scanner.is(/^[a-zA-Z_][a-zA-Z0-9_-]*`/)
 }
 
 export function isStringStartChar(char: string) {
@@ -149,7 +184,7 @@ export function isRegexFlag(char: string) {
 }
 
 export function isNamedArg(scanner: Scanner) {
-  return scanner.is(/[a-zA-Z_][a-zA-Z0-9_-]*\s*:/)
+  return scanner.is(/^[a-zA-Z_][a-zA-Z0-9_-]*\s*:/)
 }
 
 export function isRefChar(scanner: Scanner) {

@@ -1,11 +1,11 @@
 import {Scanner} from '../scanner'
 import {Operator, ParseError} from '../types'
-import {unaryOperatorNamed, isUnaryOperator, NAMED_UNARY_OPS, UNARY_OP_ALIASES} from '../operators'
+import {unaryOperatorNamed, isUnaryOperator, UNARY_OP_NAMES, UNARY_OP_ALIASES} from '../operators'
 import {isUnaryOperatorChar} from '../grammars'
 
 export function scanUnaryOperator(scanner: Scanner): Operator {
   scanner.whereAmI('scanUnaryOperator')
-  const namedOp = NAMED_UNARY_OPS.find(opName =>
+  const namedOp = UNARY_OP_NAMES.find(opName =>
     new RegExp(`^(${opName})\\b`).test(scanner.remainingInput),
   )
   let currentToken: string

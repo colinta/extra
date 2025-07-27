@@ -31,7 +31,7 @@ import {
 import {indent, SMALL_LEN} from './util'
 import {KWARG_OP} from '../types'
 
-export const NAMED_BINARY_OPS = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
+export const BINARY_OP_NAMES = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
 export const BINARY_OP_ALIASES = {
   '&&': 'and',
   '||': 'or',
@@ -41,7 +41,7 @@ export const BINARY_OP_ALIASES = {
   '≥': '>=',
   '≠': '!=',
 } as const
-export const NAMED_UNARY_OPS = ['not', 'typeof'] as const
+export const UNARY_OP_NAMES = ['not', 'typeof'] as const
 export const UNARY_OP_ALIASES = {
   '!': 'not',
 } as const
@@ -51,10 +51,15 @@ export const HIGHEST_PRECEDENCE = 100
 
 export const SPREAD_OPERATOR = '...'
 
+export const BINARY_OP_SYMBOLS = ['=', '|>', '?|>', '??', '^', '|', '&', '==', '!=', '>']
+  .concat(['>=', '<', '<=', '<=>', '::', '++', '<>', '~~', '...', '<..', '..<', '<.<', '<<', '>>'])
+  .concat(['+', '-', '*', '/', '//', '%', '**', '.', '?.', '&&', '||', '!?', '?!', '≤', '≥', '≠'])
+export const UNARY_OP_SYMBOLS = ['=', '>', '>=', '<', '<=', '-', '~', '$', '.', '!']
+
 const PRECEDENCE = {
   BINARY: {
     onlyif: 1,
-    '=>': 2,
+    '=': 2,
     '|>': 3,
     '?|>': 3,
     // I had ternary operators at one point;
@@ -128,8 +133,8 @@ const PRECEDENCE = {
   } as const,
 } as const
 
-type BinaryOpSymbols = keyof typeof PRECEDENCE.BINARY | (typeof NAMED_BINARY_OPS)[number] // has, is --> 10
-type UnaryOpSymbols = keyof typeof PRECEDENCE.UNARY | (typeof NAMED_UNARY_OPS)[number] // typeof --> 16
+type BinaryOpSymbols = keyof typeof PRECEDENCE.BINARY | (typeof BINARY_OP_NAMES)[number] // has, is --> 10
+type UnaryOpSymbols = keyof typeof PRECEDENCE.UNARY | (typeof UNARY_OP_NAMES)[number] // typeof --> 16
 
 type OperationArgs = Omit<AbstractOperator, 'arity'>
 

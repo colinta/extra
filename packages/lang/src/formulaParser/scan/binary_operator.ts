@@ -4,28 +4,19 @@ import {
   binaryOperatorNamed,
   isBinaryOperator,
   BINARY_OP_ALIASES,
-  NAMED_BINARY_OPS,
+  BINARY_OP_NAMES,
 } from '../operators'
-import {isBinaryOperatorChar} from '../grammars'
+import {isBinaryOperatorName, isBinaryOperatorSymbol, scanBinaryOperatorSymbol} from '../grammars'
 
 export function scanBinaryOperator(scanner: Scanner): Operator {
   scanner.whereAmI('scanBinaryOperator')
-  const namedOp = NAMED_BINARY_OPS.find(opName => scanner.isWord(opName))
+  const namedOp = BINARY_OP_NAMES.find(opName => scanner.isWord(opName))
   let currentToken: string
   if (namedOp) {
     currentToken = namedOp
     scanner.expectString(namedOp)
   } else {
-    currentToken = scanner.char
-    while (isBinaryOperatorChar(scanner.scanNextChar())) {
-      if (currentToken === '...') {
-        // needs a special case otherwise '...-' is scanned
-        // breaking here means scanner is still pointed at '-'
-        break
-      }
-
-      currentToken += scanner.char
-    }
+    currentToken = scanBinaryOperatorSymbol(scanner) ?? ''
   }
 
   if (currentToken in BINARY_OP_ALIASES) {
@@ -33,6 +24,17 @@ export function scanBinaryOperator(scanner: Scanner): Operator {
   }
 
   if (!isBinaryOperator(currentToken)) {
+    if (!currentToken) {
+      if (scanner.is(/\w/)) {
+        while (scanner.is(/\w/)) {
+          currentToken += scanner.scanNextChar()
+        }
+      } else {
+        while (scanner.is(/[^\w\d\s()[\]{}]/)) {
+          currentToken += scanner.scanNextChar()
+        }
+      }
+    }
     throw new ParseError(scanner, unknownErrorMessage('binary operator', currentToken))
   }
 
