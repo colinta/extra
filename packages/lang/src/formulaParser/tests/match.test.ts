@@ -32,6 +32,7 @@ describe('match operator', () => {
   // match is a really easy operator, so I'm not doing much parse checking
   describe('parse', () => {
     cases<[string] | [string, string]>(
+      c(['foo is _']),
       c(['foo is Int']),
       c(['foo is Int(>=0)']),
       c(['foo is true']),
@@ -90,6 +91,14 @@ describe('match operator', () => {
         {truthy: Types.Type; falsey: Types.Type; notTruthy?: Types.Type; notFalsey?: Types.Type},
       ]
     >(
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
+        'foo is _',
+        {
+          truthy: Types.oneOf([Types.string(), Types.int()]),
+          falsey: Types.oneOf([Types.string(), Types.int()]),
+        },
+      ]),
       c([
         Types.oneOf([Types.string(), Types.int()]),
         'foo is Int',
