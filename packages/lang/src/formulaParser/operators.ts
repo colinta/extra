@@ -3477,54 +3477,6 @@ addBinaryOperator({
   },
 })
 
-class ImplicationOperator extends BinaryOperator {
-  symbol = '=>'
-
-  rhsType(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
-    let myRuntime = new MutableTypeRuntime(runtime)
-    myRuntime.setPipeType(lhs)
-
-    return getChildType(this, rhsExpr, myRuntime)
-  }
-
-  operatorType(_runtime: TypeRuntime, _lhs: Types.Type, rhs: Types.Type) {
-    return ok(rhs)
-  }
-
-  rhsEval(runtime: ValueRuntime, lhs: Values.Value, _lhsExpr: Expression, rhsExpr: Expression) {
-    let myRuntime = new MutableValueRuntime(runtime)
-    myRuntime.setPipeValue(lhs)
-
-    return rhsExpr.eval(myRuntime)
-  }
-
-  operatorEval(_runtime: ValueRuntime, _lhs: Values.Value, rhs: () => GetValueResult) {
-    return rhs()
-  }
-}
-
-addBinaryOperator({
-  name: 'implication',
-  symbol: '=>',
-  precedence: PRECEDENCE.BINARY['=>'],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new ImplicationOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
 class LogicalNotOperator extends UnaryOperator {
   symbol = 'not'
 
