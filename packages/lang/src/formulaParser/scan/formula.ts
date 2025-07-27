@@ -45,19 +45,6 @@ export function scanNamedFormula(
   }) as Expressions.NamedFormulaExpression
 }
 
-export function scanActionFormula(
-  scanner: Scanner,
-  parseNext: ParseNext,
-  bodyExpressionType?: ExpressionType,
-) {
-  scanner.whereAmI('scanActionFormula')
-  return _scanFormula(scanner, 'expression', parseNext, {
-    type: '&fn',
-    isNamedFn: true,
-    bodyExpressionType,
-  }) as Expressions.NamedFormulaExpression
-}
-
 export function scanViewFormula(
   scanner: Scanner,
   expressionType: ExpressionType,
@@ -97,7 +84,7 @@ function _scanFormula(
   expressionType: ExpressionType,
   parseNext: ParseNext,
   options: {
-    type: 'Main' | 'view' | 'fn' | '&fn' | 'static'
+    type: 'Main' | 'view' | 'fn' | 'static'
     isNamedFn: boolean
     bodyExpressionType: ExpressionType | undefined
   },
@@ -130,11 +117,10 @@ function _scanFormula(
 
   scanner.whereAmI(`scanFormula type = ${type}`)
   const typeExpect = type
-  const typeDesc = type === '&fn' ? '&fn <name>' : type
 
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  scanner.expectString(typeExpect, `Expected '${typeDesc}(' to start the formula expression`)
+  scanner.expectString(typeExpect, `Expected '${type}(' to start the formula expression`)
   if (isNamedFn) {
     scanner.expectWhitespace()
   }

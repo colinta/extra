@@ -14,21 +14,21 @@ type Point = {x: Int, y: Int}
 Main() => <Pt />
 
 ╭──────────╮
-│ &Actions │
+│ Commands │
 ╰──────────╯
--- &fn moveRight() => @pt = {...@pt, x: @pt.x + 1})
--- &fn moveRight() => @pt.x = @pt.x + 1
-&fn moveRight() => @pt.x += 1
+-- fn moveRight() => @pt = {...@pt, x: @pt.x + 1})
+-- fn moveRight() => @pt.x = @pt.x + 1
+fn moveRight() => @pt.x += 1
 
 ╭───────────╮
 │ Helpers() │
 ╰───────────╯
-fn point(pt: Point) =>
+fn pointDesc(pt: Point) =>
   $(pt.x) ++ ', ' ++ $(pt.y)
 
 ╭─────────╮
 │ <Views> │
 ╰─────────╯
 view Pt(pt: Point) =>
-  <>{point(pt: pt)}</>
+  <>{pointDesc(pt: pt)}</>
 

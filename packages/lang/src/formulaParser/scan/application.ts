@@ -9,13 +9,7 @@ import {
 } from './identifier'
 import {type Comment, ParseError, type ParseNext} from '../types'
 import {type Expression} from '../expressions'
-import {
-  scanActionFormula,
-  scanGenerics,
-  scanMainFormula,
-  scanNamedFormula,
-  scanViewFormula,
-} from './formula'
+import {scanGenerics, scanMainFormula, scanNamedFormula, scanViewFormula} from './formula'
 import {
   CLASS_KEYWORD,
   ENUM_KEYWORD,
@@ -287,31 +281,6 @@ export function scanMainDefinition(scanner: Scanner, parseNext: ParseNext) {
   return expression
 }
 
-export function scanActionDefinition(scanner: Scanner, parseNext: ParseNext) {
-  const precedingComments = scanner.flushComments()
-  const range0 = scanner.charIndex
-  const isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
-  if (isPublic) {
-    scanner.expectWhitespace()
-  }
-
-  const value = scanActionFormula(scanner, parseNext)
-  if (!value.nameRef.name.match(/^[a-z]/)) {
-    throw new ParseError(
-      scanner,
-      `Actions must start with a lowercased letter, found '${value.nameRef}'`,
-    )
-  }
-
-  return new Expressions.ActionDefinition(
-    [range0, scanner.charIndex],
-    precedingComments,
-    value.nameRef,
-    value,
-    isPublic,
-  )
-}
-
 export function scanViewDefinition(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
@@ -349,7 +318,6 @@ export function scanHelperDefinition(scanner: Scanner, parseNext: ParseNext) {
   return new Expressions.HelperDefinition(
     [range0, scanner.charIndex],
     precedingComments,
-    value.nameRef,
     value,
     isPublic,
   )

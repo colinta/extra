@@ -21,7 +21,7 @@ import Baz: {
 Main() => null
 
 ╭──────────╮
-│ &Actions │
+│ Commands │
 ╰──────────╯
 ╭───────────╮
 │ Helpers() │

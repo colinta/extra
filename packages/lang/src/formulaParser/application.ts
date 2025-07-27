@@ -21,7 +21,6 @@ export class Application extends Expression {
   readonly types: Map<string, Expressions.TypeDefinition>
   readonly states: Map<string, Expressions.StateDefinition>
   readonly main: Expressions.MainFormulaExpression | undefined
-  readonly actions: Map<string, Expressions.ActionDefinition>
   readonly helpers: Map<string, Expressions.HelperDefinition>
   readonly views: Map<string, Expressions.ViewDefinition>
 
@@ -33,7 +32,6 @@ export class Application extends Expression {
     types: Expressions.TypeDefinition[],
     states: Expressions.StateDefinition[],
     main: Expressions.MainFormulaExpression | undefined,
-    actions: Expressions.ActionDefinition[],
     helpers: Expressions.HelperDefinition[],
     views: Expressions.ViewDefinition[],
   ) {
@@ -54,15 +52,9 @@ export class Application extends Expression {
       states.map((state): [string, Expressions.StateDefinition] => [state.name, state]),
     )
     this.main = main
-    this.actions = new Map(
-      actions.map((action): [string, Expressions.ActionDefinition] => [
-        action.nameRef.name,
-        action,
-      ]),
-    )
     this.helpers = new Map(
       helpers.map((helper): [string, Expressions.HelperDefinition] => [
-        helper.nameRef.name,
+        helper.value.nameRef.name,
         helper,
       ]),
     )
@@ -94,7 +86,6 @@ export class Application extends Expression {
         ['types', [...this.types.values()]],
         ['state', [...this.states.values()]],
         ['main', this.main ? [this.main] : []],
-        ['actions', [...this.actions.values()]],
         ['helpers', [...this.helpers.values()]],
         ['views', [...this.views.values()]],
       ] as [ApplicationHeader, Expression[]][]
@@ -334,14 +325,13 @@ export class Application extends Expression {
   }
 }
 
-type ApplicationHeader = 'imports' | 'types' | 'state' | 'actions' | 'main' | 'helpers' | 'views'
+type ApplicationHeader = 'imports' | 'types' | 'state' | 'main' | 'helpers' | 'views'
 
 const headers: [ApplicationHeader, string][] = [
   ['imports', 'Imports'],
   ['types', 'Types'],
   ['state', '@State'],
   ['main', '<Main />'],
-  ['actions', '&Actions'],
   ['helpers', 'Helpers()'],
   ['views', '<Views>'],
 ]

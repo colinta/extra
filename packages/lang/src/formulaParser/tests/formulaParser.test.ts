@@ -20,7 +20,7 @@ describe('function parser', () => {
       c(['3 ≥ 6', '(>= 3 6)', '3 >= 6']),
       c(['not a or b', '(or (not a) b)']),
       c(['!a or b', '(or (not a) b)', 'not a or b']),
-      c(['not .a or -@b and $&c', '(or (not (. a)) (and (- @b) ($ &c)))']),
+      c(['not .a or -@b and $c', '(or (not (. a)) (and (- @b) ($ c)))']),
       c(['a <=> b', '(<=> a b)']),
       c(['a |> $#', '(|> a ($ `#`))']),
       c(["[-1, 2, 3] |> join(', ')", "(|> [-1 2 3] (fn join (', ')))"]),

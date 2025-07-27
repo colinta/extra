@@ -99,17 +99,17 @@ describe('view', () => {
     <Row height=8 width="auto">
       <Header style=@style>Welcome!</Header>
       <Text isBold !isFancy>Hello, {name}</Text>
-      <Button title=foo . bar onPress=&action testFn=foo('bar') testArray=foo[0] testOp=(1+1) testSafe=foo?.bar />
+      <Button title=foo . bar onPress=action testFn=foo('bar') testArray=foo[0] testOp=(1+1) testSafe=foo?.bar />
     </Row>
   </>
     `,
-      `(view AnyView() => <> '\\n  ' <Row height=8 width='auto'> '\\n  ' <Header style=@style> 'Welcome!' </Header> '\\n  ' <Text isBold !isFancy> 'Hello, ' name </Text> '\\n  ' <Button title=foo.bar onPress=&action testFn=foo('bar') testArray=foo[0] testOp=(1 + 1) testSafe=foo?.bar /> '\\n' </Row> '\\n' </>)`,
+      `(view AnyView() => <> '\\n  ' <Row height=8 width='auto'> '\\n  ' <Header style=@style> 'Welcome!' </Header> '\\n  ' <Text isBold !isFancy> 'Hello, ' name </Text> '\\n  ' <Button title=foo.bar onPress=action testFn=foo('bar') testArray=foo[0] testOp=(1 + 1) testSafe=foo?.bar /> '\\n' </Row> '\\n' </>)`,
       `view AnyView() =>
   <>
     <Row height=8 width='auto'>
       <Header style=@style>Welcome!</Header>
       <Text isBold !isFancy>Hello, {name}</Text>
-      <Button title=foo.bar onPress=&action testFn=foo('bar') testArray=foo[0] testOp=(1 + 1) testSafe=foo?.bar />
+      <Button title=foo.bar onPress=action testFn=foo('bar') testArray=foo[0] testOp=(1 + 1) testSafe=foo?.bar />
     </Row>
   </>`,
     ]),

@@ -36,7 +36,6 @@ export type TypeRuntime = Omit<
   | 'addLocalType'
   | 'addStateType'
   | 'addThisType'
-  | 'addActionType'
   | 'addId'
   | 'setPipeType'
   | 'addNamespaceTypes'
@@ -49,14 +48,12 @@ export type ValueRuntime = Omit<
   | 'addLocalType'
   | 'addStateType'
   | 'addThisType'
-  | 'addActionType'
   | 'addId'
   | 'setPipeType'
   | 'addNamespaceTypes'
   | 'addLocalValue'
   | 'addStateValue'
   | 'addThisValue'
-  | 'addActionValue'
   | 'setPipeValue'
 >
 
@@ -159,16 +156,6 @@ export class MutableTypeRuntime {
   }
 
   /**
-   * The type of an action
-   *
-   * @example
-   *     &createFoo(…)
-   */
-  getActionType(name: string): Type | undefined {
-    return this.getLocalType('&' + name)
-  }
-
-  /**
    * The type of the `#` within a pipe operation `a |> #`
    *
    * @example
@@ -220,10 +207,6 @@ export class MutableTypeRuntime {
 
   addThisType(name: string, type: Type) {
     this.addLocalType('.' + name, type)
-  }
-
-  addActionType(name: string, type: Type) {
-    this.addLocalType('&' + name, type)
   }
 
   setPipeType(type: Type) {
@@ -311,10 +294,6 @@ export class MutableValueRuntime extends MutableTypeRuntime {
     return this.getLocalValue('.' + name)
   }
 
-  getActionValue(name: string): Value | undefined {
-    return this.getLocalValue('&' + name)
-  }
-
   getPipeValue(): Value | undefined {
     return this.getLocalValue('#')
   }
@@ -330,10 +309,6 @@ export class MutableValueRuntime extends MutableTypeRuntime {
 
   addThisValue(name: string, value: Value) {
     this.addLocalValue('.' + name, value)
-  }
-
-  addActionValue(name: string, value: Value) {
-    this.addLocalValue('&' + name, value)
   }
 
   setPipeValue(value: Value) {

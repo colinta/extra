@@ -602,44 +602,6 @@ export class StateReference extends Reference {
   }
 }
 
-export class ActionReference extends Reference {
-  dependencies() {
-    return new Set(['&' + this.name])
-  }
-
-  toLisp() {
-    return '&' + this.name
-  }
-
-  toCode() {
-    return '&' + this.name
-  }
-
-  getType(runtime: TypeRuntime): GetTypeResult {
-    const type = runtime.getActionType(this.name)
-    if (type) {
-      return ok(type)
-    }
-
-    return err(new RuntimeError(this, `Cannot get type of action named '&${this.name}'`))
-  }
-
-  eval(runtime: ValueRuntime) {
-    const value = runtime.getActionValue(this.name)
-    if (value) {
-      return ok(value)
-    }
-
-    return err(new RuntimeError(this, `Cannot get value of action named '&${this.name}'`))
-  }
-
-  replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
-    let nextRuntime = new MutableTypeRuntime(runtime)
-    nextRuntime.addActionType(this.name, withType)
-    return ok(nextRuntime)
-  }
-}
-
 //|
 //|  Container literal Expressions
 //|
@@ -5103,7 +5065,7 @@ export class MatchUnaryRange extends MatchExpression {
 
   toCode(prevPrecedence = 0): string {
     if (prevPrecedence > this.precedence) {
-      return `(${this.toCode(0)})`
+      return `(${this.toCode(0)} ${prevPrecedence} ${this.precedence})`
     }
 
     return this.op + this.start.toCode()
@@ -6080,7 +6042,7 @@ export class StateDefinition extends Expression {
   }
 }
 
-export class BuiltinActionExpression extends Identifier {
+export class BuiltinCommandIdentifier extends Identifier {
   name = '&'
 
   isUnknown() {
@@ -6105,13 +6067,10 @@ export class BuiltinActionExpression extends Identifier {
 }
 
 export class HelperDefinition extends Expression {
-  actionType: 'action' | 'helper' = 'helper'
-
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly nameRef: Reference,
-    readonly value: FormulaExpression,
+    readonly value: NamedFormulaExpression,
     readonly isPublic: boolean,
   ) {
     super(range, precedingComments)
@@ -6122,7 +6081,7 @@ export class HelperDefinition extends Expression {
   }
 
   provides() {
-    return new Set([this.nameRef.name])
+    return new Set([this.value.nameRef.name])
   }
 
   toLisp() {
@@ -6131,12 +6090,9 @@ export class HelperDefinition extends Expression {
       code += 'public '
     }
 
-    if (this.actionType === 'action') {
-      code += '&'
-    }
-    code += `${this.nameRef.name} ${this.value.toLisp()}`
+    code += this.value.toLispPrefixed(false)
 
-    return `(${this.actionType} ${code})`
+    return `(fn ${code})`
   }
 
   toCode() {
@@ -6145,9 +6101,6 @@ export class HelperDefinition extends Expression {
       code += 'public '
     }
 
-    if (this.actionType === 'action') {
-      code += '&'
-    }
     code += 'fn '
     code += `${this.value.toCodePrefixed(false, true)}`
     return code
@@ -6160,10 +6113,6 @@ export class HelperDefinition extends Expression {
   eval(runtime: ValueRuntime) {
     return this.value.eval(runtime)
   }
-}
-
-export class ActionDefinition extends HelperDefinition {
-  actionType = 'action' as const
 }
 
 export class ViewDefinition extends Expression {

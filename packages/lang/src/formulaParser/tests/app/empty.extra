@@ -10,7 +10,7 @@
 Main() => null
 
 ╭──────────╮
-│ &Actions │
+│ Commands │
 ╰──────────╯
 ╭───────────╮
 │ Helpers() │

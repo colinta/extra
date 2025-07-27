@@ -130,7 +130,6 @@ export type ExpressionType =
   | 'app_type_definition' // Type = Array<Int> - Object and Class types can have default values
   | 'app_state_definition' // foo = 0
   | 'app_main_definition' // Main() => …
-  | 'app_action_definition' // action() => &.set(…)
   | 'app_view_definition' // SomeView() => <>…</>
   | 'app_helper_definition' // helper(input: A) => …
   | 'application_type' // Array<Int> - Object and Class types can have default values

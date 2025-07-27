@@ -11,26 +11,15 @@ type User = {name: String}
 ╭──────────╮
 │ <Main /> │
 ╰──────────╯
-Main(name: String, onResetName: fn() => &) =>
+Main(name: String, onResetName: fn(): &) =>
   <>
     Name: {name}
-    <Button onPress=&addUser(name)>Add</Button>
+    <Button onPress=addUser(name)>Add</Button>
   </>
 
 ╭──────────╮
-│ &Actions │
+│ Commands │
 ╰──────────╯
-&fn addUser(name: String, next: fn() => &) =>
-  if (name.length > 0 && @users.none(|u| => u.name == name)) then:
-    &[
-      @users.push({ name: })
-      next()
-    ]
-
-╭───────────╮
-│ Helpers() │
-╰───────────╯
-
-╭─────────╮
-│ <Views> │
-╰─────────╯
+fn addUser(name: String) =>
+  if (name.length > 0 && @users.all(fn(u) => u.name != name)) then:
+    @users.push({ name: })

@@ -70,7 +70,6 @@ import {scanDice} from './scan/dice'
 import {
   scanRequiresStatement,
   scanImportStatement,
-  scanActionDefinition,
   scanHelperDefinition,
   scanMainDefinition,
   scanStateDefinition,
@@ -152,7 +151,6 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
     types: Expressions.TypeDefinition[]
     states: Expressions.StateDefinition[]
     main: Expressions.MainFormulaExpression | undefined
-    actions: Expressions.ActionDefinition[]
     helpers: Expressions.HelperDefinition[]
     views: Expressions.ViewDefinition[]
   } = {
@@ -161,7 +159,6 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
     types: [],
     states: [],
     main: undefined,
-    actions: [],
     helpers: [],
     views: [],
   }
@@ -234,23 +231,6 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
         return err(main.error)
       }
       applicationTokens.main = main.value as Expressions.MainFormulaExpression
-    } else if (
-      scanner.test(() => {
-        if (!scanner.scanIfWord(FN_KEYWORD)) {
-          return false
-        }
-        scanner.scanAllWhitespace()
-        return scanner.is('&')
-      })
-    ) {
-      //
-      //  &ACTION
-      //
-      const action = parseAttempt(scanner, 'app_action_definition')
-      if (action.isErr()) {
-        return err(action.error)
-      }
-      applicationTokens.actions.push(action.value as Expressions.ActionDefinition)
     } else if (scanner.isWord(FN_KEYWORD)) {
       //
       //  HELPER
@@ -286,7 +266,6 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       /* types   */ applicationTokens.types,
       /* states  */ applicationTokens.states,
       /* main    */ applicationTokens.main,
-      /* actions */ applicationTokens.actions,
       /* helpers */ applicationTokens.helpers,
       /* views   */ applicationTokens.views,
     ) as any,
@@ -775,8 +754,6 @@ function parseInternal(
     expression = scanStateDefinition(scanner, parseNext)
   } else if (expressionType === 'app_main_definition') {
     expression = scanMainDefinition(scanner, parseNext)
-  } else if (expressionType === 'app_action_definition') {
-    expression = scanActionDefinition(scanner, parseNext)
   } else if (expressionType === 'app_view_definition') {
     expression = scanViewDefinition(scanner, parseNext)
   } else if (expressionType === 'app_helper_definition') {

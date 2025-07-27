@@ -5,8 +5,8 @@ import {ParseError} from '../types'
 import {unexpectedToken} from './basics'
 
 /**
- * scanValidName is just like scanIdentifier, but it doesn't support state or
- * action references, and fails on reserved words.
+ * scanValidName is just like scanIdentifier, but it doesn't support state
+ * references (@foo), and fails on reserved words.
  */
 export function scanValidName(scanner: Scanner): Expressions.Reference {
   scanner.whereAmI('scanValidName')
@@ -160,19 +160,11 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
   scanner.whereAmI('scanIdentifier')
   const range0 = scanner.charIndex
   const isState = scanner.scanIfString('@')
-  const isAction = !isState && scanner.scanIfString('&')
 
   let currentToken = ''
   while (isRefChar(scanner)) {
     currentToken += scanner.char
     scanner.charIndex += 1
-  }
-
-  if (isAction && currentToken === '') {
-    return new Expressions.BuiltinActionExpression(
-      [range0, scanner.charIndex],
-      scanner.flushComments(),
-    )
   }
 
   if (!isRef(currentToken)) {
@@ -261,11 +253,8 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
   }
 
   if (identifier) {
-    if (isState || isAction) {
-      throw new ParseError(
-        scanner,
-        `Invalid identifier '${isState ? '@' : ''}${isAction ? '&' : ''}${identifier.name}'`,
-      )
+    if (isState) {
+      throw new ParseError(scanner, `Invalid identifier '${isState ? '@' : ''}${identifier.name}'`)
     }
 
     return identifier
@@ -273,12 +262,6 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
 
   if (isState) {
     return new Expressions.StateReference(
-      [range0, scanner.charIndex],
-      scanner.flushComments(),
-      currentToken,
-    )
-  } else if (isAction) {
-    return new Expressions.ActionReference(
       [range0, scanner.charIndex],
       scanner.flushComments(),
       currentToken,

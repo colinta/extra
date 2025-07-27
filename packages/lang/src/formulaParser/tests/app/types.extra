@@ -16,7 +16,7 @@ type Last = Int
 Main() => null
 
 ╭──────────╮
-│ &Actions │
+│ Commands │
 ╰──────────╯
 ╭───────────╮
 │ Helpers() │
