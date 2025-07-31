@@ -29,7 +29,7 @@ function rel(
 ): Relationship.Relationship {
   const rel: Relationship.Relationship = {
     formula: ref(name),
-    comparison: {type: symbol, rhs: formula},
+    comparison: {operator: symbol, rhs: formula},
   }
   return rel
 }
@@ -143,7 +143,7 @@ describe('simplifyRelationships', () => {
         const newRelationships = new Set(
           simplifyRelationships({
             formula: lhs,
-            comparison: {type: symbol, rhs},
+            comparison: {operator: symbol, rhs},
           }),
         )
 
@@ -195,11 +195,11 @@ describe('isEqualRelationship', () => {
         Relationship.isEqualRelationship(
           {
             formula: lhsFormula,
-            comparison: {type: lhsSymbol, rhs: lhsRight},
+            comparison: {operator: lhsSymbol, rhs: lhsRight},
           },
           {
             formula: rhsFormula,
-            comparison: {type: rhsSymbol, rhs: rhsRight},
+            comparison: {operator: rhsSymbol, rhs: rhsRight},
           },
         ),
       ).toBe(expectedEqual)

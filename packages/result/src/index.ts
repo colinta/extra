@@ -100,6 +100,7 @@ class Failure<OK, ERR> extends ResultClass<OK, ERR> {
     return true
   }
   get(): OK {
+    // console.trace(this.error)
     throw this.error
   }
   getError(): ERR {

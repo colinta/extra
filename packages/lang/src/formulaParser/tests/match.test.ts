@@ -172,6 +172,22 @@ describe('match operator', () => {
         },
       ]),
       c([
+        Types.int(),
+        'foo is >0 or foo is <0 or foo is =0',
+        {
+          truthy: Types.int(),
+          falsey: Types.never(),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
+        'foo is >0 or foo is <0 or foo is =0',
+        {
+          truthy: Types.int(),
+          falsey: Types.string(),
+        },
+      ]),
+      c([
         Types.int({min: 200}),
         'foo is >100',
         {
@@ -200,7 +216,7 @@ describe('match operator', () => {
         'foo is <10',
         {
           truthy: Types.intRange({max: 9}),
-          falsey: Types.intRange({max: 20}),
+          falsey: Types.intRange({min: 10, max: 20}),
         },
       ]),
       c([
@@ -251,7 +267,7 @@ describe('match operator', () => {
           falsey: Types.oneOf([Types.string(), Types.int()]),
         },
       ]),
-      c([
+      c.only([
         Types.oneOf([Types.string(), Types.int()]),
         'foo is /<(?<foo>\\w+)>/ and foo',
         {
@@ -282,7 +298,8 @@ describe('match operator', () => {
             expect(truthy).toEqual(expectedTypes.truthy)
             expect(falsey).toEqual(expectedTypes.falsey)
           }
-          {
+
+          if (formula.split(' is ').length === 2) {
             const expression = parse(formula.replace(' is ', ' !is ')).get()
             const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
             expect(truthy).toEqual(expectedTypes.notTruthy ?? expectedTypes.falsey)

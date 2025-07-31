@@ -26,10 +26,10 @@ import {
   assignRelationshipsToRuntime,
   formulaToFalseStuff,
   formulaToTrueStuff,
+  invertComparison,
   type Relationship,
   relationshipFormula,
   type RelationshipFormula,
-  reverseComparison,
 } from '../relationship'
 import {indent, MAX_INNER_LEN, MAX_LEN, NEWLINE_INDENT, wrapStrings} from './util'
 
@@ -162,25 +162,29 @@ export abstract class Expression {
    * (comparisons < <= > >= == !=).
    */
   assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.gimmeTrueStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
+    return this.gimmeTrueStuff(runtime).map(stuff =>
+      assignRelationshipsToRuntime(runtime, stuff, true),
+    )
   }
 
   assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.gimmeFalseStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
+    return this.gimmeFalseStuff(runtime).map(stuff =>
+      assignRelationshipsToRuntime(runtime, stuff, false),
+    )
   }
 
   /**
-   * 'or' operator uses this to find all the assertions on the lhs, and compares
-   * them with all the assestions on the rhs. If all the assertions are on the
-   * same relationship (i.e. x is Int || x is String) then something about the two
-   * conditions can be inferred (x is Int | String). If the two are unrelated
-   * comparisons, no inference can be made.
-   *
    * This returns an array of true-stuff - 'and' returns all it's conditions,
    * and things like `x?.foo == 1` returns `[x != null, x.foo == 1]`, so
    * sometimes conditions can have inferences not based on the subjects
    *     x?.foo == 1 || x?.bar == 1
    *        => x != null (regardless of which branch was true)
+   *
+   * 'or' operator uses this to find all the assertions on the lhs, and compares
+   * them with all the assestions on the rhs. If all the assertions are on the
+   * same relationship (i.e. x is Int || x is String) then something about the two
+   * conditions can be inferred (x is Int | String). If the two are unrelated
+   * comparisons, no inference can be made.
    */
   gimmeTrueStuff(runtime: TypeRuntime): GetRuntimeResult<Relationship[]> {
     return this.getType(runtime).map(type => {
@@ -189,6 +193,8 @@ export abstract class Expression {
         return []
       }
 
+      console.log('=========== expressions.ts at line 196 ===========')
+      console.log({formula, type})
       return formulaToTrueStuff(formula, type)
     })
   }
@@ -204,6 +210,8 @@ export abstract class Expression {
         return []
       }
 
+      console.log('=========== expressions.ts at line 213 ===========')
+      console.log({formula, type})
       return formulaToFalseStuff(formula, type)
     })
   }
@@ -263,7 +271,9 @@ export abstract class Operation extends Expression {
 //|
 
 /**
- * Literal of any kind: Boolean, Int, Float, Regex, null
+ * Literal of any kind: Boolean, Int, Float, Regex, null. Gonna be honest,
+ * having all the literals stored in one type - *except* StringLiteral
+ * (sometimes? I don't even remember) - this was not my favourite decision.
  *
  * StringLiteral has its own type, which has to do with String interpolation
  * literals.
@@ -4376,9 +4386,9 @@ export abstract class MatchExpression extends Expression {
    * Called from MatchOperator with the formula and expression of lhs.
    */
   gimmeTrueStuffWith(
-    runtime: TypeRuntime,
-    formula: RelationshipFormula,
-    lhsExpr: Expression,
+    _runtime: TypeRuntime,
+    _formula: RelationshipFormula | undefined,
+    _lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     return ok([])
   }
@@ -4387,71 +4397,11 @@ export abstract class MatchExpression extends Expression {
    * Called from MatchOperator with the formula and expression of lhs.
    */
   gimmeFalseStuffWith(
-    runtime: TypeRuntime,
-    formula: RelationshipFormula,
+    _runtime: TypeRuntime,
+    _formula: RelationshipFormula | undefined,
+    _lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     return ok([])
-  }
-
-  /**
-   * Calculates the type of the match expression, then calls `Type.narrowTypeIs` or
-   * `Type.narrowTypeIsNot` to determine the possible types of lhs. Returns the
-   * `TypeRuntime` that has the new type information, including the assignment of any
-   * match references.
-   */
-  abstract assumeMatchAssertionRuntime(
-    runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime>
-
-  /**
-   * Similar to assumeMatchAssertionRuntime, but receives the lhsType instead of
-   * expression. This function is called on nested MatchExpressions.
-   */
-  abstract assumeNestedAssertionType(
-    runtime: MutableTypeRuntime,
-    lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult
-
-  /**
-   * The default implementation calls assigns the type from getAsTypeExpression and
-   * uses that to narrow lhsType, assigning it back to lhsExpr.
-   *
-   * Used in "simple" matcher
-   *     MatchTypeExpression
-   *     MatchLiteral
-   *     MatchStringExpression
-   *     MatchRangeExpression
-   *     MatchArrayExpression
-   */
-  defaultAssumeMatchAssertionRuntime(
-    runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    return getChildType(this, lhsExpr, runtime)
-      .map(lhsType => this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue))
-      .map(replaceType => lhsExpr.replaceWithType(runtime, replaceType))
-  }
-
-  /**
-   * The default implementation calls getAsTypeExpression, then uses that to narrow
-   * the lhsType.
-   *
-   * Used in MatchTypeExpression and MatchStringLiteral.
-   */
-  defaultAssumeNestedAssertionType(
-    runtime: TypeRuntime,
-    lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult {
-    return this.getAsTypeExpression(runtime).map(rhsTypeAssertion =>
-      assumeTrue
-        ? Types.narrowTypeIs(lhsType, rhsTypeAssertion)
-        : Types.narrowTypeIsNot(lhsType, rhsTypeAssertion),
-    )
   }
 
   getType(): GetTypeResult {
@@ -4463,6 +4413,8 @@ export abstract class MatchExpression extends Expression {
   }
 
   checkAssignRefs() {
+    // TODO: examine gimmeTrueStuffWith results, looking for duplicate
+    // assignments.
     const assignRefs = this.matchAssignReferences()
     const found = new Set<string>()
     for (const ref of assignRefs) {
@@ -4486,28 +4438,6 @@ export class MatchTypeExpression extends MatchExpression {
     super(argType.range, argType.precedingComments, argType.followingComments)
   }
 
-  gimmeTrueStuffWith(
-    runtime: TypeRuntime,
-    formula: RelationshipFormula,
-  ): GetRuntimeResult<Relationship[]> {
-    return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
-      const relationships: Relationship[] = [{formula, comparison: {type: 'instanceof', rhs: type}}]
-      if (this.assignRef) {
-        // return relationships.concat([relationshipFormula.])
-      }
-      return relationships
-    })
-  }
-
-  gimmeFalseStuffWith(
-    runtime: TypeRuntime,
-    formula: RelationshipFormula,
-  ): GetRuntimeResult<Relationship[]> {
-    return this.getAsTypeExpression(runtime).map(type => [
-      {formula, comparison: {type: '!instanceof', rhs: type}},
-    ])
-  }
-
   matchAssignReferences() {
     return this.assignRef ? [this.assignRef.name] : []
   }
@@ -4516,31 +4446,45 @@ export class MatchTypeExpression extends MatchExpression {
     return this.argType.getAsTypeExpression(runtime)
   }
 
-  assumeMatchAssertionRuntime(
+  gimmeTrueStuffWith(
     runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    return this.defaultAssumeMatchAssertionRuntime(runtime, lhsExpr, assumeTrue)
-  }
-
-  assumeNestedAssertionType(
-    runtime: MutableTypeRuntime,
+    formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult {
-    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue).map(type => {
-      if (type === Types.NeverType) {
-        return err(
-          new RuntimeError(this, `The expression '${lhsType} is ${this}' results in 'never' type.`),
-        )
+  ): GetRuntimeResult<Relationship[]> {
+    if (!formula && !this.assignRef) {
+      return ok([])
+    }
+
+    return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
+      const relationships: Relationship[] = []
+      if (formula) {
+        const narrowType = Types.narrowTypeIs(lhsType, type)
+        relationships.push({formula, comparison: {operator: 'instanceof', rhs: narrowType}})
       }
 
       if (this.assignRef) {
-        runtime.addLocalType(this.assignRef.name, type)
+        relationships.push({
+          formula: relationshipFormula.assign(this.assignRef.name),
+          comparison: {operator: 'instanceof', rhs: type},
+        })
       }
 
-      return ok(type)
+      return relationships
+    })
+  }
+
+  gimmeFalseStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    if (!formula) {
+      return ok([])
+    }
+
+    return this.getAsTypeExpression(runtime).map(type => {
+      const narrowType = Types.narrowTypeIsNot(lhsType, type)
+      return [{formula, comparison: {operator: 'instanceof', rhs: narrowType}}]
     })
   }
 
@@ -4568,47 +4512,21 @@ export abstract class MatchIdentifier extends MatchExpression {
     return this.reference ? [this.reference.name] : []
   }
 
-  /**
-   * MatchIdentifier always assigns the lhs to the reference, with no type information
-   * added.
-   */
-  assumeMatchAssertionRuntime(
-    runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    if (!this.reference) {
-      return ok(runtime)
-    }
-
-    if (!assumeTrue) {
-      return err(
-        new RuntimeError(
-          this,
-          `The expression '${lhsExpr} !is ${this}' will never match (everything is assignable to ${this})`,
-        ),
-      )
-    }
-
-    const reference = this.reference
-    return getChildType(this, lhsExpr, runtime).map(lhsType => {
-      const mutableRuntime = new MutableTypeRuntime(runtime)
-      mutableRuntime.addLocalType(reference.name, lhsType)
-      return mutableRuntime
-    })
-  }
-
-  assumeNestedAssertionType(
-    runtime: MutableTypeRuntime,
+  gimmeTrueStuffWith(
+    _runtime: TypeRuntime,
+    _formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
-    _assumeTrue: boolean,
-  ): GetTypeResult {
+  ): GetRuntimeResult<Relationship[]> {
     if (!this.reference) {
-      return ok(lhsType)
+      return ok([])
     }
 
-    runtime.addLocalType(this.reference.name, lhsType)
-    return ok(lhsType)
+    return ok([
+      {
+        formula: relationshipFormula.assign(this.reference.name),
+        comparison: {operator: 'instanceof', rhs: lhsType},
+      },
+    ])
   }
 
   provides() {
@@ -4721,26 +4639,20 @@ export class MatchNamedArgument extends MatchExpression {
     return this.matchExpr.provides()
   }
 
-  /**
-   * This is never called directly - only via MatchEnumExpression
-   */
-  assumeMatchAssertionRuntime(
+  gimmeTrueStuffWith(
     runtime: TypeRuntime,
-    _lhsExpr: Expression,
-    _assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    return ok(runtime)
+    formula: RelationshipFormula | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    return this.matchExpr.gimmeTrueStuffWith(runtime, formula, lhsType)
   }
 
-  /**
-   * Called from MatchEnumExpression
-   */
-  assumeNestedAssertionType(
-    runtime: MutableTypeRuntime,
+  gimmeFalseStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult {
-    return this.matchExpr.assumeNestedAssertionType(runtime, lhsType, assumeTrue)
+  ): GetRuntimeResult<Relationship[]> {
+    return this.matchExpr.gimmeFalseStuffWith(runtime, formula, lhsType)
   }
 
   toLisp() {
@@ -4902,111 +4814,56 @@ export class MatchEnumExpression extends MatchExpression {
     return ok([type, enumCase])
   }
 
-  // cannot infer anything in the 'false' case (or _at most_ the one matching
-  // case could be excluded, when 'Exclude' is implemented).
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
-    formula: RelationshipFormula,
-    lhsExpr: Expression,
-  ): GetRuntimeResult<Relationship[]> {
-    return getChildType(this, lhsExpr, runtime)
-      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
-      .map(([type]) => [{formula, comparison: {type: 'instanceof', rhs: type}}])
-  }
-
-  // cannot infer anything in the 'false' case (or _at most_ the one matching
-  // case could be excluded, when 'Exclude' is implemented).
-  gimmeFalseStuffWith(
-    runtime: TypeRuntime,
-    formula: RelationshipFormula,
-  ): GetRuntimeResult<Relationship[]> {
-    return getChildType(this, lhsExpr, runtime)
-      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
-      .map(([type]) => [{formula, type: 'instanceof', right: relationshipFormula.type(type)}])
-  }
-
-  assumeMatchAssertionRuntime(
-    runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    if (!assumeTrue) {
-      // (type: SomeEnum | Int)
-      //      type !is .specific
-      // no inference can be done here. type could still be SomeEnum, it
-      // could still be Int. *Technically* we could return a new Enum type
-      // that doesn't include .specific
-      return ok(runtime)
-    }
-
-    return getChildType(this, lhsExpr, runtime)
-      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
-      .map(([_lhsType, runtime]) => runtime)
-  }
-
-  assumeNestedAssertionType(
-    runtime: MutableTypeRuntime,
+    formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
-    _assumeTrue: boolean,
-  ): GetTypeResult {
-    return this._assumeMatchAndNestedAssertionType(runtime, undefined, lhsType).map(
-      ([type, _runtime]) => type,
-    )
-  }
-
-  /**
-   * The price of code sharing here is quite high, but worth it if you look at
-   * assumeMatchAssertionRuntime and assumeNestedAssertionType. For
-   * assumeMatchAssertionRuntime we assign the new type to lhsExpr and all the
-   * matching arguments, and for assumeNestedAssertionType we only need to assign
-   * matching references.
-
-   * So this function accepts a runtime - which may be mutable - and lhsExpr - which
-   * may be undefined - and the lhsType, which will be used to search for a matching
-   * case and to examine its args for more matches.
-   */
-  private _assumeMatchAndNestedAssertionType(
-    runtime: TypeRuntime,
-    lhsExpr: Expression | undefined,
-    lhsType: Types.Type,
-  ): GetRuntimeResult<[Types.Type, TypeRuntime]> {
+  ): GetRuntimeResult<Relationship[]> {
     return this.findEnumTypeThatMatchesCase(lhsType).map(enumInfo => {
       const [enumType, enumCase] = enumInfo
-      const replaceType = Types.narrowTypeIs(lhsType, enumType)
+      const relationships: Relationship[] = []
 
-      // if lhsExpr is passed in, assign it with replaceType
-      const nextRuntime = lhsExpr?.replaceWithType(runtime, replaceType) ?? ok(runtime)
-      return nextRuntime.map(runtime => {
-        if (!this.args.length) {
-          return ok([replaceType, runtime])
+      if (formula) {
+        // TODO: create an enumType that only contains the enumCase
+        const replaceType = Types.narrowTypeIs(lhsType, enumType)
+        relationships.push({formula, comparison: {operator: 'instanceof', rhs: replaceType}})
+      }
+
+      if (!this.args.length) {
+        return ok(relationships)
+      }
+
+      let index = 0
+      for (const arg of this.args) {
+        let type: Types.Type
+        if (arg instanceof MatchNamedArgument) {
+          type = enumCase.namedTypes.get(arg.nameRef.name)!
+        } else {
+          type = enumCase.positionalTypes[index]
+          index += 1
         }
 
-        const mutableRuntime =
-          runtime instanceof MutableTypeRuntime ? runtime : new MutableTypeRuntime(runtime)
-
-        let index = 0
-        for (const arg of this.args) {
-          let type: Types.Type
-          if (arg instanceof MatchNamedArgument) {
-            type = enumCase.namedTypes.get(arg.nameRef.name)!
-          } else {
-            type = enumCase.positionalTypes[index]
-            index += 1
-          }
-
-          // not doing anything with the returned type - in theory it could be
-          // used to further decorate lhsExpr, but realistically that will be
-          // too complicated to store in relationships.ts
-          const result = arg.assumeNestedAssertionType(mutableRuntime, type, true)
-          if (result.isErr()) {
-            return err(result.error)
-          }
+        const result = arg.gimmeTrueStuffWith(runtime, undefined, type)
+        if (result.isErr()) {
+          return err(result.error)
         }
+        relationships.push(...result.value)
+      }
 
-        return [replaceType, mutableRuntime]
-      })
+      return relationships
     })
   }
+
+  // cannot infer anything in the 'false' case (TODO: or _at most_ the one
+  // matching case could be excluded, when 'Exclude' is implemented).
+  // gimmeFalseStuffWith(
+  //   runtime: TypeRuntime,
+  //   formula: RelationshipFormula,
+  // ): GetRuntimeResult<Relationship[]> {
+  //   return getChildType(this, lhsExpr, runtime)
+  //     .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
+  //     .map(([type]) => [{formula, type: 'instanceof', right: relationshipFormula.type(type)}])
+  // }
 
   toLisp() {
     let code = '.' + this.name
@@ -5044,20 +4901,39 @@ export class MatchLiteral extends MatchExpression {
     return this.literal.getAsTypeExpression()
   }
 
-  assumeMatchAssertionRuntime(
+  gimmeTrueStuffWith(
     runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    return this.defaultAssumeMatchAssertionRuntime(runtime, lhsExpr, assumeTrue)
+    formula: RelationshipFormula | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    if (!formula) {
+      return ok([])
+    }
+
+    return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
+      const relationships: Relationship[] = []
+      if (formula) {
+        const narrowType = Types.narrowTypeIs(lhsType, type)
+        relationships.push({formula, comparison: {operator: 'instanceof', rhs: narrowType}})
+      }
+
+      return relationships
+    })
   }
 
-  assumeNestedAssertionType(
+  gimmeFalseStuffWith(
     runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult {
-    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
+  ): GetRuntimeResult<Relationship[]> {
+    if (!formula) {
+      return ok([])
+    }
+
+    return this.getAsTypeExpression(runtime).map(type => {
+      const narrowType = Types.narrowTypeIsNot(lhsType, type)
+      return [{formula, comparison: {operator: 'instanceof', rhs: narrowType}}]
+    })
   }
 
   toLisp() {
@@ -5085,80 +4961,97 @@ export class MatchUnaryRange extends MatchExpression {
     return []
   }
 
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    if (this.start.value.isInt()) {
+  getTypeWithHint(hint: Types.Type): Types.Type {
+    if (!this.start.value.isFloat()) {
+      return Types.NeverType
+    }
+
+    // repeated in MatchBinaryRange
+    let hintIsInt: boolean
+    if (hint instanceof Types.OneOfType) {
+      // if one of the types is an int and *none* of the types are a float
+      hintIsInt =
+        hint.of.some(type => type.isInt()) && !hint.of.some(type => type.isFloat() && !type.isInt())
+    } else {
+      hintIsInt = hint.isInt()
+    }
+
+    if (hintIsInt) {
       switch (this.op) {
         case '=':
-          return ok(Types.intRange({min: this.start.value.value, max: this.start.value.value}))
+          return Types.int({min: this.start.value.value, max: this.start.value.value})
         case '>':
-          return ok(Types.intRange({min: this.start.value.value + 1}))
+          return Types.int({min: this.start.value.value + 1})
         case '>=':
-          return ok(Types.intRange({min: this.start.value.value}))
+          return Types.int({min: this.start.value.value})
         case '<':
-          return ok(Types.intRange({max: this.start.value.value - 1}))
+          return Types.int({max: this.start.value.value - 1})
         case '<=':
-          return ok(Types.intRange({max: this.start.value.value}))
+          return Types.int({max: this.start.value.value})
       }
     }
 
-    if (this.start.value.isFloat()) {
-      switch (this.op) {
-        case '=':
-          return ok(Types.floatRange({min: this.start.value.value, max: this.start.value.value}))
-        case '>':
-          return ok(Types.floatRange({min: [this.start.value.value]}))
-        case '>=':
-          return ok(Types.floatRange({min: this.start.value.value}))
-        case '<':
-          return ok(Types.floatRange({max: [this.start.value.value]}))
-        case '<=':
-          return ok(Types.floatRange({max: this.start.value.value}))
-      }
+    switch (this.op) {
+      case '=':
+        return Types.float({min: this.start.value.value, max: this.start.value.value})
+      case '>':
+        return Types.float({min: [this.start.value.value]})
+      case '>=':
+        return Types.float({min: this.start.value.value})
+      case '<':
+        return Types.float({max: [this.start.value.value]})
+      case '<=':
+        return Types.float({max: this.start.value.value})
     }
-
-    return ok(Types.NeverType)
   }
 
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
-    formula: RelationshipFormula,
+    formula: RelationshipFormula | undefined,
+    lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
+    if (!formula) {
+      return ok([])
+    }
+
+    const type = this.getTypeWithHint(lhsType)
     const rhs = this.start.relationshipFormula(runtime)
     if (!rhs) {
       return ok([])
     }
 
-    const type = this.op === '=' ? '==' : this.op
-    return ok([{formula, comparison: {type, rhs}}])
+    const operator = this.op === '=' ? '==' : this.op
+    const narrowType = Types.narrowTypeIs(lhsType, type)
+    return ok([
+      {formula, comparison: {operator: 'instanceof', rhs: narrowType}},
+      {formula, comparison: {operator, rhs}},
+    ])
   }
 
   gimmeFalseStuffWith(
     runtime: TypeRuntime,
-    formula: RelationshipFormula,
+    formula: RelationshipFormula | undefined,
+    lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
+    if (!formula) {
+      return ok([])
+    }
+
+    const type = this.getTypeWithHint(lhsType)
     const rhs = this.start.relationshipFormula(runtime)
     if (!rhs) {
       return ok([])
     }
 
-    const type = this.op === '=' ? '==' : this.op
-    return ok([{formula, comparison: {type: reverseComparison(type), rhs}}])
-  }
-
-  assumeMatchAssertionRuntime(
-    runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    return this.defaultAssumeMatchAssertionRuntime(runtime, lhsExpr, assumeTrue)
-  }
-
-  assumeNestedAssertionType(
-    runtime: TypeRuntime,
-    lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult {
-    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
+    const operator = this.op === '=' ? '==' : this.op
+    const narrowType = Types.narrowTypeIsNot(lhsType, type)
+    const relationships: Relationship[] = [
+      {formula, comparison: {operator: 'instanceof', rhs: narrowType}},
+    ]
+    if (narrowType.isFloat()) {
+      relationships.push({formula, comparison: {operator: invertComparison(operator), rhs}})
+    }
+    return ok(relationships)
   }
 
   toLisp() {
@@ -5191,52 +5084,199 @@ export class MatchBinaryRange extends MatchExpression {
     return []
   }
 
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    if (this.start.value.isInt() && this.stop.value.isInt()) {
+  getTypeWithHint(hint: Types.Type): Types.Type {
+    if (!this.start.value.isFloat() || !this.stop.value.isFloat()) {
+      return Types.NeverType
+    }
+
+    // repeated in MatchUnaryRange
+    let hintIsInt: boolean
+    if (hint instanceof Types.OneOfType) {
+      // if one of the types is an int and *none* of the types are a float
+      hintIsInt =
+        hint.of.some(type => type.isInt()) && !hint.of.some(type => type.isFloat() && !type.isInt())
+    } else {
+      hintIsInt = hint.isInt()
+    }
+
+    if (hintIsInt) {
       switch (this.op) {
         case '...':
-          return ok(Types.intRange({min: this.start.value.value, max: this.stop.value.value}))
+          return Types.intRange({min: this.start.value.value, max: this.stop.value.value})
         case '<..':
-          return ok(Types.intRange({min: this.start.value.value + 1, max: this.stop.value.value}))
+          return Types.intRange({min: this.start.value.value + 1, max: this.stop.value.value})
         case '..<':
-          return ok(Types.intRange({min: this.start.value.value, max: this.stop.value.value - 1}))
+          return Types.intRange({min: this.start.value.value, max: this.stop.value.value - 1})
         case '<.<':
-          return ok(
-            Types.intRange({min: this.start.value.value + 1, max: this.stop.value.value - 1}),
-          )
+          return Types.intRange({min: this.start.value.value + 1, max: this.stop.value.value - 1})
       }
     }
+
+    switch (this.op) {
+      case '...':
+        return Types.float({min: this.start.value.value, max: this.stop.value.value})
+      case '<..':
+        return Types.float({min: [this.start.value.value], max: this.stop.value.value})
+      case '..<':
+        return Types.float({min: this.start.value.value, max: [this.stop.value.value]})
+      case '<.<':
+        return Types.float({min: [this.start.value.value], max: [this.stop.value.value]})
+    }
+  }
+
+  gimmeTrueStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    if (!formula) {
+      return ok([])
+    }
+
+    const type = this.getTypeWithHint(lhsType)
+    const rhs = this.start.relationshipFormula(runtime)
+    if (!rhs) {
+      return ok([])
+    }
+
+    const narrowType = Types.narrowTypeIs(lhsType, type)
+    const relationships: Relationship[] = [
+      {formula, comparison: {operator: 'instanceof', rhs: narrowType}},
+    ]
 
     if (this.start.value.isFloat() && this.stop.value.isFloat()) {
-      switch (this.op) {
-        case '...':
-          return ok(Types.floatRange({min: this.start.value.value, max: this.stop.value.value}))
-        case '<..':
-          return ok(Types.floatRange({min: [this.start.value.value], max: this.stop.value.value}))
-        case '..<':
-          return ok(Types.floatRange({min: this.start.value.value, max: [this.stop.value.value]}))
-        case '<.<':
-          return ok(Types.floatRange({min: [this.start.value.value], max: [this.stop.value.value]}))
+      // if the lhs type is an Int, assign int ranges
+      if (type.isInt()) {
+        if (this.op === '...' || this.op === '..<') {
+          relationships.push({
+            formula,
+            comparison: {
+              operator: '>=',
+              rhs: relationshipFormula.int(Math.floor(this.start.value.value)),
+            },
+          })
+        } else {
+          relationships.push({
+            formula,
+            comparison: {
+              operator: '>=',
+              rhs: relationshipFormula.int(Math.floor(this.start.value.value + 1)),
+            },
+          })
+        }
+
+        if (this.op === '...' || this.op === '<..') {
+          relationships.push({
+            formula,
+            comparison: {
+              operator: '<=',
+              rhs: relationshipFormula.int(Math.floor(this.stop.value.value)),
+            },
+          })
+        } else {
+          relationships.push({
+            formula,
+            comparison: {
+              operator: '<=',
+              rhs: relationshipFormula.int(Math.floor(this.stop.value.value - 1)),
+            },
+          })
+        }
+      } else if (type.isFloat()) {
+        switch (this.op) {
+          case '...':
+            relationships.push({
+              formula,
+              comparison: {
+                operator: '>=',
+                rhs: relationshipFormula.float(this.start.value.value),
+              },
+            })
+            relationships.push({
+              formula,
+              comparison: {
+                operator: '<=',
+                rhs: relationshipFormula.float(this.stop.value.value),
+              },
+            })
+            break
+          case '<..':
+            relationships.push({
+              formula,
+              comparison: {
+                operator: '>',
+                rhs: relationshipFormula.float(this.start.value.value),
+              },
+            })
+            relationships.push({
+              formula,
+              comparison: {
+                operator: '<=',
+                rhs: relationshipFormula.float(this.stop.value.value),
+              },
+            })
+            break
+          case '..<':
+            relationships.push({
+              formula,
+              comparison: {
+                operator: '>=',
+                rhs: relationshipFormula.float(this.start.value.value),
+              },
+            })
+            relationships.push({
+              formula,
+              comparison: {
+                operator: '<',
+                rhs: relationshipFormula.float(this.stop.value.value),
+              },
+            })
+            break
+          case '<.<':
+            relationships.push({
+              formula,
+              comparison: {
+                operator: '>',
+                rhs: relationshipFormula.float(this.start.value.value),
+              },
+            })
+            relationships.push({
+              formula,
+              comparison: {
+                operator: '<',
+                rhs: relationshipFormula.float(this.stop.value.value),
+              },
+            })
+            break
+        }
       }
     }
 
-    return ok(Types.NeverType)
+    return ok(relationships)
   }
 
-  assumeMatchAssertionRuntime(
+  gimmeFalseStuffWith(
     runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    return this.defaultAssumeMatchAssertionRuntime(runtime, lhsExpr, assumeTrue)
-  }
-
-  assumeNestedAssertionType(
-    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult {
-    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
+  ): GetRuntimeResult<Relationship[]> {
+    if (!formula) {
+      return ok([])
+    }
+
+    const type = this.getTypeWithHint(lhsType)
+    const rhs = this.start.relationshipFormula(runtime)
+    if (!rhs) {
+      return ok([])
+    }
+
+    const narrowType = Types.narrowTypeIsNot(lhsType, type)
+    const relationships: Relationship[] = [
+      {formula, comparison: {operator: 'instanceof', rhs: narrowType}},
+    ]
+    // no more information available here (the number is either less than the
+    // minimum, or greater than the maximum)
+    return ok(relationships)
   }
 
   toLisp() {
@@ -5267,72 +5307,36 @@ export class MatchRegexLiteral extends MatchLiteral {
     return ok(Types.StringType.narrowRegex(this.literal.value.value))
   }
 
-  assumeMatchAssertionRuntime(
+  gimmeTrueStuffWith(
     runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    if (!assumeTrue) {
-      // (type: String | Int)
-      //      type !is /test/
-      // type => String | Int, no change
-      return ok(runtime)
-    }
-
-    return getChildType(this, lhsExpr, runtime)
-      .map(lhsType =>
-        this.getAsTypeExpression(runtime).map(rhsTypeAssertion =>
-          Types.narrowTypeIs(lhsType, rhsTypeAssertion),
-        ),
-      )
-      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
-      .map(([_lhsType, runtime]) => runtime)
-  }
-
-  assumeNestedAssertionType(
-    runtime: MutableTypeRuntime,
+    formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult {
-    if (!assumeTrue) {
-      // (type: String | Int)
-      //      type !is /test/
-      // type => String | Int, no change
-      return ok(lhsType)
+  ): GetRuntimeResult<Relationship[]> {
+    if (!formula && !this.literal.groups.size) {
+      return ok([])
     }
 
-    return this.getAsTypeExpression(runtime)
-      .map(rhsTypeAssertion =>
-        this._assumeMatchAndNestedAssertionType(
-          runtime,
-          undefined,
-          Types.narrowTypeIs(lhsType, rhsTypeAssertion),
-        ),
-      )
-      .map(([type, _runtime]) => type)
-  }
+    return this.getAsTypeExpression(runtime).map(type => {
+      const relationships: Relationship[] = []
+      if (formula) {
+        const narrowType = Types.narrowTypeIs(lhsType, type)
+        relationships.push({formula, comparison: {operator: 'instanceof', rhs: narrowType}})
+      }
 
-  private _assumeMatchAndNestedAssertionType(
-    runtime: TypeRuntime,
-    lhsExpr: Expression | undefined,
-    lhsType: Types.Type,
-  ): GetRuntimeResult<[Types.Type, TypeRuntime]> {
-    const nextRuntime = lhsExpr?.replaceWithType(runtime, lhsType) ?? ok(runtime)
-    if (!this.literal.groups.size) {
-      return nextRuntime.map(runtime => [lhsType, runtime])
-    }
-
-    return nextRuntime.map(runtime => {
-      const mutableRuntime =
-        runtime instanceof MutableTypeRuntime ? runtime : new MutableTypeRuntime(runtime)
+      if (!this.literal.groups.size) {
+        return relationships
+      }
 
       for (const [name, pattern] of this.literal.groups) {
         const regex = new RegExp(pattern, this.literal.flags)
         const type = Types.StringType.narrowRegex(regex)
-        mutableRuntime.addLocalType(name, type)
+        relationships.push({
+          formula: relationshipFormula.assign(name),
+          comparison: {operator: 'instanceof', rhs: type},
+        })
       }
 
-      return [lhsType, mutableRuntime]
+      return relationships
     })
   }
 }
@@ -5381,39 +5385,11 @@ export class MatchStringExpression extends MatchExpression {
     )
   }
 
-  assumeMatchAssertionRuntime(
+  gimmeTrueStuffWith(
     runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    if (!assumeTrue) {
-      // (type: String | Int)
-      //      type !is "test" <> foo
-      // type => no inference - in fact, using the type information from
-      // getAsTypeExpression would be faulty, because it would be asserting
-      //      type !is String(length: >4)
-      // which is not at all the same
-      return ok(runtime)
-    }
-
-    return getChildType(this, lhsExpr, runtime)
-      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
-      .map(([_lhsType, runtime]) => runtime)
-  }
-
-  assumeNestedAssertionType(
-    runtime: MutableTypeRuntime,
+    formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult {
-    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
-  }
-
-  private _assumeMatchAndNestedAssertionType(
-    runtime: TypeRuntime,
-    lhsExpr: Expression | undefined,
-    lhsType: Types.Type,
-  ): GetRuntimeResult<[Types.Type, TypeRuntime]> {
+  ): GetRuntimeResult<Relationship[]> {
     let stringType: Types.Type | undefined
     let stringTypeMaxLength: number | undefined = undefined
     if (lhsType instanceof Types.OneOfType) {
@@ -5443,7 +5419,7 @@ export class MatchStringExpression extends MatchExpression {
       return err(
         new RuntimeError(
           this,
-          `Invalid match expression - '${lhsExpr}: ${lhsType}' does not match string expression '${this}'`,
+          `Invalid match expression - '${this}: ${lhsType}' does not match string expression '${this}'`,
         ),
       )
     }
@@ -5453,7 +5429,7 @@ export class MatchStringExpression extends MatchExpression {
       return err(
         new RuntimeError(
           this,
-          `Invalid match expression - '${lhsExpr}: ${lhsType}' always contains less characters than '${this}'`,
+          `Invalid match expression - '${this}: ${lhsType}' always contains less characters than '${this}'`,
         ),
       )
     }
@@ -5466,31 +5442,49 @@ export class MatchStringExpression extends MatchExpression {
       regex: [],
     })
 
-    const nextRuntime = lhsExpr?.replaceWithType(runtime, replaceType) ?? ok(runtime)
-    return nextRuntime.map(runtime => {
-      const mutableRuntime =
-        runtime instanceof MutableTypeRuntime ? runtime : new MutableTypeRuntime(runtime)
-
-      // all the assigned matches will have this length. They could be empty strings, but
-      // at most the will have this many characters
-      const remainingMaxLength =
-        stringTypeMaxLength === undefined ? undefined : stringTypeMaxLength - minMatchLength
-      const type = Types.StringType.narrowString({
-        length: {
-          min: 0,
-          max: remainingMaxLength,
-        },
-        regex: [],
+    const relationships: Relationship[] = []
+    if (formula) {
+      relationships.push({
+        formula,
+        comparison: {operator: 'instanceof', rhs: replaceType},
       })
+    }
 
-      for (const arg of this.args) {
-        const result = arg.assumeNestedAssertionType(mutableRuntime, type, true)
-        if (result.isErr()) {
-          return err(result.error)
-        }
+    // all the assigned matches will have this length. They could be empty strings, but
+    // at most they will have `remainingMaxLength` many characters
+    const remainingMaxLength =
+      stringTypeMaxLength === undefined ? undefined : stringTypeMaxLength - minMatchLength
+    const type = Types.StringType.narrowString({
+      length: {
+        min: 0,
+        max: remainingMaxLength,
+      },
+      regex: [],
+    })
+
+    for (const arg of this.args) {
+      const result = arg.gimmeTrueStuffWith(runtime, undefined, type)
+      if (result.isErr()) {
+        return err(result.error)
       }
+      relationships.push(...result.value)
+    }
 
-      return [replaceType, mutableRuntime]
+    return ok(relationships)
+  }
+
+  gimmeFalseStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    if (!formula) {
+      return ok([])
+    }
+
+    return this.getAsTypeExpression(runtime).map(type => {
+      const narrowType = Types.narrowTypeIsNot(lhsType, type)
+      return [{formula, comparison: {operator: 'instanceof', rhs: narrowType}}]
     })
   }
 
@@ -5504,104 +5498,6 @@ export class MatchStringExpression extends MatchExpression {
     const args = this.args.map(arg => arg.toCode())
 
     return args.join(' <> ')
-  }
-}
-
-/**
- * Checks for the range of a number - 'foo' will be an int or float.
- * There actually is no way to use 'is' to match a *range value*, ie
- *     let
- *       foo = 0...10 -- type: IntRange
- *                    -- value: IntRange([0, false], [10, false])
- *     in
- *       foo is ?  -- yeah I got nothing for ya
- *
- * TODO: foo is IntRange I guess?
- *
- *                      [value, inclusive?, float?]
- *                         min                   max
- * foo is =0         [0, true, false]     [0, true, false]
- * foo is <10.0         undefined         [10, false, true]
- * foo is >10       [10, false, false]        undefined
- * foo is 0..<1      [0, true, false]     [1, false, false]
- * foo is 0...0.5    [0, true, false]     [0.5, true, true]
- */
-export class MatchRangeExpression extends MatchExpression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    // min value, whether it's inclusive, and whether it's a float
-    readonly min: [number, boolean, boolean] | undefined,
-    // max value, whether it's inclusive, and whether it's a float
-    readonly max: [number, boolean, boolean] | undefined,
-  ) {
-    super(range, precedingComments)
-  }
-
-  matchAssignReferences() {
-    return []
-  }
-
-  /**
-   * TODO: this logic of [number, boolean] should either be adopted by Narrowed
-   * types, or it should be moved into types.ts so that this logic isn't buried here.
-   */
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    // I don't have to explain myself
-    if ((this.min?.[2] ?? false) || (this.max?.[2] ?? false)) {
-      // narrowed types use number | [number], where number is inclusive and
-      // [number] is exclusive. If you know why I chose that convention, then
-      // you know you some high school math!
-      const narrowMin: number | [number] | undefined = this.min
-        ? this.min[1]
-          ? [this.min[0]] // exclusive
-          : this.min[0] // inclusive
-        : undefined // open
-      const narrowMax: number | [number] | undefined = this.max
-        ? this.max[1]
-          ? [this.max[0]] // exclusive
-          : this.max[0] // inclusive
-        : undefined // open
-      return ok(Types.FloatType.narrow(narrowMin, narrowMax))
-    }
-
-    // narrowed integers don't use the exclusive [number] syntax, because
-    // >0 is equivalent to >=1, <0 is equivalent to <=-1
-    const narrowMin: number | undefined = this.min
-      ? this.min[1]
-        ? this.min[0] + 1 // "exclusive"
-        : this.min[0] // inclusive
-      : undefined // open
-    const narrowMax: number | undefined = this.max
-      ? this.max[1]
-        ? this.max[0] - 1 // "exclusive"
-        : this.max[0] // inclusive
-      : undefined // open
-    return ok(Types.IntType.narrow(narrowMin, narrowMax))
-  }
-
-  assumeMatchAssertionRuntime(
-    runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    return this.defaultAssumeMatchAssertionRuntime(runtime, lhsExpr, assumeTrue)
-  }
-
-  assumeNestedAssertionType(
-    runtime: TypeRuntime,
-    lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult {
-    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
-  }
-
-  toLisp() {
-    return '<.TODO.>'
-  }
-
-  toCode() {
-    return '<.TODO.>'
   }
 }
 
@@ -5642,36 +5538,11 @@ export class MatchArrayExpression extends MatchExpression {
     return [minLength, maxLength]
   }
 
-  assumeMatchAssertionRuntime(
+  gimmeTrueStuffWith(
     runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
-    if (!assumeTrue) {
-      // (type: Array(Int) | Int)
-      //      type !is [a]
-      // type => Int | Array(Int, length: =0) | Array(Int, length >=1)
-      return ok(runtime)
-    }
-
-    return getChildType(this, lhsExpr, runtime)
-      .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
-      .map(([_lhsType, runtime]) => runtime)
-  }
-
-  assumeNestedAssertionType(
-    runtime: MutableTypeRuntime,
+    formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
-    assumeTrue: boolean,
-  ): GetTypeResult {
-    return this.defaultAssumeNestedAssertionType(runtime, lhsType, assumeTrue)
-  }
-
-  private _assumeMatchAndNestedAssertionType(
-    runtime: TypeRuntime,
-    lhsExpr: Expression | undefined,
-    lhsType: Types.Type,
-  ): GetRuntimeResult<[Types.Type, TypeRuntime]> {
+  ): GetRuntimeResult<Relationship[]> {
     let arrayType: Types.ArrayType | undefined
     if (lhsType instanceof Types.OneOfType) {
       for (const type of lhsType.of) {
@@ -5693,7 +5564,7 @@ export class MatchArrayExpression extends MatchExpression {
       return err(
         new RuntimeError(
           this,
-          `Invalid match expression - '${lhsExpr}: ${lhsType}' does not match array expression '${this}'`,
+          `Invalid match expression - '${this}: ${lhsType}' does not match array expression '${this}'`,
         ),
       )
     }
@@ -5703,7 +5574,7 @@ export class MatchArrayExpression extends MatchExpression {
       return err(
         new RuntimeError(
           this,
-          `Invalid match expression - '${lhsExpr}: ${lhsType}' always contains more values than '${this}'`,
+          `Invalid match expression - '${this}: ${lhsType}' always contains more values than '${this}'`,
         ),
       )
     }
@@ -5715,44 +5586,66 @@ export class MatchArrayExpression extends MatchExpression {
       return err(
         new RuntimeError(
           this,
-          `Invalid match expression - '${lhsExpr}: ${lhsType}' always contains less values than '${this}'`,
+          `Invalid match expression - '${this}: ${lhsType}' always contains less values than '${this}'`,
         ),
       )
     }
 
-    const replaceType = new Types.ArrayType(arrayType.of, {
-      min: minMatchLength,
-      max: maxMatchLength,
-    })
+    const relationships: Relationship[] = []
+    if (formula) {
+      const replaceType = new Types.ArrayType(arrayType.of, {
+        min: minMatchLength,
+        max: maxMatchLength,
+      })
+      relationships.push({
+        formula,
+        comparison: {operator: 'instanceof', rhs: replaceType},
+      })
+    }
 
-    const nextRuntime = lhsExpr?.replaceWithType(runtime, replaceType) ?? ok(runtime)
-    return nextRuntime.map(runtime => {
-      const mutableRuntime =
-        runtime instanceof MutableTypeRuntime ? runtime : new MutableTypeRuntime(runtime)
-
-      // this code already supports [a, b, ...c, d, e]
-      // a,b,d,e would contribute to minMatchLength, and so the min/max
-      // calculation is correct
-      for (const arg of this.args) {
-        if (arg instanceof MatchAssignRemainingExpression) {
-          const min = Math.max(0, arrayType.narrowedLength.min - minMatchLength)
-          const max =
-            arrayType.narrowedLength.max === undefined
-              ? undefined
-              : Math.max(0, arrayType.narrowedLength.max - minMatchLength)
-          mutableRuntime.addLocalType(
-            arg.reference.name,
-            new Types.ArrayType(arrayType.of, {min, max}),
-          )
-        } else {
-          const result = arg.assumeNestedAssertionType(mutableRuntime, arrayType.of, true)
-          if (result.isErr()) {
-            return err(result.error)
-          }
-        }
+    // this code already supports [a, b, ...c, d, e]
+    // a,b,d,e would contribute to minMatchLength, and so the min/max
+    // calculation is correct
+    for (const arg of this.args) {
+      let argType: Types.Type
+      if (arg instanceof MatchAssignRemainingExpression) {
+        const min = Math.max(0, arrayType.narrowedLength.min - minMatchLength)
+        const max =
+          arrayType.narrowedLength.max === undefined
+            ? undefined
+            : Math.max(0, arrayType.narrowedLength.max - minMatchLength)
+        argType = new Types.ArrayType(arrayType.of, {min, max})
+      } else {
+        argType = arrayType.of
       }
 
-      return [replaceType, mutableRuntime]
+      const result = arg.gimmeTrueStuffWith(runtime, undefined, argType)
+      if (result.isErr()) {
+        return err(result.error)
+      }
+      relationships.push(...result.value)
+    }
+
+    return ok(relationships)
+  }
+
+  gimmeFalseStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    if (!formula) {
+      return ok([])
+    }
+
+    return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
+      const relationships: Relationship[] = []
+      if (formula) {
+        const narrowType = Types.narrowTypeIsNot(lhsType, type)
+        relationships.push({formula, comparison: {operator: 'instanceof', rhs: narrowType}})
+      }
+
+      return relationships
     })
   }
 
@@ -5783,20 +5676,20 @@ export class CaseExpression extends MatchExpression {
     return this.matches.flatMap(match => match.matchAssignReferences())
   }
 
-  assumeMatchAssertionRuntime(
+  gimmeTrueStuffWith(
     runtime: TypeRuntime,
-    lhsExpr: Expression,
-    assumeTrue: boolean,
-  ): GetRuntimeResult<TypeRuntime> {
+    formula: RelationshipFormula | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
     return err(new RuntimeError(this, 'TODO'))
   }
 
-  assumeNestedAssertionType(
-    _runtime: MutableTypeRuntime,
+  gimmeFalseStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
-    _assumeTrue: boolean,
-  ): GetTypeResult {
-    return ok(lhsType)
+  ): GetRuntimeResult<Relationship[]> {
+    return err(new RuntimeError(this, 'TODO'))
   }
 
   toLisp() {

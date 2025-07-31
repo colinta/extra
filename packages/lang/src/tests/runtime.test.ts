@@ -21,7 +21,7 @@ describe('relationshipsThatReference', () => {
           type: 'reference',
         },
         comparison: {
-          type: '==',
+          operator: '==',
           rhs: {
             id: bId,
             name: 'b',
@@ -38,7 +38,7 @@ describe('relationshipsThatReference', () => {
           type: 'reference',
         },
         comparison: {
-          type: '==',
+          operator: '==',
           rhs: {
             id: aId,
             name: 'a',

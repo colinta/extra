@@ -5,12 +5,12 @@ import {type NarrowedInt, type NarrowedFloat, type NarrowedString} from './narro
 
 export type RelationshipComparisonSymbol = '==' | '!=' | '>' | '>=' | '<' | '<='
 export type RelationshipMathComparison = {
-  type: RelationshipComparisonSymbol
+  operator: RelationshipComparisonSymbol
   rhs: RelationshipFormula
 }
 export type RelationshipTypeSymbol = 'instanceof' | '!instanceof'
 export type RelationshipTypeComparison = {
-  type: RelationshipTypeSymbol
+  operator: RelationshipTypeSymbol
   rhs: Types.Type
 }
 
@@ -51,8 +51,10 @@ export type RelationshipOperation =
   | RelationshipArrayConcat
 
 export type RelationshipReference = {type: 'reference'; name: string; id: string}
+export type RelationshipReferenceAssign = {type: 'assign'; name: string}
 export type RelationshipAssign =
   | RelationshipReference
+  | RelationshipReferenceAssign
   | {type: 'array-access'; of: RelationshipFormula; index: RelationshipFormula}
   | {type: 'nullable-array-access'; of: RelationshipFormula; index: RelationshipFormula}
   | {type: 'property-access'; of: RelationshipFormula; name: string}
@@ -106,6 +108,9 @@ export const relationshipFormula = {
   reference(name: string, id: string): RelationshipReference {
     return {type: 'reference', name, id}
   },
+  assign(name: string): RelationshipReferenceAssign {
+    return {type: 'assign', name}
+  },
   /**
    * foo[bar]
    */
@@ -150,19 +155,19 @@ export const relationshipFormula = {
   },
   toString(rel: RelationshipFormula | Relationship): string {
     if (isRelationship(rel)) {
-      switch (rel.comparison.type) {
+      switch (rel.comparison.operator) {
         case 'instanceof':
         case '!instanceof': {
           let op: string
-          if (rel.comparison.type === 'instanceof') {
+          if (rel.comparison.operator === 'instanceof') {
             op = 'is'
           } else {
             op = '!is'
           }
-          return `${this.toString(rel.formula)} ${op} ${rel.comparison.type}`
+          return `${this.toString(rel.formula)} ${op} ${rel.comparison.rhs}`
         }
         default: {
-          let op: string = rel.comparison.type
+          let op: string = rel.comparison.operator
           return `${this.toString(rel.formula)} ${op} ${this.toString(rel.comparison.rhs)}`
         }
       }
@@ -183,7 +188,7 @@ export const relationshipFormula = {
     if (rel.type === 'array-concat') {
       return `${this.toString(rel.lhs)} ++ ${this.toString(rel.rhs)}`
     }
-    if (rel.type === 'reference') {
+    if (rel.type === 'reference' || rel.type === 'assign') {
       return rel.name
     }
     if (rel.type === 'array-access') {
@@ -211,10 +216,18 @@ function toS(rel: RelationshipFormula | Relationship): string {
   return relationshipFormula.toString(rel)
 }
 
-export function assignRelationshipsToRuntime(runtime: TypeRuntime, relationships: Relationship[]) {
+export function assignRelationshipsToRuntime(
+  runtime: TypeRuntime,
+  relationships: Relationship[],
+  asserting: boolean,
+) {
+  if (!relationships.length) {
+    return ok(runtime)
+  }
+
   let nextRuntime = new MutableTypeRuntime(runtime)
   for (const relationship of relationships) {
-    assignNextRuntime(nextRuntime, relationship)
+    assignNextRuntime(nextRuntime, relationship, asserting)
   }
 
   return ok(nextRuntime)
@@ -231,7 +244,11 @@ export function assignRelationshipsToRuntime(runtime: TypeRuntime, relationships
  *
  *     nextRuntime => {x: literal(5)}
  */
-export function assignNextRuntime(nextRuntime: MutableTypeRuntime, relationship: Relationship) {
+export function assignNextRuntime(
+  nextRuntime: MutableTypeRuntime,
+  relationship: Relationship,
+  asserting: boolean,
+) {
   if (isTypeRelationship(relationship)) {
     assignNextTypeRuntime(nextRuntime, relationship)
     return
@@ -240,7 +257,7 @@ export function assignNextRuntime(nextRuntime: MutableTypeRuntime, relationship:
   if (isMathRelationship(relationship)) {
     let {
       formula: lhs,
-      comparison: {type: lhsComparison, rhs},
+      comparison: {operator: lhsComparison, rhs},
     } = relationship
     lhs = normalize(lhs)
     rhs = normalize(rhs)
@@ -255,9 +272,23 @@ export function assignNextRuntime(nextRuntime: MutableTypeRuntime, relationship:
       if (prevType instanceof Types.OneOfType) {
         const nextTypes: Types.Type[] = []
         for (const oneOfType of prevType.of) {
-          nextTypes.push(mergeAssignableType(oneOfType, comparison, formula))
+          const mergedType = mergeAssignableType(oneOfType, comparison, formula)
+          if (mergedType === Types.NeverType) {
+            if (!asserting) {
+              console.log(`merging ${oneOfType}: ${comparison} ${toS(formula)} => ?`)
+              nextTypes.push(oneOfType)
+            }
+          } else {
+            console.log(`merging ${oneOfType}: ${comparison} ${toS(formula)} => ${mergedType}`)
+            nextTypes.push(mergedType)
+          }
         }
-        nextType = Types.oneOf(nextTypes)
+
+        if (nextTypes.every((type, index) => type === prevType.of[index])) {
+          nextType = prevType
+        } else {
+          nextType = Types.oneOf(nextTypes)
+        }
       } else {
         nextType = mergeAssignableType(prevType, comparison, formula)
       }
@@ -275,31 +306,130 @@ export function assignNextRuntime(nextRuntime: MutableTypeRuntime, relationship:
 
 function assignNextTypeRuntime(
   nextRuntime: MutableTypeRuntime,
-  {formula, comparison: {type, rhs}}: TypeRelationship,
+  {formula, comparison: {rhs}}: TypeRelationship,
 ) {
   if (!isAssign(formula)) {
     return
   }
 
-  const prevType = runtimeLookup(nextRuntime, formula)
-  if (!prevType) {
-    return
-  }
-
-  let nextType: Types.Type
-  if (type === 'instanceof') {
-    nextType = Types.narrowTypeIs(prevType, rhs)
-  } else if (type === '!instanceof') {
-    nextType = Types.narrowTypeIsNot(prevType, rhs)
-  } else {
-    nextType = Types.NeverType
-  }
-
-  if (nextType !== prevType) {
-    replaceType(nextRuntime, formula, nextType)
-  }
+  // I moved the 'narrowTypeIs' calculation to the call site that creates the
+  // comparison: {operator: 'instanceof'}, because the Type was already
+  // calculated there. So this is no longer needed... probably.
+  // TODO: remove this comment:
+  //
+  // const prevType = runtimeLookup(nextRuntime, formula)
+  // if (!prevType) {
+  //   return
+  // }
+  // let nextType: Types.Type
+  // if (type === 'instanceof') {
+  //   nextType = Types.narrowTypeIs(prevType, rhs)
+  // } else if (type === '!instanceof') {
+  //   nextType = Types.narrowTypeIsNot(prevType, rhs)
+  // } else {
+  //   nextType = Types.NeverType
+  // }
+  // if (nextType !== prevType) {
+  //   replaceType(nextRuntime, formula, nextType)
+  // }
+  replaceType(nextRuntime, formula, rhs)
 
   return
+}
+
+/**
+ * Return new relationships that are an OR combination of the two relationships.
+ *
+ * Two? This isn't guaranteed from the call site, but *should* be the case.
+ */
+export function combineOrRelationships(relationships: Relationship[]): Relationship[] {
+  if (relationships.length === 0) {
+    return []
+  }
+
+  if (relationships.length === 1) {
+    return [relationships[0]]
+  }
+
+  if (relationships.length > 2) {
+    // We have a bunch of relationships on the same thing; this happens often,
+    // for instance `foo > 0 or foo < 0` will have the relationships:
+    //     foo instanceof Int(>=1)
+    //     foo > 0
+    //     foo instanceof Int(<=1)
+    //     foo < 1
+    // We combine every permutation (N**2, eesh).
+    if (relationships.length > 8) {
+      throw 'Wow that is a lot of permutations, are we sure about this?'
+    }
+
+    const combined: Relationship[] = []
+    for (let i = 0; i < relationships.length; i++) {
+      for (let j = i + 1; j < relationships.length; j++) {
+        combined.push(...combineOrRelationships([relationships[i], relationships[j]]))
+      }
+    }
+
+    return combined
+  }
+
+  const [lhs, rhs] = relationships
+  if (!isEqualFormula(lhs.formula, rhs.formula)) {
+    return []
+  }
+
+  if (isTypeRelationship(lhs) && isTypeRelationship(rhs)) {
+    if (lhs.comparison.operator === 'instanceof' && rhs.comparison.operator === 'instanceof') {
+      return [
+        {
+          formula: lhs.formula,
+          comparison: {
+            operator: 'instanceof',
+            rhs: Types.compatibleWithBothTypes(lhs.comparison.rhs, rhs.comparison.rhs),
+          },
+        },
+      ]
+    } else if (
+      lhs.comparison.operator === '!instanceof' &&
+      rhs.comparison.operator === '!instanceof'
+    ) {
+      // yeah I don't *think* there is anything to do here... unless
+      // the types are *the same type*. Or overlap? oh yeah if they overlap,
+      // like
+      //     foo: Int
+      //     foo is Int(<=10) or foo is Int(<=9)
+      //     --> foo: Int(<=9)
+      // TODO: find the overlap of the two types in combineOrRelationships
+    }
+  } else if (isMathRelationship(lhs) && isMathRelationship(rhs)) {
+    const firstRhs = lhs.comparison.rhs
+    const secondRhs = rhs.comparison.rhs
+    if (!isEqualFormula(firstRhs, secondRhs)) {
+      return []
+    }
+
+    if (relationshipsAreGt(relationships)) {
+      return [{formula: lhs.formula, comparison: {operator: '>=', rhs: lhs.comparison.rhs}}]
+    }
+
+    if (relationshipsAreGte(relationships)) {
+      return [{formula: lhs.formula, comparison: {operator: '>=', rhs: lhs.comparison.rhs}}]
+    }
+
+    if (relationshipsAreLt(relationships)) {
+      return [{formula: lhs.formula, comparison: {operator: '<=', rhs: lhs.comparison.rhs}}]
+    }
+
+    if (relationshipsAreLte(relationships)) {
+      return [{formula: lhs.formula, comparison: {operator: '<=', rhs: lhs.comparison.rhs}}]
+    }
+
+    if (relationshipsAreNe(relationships)) {
+      return [{formula: lhs.formula, comparison: {operator: '!=', rhs: lhs.comparison.rhs}}]
+    }
+  }
+
+  return []
 }
 
 /**
@@ -414,6 +544,10 @@ function mergeAssignableType(
     return prevType
   }
 
+  if (prevType === Types.NeverType) {
+    return Types.NeverType
+  }
+
   if (prevType.isBoolean()) {
     return mergeAssignableTypeBoolean(prevType, comparison, formula)
   }
@@ -427,11 +561,17 @@ function mergeAssignableType(
   }
 
   if (prevType.isString()) {
+    console.log('=========== relationship.ts at line 564 ===========')
+    console.log({prevType, comparison, formula})
     return mergeAssignableTypeString(prevType, comparison, formula)
   }
 
   if (prevType.isNull()) {
     return mergeAssignableTypeNull(prevType, comparison, formula)
+  }
+
+  if (prevType.isRange()) {
+    return mergeAssignableTypeRange(prevType, comparison, formula)
   }
 
   throw `TODO - do something with ${prevType} in mergeAssignableType (or ignore?)`
@@ -556,6 +696,21 @@ function mergeAssignableTypeBoolean(
     case '>=':
       return Types.NeverType
   }
+}
+
+function mergeAssignableTypeRange(
+  prevType: Types.MetaIntRangeType | Types.MetaFloatRangeType,
+  comparison: RelationshipComparisonSymbol,
+  literal: RelationshipLiteral,
+): Types.Type {
+  const numberType = prevType.toNumberType()
+  const mergedType = mergeAssignableType(numberType, comparison, literal)
+  if (mergedType instanceof Types.MetaIntType || mergedType instanceof Types.MetaFloatType) {
+    // if the merged type is a MetaIntType or MetaFloatType, we can convert it back to a range
+    return Types.RangeType.fromNumberType(mergedType)
+  }
+
+  return Types.NeverType
 }
 
 /**
@@ -978,7 +1133,7 @@ function _relationshipDeducer(
   const newRelationships = simplifyRelationships({
     formula: lhs,
     comparison: {
-      type: lhsComparison,
+      operator: lhsComparison,
       rhs: rhs,
     },
   })
@@ -1012,7 +1167,7 @@ function _relationshipDeducer(
     if (isAssign(newRelationship.formula)) {
       mutableRuntime.addRelationshipFormula(
         newRelationship.formula,
-        newRelationship.comparison.type,
+        newRelationship.comparison.operator,
         newRelationship.comparison.rhs,
       )
     }
@@ -1020,7 +1175,7 @@ function _relationshipDeducer(
 
   for (const {
     formula,
-    comparison: {type, rhs},
+    comparison: {operator: type, rhs},
   } of nextRelationships) {
     _relationshipDeducer(mutableRuntime, formula, type, rhs, visited)
   }
@@ -1050,7 +1205,7 @@ function handleRelationship(
     throw `handleRelationship() - unexpected: ${assertRef1.id} !== ${assertRef2.id}`
   }
 
-  if (prevRelationship.comparison.type === '==') {
+  if (prevRelationship.comparison.operator === '==') {
     //|
     //|  a == b
     //|  b ? c
@@ -1058,7 +1213,7 @@ function handleRelationship(
     const updatedRelationships = simplifyRelationships({
       formula: prevRelationship.comparison.rhs,
       comparison: {
-        type: newRelationship.comparison.type,
+        operator: newRelationship.comparison.operator,
         rhs: newRelationship.comparison.rhs,
       },
     })
@@ -1070,7 +1225,7 @@ function handleRelationship(
 
       const nextType = mergeAssignableType(
         prevType,
-        relationship.comparison.type,
+        relationship.comparison.operator,
         relationship.comparison.rhs,
       )
       if (nextType !== prevType) {
@@ -1079,35 +1234,37 @@ function handleRelationship(
     }
 
     return updatedRelationships
-  } else if (newRelationship.comparison.type === '==') {
+  } else if (newRelationship.comparison.operator === '==') {
     // type needs to be "turned around" because prevRelationship.formula
     // is on the left of prevRelationship.symbol, and prevRelationship.formula
     // equals newRelationship.formula
-    let type: RelationshipComparisonSymbol = reverseComparison(prevRelationship.comparison.type)
+    let type: RelationshipComparisonSymbol = reverseComparison(prevRelationship.comparison.operator)
     return handleComparisonRelationship(mutableRuntime, prevRelationship, newRelationship, type)
   } else if (
-    (prevRelationship.comparison.type === '<' || prevRelationship.comparison.type === '<=') &&
-    (newRelationship.comparison.type === '>' || newRelationship.comparison.type === '>=')
+    (prevRelationship.comparison.operator === '<' ||
+      prevRelationship.comparison.operator === '<=') &&
+    (newRelationship.comparison.operator === '>' || newRelationship.comparison.operator === '>=')
   ) {
     //|
     //|  b < a  ,  b <= a  =>  a > b  ,  a >= b  =>  a > c  ,  a >= c
     //|  b > c  ,  b >= c      b > c  ,  b >= c
     //|
     const type =
-      prevRelationship.comparison.type === '<=' && newRelationship.comparison.type === '>='
+      prevRelationship.comparison.operator === '<=' && newRelationship.comparison.operator === '>='
         ? '>='
         : '>'
     return handleComparisonRelationship(mutableRuntime, prevRelationship, newRelationship, type)
   } else if (
-    (prevRelationship.comparison.type === '>' || prevRelationship.comparison.type === '>=') &&
-    (newRelationship.comparison.type === '<' || newRelationship.comparison.type === '<=')
+    (prevRelationship.comparison.operator === '>' ||
+      prevRelationship.comparison.operator === '>=') &&
+    (newRelationship.comparison.operator === '<' || newRelationship.comparison.operator === '<=')
   ) {
     //|
     //|  b > a  ,  b >= a  =>  a < b  ,  a <= b  =>  a < c  ,  a <= c
     //|  b < c  ,  b <= c      b < c  ,  b <= c
     //|
     const type =
-      prevRelationship.comparison.type === '>=' && newRelationship.comparison.type === '<='
+      prevRelationship.comparison.operator === '>=' && newRelationship.comparison.operator === '<='
         ? '<='
         : '<'
     return handleComparisonRelationship(mutableRuntime, prevRelationship, newRelationship, type)
@@ -1124,7 +1281,7 @@ function handleComparisonRelationship(
 ) {
   const updatedRelationships = simplifyRelationships({
     formula: prevRelationship.comparison.rhs,
-    comparison: {type, rhs: newRelationship.comparison.rhs},
+    comparison: {operator: type, rhs: newRelationship.comparison.rhs},
   })
   for (const relationship of updatedRelationships) {
     const prevType = runtimeLookup(mutableRuntime, relationship.formula)
@@ -1134,7 +1291,7 @@ function handleComparisonRelationship(
 
     const nextType = mergeAssignableType(
       prevType,
-      relationship.comparison.type,
+      relationship.comparison.operator,
       relationship.comparison.rhs,
     )
     if (nextType !== prevType) {
@@ -1144,7 +1301,7 @@ function handleComparisonRelationship(
     if (isAssign(relationship.formula)) {
       mutableRuntime.addRelationshipFormula(
         relationship.formula,
-        relationship.comparison.type,
+        relationship.comparison.operator,
         relationship.comparison.rhs,
       )
     }
@@ -1198,7 +1355,11 @@ function replaceType(
     return replaceType(mutableRuntime, assignable.of, nextAssignableType.get())
   }
 
-  return mutableRuntime.replaceTypeById(assignable.id, nextType)
+  if ('id' in assignable) {
+    return mutableRuntime.replaceTypeById(assignable.id, nextType)
+  } else {
+    return mutableRuntime.addLocalType(assignable.name, nextType)
+  }
 }
 
 /**
@@ -1216,7 +1377,7 @@ export function simplifyRelationships(relationship: MathRelationship): AssignedR
   const rhsRelationships = _simplifyRelationships({
     formula: relationship.comparison.rhs,
     comparison: {
-      type: reverseComparison(relationship.comparison.type),
+      operator: reverseComparison(relationship.comparison.operator),
       rhs: relationship.formula,
     },
   })
@@ -1226,17 +1387,17 @@ export function simplifyRelationships(relationship: MathRelationship): AssignedR
 function _simplifyRelationships(relationship: MathRelationship): AssignedRelationship[] {
   const {
     formula: formula,
-    comparison: {type: symbol, rhs: rhsFormula},
+    comparison: {operator: symbol, rhs: rhsFormula},
   } = relationship
   if (isAssign(formula)) {
-    return [{formula, comparison: {type: symbol, rhs: normalize(rhsFormula)}}]
+    return [{formula, comparison: {operator: symbol, rhs: normalize(rhsFormula)}}]
   }
 
   if (isNegate(formula)) {
     return _simplifyRelationships({
       formula: formula.arg,
       comparison: {
-        type: reverseComparison(symbol),
+        operator: reverseComparison(symbol),
         rhs: normalize(relationshipFormula.negate(rhsFormula)),
       },
     })
@@ -1246,14 +1407,14 @@ function _simplifyRelationships(relationship: MathRelationship): AssignedRelatio
     const tryLhs = _simplifyRelationships({
       formula: formula.lhs,
       comparison: {
-        type: symbol,
+        operator: symbol,
         rhs: normalizeAddition(rhsFormula, relationshipFormula.negate(formula.rhs)),
       },
     })
     const tryRhs = _simplifyRelationships({
       formula: formula.rhs,
       comparison: {
-        type: symbol,
+        operator: symbol,
         rhs: normalizeAddition(rhsFormula, relationshipFormula.negate(formula.lhs)),
       },
     })
@@ -1341,6 +1502,67 @@ function normalizeAddition(
   return relationshipFormula.addition(lhs, rhs)
 }
 
+function addNumerics(lhs: RelationshipNumeric, rhs: RelationshipNumeric) {
+  if (isInt(lhs) && isInt(rhs)) {
+    return relationshipFormula.int(lhs.value + rhs.value)
+  }
+
+  return relationshipFormula.float(lhs.value + rhs.value)
+}
+
+function relationshipsAreGt(relationships: Relationship[]) {
+  return relationships.every(r => relationshipIsGt(r))
+}
+
+function relationshipsAreGte(relationships: Relationship[]) {
+  if (relationships.every(relationshipIsGte)) {
+    return true
+  }
+
+  return (
+    relationships.some(r => relationshipIsGt(r) || relationshipIsGte(r)) &&
+    relationships.some(relationshipIsEq)
+  )
+}
+
+function relationshipsAreLt(relationships: Relationship[]) {
+  return relationships.every(r => relationshipIsLt(r))
+}
+
+function relationshipsAreLte(relationships: Relationship[]) {
+  if (relationships.every(relationshipIsLte)) {
+    return true
+  }
+
+  return (
+    relationships.some(r => relationshipIsLt(r) || relationshipIsLte(r)) &&
+    relationships.some(relationshipIsEq)
+  )
+}
+
+function relationshipsAreNe(relationships: Relationship[]) {
+  return relationships.some(relationshipIsLt) && relationships.some(relationshipIsGt)
+}
+
+function relationshipIsEq(relationship: Relationship) {
+  return relationship.comparison.operator === '=='
+}
+// function relationshipIsNe(relationship: Relationship) {
+//   return relationship.comparison.operator === '!='
+// }
+function relationshipIsGt(relationship: Relationship) {
+  return relationship.comparison.operator === '>'
+}
+function relationshipIsGte(relationship: Relationship) {
+  return relationship.comparison.operator === '>='
+}
+function relationshipIsLt(relationship: Relationship) {
+  return relationship.comparison.operator === '<'
+}
+function relationshipIsLte(relationship: Relationship) {
+  return relationship.comparison.operator === '<='
+}
+
 /**
  * Changes `a <op> b` to `b <op> a` (does not _invert_ the operation, swaps the order).
  */
@@ -1400,7 +1622,8 @@ function isAssign(formula: RelationshipFormula): formula is RelationshipAssign {
 
 function isTypeRelationship(relationship: Relationship): relationship is TypeRelationship {
   return (
-    relationship.comparison.type === 'instanceof' || relationship.comparison.type === '!instanceof'
+    relationship.comparison.operator === 'instanceof' ||
+    relationship.comparison.operator === '!instanceof'
   )
 }
 
@@ -1409,9 +1632,7 @@ function isMathRelationship(relationship: Relationship): relationship is MathRel
 }
 
 function isRelationship(formula: Relationship | RelationshipFormula): formula is Relationship {
-  return (
-    typeof formula === 'object' && 'formula' in formula && 'type' in formula && 'rhs' in formula
-  )
+  return 'formula' in formula && 'comparison' in formula
 }
 
 function isLiteral(formula: RelationshipFormula): formula is RelationshipLiteral {
@@ -1456,14 +1677,6 @@ function isOperation(
     formula.type === 'array-concat' ||
     formula.type === 'string-concat'
   )
-}
-
-function addNumerics(lhs: RelationshipNumeric, rhs: RelationshipNumeric) {
-  if (isInt(lhs) && isInt(rhs)) {
-    return relationshipFormula.int(lhs.value + rhs.value)
-  }
-
-  return relationshipFormula.float(lhs.value + rhs.value)
 }
 
 function isAddition(formula: RelationshipFormula): formula is RelationshipAddition {
@@ -1522,7 +1735,7 @@ function verifyRelationshipIsEq(
   relationship: AssignedRelationship,
   target: RelationshipFormula,
 ) {
-  if (!['=='].includes(relationship.comparison.type)) {
+  if (!['=='].includes(relationship.comparison.operator)) {
     return false
   }
 
@@ -1548,7 +1761,7 @@ function verifyRelationshipIsEq(
           {
             formula: relationship.formula,
             comparison: {
-              type: relationship.comparison.type,
+              operator: relationship.comparison.operator,
               rhs: relationshipFormula.addition(
                 relationship.comparison.rhs.rhs,
                 relationship.comparison.rhs.lhs,
@@ -1575,7 +1788,7 @@ function verifyRelationshipIsEq(
     }
   }
 
-  throw `TODO - verifyRelationshipIsEq(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.type} ${toS(relationship.formula)})`
+  throw `TODO - verifyRelationshipIsEq(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
 }
 
 function verifyRelationshipIsGte(
@@ -1583,12 +1796,12 @@ function verifyRelationshipIsGte(
   relationship: AssignedRelationship,
   target: RelationshipFormula,
 ) {
-  if (!['==', '>', '>='].includes(relationship.comparison.type)) {
+  if (!['==', '>', '>='].includes(relationship.comparison.operator)) {
     return false
   }
 
   if (isNumeric(target) && isNumeric(relationship.comparison.rhs)) {
-    switch (relationship.comparison.type) {
+    switch (relationship.comparison.operator) {
       case '==':
         // relationship: formula == N (eg x == 1)
         // verify: formula >= target   (eg x >= 1)
@@ -1631,7 +1844,7 @@ function verifyRelationshipIsGte(
           {
             formula: relationship.formula,
             comparison: {
-              type: relationship.comparison.type,
+              operator: relationship.comparison.operator,
               rhs: relationshipFormula.addition(
                 relationship.comparison.rhs.rhs,
                 relationship.comparison.rhs.lhs,
@@ -1658,7 +1871,7 @@ function verifyRelationshipIsGte(
     }
   }
 
-  throw `TODO - verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.type} ${toS(relationship.formula)})`
+  throw `TODO - verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
 }
 
 /**
@@ -1670,12 +1883,12 @@ function verifyRelationshipIsGt(
   relationship: AssignedRelationship,
   target: RelationshipFormula,
 ) {
-  if (!['==', '>', '>='].includes(relationship.comparison.type)) {
+  if (!['==', '>', '>='].includes(relationship.comparison.operator)) {
     return false
   }
 
   if (isNumeric(target) && isNumeric(relationship.comparison.rhs)) {
-    switch (relationship.comparison.type) {
+    switch (relationship.comparison.operator) {
       case '==':
         // relationship: formula == N (eg x == 1)
         // verify: formula > target   (eg x >= 1)
@@ -1696,7 +1909,7 @@ function verifyRelationshipIsGt(
   // target: 'foo' or 'foo.length' or 'foo[key]'
   if (isAssign(target)) {
     if (isEqualFormula(target, relationship.comparison.rhs)) {
-      switch (relationship.comparison.type) {
+      switch (relationship.comparison.operator) {
         case '==':
         case '>=':
           return false
@@ -1715,7 +1928,7 @@ function verifyRelationshipIsGt(
           {
             formula: relationship.formula,
             comparison: {
-              type: relationship.comparison.type,
+              operator: relationship.comparison.operator,
               rhs: relationshipFormula.addition(
                 relationship.comparison.rhs.rhs,
                 relationship.comparison.rhs.lhs,
@@ -1735,7 +1948,7 @@ function verifyRelationshipIsGt(
         // relationship.comparison.rhs is an addition
         // relationship.comparison.rhs.lhs == target
         // relationship.comparison.rhs.rhs is a number
-        switch (relationship.comparison.type) {
+        switch (relationship.comparison.operator) {
           case '==':
           case '>=':
             // relationship: formula == target + N
@@ -1768,12 +1981,12 @@ function verifyRelationshipIsLt(
   relationship: AssignedRelationship,
   target: RelationshipFormula,
 ) {
-  if (!['==', '<', '<='].includes(relationship.comparison.type)) {
+  if (!['==', '<', '<='].includes(relationship.comparison.operator)) {
     return false
   }
 
   if (isNumeric(target) && isNumeric(relationship.comparison.rhs)) {
-    switch (relationship.comparison.type) {
+    switch (relationship.comparison.operator) {
       case '==':
         // relationship: formula == N (eg x == 1)
         // verify: formula < target   (eg x <= 1)
@@ -1794,7 +2007,7 @@ function verifyRelationshipIsLt(
   // target: 'foo' or 'foo.length' or 'foo[key]'
   if (isAssign(target)) {
     if (isEqualFormula(target, relationship.comparison.rhs)) {
-      switch (relationship.comparison.type) {
+      switch (relationship.comparison.operator) {
         case '==':
         case '<=':
           return false
@@ -1813,7 +2026,7 @@ function verifyRelationshipIsLt(
           {
             formula: relationship.formula,
             comparison: {
-              type: relationship.comparison.type,
+              operator: relationship.comparison.operator,
               rhs: relationshipFormula.addition(
                 relationship.comparison.rhs.rhs,
                 relationship.comparison.rhs.lhs,
@@ -1833,7 +2046,7 @@ function verifyRelationshipIsLt(
         // relationship.comparison.rhs is an addition
         // relationship.comparison.rhs.lhs == target
         // relationship.comparison.rhs.rhs is a number
-        switch (relationship.comparison.type) {
+        switch (relationship.comparison.operator) {
           case '==':
           case '<=':
             // relationship: formula == target + N
@@ -1856,7 +2069,7 @@ function verifyRelationshipIsLt(
     return false
   }
 
-  throw `TODO - verify(formula is '${toS(relationship.formula)} ${relationship.comparison.type} ${toS(relationship.comparison.rhs)}' <? rhs is '${target.type}')`
+  throw `TODO - verify(formula is '${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.comparison.rhs)}' <? rhs is '${target.type}')`
 }
 
 function verifyRelationshipIsLte(
@@ -1864,12 +2077,12 @@ function verifyRelationshipIsLte(
   relationship: AssignedRelationship,
   target: RelationshipFormula,
 ) {
-  if (!['==', '<', '<='].includes(relationship.comparison.type)) {
+  if (!['==', '<', '<='].includes(relationship.comparison.operator)) {
     return false
   }
 
   if (isNumeric(target) && isNumeric(relationship.comparison.rhs)) {
-    switch (relationship.comparison.type) {
+    switch (relationship.comparison.operator) {
       case '==':
         // relationship: formula == N (eg x == 1)
         // verify: formula <= target   (eg x <= 1)
@@ -1912,7 +2125,7 @@ function verifyRelationshipIsLte(
           {
             formula: relationship.formula,
             comparison: {
-              type: relationship.comparison.type,
+              operator: relationship.comparison.operator,
               rhs: relationshipFormula.addition(
                 relationship.comparison.rhs.rhs,
                 relationship.comparison.rhs.lhs,
@@ -1939,7 +2152,7 @@ function verifyRelationshipIsLte(
     }
   }
 
-  throw `TODO - verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.type} ${toS(relationship.formula)})`
+  throw `TODO - verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
 }
 
 export function isEqualFormula(lhs: RelationshipFormula, rhs: RelationshipFormula): boolean {
@@ -1963,6 +2176,11 @@ export function isEqualFormula(lhs: RelationshipFormula, rhs: RelationshipFormul
     return lhs.id === rhs.id && lhs.name === rhs.name
   }
 
+  if (lhs.type === 'assign' && rhs.type === 'assign') {
+    // assign is a reference with a name
+    return lhs.name === rhs.name
+  }
+
   if (lhs.type === 'array-access' && rhs.type === 'array-access') {
     return isEqualFormula(lhs.of, rhs.of) && isEqualFormula(lhs.index, rhs.index)
   }
@@ -1983,7 +2201,7 @@ export function isEqualFormula(lhs: RelationshipFormula, rhs: RelationshipFormul
 }
 
 export function isEqualRelationship(lhs: Relationship, rhs: Relationship) {
-  if (lhs.comparison.type !== rhs.comparison.type) {
+  if (lhs.comparison.operator !== rhs.comparison.operator) {
     return false
   }
 
@@ -2033,11 +2251,15 @@ export function findEventualRef(lhs: RelationshipFormula): RelationshipReference
  */
 export function formulaToTrueStuff(formula: RelationshipFormula, type: Types.Type): Relationship[] {
   if (type instanceof Types.OneOfType) {
-    throw 'TODO: OneOfType in formulaToTrueStuff'
+    // throw 'TODO: OneOfType in formulaToTrueStuff'
+    const rels = type.of.flatMap(type => formulaToTrueStuff(formula, type))
+    console.log('=========== relationship.ts at line 2256 ===========')
+    console.log({rels})
+    return rels
   }
 
   if (type.isFloat()) {
-    return [{formula, comparison: {type: '!=', rhs: relationshipFormula.int(0)}}]
+    return [{formula, comparison: {operator: '!=', rhs: relationshipFormula.int(0)}}]
   }
 
   if (
@@ -2049,7 +2271,7 @@ export function formulaToTrueStuff(formula: RelationshipFormula, type: Types.Typ
     return [
       {
         formula: relationshipFormula.propertyAccess(formula, 'length'),
-        comparison: {type: '>', rhs: relationshipFormula.int(0)},
+        comparison: {operator: '>', rhs: relationshipFormula.int(0)},
       },
     ]
   }
@@ -2062,11 +2284,17 @@ export function formulaToFalseStuff(
   type: Types.Type,
 ): Relationship[] {
   if (type instanceof Types.OneOfType) {
-    throw 'TODO: OneOfType in formulaToFalseStuff'
+    //     -- foo: Int | String
+    //     if (not foo) --> implies... no implications here
+    //     -- foo: Array(Int) | Array(String)
+    //     if (not foo) --> implies...
+    // hmm,
+    // throw `TODO: OneOfType (${formula} : ${type}) in formulaToFalseStuff`
+    return type.of.flatMap(type => formulaToFalseStuff(formula, type))
   }
 
   if (type.isFloat()) {
-    return [{formula, comparison: {type: '==', rhs: relationshipFormula.int(0)}}]
+    return [{formula, comparison: {operator: '==', rhs: relationshipFormula.int(0)}}]
   }
 
   if (
@@ -2078,7 +2306,7 @@ export function formulaToFalseStuff(
     return [
       {
         formula: relationshipFormula.propertyAccess(formula, 'length'),
-        comparison: {type: '==', rhs: relationshipFormula.int(0)},
+        comparison: {operator: '==', rhs: relationshipFormula.int(0)},
       },
     ]
   }
@@ -2145,6 +2373,7 @@ export function findRefs(lhs: RelationshipFormula): RelationshipReference[] {
     case 'int':
     case 'float':
     case 'string':
+    case 'assign':
       return []
   }
 }

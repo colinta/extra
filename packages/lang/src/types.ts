@@ -403,6 +403,19 @@ export abstract class Type {
     return false
   }
 
+  /**
+   * I really wish that float and int did the same as I did for ranges, where
+   * there is a common 'isNumber' and then separate 'isFloat' vs 'isInt'.
+   * Maybe one day.
+   */
+  isFloatRange(): this is MetaFloatRangeType {
+    return false
+  }
+
+  isIntRange(): this is MetaIntRangeType {
+    return false
+  }
+
   isKey(): boolean {
     return this.isInt() || this.isString() || this.isNull() || this.isBoolean()
   }
@@ -1970,7 +1983,9 @@ class MetaRegexType extends Type {
   }
 }
 
-abstract class RangeType<T extends Narrowed.NarrowedInt | Narrowed.NarrowedFloat> extends Type {
+export abstract class RangeType<
+  T extends Narrowed.NarrowedInt | Narrowed.NarrowedFloat,
+> extends Type {
   constructor(
     readonly type: Type,
     readonly narrowed: T,
@@ -1980,6 +1995,22 @@ abstract class RangeType<T extends Narrowed.NarrowedInt | Narrowed.NarrowedFloat
 
   isRange(): this is MetaFloatRangeType | MetaIntRangeType {
     return true
+  }
+
+  toNumberType() {
+    if (this.type.isInt()) {
+      return new MetaIntType(this.narrowed as Narrowed.NarrowedInt)
+    } else {
+      return new MetaFloatType(this.narrowed as Narrowed.NarrowedFloat)
+    }
+  }
+
+  static fromNumberType(type: MetaFloatType | MetaIntType) {
+    if (type.isInt()) {
+      return new MetaIntRangeType(type.narrowed)
+    } else {
+      return new MetaFloatRangeType(type.narrowed)
+    }
   }
 
   toCode() {
@@ -2087,7 +2118,7 @@ export class MetaIntRangeType extends RangeType<Narrowed.NarrowedInt> {
   }
 
   isFloatRange(): this is MetaFloatRangeType {
-    return true
+    return false
   }
 
   isIntRange(): this is MetaIntRangeType {
@@ -3256,17 +3287,17 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
   }
 
   // covers "5.0 is 0...10 --> 5.0"
-  // Yeah so this doesn't really work as a 'canBeAssignedTo' case, and it was
-  // just easier to put it in here than work it into canBeAssignedTo (where it
+  // Yeah ranges don't really work as a 'canBeAssignedTo' case, and it was just
+  // easier to put it in here than work it into canBeAssignedTo (where it
   // definitely doesn't belong)
-  if (lhsType.isFloat() && typeAssertion.isRange()) {
+  if ((lhsType.isFloat() || lhsType.isRange()) && typeAssertion.isFloat()) {
     // if lhsType is already assignable to the typeAssertion range, return lhsType
     if (Narrowed.testNumber(lhsType.narrowed, typeAssertion.narrowed)) {
       return lhsType
     }
 
     if (Narrowed.testNumber(typeAssertion.narrowed, lhsType.narrowed)) {
-      if (lhsType.isInt()) {
+      if (lhsType.isInt() || lhsType.isIntRange()) {
         let min: number | undefined
         if (Array.isArray(typeAssertion.narrowed.min)) {
           min = Math.floor(typeAssertion.narrowed.min[0]) + 1
@@ -3280,9 +3311,16 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
         } else {
           max = typeAssertion.narrowed.max
         }
+
+        if (lhsType.isIntRange()) {
+          return intRange({min, max})
+        }
         return int({min, max})
       }
 
+      if (lhsType.isRange()) {
+        return floatRange(typeAssertion.narrowed)
+      }
       return float(typeAssertion.narrowed)
     }
 
@@ -3292,15 +3330,13 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
   // preserves the more specific type - if lhsType can already be assigned to
   // typeAssertion, it doesn't need to be further narrowed.
   //
-  // covers "5|6 is Int --> 5|6", because 5|6 can be assigned to Int also covers
-  // "Student is Human --> Student" because student can be assigned to human
+  // covers `5|6 is Int --> 5|6`, because 5|6 can be assigned to Int. Also
+  // covers `Student is Human --> Student` (Student can be assigned to Human)
   if (canBeAssignedTo(lhsType, typeAssertion)) {
     return lhsType
   }
-  // covers type narrowing, e.g. "(human) is student --> student"
-  // these types are only used _when the eval() value is true,
-  // so in this case we got the runtime type of the value,
-  // it's hypothetically "student", and so the 'is' assertion will be true
+
+  // covers type narrowing, e.g. `Human is Student --> Student`
   if (canBeAssignedTo(typeAssertion, lhsType)) {
     return typeAssertion
   }
@@ -3339,7 +3375,7 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
     )
   }
 
-  if (lhsType.isFloat() && typeAssertion.isRange()) {
+  if ((lhsType.isFloat() || lhsType.isRange()) && typeAssertion.isFloat()) {
     if (Narrowed.testNumber(lhsType.narrowed, typeAssertion.narrowed)) {
       return NeverType
     }
@@ -3348,26 +3384,38 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
       let min: number | [number] = Array.isArray(typeAssertion.narrowed.max)
         ? typeAssertion.narrowed.max[0]
         : [typeAssertion.narrowed.max]
-      if (lhsType.isInt()) {
+      if (lhsType.isInt() || lhsType.isIntRange()) {
         if (Array.isArray(min)) {
           min = Math.floor(min[0]) + 1
         }
-        return int({min})
+
+        if (lhsType.isIntRange()) {
+          return intRange({min, max: lhsType.narrowed.max})
+        }
+        return int({min, max: lhsType.narrowed.max})
       }
-      return float({min})
+
+      if (lhsType.isRange()) {
+        return floatRange({min, max: lhsType.narrowed.max})
+      }
+      return float({min, max: lhsType.narrowed.max})
     }
 
     if (typeAssertion.narrowed.max === undefined && typeAssertion.narrowed.min !== undefined) {
       let max: number | [number] = Array.isArray(typeAssertion.narrowed.min)
         ? typeAssertion.narrowed.min[0]
         : [typeAssertion.narrowed.min]
-      if (lhsType.isInt()) {
+      if (lhsType.isInt() || lhsType.isIntRange()) {
         if (Array.isArray(max)) {
           max = Math.ceil(max[0]) - 1
         }
-        return int({max})
+
+        if (lhsType.isIntRange()) {
+          return intRange({min: lhsType.narrowed.min, max})
+        }
+        return int({min: lhsType.narrowed.min, max})
       }
-      return float({max})
+      return float({min: lhsType.narrowed.min, max})
     }
   }
 
@@ -4839,14 +4887,12 @@ function addHint(
   }
 
   if (!resolvedGenericsMap) {
-    console.log(`skipping - resolvedGenericsMap === undefined`)
-    return
+    throw `TODO: skipping - resolvedGenericsMap === undefined`
   }
 
   const resolvedGeneric = resolvedGenericsMap.get(generic)
   if (!resolvedGeneric) {
-    console.log(`skipping - resolvedGenericsMap.get(${generic.name}) === undefined`)
-    return
+    throw `TODO: skipping - resolvedGenericsMap.get(${generic.name}) === undefined`
   }
 
   if (type instanceof GenericType) {
@@ -4869,14 +4915,12 @@ function addRequirement(
   }
 
   if (!resolvedGenericsMap) {
-    console.log(`skipping - resolvedGenericsMap === undefined`)
-    return
+    throw `TODO: skipping - resolvedGenericsMap === undefined`
   }
 
   const resolvedGeneric = resolvedGenericsMap.get(generic)
   if (!resolvedGeneric) {
-    console.log(`skipping - resolvedGenericsMap.get(${generic.name}) === undefined`)
-    return
+    throw `TODO: skipping - resolvedGenericsMap.get(${generic.name}) === undefined`
   }
 
   if (type instanceof GenericType) {

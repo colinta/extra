@@ -220,7 +220,7 @@ export class MutableTypeRuntime {
   ) {
     for (const relationship of simplifyRelationships({
       formula,
-      comparison: {type, rhs: rel},
+      comparison: {operator: type, rhs: rel},
     })) {
       const ref = findEventualRef(relationship.formula)
       const prevRelationships = this.relationships.get(ref.id) ?? []

@@ -9,12 +9,14 @@ import {
 } from '../runtime'
 import {combineConcatLengths, combineSetLengths} from '../narrowed'
 import {
-  assignRelationshipsToRuntime,
   findEventualRef,
   verifyRelationship,
   relationshipFormula,
   type RelationshipComparisonSymbol,
   type RelationshipFormula,
+  isEqualFormula,
+  isEqualRelationship,
+  combineOrRelationships,
 } from '../relationship'
 import * as Expressions from './expressions'
 import {Operation, type Expression, type Range} from './expressions'
@@ -724,27 +726,39 @@ class LogicalOrOperator extends BinaryOperator {
     const [lhsExpr, rhsExpr] = this.args
     return lhsExpr
       .gimmeTrueStuff(runtime)
-      .map(lhsStuff => rhsExpr.gimmeTrueStuff(runtime).map(rhsStuff => lhsStuff.concat(rhsStuff)))
-      .map(stuff => {
-        console.log('=========== operators.ts at line 732 ===========')
-        console.log({lhsExpr: lhsExpr.toCode(), rhsExpr: rhsExpr.toCode(), stuff})
-        throw 'hey now'
-        return stuff
+      .map(lhsStuff => rhsExpr.gimmeTrueStuff(runtime).map(rhsStuff => [lhsStuff, rhsStuff]))
+      .map(([lhsStuff, rhsStuff]) => {
+        // get common "stuff" based on the formula
+        lhsStuff.forEach(lhs => {
+          // TODO: this is a temporary "does this ever happen" chec
+          const unexpected = lhsStuff.filter(
+            lhsRel => lhs !== lhsRel && isEqualRelationship(lhs, lhsRel),
+          )
+          if (unexpected.length) {
+            throw new RuntimeError(
+              lhsExpr,
+              `Found multiple formulas with the same relationship: ${relationshipFormula.toString(lhs)} and ${relationshipFormula.toString(unexpected[0])} (${isEqualFormula(lhs.formula, unexpected[0].formula)})`,
+            )
+          }
+        })
+
+        const commonLhs = lhsStuff.filter(lhs =>
+          rhsStuff.some(rhs => isEqualFormula(lhs.formula, rhs.formula)),
+        )
+        const commonRhs = rhsStuff.filter(rhs => {
+          return commonLhs.some(lhs => isEqualFormula(lhs.formula, rhs.formula))
+        })
+        const common = commonLhs.concat(commonRhs)
+
+        return combineOrRelationships(common)
       })
   }
 
   gimmeFalseStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
-    return lhsExpr
-      .gimmeFalseStuff(runtime)
-      .map(lhsStuff => {
-        return assignRelationshipsToRuntime(runtime, lhsStuff)
-      })
-      .map(falseyRuntime =>
-        rhsExpr
-          .gimmeFalseStuff(falseyRuntime)
-          .map(rhsStuff => assignRelationshipsToRuntime(runtime, rhsStuff)),
-      )
+    return lhsExpr.assumeFalse(runtime).map(falseyRuntime => {
+      return rhsExpr.gimmeFalseStuff(falseyRuntime)
+    })
   }
 
   rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
@@ -809,6 +823,9 @@ class LogicalAndOperator extends BinaryOperator {
       return lhsExpr
         .gimmeTrueStuff(runtime)
         .map(lhsStuff => rhsExpr.gimmeTrueStuff(runtime).map(rhsStuff => lhsStuff.concat(rhsStuff)))
+        .map(stuff => {
+          return stuff
+        })
     })
   }
 
@@ -817,9 +834,36 @@ class LogicalAndOperator extends BinaryOperator {
     return lhsExpr.assumeFalse(runtime).map(runtime => {
       return lhsExpr
         .gimmeFalseStuff(runtime)
-        .map(lhsStuff =>
-          rhsExpr.gimmeFalseStuff(runtime).map(rhsStuff => lhsStuff.concat(rhsStuff)),
-        )
+        .map(lhsStuff => rhsExpr.gimmeFalseStuff(runtime).map(rhsStuff => [lhsStuff, rhsStuff]))
+        .map(([lhsStuff, rhsStuff]) => {
+          // get common "stuff" based on the formula
+          lhsStuff.forEach(lhs => {
+            // TODO: this is a temporary "does this ever happen" chec
+            const unexpected = lhsStuff.filter(
+              lhsRel => lhs !== lhsRel && isEqualRelationship(lhs, lhsRel),
+            )
+            if (unexpected.length) {
+              throw new RuntimeError(
+                lhsExpr,
+                `Found multiple formulas with the same relationship: ${relationshipFormula.toString(lhs)} and ${relationshipFormula.toString(unexpected[0])} (${isEqualFormula(lhs.formula, unexpected[0].formula)})`,
+              )
+            }
+          })
+
+          const commonLhs = lhsStuff.filter(lhs =>
+            rhsStuff.some(rhs => isEqualFormula(lhs.formula, rhs.formula)),
+          )
+          const commonRhs = rhsStuff.filter(rhs => {
+            return commonLhs.some(lhs => isEqualFormula(lhs.formula, rhs.formula))
+          })
+          const common = commonLhs.concat(commonRhs)
+
+          const relationships = combineOrRelationships(common)
+          console.log('=========== operators.ts at line 865 ===========')
+          console.log({relationships})
+          return []
+          // return relationships
+        })
     })
   }
 
@@ -982,7 +1026,7 @@ abstract class ComparisonOperator extends BinaryOperator {
       return ok([])
     }
 
-    return ok([{formula: lhsFormula, comparison: {type: this.symbol, rhs: rhsFormula}}])
+    return ok([{formula: lhsFormula, comparison: {operator: this.symbol, rhs: rhsFormula}}])
   }
 
   gimmeFalseStuff(runtime: TypeRuntime) {
@@ -991,7 +1035,7 @@ abstract class ComparisonOperator extends BinaryOperator {
       return ok([])
     }
 
-    return ok([{formula: lhsFormula, comparison: {type: this.inverseSymbol, rhs: rhsFormula}}])
+    return ok([{formula: lhsFormula, comparison: {operator: this.inverseSymbol, rhs: rhsFormula}}])
   }
 }
 
@@ -1523,7 +1567,13 @@ abstract class MatchOperator extends BinaryOperator {
       return ok([])
     }
 
-    return rhsExpr.gimmeTrueStuffWith(runtime, formula, lhsExpr)
+    return getChildType(this, lhsExpr, runtime).map(lhsType => {
+      if (this.symbol === 'is') {
+        return rhsExpr.gimmeTrueStuffWith(runtime, formula, lhsType)
+      } else {
+        return rhsExpr.gimmeFalseStuffWith(runtime, formula, lhsType)
+      }
+    })
   }
 
   gimmeFalseStuff(runtime: TypeRuntime) {
@@ -1534,7 +1584,13 @@ abstract class MatchOperator extends BinaryOperator {
       return ok([])
     }
 
-    return rhsExpr.gimmeFalseStuffWith(runtime, formula)
+    return getChildType(this, lhsExpr, runtime).map(lhsType => {
+      if (this.symbol === 'is') {
+        return rhsExpr.gimmeFalseStuffWith(runtime, formula, lhsType)
+      } else {
+        return rhsExpr.gimmeTrueStuffWith(runtime, formula, lhsType)
+      }
+    })
   }
 
   operatorType(
@@ -1562,90 +1618,16 @@ abstract class MatchOperator extends BinaryOperator {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
     }
 
-    return rhsExpr.getAsTypeExpression(runtime).map(rhsType => {
-      return Values.booleanValue(Types.canBeAssignedTo(lhs.getType(), rhsType))
-    })
+    throw 'TODO: eval match expressions'
   }
 }
 
 class MatchAssertionOperator extends MatchOperator {
   readonly symbol = 'is'
-
-  /**
-   * Copy/Paste of default implementation for reference.
-   * TODO: delete
-   */
-  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.gimmeTrueStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
-  }
-
-  /**
-   * Copy/Paste of default implementation for reference.
-   * TODO: delete
-   */
-  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.gimmeFalseStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
-  }
-
-  // assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-  //   const [lhsExpr, rhsExpr] = this.args
-  //   if (!(rhsExpr instanceof Expressions.MatchExpression)) {
-  //     return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
-  //   }
-
-  //   return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, true)
-  // }
-
-  // assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-  //   const [lhsExpr, rhsExpr] = this.args
-  //   if (!(rhsExpr instanceof Expressions.MatchExpression)) {
-  //     return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
-  //   }
-
-  //   return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, false)
-  // }
 }
 
 class MatchRefutationOperator extends MatchOperator {
   readonly symbol = '!is'
-
-  assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.gimmeFalseStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
-  }
-
-  assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-    return this.gimmeTrueStuff(runtime).map(stuff => assignRelationshipsToRuntime(runtime, stuff))
-  }
-
-  // assumeTrue(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-  //   const [lhsExpr, rhsExpr] = this.args
-  //   if (!(rhsExpr instanceof Expressions.MatchExpression)) {
-  //     return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
-  //   }
-
-  //   return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, false)
-  // }
-
-  // assumeFalse(runtime: TypeRuntime): GetRuntimeResult<TypeRuntime> {
-  //   const [lhsExpr, rhsExpr] = this.args
-  //   if (!(rhsExpr instanceof Expressions.MatchExpression)) {
-  //     return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
-  //   }
-
-  //   return rhsExpr.assumeMatchAssertionRuntime(runtime, lhsExpr, true)
-  // }
-
-  operatorEval(
-    runtime: ValueRuntime,
-    lhs: Values.Value,
-    rhs: () => GetValueResult,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ) {
-    return super
-      .operatorEval(runtime, lhs, rhs, lhsExpr, rhsExpr)
-      .map(booleanValue => Values.booleanValue(!booleanValue.value))
-  }
 }
 
 addBinaryOperator({

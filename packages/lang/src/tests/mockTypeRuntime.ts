@@ -9,7 +9,7 @@ class MockTypeRuntime extends MutableTypeRuntime {
 
   refId(name: string): string | undefined {
     if (!super.refId(name) && this.runtimeTypes[name]) {
-      this.addId(name)
+      this.addLocalType(name, this.runtimeTypes[name][0])
     }
     return super.refId(name)
   }
