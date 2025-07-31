@@ -28,7 +28,7 @@ export class SockyListener {
 
       this.ws.on('open', () => {
         this.connected = true
-        console.log(`Connected to WebSocket server at ${this.url}`)
+        console.info(`Connected to WebSocket server at ${this.url}`)
       })
 
       this.ws.on('message', (data: Buffer) => {
@@ -110,6 +110,6 @@ export class SockyListener {
 
 new SockyListener()
   .onMessage(message => {
-    console.log(invert(` [${message.timestamp}] `), ...message.args)
+    console.info(invert(` [${message.timestamp}] `), ...message.args)
   })
   .connect()

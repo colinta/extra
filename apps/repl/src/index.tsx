@@ -166,7 +166,7 @@ function App() {
         )
 
         if (json.isErr()) {
-          console.log(json.error)
+          console.info(json.error)
         }
 
         return json
@@ -513,7 +513,7 @@ let doExit = () => {}
 
 ;(async function () {
   if (process.argv.includes('--wait')) {
-    console.log('Listening to port 8080...')
+    console.info('Listening to port 8080...')
     const socky = new Socky(8080)
     socky.start()
     await socky.firstConnection()
