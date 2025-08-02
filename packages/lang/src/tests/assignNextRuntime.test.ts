@@ -2,7 +2,7 @@ import {c, cases} from '@extra-lang/cases'
 import {
   assignNextRuntime,
   type RelationshipLiteral,
-  type RelationshipComparisonSymbol,
+  type RelationshipMathSymbol,
   relationshipFormula,
 } from '../relationship'
 import * as Types from '../types'
@@ -70,8 +70,8 @@ describe('comparisons', () => {
   //|
   describe('strings', () => {
     cases<
-      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral]
+      | [Types.Type, RelationshipMathSymbol, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipMathSymbol, RelationshipLiteral]
     >(
       c([Types.string(), '==', relationshipFormula.string('a'), Types.literal('a')]),
       c([Types.string({min: 10}), '==', relationshipFormula.string('a'), Types.never()]),
@@ -113,8 +113,8 @@ describe('comparisons', () => {
   //|
   describe('floats', () => {
     cases<
-      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral]
+      | [Types.Type, RelationshipMathSymbol, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipMathSymbol, RelationshipLiteral]
     >(
       //|
       //|  Float
@@ -229,8 +229,8 @@ describe('comparisons', () => {
   //|
   describe('ints', () => {
     cases<
-      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral]
+      | [Types.Type, RelationshipMathSymbol, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipMathSymbol, RelationshipLiteral]
     >(
       //|
       //|  Int
@@ -351,8 +351,8 @@ describe('comparisons', () => {
   //|
   describe('booleans', () => {
     cases<
-      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral]
+      | [Types.Type, RelationshipMathSymbol, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipMathSymbol, RelationshipLiteral]
     >(
       c([Types.booleanType(), '==', relationshipFormula.boolean(true), Types.literal(true)]),
       c([Types.booleanType(), '!=', relationshipFormula.boolean(true), Types.literal(false)]),
@@ -390,8 +390,8 @@ describe('comparisons', () => {
   //|
   describe('null', () => {
     cases<
-      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral, Types.Type]
-      | [Types.Type, RelationshipComparisonSymbol, RelationshipLiteral]
+      | [Types.Type, RelationshipMathSymbol, RelationshipLiteral, Types.Type]
+      | [Types.Type, RelationshipMathSymbol, RelationshipLiteral]
     >(
       c([Types.nullType(), '==', relationshipFormula.null()]),
       c([Types.nullType(), '==', relationshipFormula.int(1), Types.never()]),

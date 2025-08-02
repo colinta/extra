@@ -12,7 +12,7 @@ import {
   findEventualRef,
   verifyRelationship,
   relationshipFormula,
-  type RelationshipComparisonSymbol,
+  type RelationshipMathSymbol,
   type RelationshipFormula,
   isEqualFormula,
   isEqualRelationship,
@@ -858,11 +858,7 @@ class LogicalAndOperator extends BinaryOperator {
           })
           const common = commonLhs.concat(commonRhs)
 
-          const relationships = combineOrRelationships(common)
-          console.log('=========== operators.ts at line 865 ===========')
-          console.log({relationships})
-          return []
-          // return relationships
+          return combineOrRelationships(common)
         })
     })
   }
@@ -1017,8 +1013,8 @@ addBinaryOperator({
 })
 
 abstract class ComparisonOperator extends BinaryOperator {
-  abstract symbol: RelationshipComparisonSymbol
-  abstract inverseSymbol: RelationshipComparisonSymbol
+  abstract symbol: RelationshipMathSymbol
+  abstract inverseSymbol: RelationshipMathSymbol
 
   gimmeTrueStuff(runtime: TypeRuntime) {
     const [lhsFormula, rhsFormula] = this.getRelationshipFormulas(runtime)

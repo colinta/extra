@@ -24,7 +24,7 @@ function ref(name: string) {
 
 function rel(
   name: string,
-  symbol: Relationship.RelationshipComparisonSymbol,
+  symbol: Relationship.RelationshipMathSymbol,
   formula: Relationship.RelationshipFormula,
 ): Relationship.Relationship {
   const rel: Relationship.Relationship = {
@@ -35,7 +35,7 @@ function rel(
 }
 
 function splitFormula(formula: string) {
-  const symbol = formula.match(/([<=>]+)/)![1] as Relationship.RelationshipComparisonSymbol
+  const symbol = formula.match(/([<=>]+)/)![1] as Relationship.RelationshipMathSymbol
   const [lhs, rhs] = formula.split(symbol, 2).map(s => s.trim())
   return {lhs, rhs, symbol}
 }

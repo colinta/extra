@@ -24,8 +24,6 @@ import {
 } from './types'
 import {
   assignRelationshipsToRuntime,
-  formulaToFalseStuff,
-  formulaToTrueStuff,
   invertComparison,
   type Relationship,
   relationshipFormula,
@@ -193,9 +191,7 @@ export abstract class Expression {
         return []
       }
 
-      console.log('=========== expressions.ts at line 196 ===========')
-      console.log({formula, type})
-      return formulaToTrueStuff(formula, type)
+      return [{formula, comparison: {operator: 'truthy'}}]
     })
   }
 
@@ -210,9 +206,7 @@ export abstract class Expression {
         return []
       }
 
-      console.log('=========== expressions.ts at line 213 ===========')
-      console.log({formula, type})
-      return formulaToFalseStuff(formula, type)
+      return [{formula, comparison: {operator: 'falsey'}}]
     })
   }
 
@@ -2102,7 +2096,10 @@ export class LetExpression extends Expression {
       if (assignment instanceof LetAssign && localType === inferredType) {
         const assignmentRelationship = assignment.value.relationshipFormula(runtime)
         if (assignmentRelationship) {
-          runtime.addRelationshipFormula(refFormula, '==', assignmentRelationship)
+          runtime.addRelationshipFormula({
+            formula: refFormula,
+            comparison: {operator: '==', rhs: assignmentRelationship},
+          })
         }
       }
 
@@ -2110,66 +2107,82 @@ export class LetExpression extends Expression {
         const isInt = localType.isInt()
         if (localType.narrowed.min !== undefined) {
           if (Array.isArray(localType.narrowed.min)) {
-            runtime.addRelationshipFormula(
-              refFormula,
-              '>',
-              relationshipFormula.float(localType.narrowed.min[0]),
-            )
+            runtime.addRelationshipFormula({
+              formula: refFormula,
+              comparison: {
+                operator: '>',
+                rhs: relationshipFormula.float(localType.narrowed.min[0]),
+              },
+            })
           } else {
-            runtime.addRelationshipFormula(
-              refFormula,
-              '>=',
-              relationshipFormula.number(localType.narrowed.min, isInt),
-            )
+            runtime.addRelationshipFormula({
+              formula: refFormula,
+              comparison: {
+                operator: '>=',
+                rhs: relationshipFormula.number(localType.narrowed.min, isInt),
+              },
+            })
           }
         }
 
         if (localType.narrowed.max !== undefined) {
           if (Array.isArray(localType.narrowed.max)) {
-            runtime.addRelationshipFormula(
-              refFormula,
-              '<',
-              relationshipFormula.float(localType.narrowed.max[0]),
-            )
+            runtime.addRelationshipFormula({
+              formula: refFormula,
+              comparison: {
+                operator: '<',
+                rhs: relationshipFormula.float(localType.narrowed.max[0]),
+              },
+            })
           } else {
-            runtime.addRelationshipFormula(
-              refFormula,
-              '<=',
-              relationshipFormula.number(localType.narrowed.max, isInt),
-            )
+            runtime.addRelationshipFormula({
+              formula: refFormula,
+              comparison: {
+                operator: '<=',
+                rhs: relationshipFormula.number(localType.narrowed.max, isInt),
+              },
+            })
           }
         }
       } else if (localType.isString()) {
         if (localType.narrowedString.length.min > 0) {
-          runtime.addRelationshipFormula(
-            lengthFormula,
-            '>=',
-            relationshipFormula.int(localType.narrowedString.length.min),
-          )
+          runtime.addRelationshipFormula({
+            formula: lengthFormula,
+            comparison: {
+              operator: '>=',
+              rhs: relationshipFormula.int(localType.narrowedString.length.min),
+            },
+          })
         }
 
         if (localType.narrowedString.length.max !== undefined) {
-          runtime.addRelationshipFormula(
-            lengthFormula,
-            '<=',
-            relationshipFormula.int(localType.narrowedString.length.max),
-          )
+          runtime.addRelationshipFormula({
+            formula: lengthFormula,
+            comparison: {
+              operator: '<=',
+              rhs: relationshipFormula.int(localType.narrowedString.length.max),
+            },
+          })
         }
       } else if (localType instanceof Types.ContainerType) {
         if (localType.narrowedLength.min > 0) {
-          runtime.addRelationshipFormula(
-            lengthFormula,
-            '>=',
-            relationshipFormula.int(localType.narrowedLength.min),
-          )
+          runtime.addRelationshipFormula({
+            formula: lengthFormula,
+            comparison: {
+              operator: '>=',
+              rhs: relationshipFormula.int(localType.narrowedLength.min),
+            },
+          })
         }
 
         if (localType.narrowedLength.max !== undefined) {
-          runtime.addRelationshipFormula(
-            lengthFormula,
-            '<=',
-            relationshipFormula.int(localType.narrowedLength.max),
-          )
+          runtime.addRelationshipFormula({
+            formula: lengthFormula,
+            comparison: {
+              operator: '<=',
+              rhs: relationshipFormula.int(localType.narrowedLength.max),
+            },
+          })
         }
       }
     }

@@ -484,13 +484,23 @@ export abstract class Type {
   }
 
   /**
-   * Returns true if the type _could_ be a truthy type.
+   * Returns true if the type _could_ be a truthy type (`!isOnlyFalseyType()`)
    *
    * For instance arrays *could* be truthy (but not if the maxLength is 0, which is
    * always falsey).
    */
   isEverTruthyType(): boolean {
     return !this.isOnlyFalseyType()
+  }
+
+  /**
+   * Returns true if the type _could_ be a falsey type (`!isOnlyTruthyType()`)
+   *
+   * For instance arrays *could* be falsey (but not if the minLength is >=1, which is
+   * always truthy).
+   */
+  isEverFalseyType(): boolean {
+    return !this.isOnlyTruthyType()
   }
 
   toTruthyType(): Type {
@@ -1052,10 +1062,23 @@ export abstract class OneOfType extends Type {
     }
 
     if (truthyTypes.length === 1) {
-      return truthyTypes[0]
+      return truthyTypes[0].toTruthyType()
     }
 
-    return _privateOneOf(truthyTypes)
+    return _privateOneOf(truthyTypes.map(type => type.toTruthyType()))
+  }
+
+  toFalseyType(): Type {
+    const falseyTypes = this.of.filter(type => type.isEverFalseyType())
+    if (falseyTypes.length === 0) {
+      return NeverType
+    }
+
+    if (falseyTypes.length === 1) {
+      return falseyTypes[0].toFalseyType()
+    }
+
+    return _privateOneOf(falseyTypes.map(type => type.toFalseyType()))
   }
 
   hasGeneric() {
@@ -1362,7 +1385,7 @@ class MetaBooleanType extends Type {
     return true
   }
 
-  toFalseyType(): Type {
+  toFalseyType() {
     return LiteralFalseType
   }
 
@@ -1442,8 +1465,49 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
     ])
   }
 
-  toFalseyType(): Type {
-    return new LiteralFloatType(0)
+  /**
+   * If the min is greater than 0, or max is less than zero, it's always truthy
+   */
+  isOnlyTruthyType() {
+    return (
+      (typeof this.narrowed.min === 'number' && this.narrowed.min > 0) ||
+      (typeof this.narrowed.max === 'number' && this.narrowed.max < 0)
+    )
+  }
+
+  /**
+   * If the max-length is 0, it's always false
+   */
+  isOnlyFalseyType() {
+    return this.narrowed.min === 0 && this.narrowed.max === 0
+  }
+
+  /**
+   * Narrow to a type with at least length 1
+   */
+  toTruthyType() {
+    if (this.isOnlyFalseyType()) {
+      return NeverType
+    }
+
+    if (this.narrowed.min === 0) {
+      return this.narrow([0], this.narrowed.max)
+    } else if (this.narrowed.max === 0) {
+      return this.narrow(this.narrowed.min, [0])
+    } else {
+      return this
+    }
+  }
+
+  /**
+   * Narrow to a type with length 0 - the empty string
+   */
+  toFalseyType() {
+    if (this.isOnlyTruthyType()) {
+      return NeverType
+    }
+
+    return this.narrow(0, 0)
   }
 
   combineLiteral(literal: LiteralType) {
@@ -1574,8 +1638,49 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
     return true
   }
 
-  toFalseyType(): Type {
-    return new LiteralIntType(0)
+  /**
+   * If the min is greater than 0, or max is less than zero, it's always truthy
+   */
+  isOnlyTruthyType() {
+    return (
+      (this.narrowed.min !== undefined && this.narrowed.min > 0) ||
+      (this.narrowed.max !== undefined && this.narrowed.max < 0)
+    )
+  }
+
+  /**
+   * If the max-length is 0, it's always false
+   */
+  isOnlyFalseyType() {
+    return this.narrowed.min === 0 && this.narrowed.max === 0
+  }
+
+  /**
+   * Narrow to a type with at least length 1
+   */
+  toTruthyType() {
+    if (this.isOnlyFalseyType()) {
+      return NeverType
+    }
+
+    if (this.narrowed.min === 0) {
+      return this.narrow(1, this.narrowed.max)
+    } else if (this.narrowed.max === 0) {
+      return this.narrow(this.narrowed.min, -1)
+    } else {
+      return this
+    }
+  }
+
+  /**
+   * Narrow to a type with length 0 - the empty string
+   */
+  toFalseyType() {
+    if (this.isOnlyTruthyType()) {
+      return NeverType
+    }
+
+    return this.narrow(0, 0)
   }
 
   combineLiteral(literal: LiteralType) {
@@ -1737,10 +1842,23 @@ export class MetaStringType extends Type {
     return true
   }
 
+  /**
+   * If the min-length is greater than 0, it's always truthy
+   */
+  isOnlyTruthyType() {
+    return this.narrowedString.length.min > 0
+  }
+
+  /**
+   * If the max-length is 0, it's always false
+   */
   isOnlyFalseyType() {
     return this.narrowedString.length.max === 0
   }
 
+  /**
+   * Narrow to a type with at least length 1
+   */
   toTruthyType() {
     if (this.isOnlyFalseyType()) {
       return NeverType
@@ -1750,14 +1868,9 @@ export class MetaStringType extends Type {
   }
 
   /**
-   * If the min-length is greater than 0, it's always truthy, and shouldn't be used
-   * as a conditional
+   * Narrow to a type with length 0 - the empty string
    */
-  isOnlyTruthyType(): boolean {
-    return this.narrowedString.length.min > 0
-  }
-
-  toFalseyType(): Type {
+  toFalseyType() {
     if (this.isOnlyTruthyType()) {
       return NeverType
     }
@@ -2142,7 +2255,7 @@ class ViewType extends Type {
   /**
    * Instances of a View are always true – and shouldn't be used as a conditional
    */
-  isOnlyTruthyType(): boolean {
+  isOnlyTruthyType() {
     return true
   }
 
@@ -2228,7 +2341,7 @@ export abstract class LiteralBooleanType extends LiteralType {
   }
 
   // `true` literal type is allowed in `if(false)` so that you can debug
-  isOnlyTruthyType(): boolean {
+  isOnlyTruthyType() {
     return this === LiteralTrueType
   }
 
@@ -2237,7 +2350,7 @@ export abstract class LiteralBooleanType extends LiteralType {
     return this === LiteralFalseType
   }
 
-  toFalseyType(): Type {
+  toFalseyType() {
     return LiteralFalseType
   }
 
@@ -2275,7 +2388,7 @@ export class LiteralFloatType extends LiteralType {
     return this.value === 0
   }
 
-  toFalseyType(): Type {
+  toFalseyType() {
     return new LiteralFloatType(0)
   }
 
@@ -2309,7 +2422,7 @@ export class LiteralIntType extends LiteralFloatType {
     return IntType.typeConstructor()
   }
 
-  toFalseyType(): Type {
+  toFalseyType() {
     return new LiteralIntType(0)
   }
 
@@ -2349,7 +2462,7 @@ export class LiteralStringType extends LiteralType {
     return this.value === ''
   }
 
-  toFalseyType(): Type {
+  toFalseyType() {
     return new LiteralStringType('')
   }
 
@@ -2433,24 +2546,29 @@ export abstract class ContainerType<T extends ContainerType<T>> extends Type {
   }
 
   /**
-   * Make sure the array/dict/set type is not empty (max > 0 or undefined).
+   * If the min-length is greater than 0, it's always truthy
+   */
+  isOnlyTruthyType() {
+    return this.narrowedLength.min > 0
+  }
+
+  /**
+   * If the max-length is 0, it's always false
    */
   isOnlyFalseyType() {
     return this.narrowedLength.max === 0
   }
 
+  /**
+   * Narrow to a type with at least length 1
+   */
   toTruthyType() {
     return this.narrowLengthGuard(1, this.narrowedLength.max)
   }
 
   /**
-   * If the min-length is greater than 0, it's always truthy, and shouldn't be used
-   * as a conditional
+   * Narrow to a type with length 0
    */
-  isOnlyTruthyType(): boolean {
-    return this.narrowedLength.min > 0
-  }
-
   toFalseyType() {
     if (0 < this.narrowedLength.min) {
       return NeverType
@@ -3108,7 +3226,7 @@ export class ClassType extends Type {
   /**
    * Instances of a class are always true – and shouldn't be used as a conditional
    */
-  isOnlyTruthyType(): boolean {
+  isOnlyTruthyType() {
     return true
   }
 }

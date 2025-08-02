@@ -42,7 +42,7 @@ describe('narrowed types', () => {
       Types.oneOf([Types.int({min: 1}), Types.string({min: 1})]),
       Types.oneOf([Types.literal(0), Types.literal('')]),
     ]),
-    c.only([
+    c([
       Types.oneOf([Types.int({min: 1}), Types.string()]),
       'foo',
       Types.oneOf([Types.int({min: 1}), Types.string({min: 1})]),

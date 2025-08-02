@@ -16,7 +16,7 @@ beforeEach(() => {
 })
 
 describe('complicated relationships', () => {
-  it('can infer the relationships of numbers', () => {
+  it('can infer the relationships of numbers when comparing', () => {
     runtimeTypes['index'] = [Types.int(), Values.int(1)]
     const code = `
       let
@@ -47,18 +47,45 @@ describe('complicated relationships', () => {
     expect(resolvedValue!).toEqual(Values.tuple([Values.int(0), Values.int(1), Values.int(2)]))
   })
 
-  it('can infer the relationships of indirect assignments', () => {
-    runtimeTypes['index'] = [Types.int(), Values.int(1)]
+  it('can infer the relationships of numbers when asserting true', () => {
+    runtimeTypes['index'] = [Types.int({min: 0}), Values.int(1)]
     const code = `
       let
         prev = index - 1
-        next = prev + 2
-        _index = index
+        next = index + 1
       in
-        if (_index > 0 and 10 > _index) {
+        if (index) {
           then: {
             prev
-            _index
+            index
+            next
+          }
+        }`
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
+    const resolvedValue = currentExpression.eval(valueRuntime).get()
+
+    expect(resolvedType!).toEqual(
+      Types.oneOf([
+        Types.tuple([Types.int({min: 0}), Types.int({min: 1}), Types.int({min: 2})]),
+        Types.nullType(),
+      ]),
+    )
+    expect(resolvedValue!).toEqual(Values.tuple([Values.int(0), Values.int(1), Values.int(2)]))
+  })
+
+  it('can infer the relationships of indirect assignments', () => {
+    runtimeTypes['i'] = [Types.int(), Values.int(1)]
+    const code = `
+      let
+        prev = i - 1
+        next = prev + 2
+        index = i
+      in
+        if (index > 0 and 10 > index) {
+          then: {
+            prev
+            index
             next
           }
         }`
@@ -203,8 +230,6 @@ describe('complicated relationships', () => {
     const resolvedType = currentExpression.getType(typeRuntime).get()
     const resolvedValue = currentExpression.eval(valueRuntime).get()
 
-    console.log('' + resolvedType)
-    console.log('' + resolvedValue)
     expect(resolvedType!).toEqual(
       Types.oneOf([Types.tuple([Types.string(), Types.int()]), Types.nullType()]),
     )

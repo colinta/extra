@@ -1,12 +1,9 @@
 import {type GetRuntimeResult} from './formulaParser/types'
 import {
   findEventualRef,
-  type RelationshipFormula,
   type AssignedRelationship,
-  type RelationshipComparisonSymbol,
   simplifyRelationships,
   isEqualRelationship,
-  RelationshipAssign,
 } from './relationship'
 import {type Type} from './types'
 import {type Value, type ObjectValue} from './values'
@@ -213,15 +210,8 @@ export class MutableTypeRuntime {
     this.addLocalType('#', type)
   }
 
-  addRelationshipFormula(
-    formula: RelationshipAssign,
-    type: RelationshipComparisonSymbol,
-    rel: RelationshipFormula,
-  ) {
-    for (const relationship of simplifyRelationships({
-      formula,
-      comparison: {operator: type, rhs: rel},
-    })) {
+  addRelationshipFormula(assignedRelationship: AssignedRelationship) {
+    for (const relationship of simplifyRelationships(assignedRelationship)) {
       const ref = findEventualRef(relationship.formula)
       const prevRelationships = this.relationships.get(ref.id) ?? []
 
