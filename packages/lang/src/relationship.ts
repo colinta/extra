@@ -1836,13 +1836,10 @@ export function invertComparison(comparison: RelationshipMathSymbol): Relationsh
   }
 }
 
-function isReference(formula: RelationshipFormula): formula is RelationshipReference {
-  return formula.type === 'reference'
-}
-
 function isAssign(formula: RelationshipFormula): formula is RelationshipAssign {
   return (
-    isReference(formula) ||
+    formula.type === 'reference' ||
+    formula.type === 'assign' ||
     formula.type === 'array-access' ||
     formula.type === 'property-access' ||
     formula.type === 'nullable-array-access' ||
@@ -2469,7 +2466,7 @@ export function isEqualFormula(lhs: RelationshipFormula, rhs: RelationshipFormul
     return isEqualFormula(lhs.lhs, rhs.lhs) && isEqualFormula(lhs.rhs, rhs.rhs)
   }
 
-  if (isReference(lhs) && isReference(rhs)) {
+  if (lhs.type === 'reference' && rhs.type === 'reference') {
     return lhs.id === rhs.id && lhs.name === rhs.name
   }
 
