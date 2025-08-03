@@ -88,7 +88,11 @@ describe('match operator', () => {
       [
         Types.Type,
         string,
-        {truthy: Types.Type; falsey: Types.Type; notTruthy?: Types.Type; notFalsey?: Types.Type},
+        {
+          truthy: Types.Type
+          falsey: Types.Type
+          reverse?: false
+        },
       ]
     >(
       c([
@@ -177,6 +181,7 @@ describe('match operator', () => {
         {
           truthy: Types.int(),
           falsey: Types.never(),
+          reverse: false,
         },
       ]),
       c([
@@ -185,6 +190,7 @@ describe('match operator', () => {
         {
           truthy: Types.int(),
           falsey: Types.string(),
+          reverse: false,
         },
       ]),
       c([
@@ -267,7 +273,7 @@ describe('match operator', () => {
           falsey: Types.oneOf([Types.string(), Types.int()]),
         },
       ]),
-      c.only([
+      c([
         Types.oneOf([Types.string(), Types.int()]),
         'foo is /<(?<foo>\\w+)>/ and foo',
         {
@@ -275,8 +281,17 @@ describe('match operator', () => {
           // from 'and foo'
           truthy: Types.string({min: 1, regex: [/\w+/]}),
           falsey: Types.oneOf([Types.string(), Types.int()]),
+          reverse: false,
+        },
+      ]),
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
+        'foo !is /<(?<foo>\\w+)>/ and foo',
+        {
           // this one took me a bit - but yes; the inverse case is:
           //     foo !is /.../ and foo
+          // if this is true, then foo didn't match the regex, but it *is*
+          // truthy, ie `String(length: >=1) | Int()`
           // if this is false, that means *the first condition* as false, ie
           // `foo is /.../` - it matched!
           //
@@ -284,30 +299,63 @@ describe('match operator', () => {
           // and matching the regex doesn't guarantee string length (this would
           // involve parsing the regex to make sure it always matches N
           // characters)
-          notFalsey: Types.string({min: 0, regex: [/\w+/]}),
+          truthy: Types.oneOf([Types.string({min: 1}), Types.int()]),
+          falsey: Types.oneOf([Types.string(), Types.int()]),
+          reverse: false,
         },
       ]),
-    ).run(([fooType, formula, expectedTypes], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(
+      c([
+        Types.oneOf([Types.string(), Types.int({min: 0})]),
+        'foo is /<(?<foo>\\w+)>/ and foo',
+        {
+          // the regex by itself only guarantees regex: [...], the min: 1 comes
+          // from 'and foo'
+          truthy: Types.string({min: 1, regex: [/\w+/]}),
+          falsey: Types.oneOf([Types.string(), Types.int({min: 0})]),
+          reverse: false,
+        },
+      ]),
+      c.only([
+        Types.oneOf([Types.string(), Types.int({min: 0})]),
+        'foo !is /<(?<foo>\\w+)>/ and foo',
+        {
+          truthy: Types.oneOf([Types.string({min: 1}), Types.int({min: 1})]),
+          // in the false case:
+          //   either `foo is /…/` (never the case for Int)
+          //   _or_ `!foo` (Int => literal(0))
+          falsey: Types.oneOf([Types.string(), Types.literal(0)]),
+          reverse: false,
+        },
+      ]),
+    ).run(([fooType, formula, expectedTypes], {only, skip}) => {
+      ;(only ? it.only : skip ? it.skip : it)(
         `(foo: ${fooType}) '${formula}' => truthy: ${expectedTypes.truthy}, falsey: ${expectedTypes.falsey}`,
         () => {
           runtimeTypes['foo'] = [fooType, Values.nullValue()]
-          {
-            const expression = parse(formula).get()
-            const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
-            expect(truthy).toEqual(expectedTypes.truthy)
-            expect(falsey).toEqual(expectedTypes.falsey)
-          }
-
-          if (formula.split(' is ').length === 2) {
-            const expression = parse(formula.replace(' is ', ' !is ')).get()
-            const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
-            expect(truthy).toEqual(expectedTypes.notTruthy ?? expectedTypes.falsey)
-            expect(falsey).toEqual(expectedTypes.notFalsey ?? expectedTypes.truthy)
-          }
+          const expression = parse(formula).get()
+          const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
+          // expect(truthy).toEqual(expectedTypes.truthy)
+          expect(falsey).toEqual(expectedTypes.falsey)
         },
-      ),
-    )
+      )
+
+      if (expectedTypes.reverse ?? true) {
+        const notIsFormula = formula.replace(' is ', ' !is ')
+        const expectedTruthy = expectedTypes.falsey
+        const expectedFalsey = expectedTypes.truthy
+        ;(only ? it.only : skip ? it.skip : it)(
+          `(foo: ${fooType}) '${notIsFormula}' => truthy: ${expectedTruthy}, falsey: ${expectedFalsey}`,
+          () => {
+            expect(formula.split(' is ')).toEqual(2)
+            runtimeTypes['foo'] = [fooType, Values.nullValue()]
+            const expression = parse(notIsFormula).get()
+            const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
+            expect(truthy).toEqual(expectedTruthy)
+            expect(falsey).toEqual(expectedFalsey)
+          },
+        )
+      }
+    })
 
     cases<[Types.Type, string, Types.Type, string]>(
       c([

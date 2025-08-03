@@ -5333,7 +5333,8 @@ export class MatchRegexLiteral extends MatchLiteral {
       const relationships: Relationship[] = []
       if (formula) {
         const narrowType = Types.narrowTypeIs(lhsType, type)
-        relationships.push({formula, comparison: {operator: 'instanceof', rhs: narrowType}})
+        const ref = {formula, comparison: {operator: 'instanceof', rhs: narrowType}} as const
+        relationships.push(ref)
       }
 
       if (!this.literal.groups.size) {
@@ -5343,10 +5344,11 @@ export class MatchRegexLiteral extends MatchLiteral {
       for (const [name, pattern] of this.literal.groups) {
         const regex = new RegExp(pattern, this.literal.flags)
         const type = Types.StringType.narrowRegex(regex)
-        relationships.push({
+        const assign = {
           formula: relationshipFormula.assign(name),
           comparison: {operator: 'instanceof', rhs: type},
-        })
+        } as const
+        relationships.push(assign)
       }
 
       return relationships

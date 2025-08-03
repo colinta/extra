@@ -2,6 +2,7 @@ import {ok} from '@extra-lang/result'
 import {MutableTypeRuntime, type TypeRuntime} from './runtime'
 import * as Types from './types'
 import {type NarrowedInt, type NarrowedFloat, type NarrowedString} from './narrowed'
+import {uid} from './uid'
 
 /**
  * The Relationship module is responsible for checking and calculating
@@ -113,7 +114,7 @@ type RelationshipOperation =
   | RelationshipArrayConcat
 
 type RelationshipReference = {type: 'reference'; name: string; id: string}
-type RelationshipReferenceAssign = {type: 'assign'; name: string}
+type RelationshipReferenceAssign = {type: 'assign'; name: string; id: string}
 export type RelationshipAssign =
   | RelationshipReference
   | RelationshipReferenceAssign
@@ -179,7 +180,7 @@ export const relationshipFormula = {
     return {type: 'reference', name, id}
   },
   assign(name: string): RelationshipReferenceAssign {
-    return {type: 'assign', name}
+    return {type: 'assign', name, id: uid(name)}
   },
   /**
    * foo[bar]
@@ -1495,10 +1496,10 @@ function replaceType(
     return replaceType(mutableRuntime, assignable.of, nextAssignableType.get())
   }
 
-  if ('id' in assignable) {
+  if (assignable.type === 'reference') {
     return mutableRuntime.replaceTypeById(assignable.id, nextType)
   } else {
-    return mutableRuntime.addLocalType(assignable.name, nextType)
+    return mutableRuntime.addLocalTypeWithId(assignable.name, assignable.id, nextType)
   }
 }
 

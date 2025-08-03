@@ -17,6 +17,7 @@ import {
   isEqualFormula,
   isEqualRelationship,
   combineOrRelationships,
+  assignRelationshipsToRuntime,
 } from '../relationship'
 import * as Expressions from './expressions'
 import {Operation, type Expression, type Range} from './expressions'
@@ -756,9 +757,16 @@ class LogicalOrOperator extends BinaryOperator {
 
   gimmeFalseStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
-    return lhsExpr.assumeFalse(runtime).map(falseyRuntime => {
-      return rhsExpr.gimmeFalseStuff(falseyRuntime)
-    })
+
+    // I'm avoiding lhsExpr.assumeFalse here because that would end up calling
+    // gimmeFalseStuff twice
+    return lhsExpr
+      .gimmeFalseStuff(runtime)
+      .map(lhsStuff =>
+        assignRelationshipsToRuntime(runtime, lhsStuff, false).map(lhsRuntime =>
+          rhsExpr.gimmeFalseStuff(lhsRuntime).map(rhsStuff => lhsStuff.concat(rhsStuff)),
+        ),
+      )
   }
 
   rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
@@ -819,22 +827,23 @@ class LogicalAndOperator extends BinaryOperator {
 
   gimmeTrueStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
-    return lhsExpr.assumeTrue(runtime).map(runtime => {
-      return lhsExpr
-        .gimmeTrueStuff(runtime)
-        .map(lhsStuff => rhsExpr.gimmeTrueStuff(runtime).map(rhsStuff => lhsStuff.concat(rhsStuff)))
-        .map(stuff => {
-          return stuff
-        })
-    })
+    // I'm avoiding lhsExpr.assumeTrue here because that would end up calling
+    // gimmeTrueStuff twice
+    return lhsExpr
+      .gimmeTrueStuff(runtime)
+      .map(lhsStuff =>
+        assignRelationshipsToRuntime(runtime, lhsStuff, true).map(lhsRuntime =>
+          rhsExpr.gimmeTrueStuff(lhsRuntime).map(rhsStuff => lhsStuff.concat(rhsStuff)),
+        ),
+      )
   }
 
   gimmeFalseStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
-    return lhsExpr.assumeFalse(runtime).map(runtime => {
-      return lhsExpr
+    return lhsExpr.gimmeFalseStuff(runtime).map(lhsStuff =>
+      rhsExpr
         .gimmeFalseStuff(runtime)
-        .map(lhsStuff => rhsExpr.gimmeFalseStuff(runtime).map(rhsStuff => [lhsStuff, rhsStuff]))
+        .map(rhsStuff => [lhsStuff, rhsStuff])
         .map(([lhsStuff, rhsStuff]) => {
           // get common "stuff" based on the formula
           lhsStuff.forEach(lhs => {
@@ -859,8 +868,8 @@ class LogicalAndOperator extends BinaryOperator {
           const common = commonLhs.concat(commonRhs)
 
           return combineOrRelationships(common)
-        })
-    })
+        }),
+    )
   }
 
   rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
@@ -3997,7 +4006,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
 
     return getChildType(this, conditionExpr, runtime).map(conditionType => {
       // allow literal 'true/false' expressions (for testing)
-      // todo: disallow for "production" builds
+      // TODO: disallow for "production" builds
       if (
         !(conditionExpr instanceof Expressions.TrueExpression) &&
         !(conditionExpr instanceof Expressions.FalseExpression)
@@ -4173,7 +4182,7 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
 
     return getChildType(this, conditionExpr, runtime).map(conditionType => {
       // allow literal 'true/false' expressions (for testing)
-      // todo: disallow for "production" builds
+      // TODO: disallow for "production" builds
       if (
         !(conditionExpr instanceof Expressions.TrueExpression) &&
         !(conditionExpr instanceof Expressions.FalseExpression)
@@ -4339,7 +4348,7 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
     }
 
     // allow literal 'true/false' expressions (for testing)
-    // todo: disallow for "production" builds
+    // TODO: disallow for "production" builds
 
     if (
       !(conditionExpr instanceof Expressions.TrueExpression) &&

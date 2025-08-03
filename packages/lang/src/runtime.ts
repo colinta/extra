@@ -6,6 +6,7 @@ import {
   isEqualRelationship,
 } from './relationship'
 import {type Type} from './types'
+import {uid} from './uid'
 import {type Value, type ObjectValue} from './values'
 
 export interface Runtime {
@@ -187,6 +188,12 @@ export class MutableTypeRuntime {
     this.types.set(id, type)
   }
 
+  addLocalTypeWithId(name: string, id: string, type: Type) {
+    this.ids.set(name, id)
+    this.names.set(id, name)
+    this.types.set(id, type)
+  }
+
   replaceTypeByName(name: string, type: Type) {
     const id = this.refId(name)
     if (id) {
@@ -320,9 +327,4 @@ export class ApplicationRuntime<T> extends MutableValueRuntime {
 
 function defaultLocale() {
   return new Intl.Locale('en-ca')
-}
-
-function uid(name: string = '') {
-  const uid = Math.floor(0x1000 + Math.random() * (0x10000 - 0x1000)).toString(16)
-  return name ? `${name}-${uid}` : uid
 }
