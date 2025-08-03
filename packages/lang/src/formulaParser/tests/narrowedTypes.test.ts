@@ -23,6 +23,8 @@ describe('narrowed types', () => {
     c([Types.int(), 'foo >= 5', Types.int({min: 5}), Types.int({max: 4})]),
     c([Types.int({min: 6}), 'foo >= 5', Types.int({min: 6}), Types.never()]),
     c([Types.int(), 'foo', Types.int(), Types.literal(0)]),
+    c([Types.int(), 'not foo', Types.literal(0), Types.int()]),
+    c([Types.int(), 'not not foo', Types.int(), Types.literal(0)]),
     c([Types.int({min: 0}), 'foo', Types.int({min: 1}), Types.literal(0)]),
     c([Types.int({min: -1}), 'foo', Types.int({min: -1}), Types.literal(0)]),
     c([Types.int({min: 1}), 'foo', Types.int({min: 1}), Types.never()]),
@@ -41,6 +43,12 @@ describe('narrowed types', () => {
       'foo',
       Types.oneOf([Types.int({min: 1}), Types.string({min: 1})]),
       Types.oneOf([Types.literal(0), Types.literal('')]),
+    ]),
+    c([
+      Types.oneOf([Types.int({min: 0}), Types.string()]),
+      'not foo',
+      Types.oneOf([Types.literal(0), Types.literal('')]),
+      Types.oneOf([Types.int({min: 1}), Types.string({min: 1})]),
     ]),
     c([
       Types.oneOf([Types.int({min: 1}), Types.string()]),

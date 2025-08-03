@@ -18,6 +18,7 @@ import {
   isEqualRelationship,
   combineOrRelationships,
   assignRelationshipsToRuntime,
+  invertRelationship,
 } from '../relationship'
 import * as Expressions from './expressions'
 import {Operation, type Expression, type Range} from './expressions'
@@ -3440,6 +3441,14 @@ addBinaryOperator({
 
 class LogicalNotOperator extends UnaryOperator {
   symbol = 'not'
+
+  gimmeTrueStuff(runtime: TypeRuntime) {
+    return this.args[0].gimmeTrueStuff(runtime).map(stuff => stuff.map(invertRelationship))
+  }
+
+  gimmeFalseStuff(runtime: TypeRuntime) {
+    return this.args[0].gimmeFalseStuff(runtime).map(stuff => stuff.map(invertRelationship))
+  }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
     if (lhs.isLiteral()) {

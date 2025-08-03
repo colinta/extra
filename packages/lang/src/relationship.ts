@@ -722,13 +722,13 @@ function assignables(
  * literal: always a literal, but could be string, int, etc
  */
 function mergeAssignableTypeNull(
-  // prevType is LiteralTrueType | LiteralFalseType | BooleanType
   prevType: Types.Type,
   comparison: RelationshipTruthyComparison | RelationshipMathCompareLiteral,
 ): Types.Type {
   if (isTruthyComparison(comparison)) {
-    return Types.NeverType
+    return comparison.operator === 'truthy' ? Types.NeverType : Types.NullType
   }
+
   const {operator, literal} = comparison
   if (literal.type !== 'null') {
     if (operator === '!=') {
@@ -751,7 +751,6 @@ function mergeAssignableTypeNull(
  * literal: always a literal, but could be string, int, etc
  */
 function mergeAssignableTypeBoolean(
-  // prevType is LiteralTrueType | LiteralFalseType | BooleanType
   prevType: Types.Type,
   comparison: RelationshipTruthyComparison | RelationshipMathCompareLiteral,
 ): Types.Type {
@@ -1817,11 +1816,28 @@ function reverseComparisonSymbol(
   }
 }
 
+export function invertComparison(comparison: RelationshipTypeSymbol): RelationshipTypeSymbol
+export function invertComparison(comparison: RelationshipTruthySymbol): RelationshipTruthySymbol
+export function invertComparison(comparison: RelationshipMathSymbol): RelationshipMathSymbol
+
 /**
- * Changes `a <op> b` to `a <!op> b` (_inverts_ the operation, keeping the order).
+ * Returns the inverse operation, ie `a <op> b` to `a <!op> b`.
+ *     a < 5 => a >= 5  (invertComparison('<') => '>=')
+ *     a == 4 => a != 4  (invertComparison('==') => '!=')
+ * @see invertRelationship
  */
-export function invertComparison(comparison: RelationshipMathSymbol): RelationshipMathSymbol {
+export function invertComparison(
+  comparison: RelationshipMathSymbol | RelationshipTruthySymbol | RelationshipTypeSymbol,
+): RelationshipMathSymbol | RelationshipTruthySymbol | RelationshipTypeSymbol {
   switch (comparison) {
+    case 'instanceof':
+      return '!instanceof'
+    case '!instanceof':
+      return 'instanceof'
+    case 'truthy':
+      return 'falsey'
+    case 'falsey':
+      return 'truthy'
     case '==':
       return '!='
     case '!=':
@@ -1834,6 +1850,43 @@ export function invertComparison(comparison: RelationshipMathSymbol): Relationsh
       return '<='
     case '>=':
       return '<'
+  }
+}
+
+/**
+ * Changes `a <op> b` to `not a <op> b` (_inverts_ the relationship, keeping the order).
+ */
+export function invertRelationship(relationship: Relationship): Relationship {
+  switch (relationship.comparison.operator) {
+    case 'instanceof':
+    case '!instanceof': {
+      return {
+        formula: relationship.formula,
+        comparison: {
+          operator: invertComparison(relationship.comparison.operator),
+          rhs: relationship.comparison.rhs,
+        },
+      }
+    }
+    case 'truthy':
+    case 'falsey':
+      return {
+        formula: relationship.formula,
+        comparison: {operator: invertComparison(relationship.comparison.operator)},
+      }
+    case '==':
+    case '!=':
+    case '<':
+    case '<=':
+    case '>':
+    case '>=':
+      return {
+        formula: relationship.formula,
+        comparison: {
+          operator: invertComparison(relationship.comparison.operator),
+          rhs: relationship.comparison.rhs,
+        },
+      }
   }
 }
 
