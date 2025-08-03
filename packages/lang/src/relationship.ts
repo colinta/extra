@@ -388,33 +388,29 @@ export function assignNextRuntime(
 
 function assignNextTypeRuntime(
   nextRuntime: MutableTypeRuntime,
-  {formula, comparison: {rhs}}: TypeRelationship,
+  {formula, comparison: {operator, rhs}}: TypeRelationship,
 ) {
   if (!isAssign(formula)) {
     return
   }
 
-  // I moved the 'narrowTypeIs' calculation to the call site that creates the
-  // comparison: {operator: 'instanceof'}, because the Type was already
-  // calculated there. So this is no longer needed... probably.
-  // TODO: remove this comment:
-  //
-  // const prevType = runtimeLookup(nextRuntime, formula)
-  // if (!prevType) {
-  //   return
-  // }
-  // let nextType: Types.Type
-  // if (type === 'instanceof') {
-  //   nextType = Types.narrowTypeIs(prevType, rhs)
-  // } else if (type === '!instanceof') {
-  //   nextType = Types.narrowTypeIsNot(prevType, rhs)
-  // } else {
-  //   nextType = Types.NeverType
-  // }
-  // if (nextType !== prevType) {
-  //   replaceType(nextRuntime, formula, nextType)
-  // }
-  replaceType(nextRuntime, formula, rhs)
+  const prevType: Types.Type | undefined = runtimeLookup(nextRuntime, formula, rhs)
+  if (!prevType) {
+    return
+  }
+
+  let nextType: Types.Type
+  if (operator === 'instanceof') {
+    nextType = Types.narrowTypeIs(prevType, rhs)
+  } else if (operator === '!instanceof') {
+    nextType = Types.narrowTypeIsNot(prevType, rhs)
+  } else {
+    nextType = Types.NeverType
+  }
+
+  if (nextType !== prevType) {
+    replaceType(nextRuntime, formula, nextType)
+  }
 }
 
 function assignNextTruthyRuntime(
@@ -593,7 +589,12 @@ function relationshipToType(
 function runtimeLookup(
   runtime: TypeRuntime,
   assignable: RelationshipAssign,
+  defaultAssignType?: Types.Type,
 ): Types.Type | undefined {
+  if (assignable.type === 'assign') {
+    return defaultAssignType
+  }
+
   if (assignable.type === 'reference') {
     return runtime.getTypeById(assignable.id)
   }
@@ -1497,7 +1498,7 @@ function replaceType(
 
   if (assignable.type === 'reference') {
     return mutableRuntime.replaceTypeById(assignable.id, nextType)
-  } else {
+  } else if (assignable.type === 'assign') {
     return mutableRuntime.addLocalTypeWithId(assignable.name, assignable.id, nextType)
   }
 }

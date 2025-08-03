@@ -4471,8 +4471,7 @@ export class MatchTypeExpression extends MatchExpression {
     return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
       const relationships: Relationship[] = []
       if (formula) {
-        const narrowType = Types.narrowTypeIs(lhsType, type)
-        relationships.push({formula, comparison: {operator: 'instanceof', rhs: narrowType}})
+        relationships.push({formula, comparison: {operator: 'instanceof', rhs: type}})
       }
 
       if (this.assignRef) {
@@ -4496,8 +4495,7 @@ export class MatchTypeExpression extends MatchExpression {
     }
 
     return this.getAsTypeExpression(runtime).map(type => {
-      const narrowType = Types.narrowTypeIsNot(lhsType, type)
-      return [{formula, comparison: {operator: 'instanceof', rhs: narrowType}}]
+      return [{formula, comparison: {operator: '!instanceof', rhs: type}}]
     })
   }
 
@@ -4838,8 +4836,7 @@ export class MatchEnumExpression extends MatchExpression {
 
       if (formula) {
         // TODO: create an enumType that only contains the enumCase
-        const replaceType = Types.narrowTypeIs(lhsType, enumType)
-        relationships.push({formula, comparison: {operator: 'instanceof', rhs: replaceType}})
+        relationships.push({formula, comparison: {operator: 'instanceof', rhs: enumType}})
       }
 
       if (!this.args.length) {
@@ -4926,8 +4923,7 @@ export class MatchLiteral extends MatchExpression {
     return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
       const relationships: Relationship[] = []
       if (formula) {
-        const narrowType = Types.narrowTypeIs(lhsType, type)
-        relationships.push({formula, comparison: {operator: 'instanceof', rhs: narrowType}})
+        relationships.push({formula, comparison: {operator: 'instanceof', rhs: type}})
       }
 
       return relationships
@@ -4944,8 +4940,7 @@ export class MatchLiteral extends MatchExpression {
     }
 
     return this.getAsTypeExpression(runtime).map(type => {
-      const narrowType = Types.narrowTypeIsNot(lhsType, type)
-      return [{formula, comparison: {operator: 'instanceof', rhs: narrowType}}]
+      return [{formula, comparison: {operator: '!instanceof', rhs: type}}]
     })
   }
 
@@ -5034,9 +5029,8 @@ export class MatchUnaryRange extends MatchExpression {
     }
 
     const operator = this.op === '=' ? '==' : this.op
-    const narrowType = Types.narrowTypeIs(lhsType, type)
     return ok([
-      {formula, comparison: {operator: 'instanceof', rhs: narrowType}},
+      {formula, comparison: {operator: 'instanceof', rhs: type}},
       {formula, comparison: {operator, rhs}},
     ])
   }
@@ -5057,10 +5051,10 @@ export class MatchUnaryRange extends MatchExpression {
     }
 
     const operator = this.op === '=' ? '==' : this.op
-    const narrowType = Types.narrowTypeIsNot(lhsType, type)
     const relationships: Relationship[] = [
-      {formula, comparison: {operator: 'instanceof', rhs: narrowType}},
+      {formula, comparison: {operator: '!instanceof', rhs: type}},
     ]
+    const narrowType = Types.narrowTypeIsNot(lhsType, type)
     if (narrowType.isFloat()) {
       relationships.push({formula, comparison: {operator: invertComparison(operator), rhs}})
     }
@@ -5152,9 +5146,8 @@ export class MatchBinaryRange extends MatchExpression {
       return ok([])
     }
 
-    const narrowType = Types.narrowTypeIs(lhsType, type)
     const relationships: Relationship[] = [
-      {formula, comparison: {operator: 'instanceof', rhs: narrowType}},
+      {formula, comparison: {operator: 'instanceof', rhs: type}},
     ]
 
     if (this.start.value.isFloat() && this.stop.value.isFloat()) {
@@ -5283,9 +5276,8 @@ export class MatchBinaryRange extends MatchExpression {
       return ok([])
     }
 
-    const narrowType = Types.narrowTypeIsNot(lhsType, type)
     const relationships: Relationship[] = [
-      {formula, comparison: {operator: 'instanceof', rhs: narrowType}},
+      {formula, comparison: {operator: '!instanceof', rhs: type}},
     ]
     // no more information available here (the number is either less than the
     // minimum, or greater than the maximum)
@@ -5332,8 +5324,7 @@ export class MatchRegexLiteral extends MatchLiteral {
     return this.getAsTypeExpression(runtime).map(type => {
       const relationships: Relationship[] = []
       if (formula) {
-        const narrowType = Types.narrowTypeIs(lhsType, type)
-        const ref = {formula, comparison: {operator: 'instanceof', rhs: narrowType}} as const
+        const ref = {formula, comparison: {operator: 'instanceof', rhs: type}} as const
         relationships.push(ref)
       }
 
@@ -5498,8 +5489,7 @@ export class MatchStringExpression extends MatchExpression {
     }
 
     return this.getAsTypeExpression(runtime).map(type => {
-      const narrowType = Types.narrowTypeIsNot(lhsType, type)
-      return [{formula, comparison: {operator: 'instanceof', rhs: narrowType}}]
+      return [{formula, comparison: {operator: '!instanceof', rhs: type}}]
     })
   }
 
@@ -5656,8 +5646,7 @@ export class MatchArrayExpression extends MatchExpression {
     return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
       const relationships: Relationship[] = []
       if (formula) {
-        const narrowType = Types.narrowTypeIsNot(lhsType, type)
-        relationships.push({formula, comparison: {operator: 'instanceof', rhs: narrowType}})
+        relationships.push({formula, comparison: {operator: '!instanceof', rhs: type}})
       }
 
       return relationships
