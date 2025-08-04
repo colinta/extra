@@ -2,7 +2,6 @@ import {ok} from '@extra-lang/result'
 import {MutableTypeRuntime, type TypeRuntime} from './runtime'
 import * as Types from './types'
 import {type NarrowedInt, type NarrowedFloat, type NarrowedString} from './narrowed'
-import {uid} from './uid'
 
 /**
  * The Relationship module is responsible for checking and calculating
@@ -202,8 +201,8 @@ export const relationshipFormula = {
   reference(name: string, id: string): RelationshipReference {
     return {type: 'reference', name, id}
   },
-  assign(name: string): RelationshipReferenceAssign {
-    return {type: 'assign', name, id: uid(name)}
+  assign(name: string, id: string): RelationshipReferenceAssign {
+    return {type: 'assign', name, id}
   },
   /**
    * foo[bar]

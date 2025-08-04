@@ -726,13 +726,14 @@ class LogicalOrOperator extends BinaryOperator {
 
   gimmeTrueStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
+    const myRuntime = new MutableTypeRuntime(runtime)
     return lhsExpr
-      .gimmeTrueStuff(runtime)
-      .map(lhsStuff => rhsExpr.gimmeTrueStuff(runtime).map(rhsStuff => [lhsStuff, rhsStuff]))
+      .gimmeTrueStuff(myRuntime)
+      .map(lhsStuff => rhsExpr.gimmeTrueStuff(myRuntime).map(rhsStuff => [lhsStuff, rhsStuff]))
       .map(([lhsStuff, rhsStuff]) => {
         // get common "stuff" based on the formula
+        // TODO: this is a temporary "does this ever happen" check
         lhsStuff.forEach(lhs => {
-          // TODO: this is a temporary "does this ever happen" chec
           const unexpected = lhsStuff.filter(
             lhsRel => lhs !== lhsRel && isEqualRelationship(lhs, lhsRel),
           )
@@ -842,14 +843,15 @@ class LogicalAndOperator extends BinaryOperator {
 
   gimmeFalseStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
-    return lhsExpr.gimmeFalseStuff(runtime).map(lhsStuff =>
+    const myRuntime = new MutableTypeRuntime(runtime)
+    return lhsExpr.gimmeFalseStuff(myRuntime).map(lhsStuff =>
       rhsExpr
-        .gimmeFalseStuff(runtime)
+        .gimmeFalseStuff(myRuntime)
         .map(rhsStuff => [lhsStuff, rhsStuff])
         .map(([lhsStuff, rhsStuff]) => {
           // get common "stuff" based on the formula
+          // TODO: this is a temporary "does this ever happen" check
           lhsStuff.forEach(lhs => {
-            // TODO: this is a temporary "does this ever happen" chec
             const unexpected = lhsStuff.filter(
               lhsRel => lhs !== lhsRel && isEqualRelationship(lhs, lhsRel),
             )

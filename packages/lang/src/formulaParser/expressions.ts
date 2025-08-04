@@ -4462,7 +4462,7 @@ export class MatchTypeExpression extends MatchExpression {
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    _lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula && !this.assignRef) {
       return ok([])
@@ -4475,8 +4475,9 @@ export class MatchTypeExpression extends MatchExpression {
       }
 
       if (this.assignRef) {
+        const id = runtime.idForNewName(this.assignRef.name)
         relationships.push({
-          formula: relationshipFormula.assign(this.assignRef.name),
+          formula: relationshipFormula.assign(this.assignRef.name, id),
           comparison: {operator: 'instanceof', rhs: type},
         })
       }
@@ -4524,7 +4525,7 @@ export abstract class MatchIdentifier extends MatchExpression {
   }
 
   gimmeTrueStuffWith(
-    _runtime: TypeRuntime,
+    runtime: TypeRuntime,
     _formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
@@ -4532,9 +4533,10 @@ export abstract class MatchIdentifier extends MatchExpression {
       return ok([])
     }
 
+    const id = runtime.idForNewName(this.reference.name)
     return ok([
       {
-        formula: relationshipFormula.assign(this.reference.name),
+        formula: relationshipFormula.assign(this.reference.name, id),
         comparison: {operator: 'instanceof', rhs: lhsType},
       },
     ])
@@ -5335,8 +5337,9 @@ export class MatchRegexLiteral extends MatchLiteral {
       for (const [name, pattern] of this.literal.groups) {
         const regex = new RegExp(pattern, this.literal.flags)
         const type = Types.StringType.narrowRegex(regex)
+        const id = runtime.idForNewName(name)
         const assign = {
-          formula: relationshipFormula.assign(name),
+          formula: relationshipFormula.assign(name, id),
           comparison: {operator: 'instanceof', rhs: type},
         } as const
         relationships.push(assign)
