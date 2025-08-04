@@ -1125,15 +1125,25 @@ export abstract class OneOfType extends Type {
   static createOneOf(types: Type[]): Type {
     // remove duplicates - especially important to remove duplicate NullType
     // and remove NeverTypes
-    types = types
-      .reduce((memo, type) => {
-        if (!memo.includes(type)) {
-          memo.push(type)
-        }
+    types = Array.from(
+      types
+        .flatMap(type => {
+          if (type instanceof OneOfType) {
+            return type.of
+          } else if (type === NeverType) {
+            return []
+          } else {
+            return [type]
+          }
+        })
+        .reduce((memo, type) => {
+          if (!memo.has(type)) {
+            memo.add(type)
+          }
 
-        return memo
-      }, [] as Type[])
-      .filter(type => type !== NeverType)
+          return memo
+        }, new Set<Type>()),
+    )
 
     if (types.length === 0) {
       return NeverType

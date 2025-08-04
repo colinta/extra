@@ -140,6 +140,15 @@ describe('toCode', () => {
     expect(Types.oneOf([Types.int(), Types.string(), Types.nullType()])).toEqual(
       privateOneOf(Types.int(), Types.string(), Types.nullType()),
     )
+    expect(Types.oneOf([Types.oneOf([Types.int(), Types.string()])])).toEqual(
+      privateOneOf(Types.int(), Types.string()),
+    )
+    expect(
+      Types.oneOf([
+        Types.oneOf([Types.int(), Types.string()]),
+        Types.oneOf([Types.int(), Types.booleanType()]),
+      ]),
+    ).toEqual(privateOneOf(Types.int(), Types.string(), Types.booleanType()))
     expect(Types.oneOf([human, student])).toEqual(human)
     expect(Types.oneOf([human, worker])).toEqual(human)
     expect(Types.oneOf([human, worker, student])).toEqual(human)

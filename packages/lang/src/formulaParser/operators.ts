@@ -752,7 +752,8 @@ class LogicalOrOperator extends BinaryOperator {
         })
         const common = commonLhs.concat(commonRhs)
 
-        return combineOrRelationships(common)
+        const relationship = combineOrRelationships(common)
+        return relationship ? [relationship] : []
       })
   }
 
@@ -868,7 +869,8 @@ class LogicalAndOperator extends BinaryOperator {
           })
           const common = commonLhs.concat(commonRhs)
 
-          return combineOrRelationships(common)
+          const relationship = combineOrRelationships(common)
+          return relationship ? [relationship] : []
         }),
     )
   }

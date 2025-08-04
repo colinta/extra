@@ -29,7 +29,6 @@ function truthyFalsey(name: string, expression: Expression, runtime: TypeRuntime
 }
 
 describe('match operator', () => {
-  // match is a really easy operator, so I'm not doing much parse checking
   describe('parse', () => {
     cases<[string] | [string, string]>(
       c(['foo is _']),
@@ -322,8 +321,12 @@ describe('match operator', () => {
           truthy: Types.oneOf([Types.string({min: 1}), Types.int({min: 1})]),
           // in the false case:
           //   either `foo is /…/` (never the case for Int)
-          //   _or_ `!foo` (Int => literal(0))
-          falsey: Types.oneOf([Types.string(), Types.literal(0)]),
+          //   _or_ `!foo` (Int => literal(0), String => '')
+          falsey: Types.oneOf([
+            Types.literal(''),
+            Types.string({regex: [/\w+/]}),
+            Types.literal(0),
+          ]),
           reverse: false,
         },
       ]),

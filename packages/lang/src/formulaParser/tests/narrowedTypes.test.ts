@@ -56,6 +56,13 @@ describe('narrowed types', () => {
       Types.oneOf([Types.int({min: 1}), Types.string({min: 1})]),
       Types.literal(''),
     ]),
+    c([Types.oneOf([Types.int(), Types.string()]), 'foo is String', Types.string(), Types.int()]),
+    c([
+      Types.oneOf([Types.int(), Types.string()]),
+      'not (foo is String)',
+      Types.int(),
+      Types.string(),
+    ]),
     //|
     //|  String.length checks
     //|
