@@ -138,6 +138,16 @@ describe('narrowed types', () => {
         {is: Types.int({max: -1}), isNot: Types.int({min: 0, max: 0})},
       ]),
       c([
+        Types.int({max: 10}),
+        Types.int({min: -1}),
+        {is: Types.int({min: -1, max: 10}), isNot: Types.int({max: -2})},
+      ]),
+      c([
+        Types.int({min: -1}),
+        Types.int({max: 10}),
+        {is: Types.int({min: -1, max: 10}), isNot: Types.int({min: 11})},
+      ]),
+      c([
         Types.oneOf([Types.int(), Types.string()]),
         Types.int({min: 1}),
         {is: Types.int({min: 1}), isNot: Types.oneOf([Types.int({max: 0}), Types.string()])},

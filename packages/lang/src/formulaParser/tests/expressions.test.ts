@@ -333,12 +333,6 @@ describe('getType', () => {
       const expression = parse('intThings[0]').get()
       expect(expression.getType(typeRuntime).get()).toEqual(Types.optional(Types.int()))
     })
-
-    it.skip('this.arg => this.arg type (literal)', () => {
-      runtimeTypes['this'] = runtimeTypes['user']
-      const expression = parse('this.arg').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.literal('argtype'))
-    })
   })
 
   describe('type is operation', () => {

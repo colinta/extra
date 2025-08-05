@@ -49,6 +49,14 @@ describe('combineOrRelationships', () => {
         },
       ]),
       c([
+        Types.string(),
+        'foo is /(?<foo>\\w+)/ or foo is /(?<foo>\\d+)/',
+        {
+          truthy: Types.oneOf([Types.string({regex: [/\w+/]}), Types.string({regex: [/\d+/]})]),
+          falsey: Types.string(),
+        },
+      ]),
+      c([
         Types.oneOf([Types.string(), Types.int(), Types.booleanType(), Types.nullType()]),
         'foo is String or foo is Int or foo is Boolean',
         {

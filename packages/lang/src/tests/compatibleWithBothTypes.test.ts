@@ -47,6 +47,24 @@ describe('compatibleWithBothTypes', () => {
     c([Types.int({min: 1, max: 9}), Types.int({min: 2, max: 10}), Types.int({min: 1, max: 10})]),
     c([Types.int({min: 1, max: 9}), Types.int({min: 2}), Types.int({min: 1})]),
     c([
+      Types.int({max: 0}),
+      Types.int({min: 2}),
+      privateOneOf(Types.int({max: 0}), Types.int({min: 2})),
+    ]),
+    c([Types.int({min: 2}), Types.int({max: 1}), Types.int()]),
+    c([Types.int({max: 0}), Types.int({min: 1}), Types.int()]),
+    c([Types.int({min: 1}), Types.int({max: 0}), Types.int()]),
+    c([
+      Types.float({max: 0}),
+      Types.float({min: 1}),
+      Types.oneOf([Types.float({max: 0}), Types.float({min: 1})]),
+    ]),
+    c([
+      Types.int({max: 0}),
+      Types.int({min: 2}),
+      Types.oneOf([Types.int({max: 0}), Types.int({min: 2})]),
+    ]),
+    c([
       Types.float({min: [1], max: 9}),
       Types.float({min: 2, max: 10}),
       Types.float({min: [1], max: 10}),
@@ -168,7 +186,8 @@ describe('compatibleWithBothTypes', () => {
     (only ? it.only : skip ? it.skip : it)(
       `compatibleWithBothTypes(${lhs.toCode()}, ${rhs.toCode()}) should be ${expected.toCode()}`,
       () => {
-        expect(Types.compatibleWithBothTypes(lhs, rhs)).toEqual(expected)
+        const type = Types.compatibleWithBothTypes(lhs, rhs)
+        expect(type).toEqual(expected)
       },
     ),
   )

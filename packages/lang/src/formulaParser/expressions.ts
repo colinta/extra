@@ -4475,9 +4475,8 @@ export class MatchTypeExpression extends MatchExpression {
       }
 
       if (this.assignRef) {
-        const id = runtime.idForNewName(this.assignRef.name)
         relationships.push({
-          formula: relationshipFormula.assign(this.assignRef.name, id),
+          formula: relationshipFormula.assign(this.assignRef.name),
           comparison: {operator: 'instanceof', rhs: type},
         })
       }
@@ -4533,10 +4532,9 @@ export abstract class MatchIdentifier extends MatchExpression {
       return ok([])
     }
 
-    const id = runtime.idForNewName(this.reference.name)
     return ok([
       {
-        formula: relationshipFormula.assign(this.reference.name, id),
+        formula: relationshipFormula.assign(this.reference.name),
         comparison: {operator: 'instanceof', rhs: lhsType},
       },
     ])
@@ -4923,12 +4921,11 @@ export class MatchLiteral extends MatchExpression {
     }
 
     return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
-      const relationships: Relationship[] = []
       if (formula) {
-        relationships.push({formula, comparison: {operator: 'instanceof', rhs: type}})
+        return [{formula, comparison: {operator: 'instanceof', rhs: type}}]
       }
 
-      return relationships
+      return []
     })
   }
 
@@ -4972,9 +4969,19 @@ export class MatchUnaryRange extends MatchExpression {
   }
 
   getTypeWithHint(hint: Types.Type): Types.Type {
+    if (hint.isRange()) {
+      const numberType = this.getTypeWithHint(hint.type)
+      if (numberType.isInt()) {
+        return Types.intRange(numberType.narrowed)
+      } else if (numberType.isFloat()) {
+        return Types.floatRange(numberType.narrowed)
+      }
+      return Types.NeverType
+    }
     if (!this.start.value.isFloat()) {
       return Types.NeverType
     }
+    const value = this.start.value.value
 
     // repeated in MatchBinaryRange
     let hintIsInt: boolean
@@ -4989,29 +4996,29 @@ export class MatchUnaryRange extends MatchExpression {
     if (hintIsInt) {
       switch (this.op) {
         case '=':
-          return Types.int({min: this.start.value.value, max: this.start.value.value})
+          return Types.int({min: value, max: value})
         case '>':
-          return Types.int({min: this.start.value.value + 1})
+          return Types.int({min: value + 1})
         case '>=':
-          return Types.int({min: this.start.value.value})
+          return Types.int({min: value})
         case '<':
-          return Types.int({max: this.start.value.value - 1})
+          return Types.int({max: value - 1})
         case '<=':
-          return Types.int({max: this.start.value.value})
+          return Types.int({max: value})
       }
     }
 
     switch (this.op) {
       case '=':
-        return Types.float({min: this.start.value.value, max: this.start.value.value})
+        return Types.float({min: value, max: value})
       case '>':
-        return Types.float({min: [this.start.value.value]})
+        return Types.float({min: [value]})
       case '>=':
-        return Types.float({min: this.start.value.value})
+        return Types.float({min: value})
       case '<':
-        return Types.float({max: [this.start.value.value]})
+        return Types.float({max: [value]})
       case '<=':
-        return Types.float({max: this.start.value.value})
+        return Types.float({max: value})
     }
   }
 
@@ -5111,13 +5118,13 @@ export class MatchBinaryRange extends MatchExpression {
     if (hintIsInt) {
       switch (this.op) {
         case '...':
-          return Types.intRange({min: this.start.value.value, max: this.stop.value.value})
+          return Types.int({min: this.start.value.value, max: this.stop.value.value})
         case '<..':
-          return Types.intRange({min: this.start.value.value + 1, max: this.stop.value.value})
+          return Types.int({min: this.start.value.value + 1, max: this.stop.value.value})
         case '..<':
-          return Types.intRange({min: this.start.value.value, max: this.stop.value.value - 1})
+          return Types.int({min: this.start.value.value, max: this.stop.value.value - 1})
         case '<.<':
-          return Types.intRange({min: this.start.value.value + 1, max: this.stop.value.value - 1})
+          return Types.int({min: this.start.value.value + 1, max: this.stop.value.value - 1})
       }
     }
 
@@ -5337,9 +5344,8 @@ export class MatchRegexLiteral extends MatchLiteral {
       for (const [name, pattern] of this.literal.groups) {
         const regex = new RegExp(pattern, this.literal.flags)
         const type = Types.StringType.narrowRegex(regex)
-        const id = runtime.idForNewName(name)
         const assign = {
-          formula: relationshipFormula.assign(name, id),
+          formula: relationshipFormula.assign(name),
           comparison: {operator: 'instanceof', rhs: type},
         } as const
         relationships.push(assign)
@@ -5647,12 +5653,11 @@ export class MatchArrayExpression extends MatchExpression {
     }
 
     return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
-      const relationships: Relationship[] = []
       if (formula) {
-        relationships.push({formula, comparison: {operator: '!instanceof', rhs: type}})
+        return [{formula, comparison: {operator: '!instanceof', rhs: type}}]
       }
 
-      return relationships
+      return []
     })
   }
 

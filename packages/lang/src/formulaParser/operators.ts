@@ -14,8 +14,6 @@ import {
   relationshipFormula,
   type RelationshipMathSymbol,
   type RelationshipFormula,
-  isEqualFormula,
-  isEqualRelationship,
   combineOrRelationships,
   assignRelationshipsToRuntime,
   invertRelationship,
@@ -731,30 +729,8 @@ class LogicalOrOperator extends BinaryOperator {
       .gimmeTrueStuff(myRuntime)
       .map(lhsStuff => rhsExpr.gimmeTrueStuff(myRuntime).map(rhsStuff => [lhsStuff, rhsStuff]))
       .map(([lhsStuff, rhsStuff]) => {
-        // get common "stuff" based on the formula
-        // TODO: this is a temporary "does this ever happen" check
-        lhsStuff.forEach(lhs => {
-          const unexpected = lhsStuff.filter(
-            lhsRel => lhs !== lhsRel && isEqualRelationship(lhs, lhsRel),
-          )
-          if (unexpected.length) {
-            throw new RuntimeError(
-              lhsExpr,
-              `Found multiple formulas with the same relationship: ${relationshipFormula.toString(lhs)} and ${relationshipFormula.toString(unexpected[0])} (${isEqualFormula(lhs.formula, unexpected[0].formula)})`,
-            )
-          }
-        })
-
-        const commonLhs = lhsStuff.filter(lhs =>
-          rhsStuff.some(rhs => isEqualFormula(lhs.formula, rhs.formula)),
-        )
-        const commonRhs = rhsStuff.filter(rhs => {
-          return commonLhs.some(lhs => isEqualFormula(lhs.formula, rhs.formula))
-        })
-        const common = commonLhs.concat(commonRhs)
-
-        const relationship = combineOrRelationships(common)
-        return relationship ? [relationship] : []
+        const relationships = combineOrRelationships(lhsStuff, rhsStuff)
+        return relationships
       })
   }
 
@@ -849,34 +825,11 @@ class LogicalAndOperator extends BinaryOperator {
         .gimmeFalseStuff(myRuntime)
         .map(rhsStuff => [lhsStuff, rhsStuff])
         .map(([lhsStuff, rhsStuff]) => {
-          // get common "stuff" based on the formula
-          // TODO: this is a temporary "does this ever happen" check
-          lhsStuff.forEach(lhs => {
-            const unexpected = lhsStuff.filter(
-              lhsRel => lhs !== lhsRel && isEqualRelationship(lhs, lhsRel),
-            )
-            if (unexpected.length) {
-              throw new RuntimeError(
-                lhsExpr,
-                `Found multiple formulas with the same relationship: ${relationshipFormula.toString(lhs)} and ${relationshipFormula.toString(unexpected[0])} (${isEqualFormula(lhs.formula, unexpected[0].formula)})`,
-              )
-            }
-          })
-
-          const commonLhs = lhsStuff.filter(lhs =>
-            rhsStuff.some(rhs => isEqualFormula(lhs.formula, rhs.formula)),
-          )
-          const commonRhs = rhsStuff.filter(rhs => {
-            return commonLhs.some(lhs => isEqualFormula(lhs.formula, rhs.formula))
-          })
-          const common = commonLhs.concat(commonRhs)
-
-          const relationship = combineOrRelationships(common)
-          return relationship ? [relationship] : []
+          const relationships = combineOrRelationships(lhsStuff, rhsStuff)
+          return relationships
         }),
     )
   }
-
   rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
     return lhsExpr
       .assumeTrue(runtime)

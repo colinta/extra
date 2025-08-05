@@ -46,6 +46,14 @@ export function typeConstructor(name: string, type: Type) {
 
 export function int(narrowed?: Partial<Narrowed.NarrowedInt>) {
   if (narrowed) {
+    if (
+      typeof narrowed.min === 'number' &&
+      typeof narrowed.max === 'number' &&
+      narrowed.min === narrowed.max
+    ) {
+      return new LiteralIntType(narrowed.min)
+    }
+
     return new MetaIntType(
       narrowed
         ? {...Narrowed.DEFAULT_NARROWED_NUMBER, ...narrowed}
@@ -58,6 +66,14 @@ export function int(narrowed?: Partial<Narrowed.NarrowedInt>) {
 
 export function float(narrowed?: Partial<Narrowed.NarrowedFloat>) {
   if (narrowed) {
+    if (
+      typeof narrowed.min === 'number' &&
+      typeof narrowed.max === 'number' &&
+      narrowed.min === narrowed.max
+    ) {
+      return new LiteralFloatType(narrowed.min)
+    }
+
     return new MetaFloatType(
       narrowed
         ? {...Narrowed.DEFAULT_NARROWED_NUMBER, ...narrowed}
@@ -1220,6 +1236,9 @@ class __OneOfType extends OneOfType {
   readonly is = 'oneOf'
 
   constructor(types: Type[]) {
+    if (types.length <= 1) {
+      throw new TypeError(`__OneOfType must have at least 2 types, got ${types.join(', ')}`)
+    }
     super(types)
   }
 }
@@ -1476,7 +1495,7 @@ export abstract class NumberType<
     return this.narrowed.min === 0 && this.narrowed.max === 0
   }
 
-  abstract narrow(min: T['min'], max: T['max']): Type
+  abstract narrow(min: number | [number] | undefined, max: number | [number] | undefined): Type
   abstract adjustNarrow(amount: number): Type
   abstract negateNarrow(amount: number): Type
 }
@@ -1486,7 +1505,18 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
 
   declare static types: Record<string, ((object: MetaFloatType) => Type) | undefined>
 
-  constructor(narrowed: Narrowed.NarrowedFloat = Narrowed.DEFAULT_NARROWED_NUMBER) {
+  constructor(
+    narrowed: Narrowed.NarrowedFloat = Narrowed.DEFAULT_NARROWED_NUMBER,
+    illAllowIt = false,
+  ) {
+    if (
+      typeof narrowed.min === 'number' &&
+      typeof narrowed.max === 'number' &&
+      narrowed.min === narrowed.max &&
+      !illAllowIt
+    ) {
+      throw 'This should be a LiteralFloatType'
+    }
     super(narrowed)
   }
 
@@ -1545,22 +1575,33 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
     }
   }
 
+  /**
+   * Like compatibleWithBothTypes, returns the type that contains both `this`
+   * and `rhs`. If the narrowed ranges overlap, the returned type will contain
+   * both ranges. If they don't overlap, a `OneOfType` will be returned.
+   */
   compatibleWithBothNarrowed(rhs: MetaFloatType | MetaIntType) {
     const narrowed = Narrowed.compatibleWithBothFloats(this.narrowed, rhs.narrowed)
+    if (narrowed === undefined) {
+      return _privateOneOf([this, rhs])
+    }
     // comparing narrowed and this.narrowed looks "wrong" because NarrowedFloat
     // could be an array, but compatibleWithBothFloats assigns that array without
     // copying.
     if (narrowed === this.narrowed) {
       return this
-    } else if (narrowed === rhs.narrowed) {
+    }
+    if (narrowed === rhs.narrowed) {
       return rhs
     }
-
+    if (Narrowed.isDefaultNarrowedNumber(narrowed)) {
+      return FloatType
+    }
     return new MetaFloatType(narrowed)
   }
 
   narrow(min: number | [number] | undefined, max: number | [number] | undefined) {
-    const next = Narrowed.narrowFloats(this.narrowed, {min, max})
+    const next = this === FloatType ? {min, max} : Narrowed.narrowFloats(this.narrowed, {min, max})
 
     if (next === undefined) {
       return NeverType
@@ -1638,7 +1679,18 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
 
   declare static types: Record<string, ((object: MetaIntType) => Type) | undefined>
 
-  constructor(narrowed: Narrowed.NarrowedInt = Narrowed.DEFAULT_NARROWED_NUMBER) {
+  constructor(
+    narrowed: Narrowed.NarrowedInt = Narrowed.DEFAULT_NARROWED_NUMBER,
+    illAllowIt = false,
+  ) {
+    if (
+      typeof narrowed.min === 'number' &&
+      typeof narrowed.max === 'number' &&
+      narrowed.min === narrowed.max &&
+      !illAllowIt
+    ) {
+      throw 'This should be a LiteralIntType'
+    }
     super(narrowed)
   }
 
@@ -1717,16 +1769,31 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
 
   compatibleWithBothNarrowed(rhs: MetaIntType) {
     const narrowed = Narrowed.compatibleWithBothInts(this.narrowed, rhs.narrowed)
+    if (narrowed === undefined) {
+      return _privateOneOf([this, rhs])
+    }
     if (narrowed === this.narrowed) {
       return this
-    } else if (narrowed === rhs.narrowed) {
+    }
+    if (narrowed === rhs.narrowed) {
       return rhs
+    }
+    if (Narrowed.isDefaultNarrowedNumber(narrowed)) {
+      return IntType
     }
     return new MetaIntType(narrowed)
   }
 
-  narrow(min: number | undefined, max: number | undefined) {
-    const next = Narrowed.narrowInts(this.narrowed, {min, max})
+  narrow(min: number | [number] | undefined, max: number | [number] | undefined): Type {
+    if (Array.isArray(min)) {
+      return this.narrow(Math.floor(min[0]) + 1, max)
+    }
+
+    if (Array.isArray(max)) {
+      return this.narrow(min, Math.ceil(max[0]) - 1)
+    }
+
+    const next = this === IntType ? {min, max} : Narrowed.narrowInts(this.narrowed, {min, max})
 
     if (next === undefined) {
       return NeverType
@@ -2173,17 +2240,16 @@ export class MetaFloatRangeType extends RangeType<Narrowed.NarrowedFloat> {
   }
 
   narrow(min: number | [number] | undefined, max: number | [number] | undefined) {
-    const next = Narrowed.narrowFloats(this.narrowed, {min, max})
-
-    if (next === undefined) {
+    if (!this.type.isFloat()) {
       return NeverType
     }
 
-    if (Narrowed.isDefaultNarrowedNumber(next)) {
-      return FloatRangeType
+    const narrowedType = this.type.narrow(min, max)
+    if (narrowedType.isFloat()) {
+      return new MetaFloatRangeType(narrowedType.narrowed)
     }
 
-    return new MetaFloatType(next)
+    return NeverType
   }
 
   isFloatRange(): this is MetaFloatRangeType {
@@ -2201,7 +2267,7 @@ export class MetaIntRangeType extends RangeType<Narrowed.NarrowedInt> {
   // declare static types: Record<string, ((object: RangeType) => Type) | undefined>
 
   constructor(narrowed: Narrowed.NarrowedInt = Narrowed.DEFAULT_NARROWED_NUMBER) {
-    super(IntType, narrowed)
+    super(IntType.narrow(narrowed.min, narrowed.max), narrowed)
   }
 
   typeConstructor(): TypeConstructor {
@@ -2213,18 +2279,17 @@ export class MetaIntRangeType extends RangeType<Narrowed.NarrowedInt> {
     return undefined
   }
 
-  narrow(min: number | undefined, max: number | undefined) {
-    const next = Narrowed.narrowInts(this.narrowed, {min, max})
-
-    if (next === undefined) {
+  narrow(min: number | [number] | undefined, max: number | [number] | undefined) {
+    if (!this.type.isFloat()) {
       return NeverType
     }
 
-    if (Narrowed.isDefaultNarrowedNumber(next)) {
-      return IntRangeType
+    const narrowedType = this.type.narrow(min, max)
+    if (narrowedType.isInt()) {
+      return new MetaIntRangeType(narrowedType.narrowed)
     }
 
-    return new MetaIntType(next)
+    return NeverType
   }
 
   isFloatRange(): this is MetaFloatRangeType {
@@ -2279,9 +2344,9 @@ export abstract class LiteralType extends Type {
       case 'literal-boolean':
         return BooleanType
       case 'literal-float':
-        return new MetaFloatType({min: value as number, max: value as number})
+        return new MetaFloatType({min: value as number, max: value as number}, true)
       case 'literal-int':
-        return new MetaIntType({min: value as number, max: value as number})
+        return new MetaIntType({min: value as number, max: value as number}, true)
       case 'literal-string':
         return new MetaStringType({
           length: {
@@ -2373,6 +2438,24 @@ export class LiteralFloatType extends LiteralType {
     return new TypeConstructor(`${this.value}`, this, optional(this), [
       positionalArgument({name: 'input', type: oneOf([string(), int()]), isRequired: true}),
     ])
+  }
+
+  narrow(min: number | [number] | undefined, max: number | [number] | undefined) {
+    if (
+      (Array.isArray(min) && min[0] >= this.value) ||
+      (Array.isArray(max) && max[0] <= this.value)
+    ) {
+      return NeverType
+    }
+
+    if (
+      (typeof min === 'number' && min > this.value) ||
+      (typeof max === 'number' && max < this.value)
+    ) {
+      return NeverType
+    }
+
+    return this
   }
 
   toCode() {
@@ -3384,47 +3467,6 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
     )
   }
 
-  // covers "5.0 is 0...10 --> 5.0"
-  // Yeah ranges don't really work as a 'canBeAssignedTo' case, and it was just
-  // easier to put it in here than work it into canBeAssignedTo (where it
-  // definitely doesn't belong)
-  if ((lhsType.isFloat() || lhsType.isRange()) && typeAssertion.isFloat()) {
-    // if lhsType is already assignable to the typeAssertion range, return lhsType
-    if (Narrowed.testNumber(lhsType.narrowed, typeAssertion.narrowed)) {
-      return lhsType
-    }
-
-    if (Narrowed.testNumber(typeAssertion.narrowed, lhsType.narrowed)) {
-      if (lhsType.isInt() || lhsType.isIntRange()) {
-        let min: number | undefined
-        if (Array.isArray(typeAssertion.narrowed.min)) {
-          min = Math.floor(typeAssertion.narrowed.min[0]) + 1
-        } else {
-          min = typeAssertion.narrowed.min
-        }
-
-        let max: number | undefined
-        if (Array.isArray(typeAssertion.narrowed.max)) {
-          max = Math.ceil(typeAssertion.narrowed.max[0]) - 1
-        } else {
-          max = typeAssertion.narrowed.max
-        }
-
-        if (lhsType.isIntRange()) {
-          return intRange({min, max})
-        }
-        return int({min, max})
-      }
-
-      if (lhsType.isRange()) {
-        return floatRange(typeAssertion.narrowed)
-      }
-      return float(typeAssertion.narrowed)
-    }
-
-    return NeverType
-  }
-
   // preserves the more specific type - if lhsType can already be assigned to
   // typeAssertion, it doesn't need to be further narrowed.
   //
@@ -3437,6 +3479,17 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
   // covers type narrowing, e.g. `Human is Student --> Student`
   if (canBeAssignedTo(typeAssertion, lhsType)) {
     return typeAssertion
+  }
+
+  // covers "5.0 is 0...10 --> 5.0" and `0...10 is <5 --> 0...5`
+  // Yeah ranges don't really work as a 'canBeAssignedTo' case, and it was just
+  // easier to put it in here than work it into canBeAssignedTo (where it
+  // definitely doesn't belong)
+  if (
+    (lhsType.isFloat() && typeAssertion.isFloat()) ||
+    (lhsType.isRange() && typeAssertion.isRange())
+  ) {
+    return lhsType.narrow(typeAssertion.narrowed.min, typeAssertion.narrowed.max)
   }
 
   return NeverType
@@ -3473,7 +3526,10 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
     )
   }
 
-  if ((lhsType.isFloat() || lhsType.isRange()) && typeAssertion.isFloat()) {
+  if (
+    (lhsType.isFloat() && typeAssertion.isFloat()) ||
+    (lhsType.isRange() && typeAssertion.isRange())
+  ) {
     if (Narrowed.testNumber(lhsType.narrowed, typeAssertion.narrowed)) {
       return NeverType
     }
@@ -3750,6 +3806,10 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     }
 
     types.push(commonType)
+    if (types.length === 1) {
+      return types[0]
+    }
+
     const nonNullType = types.find(t => t !== NullType)
     if (
       // only 2
@@ -3804,7 +3864,8 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
       if (rhs instanceof MetaFloatType) {
         type = rhs.compatibleWithBothNarrowed(lhs)
       } else {
-        // rhs is Int, lhs is _either_ Int or Float, but don't need to special case
+        // rhs is Int, lhs is _either_ Int or Float, but
+        // compatibleWithBothNarrowed accepts either
         type = lhs.compatibleWithBothNarrowed(rhs)
       }
 
@@ -3812,6 +3873,8 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
         return type
       }
     }
+  } else if (lhs.isFloatRange() && rhs.isFloatRange()) {
+    debugger
   } else if (lhs instanceof MetaStringType && rhs instanceof MetaStringType) {
     // both are strings, but not literal strings
     const type = lhs.compatibleWithBothNarrowed(rhs)

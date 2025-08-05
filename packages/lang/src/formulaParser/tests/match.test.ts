@@ -1,5 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
 import {type TypeRuntime, type ValueRuntime} from '../../runtime'
+import {privateOneOf} from '../../tests/privateOneOf'
 import * as Types from '../../types'
 import * as Values from '../../values'
 import {parse} from '../../formulaParser'
@@ -201,11 +202,19 @@ describe('match operator', () => {
         },
       ]),
       c([
+        Types.intRange(),
+        'foo is <10',
+        {
+          truthy: Types.intRange({max: 9}),
+          falsey: Types.intRange({min: 10}),
+        },
+      ]),
+      c([
         Types.intRange({min: 0}),
         'foo is <10',
         {
-          truthy: Types.never(),
-          falsey: Types.intRange({min: 0}),
+          truthy: Types.intRange({min: 0, max: 9}),
+          falsey: Types.intRange({min: 10}),
         },
       ]),
       c([
@@ -285,6 +294,33 @@ describe('match operator', () => {
       ]),
       c([
         Types.oneOf([Types.string(), Types.int()]),
+        'foo is /<(?<foo>\\w+)>/ or foo',
+        {
+          truthy: Types.oneOf([
+            Types.string({regex: [/\w+/]}),
+            Types.string({min: 1}),
+            Types.int(),
+          ]),
+          falsey: Types.oneOf([Types.literal(''), Types.literal(0)]),
+          reverse: false,
+        },
+      ]),
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
+        'foo is /<(?<foo>\\w+)>/ or !foo',
+        {
+          truthy: privateOneOf(
+            //
+            Types.literal(''),
+            Types.string({regex: [/\w+/]}),
+            Types.literal(0),
+          ),
+          falsey: Types.oneOf([Types.string({min: 1}), Types.int()]),
+          reverse: false,
+        },
+      ]),
+      c([
+        Types.oneOf([Types.string(), Types.int()]),
         'foo !is /<(?<foo>\\w+)>/ and foo',
         {
           // this one took me a bit - but yes; the inverse case is:
@@ -299,7 +335,12 @@ describe('match operator', () => {
           // involve parsing the regex to make sure it always matches N
           // characters)
           truthy: Types.oneOf([Types.string({min: 1}), Types.int()]),
-          falsey: Types.oneOf([Types.string(), Types.int()]),
+          falsey: privateOneOf(
+            //
+            Types.literal(''),
+            Types.string({regex: [/\w+/]}),
+            Types.literal(0),
+          ),
           reverse: false,
         },
       ]),
@@ -314,19 +355,16 @@ describe('match operator', () => {
           reverse: false,
         },
       ]),
-      c.only([
+      c([
         Types.oneOf([Types.string(), Types.int({min: 0})]),
-        'foo !is /<(?<foo>\\w+)>/ and foo',
+        'foo is /<(?<foo>\\w+)>/ or !foo',
         {
-          truthy: Types.oneOf([Types.string({min: 1}), Types.int({min: 1})]),
-          // in the false case:
-          //   either `foo is /…/` (never the case for Int)
-          //   _or_ `!foo` (Int => literal(0), String => '')
-          falsey: Types.oneOf([
+          truthy: Types.oneOf([
             Types.literal(''),
             Types.string({regex: [/\w+/]}),
             Types.literal(0),
           ]),
+          falsey: Types.oneOf([Types.string({min: 1}), Types.int({min: 1})]),
           reverse: false,
         },
       ]),
@@ -337,7 +375,7 @@ describe('match operator', () => {
           runtimeTypes['foo'] = [fooType, Values.nullValue()]
           const expression = parse(formula).get()
           const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
-          // expect(truthy).toEqual(expectedTypes.truthy)
+          expect(truthy).toEqual(expectedTypes.truthy)
           expect(falsey).toEqual(expectedTypes.falsey)
         },
       )
@@ -349,7 +387,7 @@ describe('match operator', () => {
         ;(only ? it.only : skip ? it.skip : it)(
           `(foo: ${fooType}) '${notIsFormula}' => truthy: ${expectedTruthy}, falsey: ${expectedFalsey}`,
           () => {
-            expect(formula.split(' is ')).toEqual(2)
+            expect(formula.split(' is ').length).toEqual(2)
             runtimeTypes['foo'] = [fooType, Values.nullValue()]
             const expression = parse(notIsFormula).get()
             const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
@@ -402,7 +440,6 @@ describe('match operator', () => {
         },
       ),
     )
-    // describe('assigns enum values')
   })
 
   describe('invalid parse', () => {

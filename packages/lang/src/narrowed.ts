@@ -75,6 +75,11 @@ export function numberDesc(narrowed: NarrowedFloat | NarrowedInt) {
   return `${min}...${max}`
 }
 
+/**
+ * This function accepts two float ranges and finds the intersection of the two.
+ *
+ * If the intersection is empty, it returns undefined.
+ */
 export function narrowFloats(
   narrowed: NarrowedFloat,
   nextNarrowed: NarrowedFloat,
@@ -132,12 +137,23 @@ export function narrowFloats(
   return next
 }
 
+/**
+ * Unlike narrowFloats, which returns the intersection of the two 'narrowed'
+ * types, this one returns the union. Returns `undefined` if the two ranges
+ * don't intersect.
+ */
 export function compatibleWithBothFloats(
   narrowed: NarrowedFloat,
   nextNarrowed: NarrowedFloat,
 ): NarrowedFloat | undefined {
   const {min, max} = narrowed
   const {min: nextMin, max: nextMax} = nextNarrowed
+  if (
+    (typeof min === 'number' && typeof nextMax === 'number' && min > nextMax) ||
+    (typeof max === 'number' && typeof nextMin === 'number' && nextMin > max)
+  ) {
+    return undefined
+  }
   let retMin: NarrowedFloat['min']
   let retMax: NarrowedFloat['max']
 
@@ -255,6 +271,14 @@ export function compatibleWithBothInts(
 ): NarrowedInt | undefined {
   const {min, max} = narrowed
   const {min: nextMin, max: nextMax} = nextNarrowed
+  if (
+    // the max + 1 is because, in the case of int, if min and max are next to
+    // each other, they should merge.
+    (typeof min === 'number' && typeof nextMax === 'number' && min > nextMax + 1) ||
+    (typeof max === 'number' && typeof nextMin === 'number' && nextMin > max + 1)
+  ) {
+    return undefined
+  }
   let retMin: NarrowedInt['min']
   let retMax: NarrowedInt['max']
 
