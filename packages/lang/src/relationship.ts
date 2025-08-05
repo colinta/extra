@@ -586,6 +586,17 @@ export function combineOrRelationships(
           formula: mask,
           comparison: rhsRef.comparison,
         } as Relationship)
+      } else {
+        // no reference was found on the rhs, which means that the assignment
+        // would be *removed*, and the value would come from parent context,
+        // which doesn't feel like the right thing. Either we raise an exception
+        // (require every or-condition to have a match expression, which is not
+        // always feasible), or do what I did here, which is default to `null`.
+        alsoOnRhs = true
+        commonFormulas.push({
+          formula: {type: 'assign', name: lhsAssign.name, id: lhsAssign.id},
+          comparison: {operator: 'instanceof', rhs: Types.NullType},
+        })
       }
     }
 

@@ -5552,13 +5552,9 @@ export class MatchArrayExpression extends MatchExpression {
     return [minLength, maxLength]
   }
 
-  gimmeTrueStuffWith(
-    runtime: TypeRuntime,
-    formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
-  ): GetRuntimeResult<Relationship[]> {
-    let arrayType: Types.ArrayType | undefined
+  private calcArrayType(lhsType: Types.Type) {
     if (lhsType instanceof Types.OneOfType) {
+      let arrayType: Types.ArrayType | undefined
       for (const type of lhsType.of) {
         if (!(type instanceof Types.ArrayType)) {
           continue
@@ -5570,10 +5566,18 @@ export class MatchArrayExpression extends MatchExpression {
           arrayType = Types.compatibleWithBothTypes(arrayType, type) as Types.ArrayType
         }
       }
+      return arrayType
     } else if (lhsType instanceof Types.ArrayType) {
-      arrayType = lhsType
+      return lhsType
     }
+  }
 
+  gimmeTrueStuffWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    const arrayType = this.calcArrayType(lhsType)
     if (!arrayType) {
       return err(
         new RuntimeError(
@@ -5643,6 +5647,32 @@ export class MatchArrayExpression extends MatchExpression {
     return ok(relationships)
   }
 
+  /**
+   * In the false case, we might be able to refine the array type.
+   * - If the array matches all elements, then the array type is 'never'
+   * - If the array matches the minimum array length, then the false case has
+   * the minimum increased by one
+   * - Likewise if the array matches the maximum array length, the false case
+   * has the maximum decreased by one
+   *
+   *   -- foo: Array(T)
+   *   if (foo is []) {
+   *   then: -- foo: Array(T, length: =0)
+   *   else: -- foo: Array(T, length: >=1)
+   *   }
+   *
+   *   -- foo: Array(T)
+   *   if (foo is [...]) {
+   *   then: -- foo: Array(T)
+   *   else: -- foo: never
+   *   }
+   *
+   *   -- foo: Array(T, length: <=2)
+   *   if (foo is [_, _]) {
+   *   then: -- foo: Array(T, length: =2)
+   *   else: -- foo: Array(T, length: <=1)
+   *   }
+   */
   gimmeFalseStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
@@ -5652,13 +5682,23 @@ export class MatchArrayExpression extends MatchExpression {
       return ok([])
     }
 
-    return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
-      if (formula) {
-        return [{formula, comparison: {operator: '!instanceof', rhs: type}}]
-      }
+    const arrayType = this.calcArrayType(lhsType)
+    if (!arrayType) {
+      return ok([])
+    }
 
-      return []
-    })
+    const matchesAll = this.args.some(arg => arg instanceof MatchAssignRemainingExpression)
+    const matchCount = matchesAll ? undefined : this.args.length
+    const min =
+      matchCount !== undefined && matchCount === arrayType.narrowedLength.min
+        ? matchCount + 1
+        : arrayType.narrowedLength.min
+    const max =
+      matchCount !== undefined && matchCount === arrayType.narrowedLength.max
+        ? matchCount - 1
+        : arrayType.narrowedLength.max
+    const nextArrayType = arrayType.narrowLength(min, max)
+    return ok([{formula, comparison: {operator: 'instanceof', rhs: nextArrayType}}])
   }
 
   toLisp() {

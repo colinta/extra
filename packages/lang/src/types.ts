@@ -2636,9 +2636,10 @@ export abstract class ContainerType<T extends ContainerType<T>> extends Type {
   }
 
   /**
-   * Internal function - called from narrowLengthGuard after the combined narrow type
-   * has been checked. The values minLength, maxLength are guaranteed to be
-   * compatible with the ContainerType.
+   * Internal function - called from narrowLengthGuard after the combined narrow
+   * type has been checked. The values minLength, maxLength are guaranteed to be
+   * compatible with the ContainerType. Avoids repeating the 'NeverType' check
+   * in every ContainerType.
    */
   abstract narrowLengthSafe(minLength: number, maxLength: number | undefined): T
 
@@ -2647,6 +2648,10 @@ export abstract class ContainerType<T extends ContainerType<T>> extends Type {
   }
 
   private narrowLengthGuard(minLength: number, maxLength: number | undefined) {
+    if (minLength === this.narrowedLength.min && maxLength === this.narrowedLength.max) {
+      return this
+    }
+
     const next = Narrowed.narrowLengths(this.narrowedLength, {min: minLength, max: maxLength})
     if (next === undefined) {
       return NeverType

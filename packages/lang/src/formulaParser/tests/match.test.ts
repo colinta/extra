@@ -23,10 +23,18 @@ beforeEach(() => {
 /**
  * Used in the match eval tests
  */
-function truthyFalsey(name: string, expression: Expression, runtime: TypeRuntime) {
-  const truthy = expression.assumeTrue(runtime).get()
-  const falsey = expression.assumeFalse(runtime).get()
-  return {truthy: truthy.getLocalType(name), falsey: falsey.getLocalType(name)}
+function truthyFalsey(
+  name: string,
+  {truthy: fetchTruthy, falsey: fetchFalsey}: {truthy: boolean; falsey: boolean},
+  expression: Expression,
+  runtime: TypeRuntime,
+) {
+  const truthy = fetchTruthy ? expression.assumeTrue(runtime).get() : undefined
+  const falsey = fetchFalsey ? expression.assumeFalse(runtime).get() : undefined
+  return {
+    truthy: truthy?.getLocalType(name) ?? Types.never(),
+    falsey: falsey?.getLocalType(name) ?? Types.never(),
+  }
 }
 
 describe('match operator', () => {
@@ -89,9 +97,10 @@ describe('match operator', () => {
         Types.Type,
         string,
         {
-          truthy: Types.Type
-          falsey: Types.Type
+          truthy: Types.Type | undefined
+          falsey: Types.Type | undefined
           reverse?: false
+          fetch?: string
         },
       ]
     >(
@@ -368,15 +377,67 @@ describe('match operator', () => {
           reverse: false,
         },
       ]),
+      c([
+        Types.array(Types.string()),
+        'foo is [bar] or !foo',
+        {
+          truthy: Types.array(Types.string(), {max: 1}),
+          falsey: Types.array(Types.string(), {min: 1}),
+          reverse: false,
+        },
+      ]),
+      c([
+        Types.array(Types.string()),
+        'foo is [_] or foo is [_, _]',
+        {
+          truthy: Types.array(Types.string(), {min: 1, max: 2}),
+          falsey: Types.array(Types.string()),
+          reverse: false,
+        },
+      ]),
+      c([
+        Types.array(Types.string()),
+        'foo is [bar] or foo is [bar, _]',
+        {
+          truthy: Types.string(),
+          falsey: undefined,
+          reverse: false,
+          fetch: 'bar',
+        },
+      ]),
+      c([
+        Types.array(Types.string()),
+        'foo is [bar] or !foo',
+        {
+          truthy: Types.oneOf([Types.string(), Types.nullType()]),
+          falsey: undefined,
+          reverse: false,
+          fetch: 'bar',
+        },
+      ]),
     ).run(([fooType, formula, expectedTypes], {only, skip}) => {
+      const fetch = expectedTypes.fetch ?? 'foo'
       ;(only ? it.only : skip ? it.skip : it)(
-        `(foo: ${fooType}) '${formula}' => truthy: ${expectedTypes.truthy}, falsey: ${expectedTypes.falsey}`,
+        `(foo: ${fooType}) '${formula}' => ${fetch === 'foo' ? '' : fetch + ': '}truthy: ${expectedTypes.truthy}, falsey: ${expectedTypes.falsey}`,
         () => {
           runtimeTypes['foo'] = [fooType, Values.nullValue()]
+          runtimeTypes['bar'] = [Types.namedClass('Bar', new Map()), Values.nullValue()]
           const expression = parse(formula).get()
-          const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
-          expect(truthy).toEqual(expectedTypes.truthy)
-          expect(falsey).toEqual(expectedTypes.falsey)
+          const {truthy, falsey} = truthyFalsey(
+            fetch,
+            {
+              truthy: expectedTypes.truthy !== undefined,
+              falsey: expectedTypes.falsey !== undefined,
+            },
+            expression,
+            typeRuntime,
+          )
+          if (expectedTypes.truthy) {
+            expect(truthy).toEqual(expectedTypes.truthy)
+          }
+          if (expectedTypes.falsey) {
+            expect(falsey).toEqual(expectedTypes.falsey)
+          }
         },
       )
 
@@ -385,14 +446,23 @@ describe('match operator', () => {
         const expectedTruthy = expectedTypes.falsey
         const expectedFalsey = expectedTypes.truthy
         ;(only ? it.only : skip ? it.skip : it)(
-          `(foo: ${fooType}) '${notIsFormula}' => truthy: ${expectedTruthy}, falsey: ${expectedFalsey}`,
+          `(foo: ${fooType}) '${notIsFormula}' => ${fetch === 'foo' ? '' : fetch + ': '}truthy: ${expectedTruthy}, falsey: ${expectedFalsey}`,
           () => {
             expect(formula.split(' is ').length).toEqual(2)
             runtimeTypes['foo'] = [fooType, Values.nullValue()]
             const expression = parse(notIsFormula).get()
-            const {truthy, falsey} = truthyFalsey('foo', expression, typeRuntime)
-            expect(truthy).toEqual(expectedTruthy)
-            expect(falsey).toEqual(expectedFalsey)
+            const {truthy, falsey} = truthyFalsey(
+              fetch,
+              {truthy: expectedTruthy !== undefined, falsey: expectedFalsey !== undefined},
+              expression,
+              typeRuntime,
+            )
+            if (expectedTruthy) {
+              expect(truthy).toEqual(expectedTruthy)
+            }
+            if (expectedFalsey) {
+              expect(falsey).toEqual(expectedFalsey)
+            }
           },
         )
       }
