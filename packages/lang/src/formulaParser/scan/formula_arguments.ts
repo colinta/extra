@@ -322,14 +322,14 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
           isRequired,
         )
       }
-      arg.followingComments.push(...scanner.flushComments())
-      args.push(arg)
-
-      scanner.whereAmI(`_scanArgumentDeclarations: (${argName.name}: ${argType.constructor.name})`)
       const shouldBreak = scanner.scanCommaOrBreak(
         ARGS_CLOSE,
         `Expected ',' separating items in the arguments`,
       )
+
+      scanner.whereAmI(`_scanArgumentDeclarations: (${argName.name}: ${argType.constructor.name})`)
+      arg.followingComments.push(...scanner.flushComments())
+      args.push(arg)
 
       if (shouldBreak) {
         range1 = scanner.charIndex

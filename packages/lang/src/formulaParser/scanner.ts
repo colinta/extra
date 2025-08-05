@@ -27,8 +27,9 @@ export class Scanner {
     return this.options.debug
   }
 
-  set debug(value: number | undefined) {
-    this.options.debug = value
+  set debug(value: boolean) {
+    this.options.debug ??= 0
+    this.options.debug += value ? 1 : -1
   }
 
   get isInPipe() {
@@ -363,6 +364,17 @@ export class Scanner {
   pushComment(type: CommentType, comment: string, delim: string, index: number) {
     this.whereAmI(`pushComment ${delim}${comment}`)
     this.#comments.push([index, {type, delim, comment}])
+  }
+
+  peekComments() {
+    if (this.#pauseComments) {
+      return []
+    }
+    const comments = this.#comments.map(([_, comment]) => comment)
+    if (comments.length) {
+      this.whereAmI('peekComments: ' + comments.map(({comment}) => comment).join(', '))
+    }
+    return comments
   }
 
   flushComments() {
