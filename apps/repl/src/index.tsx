@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useReducer, useState} from 'react'
+import React, {useEffect, useMemo, useReducer, useRef, useState} from 'react'
 import {existsSync, readFileSync, writeFileSync} from 'node:fs'
 import {resolve, basename} from 'node:path'
 
@@ -193,32 +193,39 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
   const [inputs, setInputs] = useState<ExtraInput[]>(state.vars)
   const [only, setOnly] = useToggle(false)
   const [skip, setSkip] = useToggle(false)
+  const timer = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
-    setWarning('')
-    const {text, type: _type} = calc()
+    const prevId = timer.current
+    timer.current = setTimeout(() => {
+      setWarning('')
+      const {text, type: _type} = calc()
 
-    setMainText(text)
-    writeFileSync(
-      STATE_FILE,
-      JSON.stringify(
-        {
-          version: 1,
-          desc: saveDesc,
-          only,
-          skip,
-          formula,
-          vars: inputs.map(({name, type, value}) => ({
-            name: name.trim(),
-            type: type.trim(),
-            value: value.trim(),
-          })),
-        },
-        null,
-        2,
-      ),
-      {encoding: 'utf8'},
-    )
+      setMainText(text)
+      writeFileSync(
+        STATE_FILE,
+        JSON.stringify(
+          {
+            version: 1,
+            desc: saveDesc,
+            only,
+            skip,
+            formula,
+            vars: inputs.map(({name, type, value}) => ({
+              name: name.trim(),
+              type: type.trim(),
+              value: value.trim(),
+            })),
+          },
+          null,
+          2,
+        ),
+        {encoding: 'utf8'},
+      )
+    }, 250)
+    return () => {
+      clearTimeout(prevId)
+    }
   }, [formula, inputs, saveDesc, only, skip])
 
   function updateInputName(inputIndex: number, name: string) {
