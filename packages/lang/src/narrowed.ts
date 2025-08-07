@@ -75,6 +75,34 @@ export function numberDesc(narrowed: NarrowedFloat | NarrowedInt) {
   return `${min}...${max}`
 }
 
+export function isEqualNarrowed(narrowed: NarrowedFloat, nextNarrowed: NarrowedFloat) {
+  if (Array.isArray(narrowed.min)) {
+    if (
+      nextNarrowed.min === undefined ||
+      !Array.isArray(nextNarrowed.min) ||
+      nextNarrowed.min[0] !== narrowed.min[0]
+    ) {
+      return false
+    }
+  } else if (narrowed.min !== nextNarrowed.min) {
+    return false
+  }
+
+  if (Array.isArray(narrowed.max)) {
+    if (
+      nextNarrowed.max === undefined ||
+      !Array.isArray(nextNarrowed.max) ||
+      nextNarrowed.max[0] !== narrowed.max[0]
+    ) {
+      return false
+    }
+  } else if (narrowed.max !== nextNarrowed.max) {
+    return false
+  }
+
+  return true
+}
+
 /**
  * This function accepts two float ranges and finds the intersection of the two.
  *
@@ -149,11 +177,14 @@ export function compatibleWithBothFloats(
   const {min, max} = narrowed
   const {min: nextMin, max: nextMax} = nextNarrowed
   if (
-    (typeof min === 'number' && typeof nextMax === 'number' && min > nextMax) ||
-    (typeof max === 'number' && typeof nextMin === 'number' && nextMin > max)
+    min !== undefined &&
+    !testNumber(min, nextNarrowed) &&
+    max !== undefined &&
+    !testNumber(max, nextNarrowed)
   ) {
     return undefined
   }
+
   let retMin: NarrowedFloat['min']
   let retMax: NarrowedFloat['max']
 
@@ -410,8 +441,11 @@ export function compatibleWithBothLengths(
   return next
 }
 
+/**
+ * Returns 'true' if the testRange is entirely within assertRange.
+ */
 export function testNumber(
-  testRange: number | NarrowedFloat | NarrowedInt,
+  testRange: number | [number] | NarrowedFloat | NarrowedInt,
   assertRange: NarrowedFloat | NarrowedInt,
 ) {
   // these are also covered below, but early exit for "no assertion" case.
@@ -421,6 +455,18 @@ export function testNumber(
 
   if (typeof testRange === 'number') {
     return testNumber({min: testRange, max: testRange}, assertRange)
+  }
+
+  if (Array.isArray(testRange)) {
+    const min = Array.isArray(assertRange.min) ? assertRange.min[0] : assertRange.min
+    const max = Array.isArray(assertRange.max) ? assertRange.max[0] : assertRange.max
+    if (min !== undefined && testRange[0] <= min) {
+      return false
+    }
+    if (max !== undefined && testRange[0] >= max) {
+      return false
+    }
+    return true
   }
 
   if (Array.isArray(assertRange.min)) {

@@ -14,12 +14,22 @@ import {
   relationshipFormula,
   type RelationshipMathSymbol,
   type RelationshipFormula,
+  type RelationshipAssign,
   combineOrRelationships,
   assignRelationshipsToRuntime,
   invertRelationship,
+  relationshipToType,
+  isAssign,
 } from '../relationship'
 import * as Expressions from './expressions'
-import {Operation, type Expression, type Range} from './expressions'
+import {
+  comparisonOperation,
+  expectedNumberMessage,
+  expectedType,
+  Operation,
+  type Expression,
+  type Range,
+} from './expressions'
 import {stringSort} from './stringSort'
 import {
   type AbstractOperator,
@@ -286,29 +296,6 @@ function numericOperation(
   }
 }
 
-function comparisonOperation(
-  expr: Operation,
-  lhs: Values.Value,
-  rhs: Values.Value,
-  op: (lhs: number, rhs: number) => boolean,
-): GetValueResult {
-  if (lhs === Values.NaNValue || rhs === Values.NaNValue) {
-    return ok(Values.FalseValue)
-  }
-
-  if (lhs.isInt() && rhs.isInt()) {
-    return ok(Values.booleanValue(op(lhs.value, rhs.value)))
-  } else if (lhs.isFloat() && rhs.isFloat()) {
-    return ok(Values.booleanValue(op(lhs.value, rhs.value)))
-  }
-
-  if (lhs.isFloat() && rhs) {
-    return err(new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1], rhs)))
-  } else {
-    return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0], lhs)))
-  }
-}
-
 abstract class OperatorOperation extends Operation {
   abstract symbol: string
 
@@ -506,13 +493,14 @@ abstract class BinaryOperator extends OperatorOperation {
   }
 
   rhsEval(
-    _runtime: ValueRuntime,
+    runtime: ValueRuntime,
     _lhsValue: Values.Value,
     _lhsExpr: Expression,
-    _rhsExpr: Expression,
-  ): GetValueResult | undefined {
-    return undefined
+    rhsExpr: Expression,
+  ): GetValueResult {
+    return rhsExpr.eval(runtime)
   }
+
   abstract operatorEval(
     runtime: ValueRuntime,
     lhs: Values.Value,
@@ -527,7 +515,7 @@ abstract class BinaryOperator extends OperatorOperation {
       return this.operatorEval(
         runtime,
         lhs,
-        () => this.rhsEval(runtime, lhs, lhsExpr, rhsExpr) ?? rhsExpr.eval(runtime),
+        () => this.rhsEval(runtime, lhs, lhsExpr, rhsExpr),
         lhsExpr,
         rhsExpr,
       )
@@ -748,10 +736,35 @@ class LogicalOrOperator extends BinaryOperator {
       )
   }
 
+  matchAssignReferences() {
+    const [lhsExpr, rhsExpr] = this.args
+    const lhsAssigns = lhsExpr.matchAssignReferences()
+    const rhsAssigns = rhsExpr.matchAssignReferences()
+
+    return lhsAssigns.concat(rhsAssigns.filter(assign => !lhsAssigns.includes(assign)))
+  }
+
   rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
     return lhsExpr
       .assumeFalse(runtime)
       .map(falseyRuntime => getChildType(this, rhsExpr, falseyRuntime))
+  }
+
+  rhsEval(
+    runtime: ValueRuntime,
+    lhsValue: Values.Value,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetValueResult {
+    if (this.matchAssignReferences().length === 0) {
+      return super.rhsEval(runtime, lhsValue, lhsExpr, rhsExpr)
+    }
+
+    return super.rhsEval(runtime, lhsValue, lhsExpr, rhsExpr)
+  }
+
+  evalReturningRuntime(runtime: ValueRuntime): GetRuntimeResult<[Values.Value, ValueRuntime]> {
+    return this.eval(runtime).map(value => [value, runtime])
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
@@ -770,7 +783,13 @@ class LogicalOrOperator extends BinaryOperator {
     return ok(Types.oneOf([lhs.toTruthyType(), rhs]))
   }
 
-  operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
+  operatorEval(
+    _runtime: ValueRuntime,
+    lhs: Values.Value,
+    rhs: () => GetValueResult,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
     if (lhs.isTruthy()) {
       return ok(lhs)
     } else {
@@ -830,17 +849,59 @@ class LogicalAndOperator extends BinaryOperator {
         }),
     )
   }
+
+  matchAssignReferences() {
+    const [lhsExpr, rhsExpr] = this.args
+    const lhsAssigns = lhsExpr.matchAssignReferences()
+    const rhsAssigns = rhsExpr.matchAssignReferences()
+    if (rhsAssigns.filter(assign => lhsAssigns.includes(assign))) {
+      throw 'TODO: Remove this check - duplicative of the scanMatch function that looks for duplicate assigns.'
+    }
+
+    return lhsAssigns.concat(rhsAssigns)
+  }
+
   rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
     return lhsExpr
       .assumeTrue(runtime)
       .map(truthyRuntime => getChildType(this, rhsExpr, truthyRuntime))
   }
 
+  rhsEval(
+    runtime: ValueRuntime,
+    lhsValue: Values.Value,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetValueResult {
+    if (this.matchAssignReferences().length === 0) {
+      return super.rhsEval(runtime, lhsValue, lhsExpr, rhsExpr)
+    }
+
+    return super.rhsEval(runtime, lhsValue, lhsExpr, rhsExpr)
+  }
+
+  evalReturningRuntime(runtime: ValueRuntime): GetRuntimeResult<[Values.Value, ValueRuntime]> {
+    return this.eval(runtime).map(value => [value, runtime])
+  }
+
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     return ok(Types.oneOf([lhs.toFalseyType(), rhs]))
   }
 
-  operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
+  operatorEval(
+    _runtime: ValueRuntime,
+    lhs: Values.Value,
+    rhs: () => GetValueResult,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ) {
+    const lhsAssigns = lhsExpr.matchAssignReferences()
+    const rhsAssigns = rhsExpr.matchAssignReferences()
+    if (lhsAssigns.length || rhsAssigns.length) {
+      console.log('=========== operators.ts at line 766 ===========')
+      console.log({lhsAssigns, rhsAssigns})
+    }
+
     if (lhs.isTruthy()) {
       return rhs()
     } else {
@@ -1576,12 +1637,12 @@ abstract class MatchOperator extends BinaryOperator {
     _rhs: () => GetValueResult,
     _lhsExpr: Expression,
     rhsExpr: Expression,
-  ): GetRuntimeResult<Values.BooleanValue> {
+  ): GetValueResult {
     if (!(rhsExpr instanceof Expressions.MatchExpression)) {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
     }
 
-    throw 'TODO: eval match expressions'
+    return rhsExpr.evalWithSubject(runtime, this, lhs)
   }
 }
 
@@ -3917,9 +3978,13 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
           if (elseifExpr instanceof ElseIfExpressionInvocation) {
             const conditionCode = elseifExpr.conditionExpr?.toCode() ?? ''
             if (conditionCode.includes('\n')) {
-              blockCode += `elseif (\n${conditionCode}\n):\n`
+              blockCode += `elseif (\n`
+              blockCode += conditionCode
+              blockCode += `\n):\n`
             } else {
-              blockCode += `elseif (${conditionCode}):\n`
+              blockCode += `elseif (`
+              blockCode += conditionCode
+              blockCode += `):\n`
             }
             const thenCode = elseifExpr.thenExpr?.toCode() ?? ''
             blockCode += indent(thenCode + '\n')
@@ -3936,19 +4001,24 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
         code += '}'
         return code
       } else {
-        let code = `if (${conditionCode}, then: ${thenCode}`
+        let code = `if (`
+        code += conditionCode
+        code += `, then: `
+        code += thenCode
         for (const elseif of this.elseifExprs) {
-          code += `, ${elseif.toCode(0)}`
+          code += `, `
+          code += elseif.toCode(0)
         }
         if (elseCode) {
-          code += `, else: ${elseCode}`
+          code += `, else: `
+          code += elseCode
         }
         code += ')'
         return code
       }
     } else {
       const argListCode = this.argList.toCode(0)
-      return `if ${argListCode}`
+      return `if ` + argListCode
     }
   }
 
@@ -4059,7 +4129,7 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
       return err(new RuntimeError(this, expectedIfThenResult()))
     }
 
-    return conditionExpr.eval(runtime).map(conditionValue => {
+    return conditionExpr.evalReturningRuntime(runtime).map(([conditionValue, runtime]) => {
       if (conditionValue.isTruthy()) {
         return thenExpr.eval(runtime)
       }
@@ -4380,7 +4450,7 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
   symbol = 'switch'
   argList: Expression
   subjectExpr?: Expression
-  caseExprs?: Expression[]
+  caseExprs?: Expressions.CaseExpression[]
   elseExpr?: Expression
 
   constructor(
@@ -4388,16 +4458,29 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
     precedingComments: Comment[],
     followingOperatorComments: Comment[],
     operator: Operator,
-    args: Expression[],
+    switchArgs: Expression[],
   ) {
-    super(range, precedingComments, followingOperatorComments, operator, args)
-    this.argList = args[1]
+    super(range, precedingComments, followingOperatorComments, operator, switchArgs)
+    this.argList = switchArgs[1] as Expressions.ArgumentsList
 
-    if (this.argList instanceof Expressions.ArgumentsList) {
-      const args = this.argList.allPositionalArgs()
-      this.subjectExpr = args[0]
-      this.caseExprs = args.slice(1)
-      this.elseExpr = this.argList.namedArg('else')
+    if (!(this.argList instanceof Expressions.ArgumentsList)) {
+      throw new RuntimeError(this, 'Expected arguments list for switch expression')
+    }
+
+    const args = this.argList.allPositionalArgs()
+    this.subjectExpr = args[0]
+    this.caseExprs = args.slice(1) as Expressions.CaseExpression[]
+    if (this.caseExprs.some(arg => !(arg instanceof Expressions.CaseExpression))) {
+      throw new RuntimeError(this, expectedCaseConditions())
+    }
+    this.elseExpr = this.argList.namedArg('else')
+    const names = new Set(this.argList.allNamedArgs().keys())
+    names.delete('else')
+    if (names.size) {
+      throw new RuntimeError(
+        this,
+        `Unexpected named arguments in switch expression: '${Array.from(names).join("', '")}'`,
+      )
     }
   }
 
@@ -4437,11 +4520,123 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
-    return err(new RuntimeError(this, 'TODO: SwitchExpressionInvocation.getType() not implemented'))
+    const subjectExpr = this.subjectExpr
+    const caseExprs = this.caseExprs
+    const elseExpr = this.elseExpr
+
+    if (!subjectExpr) {
+      return err(new RuntimeError(this, expectedSubjectCondition()))
+    }
+
+    if (!caseExprs) {
+      return err(new RuntimeError(this, expectedCaseConditions()))
+    }
+
+    const subjectFormula = subjectExpr.relationshipFormula(runtime)
+    // const trackingFormula =
+    //   subjectFormula && subjectFormula.type === 'reference'
+    //     ? subjectFormula
+    //     : relationshipFormula.assign(subjectExpr.toCode())
+    let nextRuntime: TypeRuntime = runtime
+    return getChildType(this, subjectExpr, runtime)
+      .map(initialSubjectType => {
+        let trackingFormula: RelationshipAssign
+        if (subjectFormula && isAssign(subjectFormula)) {
+          trackingFormula = subjectFormula
+        } else {
+          // ok, this hack. If subjectFormula is not defined, or not expressible
+          // as an assignment, then relationshipToType below will fail. We need
+          // an assignable relationship in order to check the type of the
+          // subject in each caseExpr 'false' branch. So we fake it! We "assign"
+          // the subject to a variable named after the expression... the runtime
+          // only cares about strings, so we are guaranteed this expression will
+          // not be expressible by "user-land" references, and it makes
+          // debugging a joy.
+          const mutableRuntime = new MutableTypeRuntime(runtime)
+          const id = mutableRuntime.addLocalType(subjectExpr.toCode(), initialSubjectType)
+          trackingFormula = relationshipFormula.reference(subjectExpr.toCode(), id)
+          nextRuntime = mutableRuntime
+        }
+
+        return caseExprs.reduce(
+          (info, caseExpr): GetRuntimeResult<[Types.Type, Types.Type[]]> => {
+            if (info.isErr()) {
+              return err(info.error)
+            }
+
+            const [subjectType, bodyTypes] = info.get()
+            const typeResult = caseExpr
+              .gimmeTrueStuffWith(nextRuntime, trackingFormula, subjectType)
+              .map(stuff => assignRelationshipsToRuntime(nextRuntime, stuff, true))
+              .map(truthyRuntime => caseExpr.bodyExpression.getType(truthyRuntime))
+
+            if (typeResult.isErr()) {
+              return err(typeResult.error)
+            }
+
+            const runtimeResult = caseExpr
+              .gimmeFalseStuffWith(nextRuntime, trackingFormula, subjectType)
+              .map(stuff => assignRelationshipsToRuntime(nextRuntime, stuff, false))
+
+            if (runtimeResult.isErr()) {
+              return err(runtimeResult.error)
+            }
+
+            nextRuntime = runtimeResult.get()
+            debugger
+            const caseSubjectType = relationshipToType(nextRuntime, trackingFormula)
+            if (!caseSubjectType) {
+              throw new RuntimeError(
+                this,
+                "No subjectType type in SwitchExpression? that shouldn't happen",
+              )
+            }
+            bodyTypes.push(typeResult.get())
+
+            const nextSubjectType = Types.narrowTypeIs(subjectType, caseSubjectType)
+            return ok([nextSubjectType, bodyTypes])
+          },
+          ok([initialSubjectType, []] as [Types.Type, Types.Type[]]),
+        )
+      })
+      .map(([subjectType, bodyTypes]) => {
+        if (elseExpr) {
+          const typeResult = elseExpr.getType(nextRuntime)
+          if (typeResult.isErr()) {
+            return err(typeResult.error)
+          }
+
+          bodyTypes.push(typeResult.get())
+          return [Types.NeverType, bodyTypes]
+        } else {
+          return [subjectType, bodyTypes]
+        }
+      })
+      .map(([subjectType, bodyTypes]) => {
+        if (subjectType !== Types.NeverType) {
+          return err(
+            `Switch is not exhaustive, '${subjectExpr}' has unhandled type '${subjectType}'`,
+          )
+        }
+
+        return Types.oneOf(bodyTypes)
+      })
   }
 
   eval(runtime: ValueRuntime): GetValueResult {
-    return err(new RuntimeError(this, 'TODO: SwitchExpressionInvocation.eval() not implemented'))
+    const subjectExpr = this.subjectExpr
+    const caseExprs = this.caseExprs
+    if (!subjectExpr) {
+      return err(new RuntimeError(this, expectedSubjectCondition()))
+    }
+
+    if (!caseExprs) {
+      return err(new RuntimeError(this, expectedCaseConditions()))
+    }
+
+    const elseExpr = this.elseExpr
+
+    return elseExpr?.eval(runtime) ?? subjectExpr.eval(runtime)
   }
 }
 
@@ -4509,10 +4704,6 @@ addBinaryOperator({
 
 function unexpectedOnlyType(conditionType: Types.Type, only: boolean): string {
   return `Type '${conditionType}' is invalid as an if condition, because it is always ${only ? 'true' : 'false'}.`
-}
-
-function expectedNumberMessage(found: Expression, type?: Types.Type | Values.Value) {
-  return expectedType('Int or Float', found, type)
 }
 
 type _IntermediateArgs =
@@ -4786,16 +4977,6 @@ function spreadKeywordArg(
   }
 }
 
-function expectedType(expected: string, expr: Expression, type?: Types.Type | Values.Value) {
-  const message = `Expected ${expected}, found '${expr}'`
-  if (type) {
-    type = type instanceof Values.Value ? type.getType() : type
-    return `${message} of type '${type}'`
-  } else {
-    return message
-  }
-}
-
 function expectedGuardArguments() {
   return "Missing '# condition: Condition' and '# body: T' in 'guard()' expression"
 }
@@ -4830,6 +5011,14 @@ function expectedElseifConditionArgument() {
 
 function expectedElseifConditionResult() {
   return `Missing result in 'elseif(): <result>' expression`
+}
+
+function expectedSubjectCondition() {
+  return "Missing subject argument '# subject: T' in 'switch()' expression"
+}
+
+function expectedCaseConditions() {
+  return "Missing case expressions '...# cases: T' in 'switch()' expression"
 }
 
 // yup, that's what I named this function. At me in the comments.

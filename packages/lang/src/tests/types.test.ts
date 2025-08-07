@@ -66,6 +66,10 @@ describe('toCode', () => {
     c([Types.oneOf([Types.int(), Types.nullType()]), 'Int?']),
     c([Types.oneOf([Types.int()]), 'Int']),
     c([
+      Types.oneOf([Types.float({min: 1, max: [2]}), Types.float({min: [4], max: 7})]),
+      'Float(4<..7) | Float(1..<2)',
+    ]),
+    c([
       Types.formula(
         args(
           {name: 'name', type: Types.optional(Types.string())},

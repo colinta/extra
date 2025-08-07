@@ -608,6 +608,25 @@ export function combineOrRelationships(
     }
   }
 
+  // now we have all the relationships and assigns from lhs, and all the matches
+  // (or masks) from rhs, but we *don't* have all the assigns (and masks) from rhs
+  const rhsAssigns = rhsStuff.filter(rhs => {
+    const rhsFormula = rhs.formula
+    return (
+      rhsFormula.type === 'assign' &&
+      !lhsStuff.some(lhs => lhs.formula.type === 'assign' && lhs.formula.name === rhsFormula.name)
+    )
+  })
+  if (rhsAssigns.length) {
+    // pass in the lhsStuff relationships - they'll be ignored if they don't
+    // match, and they'll be used to create 'mask' if they match the assign.
+    const combinedAssigns = combineOrRelationships(
+      rhsAssigns,
+      lhsStuff.filter(lhs => lhs.formula.type === 'reference'),
+    )
+    combined.push(...combinedAssigns)
+  }
+
   // new assignments need to be made consistent.
   // All assignments with the same name must use the same id
   const assigns = combined.filter(relationship => relationship.formula.type === 'assign')
@@ -784,23 +803,23 @@ function combineOrMathRelationships(
 /**
  * Does this need to include ArrayType-length and Int-length, etc?
  */
-function relationshipToType(
+export function relationshipToType(
   runtime: TypeRuntime,
-  index: RelationshipFormula,
+  relationship: RelationshipFormula,
 ): Types.Type | undefined {
-  if (isAssign(index)) {
-    return runtimeLookup(runtime, runtime, index)
+  if (isAssign(relationship)) {
+    return runtimeLookup(runtime, runtime, relationship)
   }
 
-  if (isLiteral(index)) {
-    if (index.type === 'null') {
+  if (isLiteral(relationship)) {
+    if (relationship.type === 'null') {
       return Types.NullType
     }
-    return Types.literal(index.value)
+    return Types.literal(relationship.value)
   }
 
-  if (index.type === 'string-concat') {
-    const {lhs, rhs} = index
+  if (relationship.type === 'string-concat') {
+    const {lhs, rhs} = relationship
     const lhsType = relationshipToType(runtime, lhs)
     const rhsType = relationshipToType(runtime, rhs)
     if (!lhsType?.isString() || !rhsType?.isString()) {
@@ -809,8 +828,8 @@ function relationshipToType(
     return Types.stringConcatenationType(lhsType, rhsType)
   }
 
-  if (index.type === 'array-concat') {
-    const {lhs, rhs} = index
+  if (relationship.type === 'array-concat') {
+    const {lhs, rhs} = relationship
     const lhsType = relationshipToType(runtime, lhs)
     const rhsType = relationshipToType(runtime, rhs)
     if (!lhsType || !rhsType) {
@@ -819,8 +838,8 @@ function relationshipToType(
     return Types.array(Types.oneOf([lhsType, rhsType]))
   }
 
-  if (index.type === 'negate') {
-    const type = relationshipToType(runtime, index.arg)
+  if (relationship.type === 'negate') {
+    const type = relationshipToType(runtime, relationship.arg)
     if (!type?.isFloat()) {
       return
     }
@@ -830,8 +849,8 @@ function relationshipToType(
     )
   }
 
-  if (index.type === 'addition') {
-    const {lhs, rhs} = index
+  if (relationship.type === 'addition') {
+    const {lhs, rhs} = relationship
     const lhsType = relationshipToType(runtime, lhs)
     const rhsType = relationshipToType(runtime, rhs)
     if (!lhsType?.isFloat() || !rhsType?.isFloat()) {
@@ -2271,7 +2290,7 @@ export function invertRelationship(relationship: Relationship): Relationship {
   } as Relationship
 }
 
-function isAssign(formula: RelationshipFormula): formula is RelationshipAssign {
+export function isAssign(formula: RelationshipFormula): formula is RelationshipAssign {
   return (
     formula.type === 'reference' ||
     formula.type === 'assign' ||

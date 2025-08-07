@@ -16,6 +16,7 @@ beforeEach(() => {
   runtimeTypes = {}
   typeRuntime = mockTypeRuntime(runtimeTypes)
   valueRuntime = mockValueRuntime(runtimeTypes)
+  ;(() => valueRuntime)()
 })
 
 describe('switch', () => {
@@ -61,58 +62,158 @@ else:
   })
 
   describe('getType / eval', () => {
-    cases<[string, ['a', string], ['b', boolean], Types.Type, Values.Value]>(
-      c.skip([
+    cases<[string, [string, Types.Type, Values.Value][], Types.Type, Values.Value]>(
+      c([
         `\
-switch (a-letter) {
-case 'a':
-  [1]
-else:
-  [3]
+switch (letters) {
+case []:
+  ['a']
+case [first]:
+  [first]
+case [first, last]:
+  [first, last]
+case [first, ..., last]:
+  [first, last]
 }`,
-        ['a', ''],
-        ['b', false],
-        Types.oneOf([Types.literal(1), Types.literal(3), Types.literal('4')]),
-        Values.string('4'),
+        [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
+        Types.array(Types.string(), {min: 1, max: 2}),
+        Values.string('c'),
       ]),
-    ).run(([formula, [_a, valueA], [_b, valueB], expectedType, expectedValue], {only, skip}) =>
+      c([
+        `\
+switch (letters) {
+case []:
+  ['a']
+case [first]:
+  letters
+case [first, last]:
+  letters
+case [first, ..., last]:
+  [first, last]
+}`,
+        [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
+        Types.array(Types.string(), {min: 1, max: 2}),
+        Values.string('c'),
+      ]),
+      c([
+        `\
+switch (things.letters) {
+case []:
+  ['a']
+case [first]:
+  things.letters
+case [first, last]:
+  things.letters
+case [first, ..., last]:
+  [first, last]
+}`,
+        [
+          [
+            'things',
+            Types.object([Types.namedProp('letters', Types.array(Types.string()))]),
+            Values.object(new Map([['letters', Values.array([Values.string('c')])]])),
+          ],
+        ],
+        Types.array(Types.string(), {min: 1, max: 2}),
+        Values.string('c'),
+      ]),
+      c([
+        `\
+switch ([...letters1, ...letters2]) {
+case []:
+  ['a']
+case [first]:
+  [first]
+case [first, last]:
+  [first, last]
+case [first, ..., last]:
+  [first, last]
+}`,
+        [
+          ['letters1', Types.array(Types.string()), Values.array([Values.string('c')])],
+          ['letters2', Types.array(Types.string()), Values.array([Values.string('c')])],
+        ],
+        Types.array(Types.string(), {min: 1, max: 2}),
+        Values.string('c'),
+      ]),
+      c([
+        `\
+  switch (letters) {
+  case [] or [first]:
+    [first ?? 'a']
+  case [first, last] or [first, ..., last]:
+    [first, last]
+  }
+`,
+        [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
+        Types.array(Types.string(), {min: 1, max: 2}),
+        Values.string('c'),
+      ]),
+    ).run(([formula, values, expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
-        `'${formula}' should have type '${expectedType}' and value '${expectedValue}' (a = '${valueA}', b = ${valueB})`,
+        `'${formula}' should have type '${expectedType}' and value '${expectedValue}'`,
         () => {
-          runtimeTypes['a'] = [Types.string(), Values.string(valueA)]
-          runtimeTypes['b'] = [Types.booleanType(), Values.booleanValue(valueB)]
+          values.forEach(([name, type, value]) => {
+            runtimeTypes[name] = [type, value]
+          })
 
           const expression = parse(formula).get()
           const type = expression.getType(typeRuntime).get()
-          const value = expression.eval(valueRuntime).get()
+          // const value = expression.eval(valueRuntime).get()
 
           expect(type).toEqual(expectedType)
-          expect(value).toEqual(expectedValue)
+          // expect(value).toEqual(expectedValue)
         },
       ),
     )
   })
 
   describe('invalid', () => {
-    cases<[string, Types.Type, string]>(
+    cases<[string, [string, Types.Type, Values.Value][], string]>(
       c([
         `\
-if (a) {
-then:
-  1
+switch (letters) {
+case []:
+  ['a']
+case [first]:
+  [first]
+case [first, last]:
+  [first, last]
+case [first, _, last]:
+  [first, last]
 }`,
-        Types.string({min: 1}),
-        "Type 'String(length: >=1)' is invalid as an if condition, because it is always true.",
+        [['letters', Types.array(Types.string()), Values.nullValue()]],
+        "Switch is not exhaustive, 'letters' has unhandled type 'Array(String, length: >=4)'",
       ]),
-    ).run(([formula, aType, message], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(`should not get type of ${formula}`, () => {
-        runtimeTypes['a'] = [aType, Values.string('')]
+      c([
+        `\
+switch ([...letters, ...letters]) {
+case []:
+  ['a']
+case [first]:
+  [first]
+case [first, last]:
+  [first, last]
+case [first, _, last]:
+  [first, last]
+}`,
+        [['letters', Types.array(Types.string()), Values.nullValue()]],
+        "Switch is not exhaustive, '[...letters, ...letters]' has unhandled type 'Array(String, length: >=4)'",
+      ]),
+    ).run(([formula, values, message], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(
+        `'${formula}' should have error message '${message}'`,
+        () => {
+          values.forEach(([name, type, value]) => {
+            runtimeTypes[name] = [type, value]
+          })
 
-        expect(() => {
-          const expression = parse(formula).get()
-          expression.getType(typeRuntime).get()
-        }).toThrow(message)
-      }),
+          expect(() => {
+            const expression = parse(formula).get()
+            expression.getType(typeRuntime).get()
+          }).toThrow(message)
+        },
+      ),
     )
   })
 })

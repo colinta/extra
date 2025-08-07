@@ -24,6 +24,7 @@ import {
 } from './types'
 import {
   assignRelationshipsToRuntime,
+  combineOrRelationships,
   invertComparison,
   type Relationship,
   relationshipFormula,
@@ -127,6 +128,19 @@ export abstract class Expression {
   abstract eval(runtime: ValueRuntime): GetValueResult
 
   /**
+   * MatchExpressions return a modified runtime, effectively passing assignments
+   * "sideways", very much unlike `let`, which only passes assignments "down"
+   * (only the `body` receives the assignments - and, technically, subsequent
+   * assignments within the same `let` expression).
+   *
+   * `evalWithRuntime` is not called universally - it is only invoked from
+   * `and`, `or`, `if`, `guard`, and `switch` expressions.
+   */
+  evalReturningRuntime(runtime: ValueRuntime): GetRuntimeResult<[Values.Value, ValueRuntime]> {
+    return this.eval(runtime).map(value => [value, runtime])
+  }
+
+  /**
    * After a type assertion or comparison, this will return a runtime with the
    * assertion stored. Only Reference and '.' operator implement this function.
    * Used by 'and', 'or' and 'if'.
@@ -216,6 +230,15 @@ export abstract class Expression {
    */
   isInclusionOp(): this is Operation {
     return false
+  }
+
+  /**
+   * Only `MatchExpression`s implement this - they return the names of the
+   * variables that are introduced by the match. In `or` operations, unassigned
+   * values (on one branch but not the other) are defaulted to `null`.
+   */
+  matchAssignReferences(): string[] {
+    return []
   }
 
   /**
@@ -2388,7 +2411,7 @@ export class NullExpression extends TypeIdentifier {
   }
 
   eval(): GetValueResult {
-    return ok(Values.NullValue)
+    return okNull
   }
 }
 
@@ -2412,7 +2435,7 @@ export class TrueExpression extends TypeIdentifier {
   }
 
   eval(): GetValueResult {
-    return ok(Values.TrueValue)
+    return okTrue
   }
 }
 
@@ -2436,7 +2459,7 @@ export class FalseExpression extends TypeIdentifier {
   }
 
   eval(): GetValueResult {
-    return ok(Values.FalseValue)
+    return okFalse
   }
 }
 
@@ -4331,6 +4354,12 @@ export abstract class MatchExpression extends Expression {
     return err(new RuntimeError(this, `${this.constructor.name} cannot be evaluated`))
   }
 
+  abstract evalWithSubject(runtime: ValueRuntime, op: Operation, lhs: Values.Value): GetValueResult
+
+  evalReturningRuntime(runtime: ValueRuntime): GetRuntimeResult<[Values.Value, ValueRuntime]> {
+    return this.eval().map(value => [value, runtime])
+  }
+
   checkAssignRefs() {
     // TODO: examine gimmeTrueStuffWith results, looking for duplicate
     // assignments.
@@ -4405,6 +4434,13 @@ export class MatchTypeExpression extends MatchExpression {
     })
   }
 
+  evalWithSubject(runtime: ValueRuntime, op: Operation, lhs: Values.Value) {
+    return this.getAsTypeExpression(runtime).map(type => {
+      const isType = Types.canBeAssignedTo(lhs.getType(), type)
+      return okBoolean(isType)
+    })
+  }
+
   toLisp() {
     if (this.assignRef) {
       return `(${this.argType.toLisp()} as ${this.assignRef.toLisp()})`
@@ -4452,6 +4488,10 @@ export abstract class MatchIdentifier extends MatchExpression {
     }
 
     return new Set([this.nameRef.name])
+  }
+
+  evalWithSubject() {
+    return okTrue
   }
 }
 
@@ -4572,6 +4612,10 @@ export class MatchNamedArgument extends MatchExpression {
     return this.matchExpr.gimmeFalseStuffWith(runtime, formula, lhsType)
   }
 
+  evalWithSubject(runtime: ValueRuntime, op: Operation, lhs: Values.Value) {
+    return this.matchExpr.evalWithSubject(runtime, op, lhs)
+  }
+
   toLisp() {
     return `(${this.nameRef.toLisp()}: ${this.matchExpr.toLisp()})`
   }
@@ -4610,6 +4654,10 @@ export class MatchEnumExpression extends MatchExpression {
         this.positionalCount += 1
       }
     }
+  }
+
+  matchAssigns(): string[] {
+    return this.args.flatMap(arg => arg.matchAssigns())
   }
 
   matchAssignReferences() {
@@ -4781,6 +4829,14 @@ export class MatchEnumExpression extends MatchExpression {
   //     .map(([type]) => [{formula, type: 'instanceof', right: relationshipFormula.type(type)}])
   // }
 
+  evalWithSubject(_runtime: ValueRuntime, _op: Operation, lhs: Values.Value) {
+    if (!(lhs instanceof Values.EnumValue)) {
+      return okFalse
+    }
+
+    return okBoolean(lhs.name === this.name)
+  }
+
   toLisp() {
     let code = '.' + this.name
     const args = this.args.map(arg => arg.toLisp())
@@ -4849,6 +4905,13 @@ export class MatchLiteral extends MatchExpression {
     })
   }
 
+  evalWithSubject(_runtime: ValueRuntime, _op: Operation, lhs: Values.Value) {
+    if (this.literal.value.isInt() && !lhs.isInt()) {
+      return okFalse
+    }
+    return okBoolean(this.literal.value.isEqual(lhs))
+  }
+
   toLisp() {
     return this.literal.toLisp()
   }
@@ -4884,10 +4947,10 @@ export class MatchUnaryRange extends MatchExpression {
       }
       return Types.NeverType
     }
+
     if (!this.start.value.isFloat()) {
       return Types.NeverType
     }
-    const value = this.start.value.value
 
     // repeated in MatchBinaryRange
     let hintIsInt: boolean
@@ -4899,18 +4962,22 @@ export class MatchUnaryRange extends MatchExpression {
       hintIsInt = hint.isInt()
     }
 
+    const value = this.start.value.value
     if (hintIsInt) {
       switch (this.op) {
         case '=':
+          if (Math.round(value) !== value) {
+            return Types.never()
+          }
           return Types.int({min: value, max: value})
         case '>':
-          return Types.int({min: value + 1})
+          return Types.int({min: Math.floor(value) + 1})
         case '>=':
-          return Types.int({min: value})
+          return Types.int({min: Math.ceil(value)})
         case '<':
-          return Types.int({max: value - 1})
+          return Types.int({max: Math.ceil(value) - 1})
         case '<=':
-          return Types.int({max: value})
+          return Types.int({max: Math.floor(value)})
       }
     }
 
@@ -4976,6 +5043,62 @@ export class MatchUnaryRange extends MatchExpression {
     return ok(relationships)
   }
 
+  evalWithSubject(_runtime: ValueRuntime, op: Operation, lhs: Values.Value) {
+    if (lhs.isRange()) {
+      const [min, exclusiveMin] = lhs.start ?? []
+      const [max, exclusiveMax] = lhs.stop ?? []
+      switch (this.op) {
+        case '=':
+          if (exclusiveMin || exclusiveMax || !min || !max || min.value !== max.value) {
+            return okFalse
+          }
+          return comparisonOperation(op, min, this.start.value, (lhs, rhs) => lhs === rhs)
+        case '>':
+        case '>=':
+          if (!min) {
+            return okFalse
+          }
+          return comparisonOperation(op, min, this.start.value, (lhsMin, match) =>
+            // exclusiveMin implies that the range's minimum is open-ended:
+            //     range = 0<..10
+            // Whether the match is `range is >0` or `range is >=0`, both of
+            // these are true. On the other hand, a closed range
+            //     range = 0...10
+            //  will only match `range is >=0`, otherwise it needs to be
+            //  *greater* than the range value, e.g. `range is > -1`
+            exclusiveMin || this.op === '>=' ? lhsMin >= match : lhsMin > match,
+          )
+        case '<':
+        case '<=':
+          if (!max) {
+            return okFalse
+          }
+          // see above discussion for why exclusiveMax or this.op === '<=' use
+          // the '<=' comparison, and only inclusive ranges matching against '<'
+          // use the '<' comparison
+          return comparisonOperation(op, max, this.start.value, (lhsMax, match) =>
+            exclusiveMax || this.op === '<=' ? lhsMax <= match : lhsMax < match,
+          )
+      }
+    }
+
+    if (!lhs.isFloat()) {
+      return okFalse
+    }
+    switch (this.op) {
+      case '=':
+        return comparisonOperation(op, lhs, this.start.value, (lhs, rhs) => lhs === rhs)
+      case '>':
+        return comparisonOperation(op, lhs, this.start.value, (lhs, rhs) => lhs > rhs)
+      case '>=':
+        return comparisonOperation(op, lhs, this.start.value, (lhs, rhs) => lhs >= rhs)
+      case '<':
+        return comparisonOperation(op, lhs, this.start.value, (lhs, rhs) => lhs < rhs)
+      case '<=':
+        return comparisonOperation(op, lhs, this.start.value, (lhs, rhs) => lhs <= rhs)
+    }
+  }
+
   toLisp() {
     return `(${this.op}${this.start.toLisp()})`
   }
@@ -5011,38 +5134,56 @@ export class MatchBinaryRange extends MatchExpression {
       return Types.NeverType
     }
 
+    if (hint.isRange()) {
+      const numberType = this.getTypeWithHint(hint.type)
+      if (numberType.isInt()) {
+        return Types.intRange(numberType.narrowed)
+      } else if (numberType.isFloat()) {
+        return Types.floatRange(numberType.narrowed)
+      }
+      return Types.NeverType
+    }
+
     // repeated in MatchUnaryRange
     let hintIsInt: boolean
     if (hint instanceof Types.OneOfType) {
       // if one of the types is an int and *none* of the types are a float
-      hintIsInt =
-        hint.of.some(type => type.isInt()) && !hint.of.some(type => type.isFloat() && !type.isInt())
+      const hasInt = hint.of.some(type => type.isInt() || hint.isIntRange())
+      const hasFloatIntOrRange =
+        // don't bother checking if there is no int
+        hasInt &&
+        hint.of.some(
+          type => (type.isFloat() && !type.isInt()) || (type.isFloatRange() && !type.isIntRange()),
+        )
+      hintIsInt = hasInt && !hasFloatIntOrRange
     } else {
-      hintIsInt = hint.isInt()
+      hintIsInt = hint.isInt() || hint.isIntRange()
     }
 
+    const minValue = this.start.value.value
+    const maxValue = this.stop.value.value
     if (hintIsInt) {
       switch (this.op) {
         case '...':
-          return Types.int({min: this.start.value.value, max: this.stop.value.value})
+          return Types.int({min: Math.ceil(minValue), max: Math.floor(maxValue)})
         case '<..':
-          return Types.int({min: this.start.value.value + 1, max: this.stop.value.value})
+          return Types.int({min: Math.floor(minValue) + 1, max: Math.floor(maxValue)})
         case '..<':
-          return Types.int({min: this.start.value.value, max: this.stop.value.value - 1})
+          return Types.int({min: Math.ceil(minValue), max: Math.ceil(maxValue) - 1})
         case '<.<':
-          return Types.int({min: this.start.value.value + 1, max: this.stop.value.value - 1})
+          return Types.int({min: Math.floor(minValue) + 1, max: Math.ceil(maxValue) - 1})
       }
     }
 
     switch (this.op) {
       case '...':
-        return Types.float({min: this.start.value.value, max: this.stop.value.value})
+        return Types.float({min: minValue, max: maxValue})
       case '<..':
-        return Types.float({min: [this.start.value.value], max: this.stop.value.value})
+        return Types.float({min: [minValue], max: maxValue})
       case '..<':
-        return Types.float({min: this.start.value.value, max: [this.stop.value.value]})
+        return Types.float({min: minValue, max: [maxValue]})
       case '<.<':
-        return Types.float({min: [this.start.value.value], max: [this.stop.value.value]})
+        return Types.float({min: [minValue], max: [maxValue]})
     }
   }
 
@@ -5199,6 +5340,56 @@ export class MatchBinaryRange extends MatchExpression {
     return ok(relationships)
   }
 
+  evalWithSubject(_runtime: ValueRuntime, op: Operation, lhs: Values.Value) {
+    if (lhs.isRange()) {
+      const [min, exclusiveMin] = lhs.start ?? []
+      const [max, exclusiveMax] = lhs.stop ?? []
+      if (!min || !max) {
+        return okFalse
+      }
+
+      // these comparisons are similarly calculated as MatchUnaryRange
+      // comparisons. The min of the lhs-range should be >= the min of the
+      // match, and the max of the lhs-range should be <= the max of the match.
+      // Exclusive comparisons `<` or `>` are used if the lhs-range is inclusive
+      // and the comparison is exclusive.
+      const minCompare: (lhs: number, rhs: number) => boolean =
+        exclusiveMin || this.op === '...' || this.op === '<..'
+          ? (lhsMin, matchMin) => lhsMin >= matchMin
+          : (lhsMin, matchMin) => lhsMin > matchMin
+      return comparisonOperation(op, min, this.start.value, minCompare).map(minOk => {
+        if (!minOk.isEqual(Values.TrueValue)) {
+          return okFalse
+        }
+        const maxCompare: (lhs: number, rhs: number) => boolean =
+          exclusiveMax || this.op === '...' || this.op === '..<'
+            ? (lhxMax, matchMax) => lhxMax <= matchMax
+            : (lhxMax, matchMax) => lhxMax < matchMax
+        return comparisonOperation(op, max, this.stop.value, maxCompare)
+      })
+    }
+
+    if (!lhs.isFloat()) {
+      return okFalse
+    }
+
+    const minCompare: (lhsMin: number, matchMin: number) => boolean =
+      this.op === '...' || this.op === '..<'
+        ? (lhsMin, matchMin) => lhsMin >= matchMin
+        : (lhsMin, matchMin) => lhsMin > matchMin
+    return comparisonOperation(op, lhs, this.start.value, minCompare).map(minOk => {
+      if (!minOk.isEqual(Values.TrueValue)) {
+        return okFalse
+      }
+
+      const maxCompare: (lhsMax: number, matchMax: number) => boolean =
+        this.op === '...' || this.op === '<..'
+          ? (lhsMax, matchMax) => lhsMax <= matchMax
+          : (lhsMax, matchMax) => lhsMax < matchMax
+      return comparisonOperation(op, lhs, this.stop.value, maxCompare)
+    })
+  }
+
   toLisp() {
     return `(${this.start.toCode()}${this.op}${this.stop.toLisp()})`
   }
@@ -5221,6 +5412,10 @@ export class MatchStringLiteral extends MatchLiteral {
 export class MatchRegexLiteral extends MatchLiteral {
   constructor(readonly literal: RegexLiteral) {
     super(literal)
+  }
+
+  matchAssignReferences() {
+    return Array.from(this.literal.groups.keys())
   }
 
   getAsTypeExpression(_runtime: TypeRuntime): GetTypeResult {
@@ -5259,6 +5454,14 @@ export class MatchRegexLiteral extends MatchLiteral {
 
       return relationships
     })
+  }
+
+  evalWithSubject(_runtime: ValueRuntime, _op: Operation, lhs: Values.Value) {
+    if (!lhs.isString()) {
+      return okFalse
+    }
+
+    return okBoolean(this.literal.value.value.test(lhs.value))
   }
 }
 
@@ -5406,6 +5609,73 @@ export class MatchStringExpression extends MatchExpression {
     return this.getAsTypeExpression(runtime).map(type => {
       return [{formula, comparison: {operator: '!instanceof', rhs: type}}]
     })
+  }
+
+  private searchRemainder(remainder: string, matches: string[]): boolean {
+    if (matches.length === 0) {
+      return true
+    }
+
+    if (remainder === '') {
+      throw "TODO: this should never happen - MatchStringLiteral is ''"
+    }
+
+    // find all the indices of 'remainder' that contain matches[0],
+    // for every match, search for the remaining matches. this is a
+    // breadth-first search.
+    const [match, ...remaining] = matches
+    let index = remainder.indexOf(match)
+    while (index !== -1) {
+      remainder = remainder.slice(index + match.length)
+      if (this.searchRemainder(remainder, remaining)) {
+        return true
+      }
+
+      index = remainder.indexOf(match)
+    }
+
+    return false
+  }
+
+  evalWithSubject(_runtime: ValueRuntime, _op: Operation, lhs: Values.Value) {
+    if (!lhs.isString()) {
+      return okFalse
+    }
+
+    let subject = lhs.value
+    // check the first arg for MatchStringLiteral, and see if it's the prefix
+    const firstMatch =
+      this.args[0] instanceof MatchStringLiteral && this.args[0].literal.value.value
+    if (firstMatch) {
+      if (!subject.startsWith(firstMatch)) {
+        return okFalse
+      }
+      subject = subject.slice(firstMatch.length)
+    }
+
+    // skip the first arg no matter what - if it's a literal, we just checked
+    // it, otherwise it's a reference, so skip it.
+    const args = this.args.slice(1)
+    // if the last arg is a MatchStringLiteral, check for suffix (and pop it
+    // from the args stack)
+    const last = args.at(-1)
+    const lastMatch =
+      this.args.length > 1 && last instanceof MatchStringLiteral && last.literal.value.value
+    if (lastMatch) {
+      if (!subject.endsWith(lastMatch)) {
+        return okFalse
+      }
+
+      subject = subject.slice(0, -lastMatch.length)
+      args.pop()
+    }
+
+    const matches = args
+      .filter(arg => arg instanceof MatchStringLiteral)
+      .map(arg => arg.literal.value.value)
+
+    // check the remainders
+    return okBoolean(this.searchRemainder(subject, matches))
   }
 
   toLisp() {
@@ -5611,7 +5881,7 @@ export class MatchArrayExpression extends MatchExpression {
       matchCount !== undefined && matchCount === arrayType.narrowedLength.max
         ? matchCount - 1
         : arrayType.narrowedLength.max
-    const nextArrayType = arrayType.narrowLength(min, max)
+    const nextArrayType = matchesAll ? Types.NeverType : arrayType.narrowLength(min, max)
     return ok([{formula, comparison: {operator: 'instanceof', rhs: nextArrayType}}])
   }
 
@@ -5645,17 +5915,49 @@ export class CaseExpression extends MatchExpression {
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    return err(new RuntimeError(this, 'TODO'))
+    return this.gimmeStuffImpl(match => match.gimmeTrueStuffWith(runtime, formula, subjectType))
   }
 
   gimmeFalseStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    return err(new RuntimeError(this, 'TODO'))
+    return this.gimmeStuffImpl(match => match.gimmeFalseStuffWith(runtime, formula, subjectType))
+  }
+
+  /**
+   * Ho'kay, so, here's what's going on in `gimmeStuffImpl`.
+   *     switch (subject) {
+   *       case .some(value): ...
+   *     }
+   * A single match expression is common, and in that case all this map/reduce
+   * is unncessary, because what will happen boils down to:
+   *     return matchExpr.gimmeTrueStuffWith(runtime, formula, subjectType)
+   *
+   * However, case statements accept _multiple_ matches
+   *     switch (subject) {
+   *       case .some(value), .other(value): ...
+   *     }
+   *
+   * Here, we have to combine the results of all matches using
+   * `combineOrRelationships`. This ends up being identical to the
+   * LogicalOrOperator `gimmeTrueStuff` implementation.
+   */
+  private gimmeStuffImpl(stuffer: (match: MatchExpression) => GetRuntimeResult<Relationship[]>) {
+    return mapAll(this.matches.map(match => stuffer(match))).map(trueStuff => {
+      const lhsStuff = trueStuff.at(0)
+      if (!lhsStuff) {
+        return []
+      }
+
+      return trueStuff.slice(1).reduce((lhsStuff, rhsStuff) => {
+        const combined = combineOrRelationships(lhsStuff, rhsStuff)
+        return combined
+      }, lhsStuff)
+    })
   }
 
   toLisp() {
@@ -6192,4 +6494,48 @@ function decorateError(expr: Expression) {
     }
     return result
   }
+}
+
+export function comparisonOperation(
+  expr: Operation,
+  lhs: Values.Value,
+  rhs: Values.Value,
+  op: (lhs: number, rhs: number) => boolean,
+): GetValueResult {
+  if (lhs === Values.NaNValue || rhs === Values.NaNValue) {
+    return okFalse
+  }
+
+  if (lhs.isInt() && rhs.isInt()) {
+    return okBoolean(op(lhs.value, rhs.value))
+  } else if (lhs.isFloat() && rhs.isFloat()) {
+    return okBoolean(op(lhs.value, rhs.value))
+  }
+
+  if (lhs.isFloat() && rhs) {
+    return err(new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1], rhs)))
+  } else {
+    return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0], lhs)))
+  }
+}
+
+export function expectedType(expected: string, expr: Expression, type?: Types.Type | Values.Value) {
+  const message = `Expected ${expected}, found '${expr}'`
+  if (type) {
+    type = type instanceof Values.Value ? type.getType() : type
+    return `${message} of type '${type}'`
+  } else {
+    return message
+  }
+}
+
+export function expectedNumberMessage(found: Expression, type?: Types.Type | Values.Value) {
+  return expectedType('Int or Float', found, type)
+}
+
+const okNull: GetValueResult = ok(Values.NullValue)
+const okFalse: GetValueResult = ok(Values.FalseValue)
+const okTrue: GetValueResult = ok(Values.TrueValue)
+function okBoolean(value: boolean): GetValueResult {
+  return ok(Values.booleanValue(value))
 }

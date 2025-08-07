@@ -1611,6 +1611,10 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
       return FloatType
     }
 
+    if (Narrowed.isEqualNarrowed(next, this.narrowed)) {
+      return this
+    }
+
     if (typeof next.max === 'number' && typeof next.min === 'number' && next.min === next.max) {
       return new LiteralFloatType(next.min)
     }
@@ -1801,6 +1805,10 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
 
     if (Narrowed.isDefaultNarrowedNumber(next)) {
       return IntType
+    }
+
+    if (Narrowed.isEqualNarrowed(next, this.narrowed)) {
+      return this
     }
 
     if (next.max !== undefined && next.min !== undefined && next.min === next.max) {
@@ -2099,11 +2107,11 @@ export class MetaStringType extends Type {
    * new MetaStringType.
    */
   replacingProp(propName: string, type: Type): Result<Type, string> {
-    if (type === NeverType) {
-      return ok(NeverType)
-    }
-
     if (propName === 'length') {
+      if (type === NeverType) {
+        return ok(NeverType)
+      }
+
       if (type instanceof LiteralIntType) {
         return ok(this.narrowLength(Math.max(type.value, 0), type.value))
       }
@@ -2182,7 +2190,7 @@ export abstract class RangeType<
     }
   }
 
-  static fromNumberType(type: MetaFloatType | MetaIntType) {
+  static fromNumberType(type: MetaFloatType | MetaIntType | LiteralFloatType) {
     if (type.isInt()) {
       return new MetaIntRangeType(type.narrowed)
     } else {
@@ -2851,10 +2859,6 @@ export class ObjectType extends Type {
    * used by the type narrowing and relationship code.
    */
   replacingProp(propName: string, type: Type): Result<Type, string> {
-    if (type === NeverType) {
-      return ok(NeverType)
-    }
-
     return ok(
       new ObjectType(
         this.props.map(prop => {
@@ -2984,11 +2988,11 @@ export class ArrayType extends ContainerType<ArrayType> {
    * new ArrayType with that length.
    */
   replacingProp(propName: string, type: Type): Result<Type, string> {
-    if (type === NeverType) {
-      return ok(NeverType)
-    }
-
     if (propName === 'length') {
+      if (type === NeverType) {
+        return ok(NeverType)
+      }
+
       if (type instanceof LiteralIntType) {
         return ok(this.narrowLength(Math.max(type.value, 0), type.value))
       }
@@ -3277,10 +3281,6 @@ export class ClassType extends Type {
    * used by the type narrowing code to return a more specific type.
    */
   replacingProp(prop: string, type: Type): Result<Type, string> {
-    if (type === NeverType) {
-      return ok(NeverType)
-    }
-
     const props = new Map(this.props)
     props.set(prop, type)
     return ok(new ClassType(props, this.parent))
@@ -3322,10 +3322,6 @@ export class NamedClassType extends ClassType {
   }
 
   replacingProp(prop: string, type: Type): Result<Type, string> {
-    if (type === NeverType) {
-      return ok(NeverType)
-    }
-
     const props = new Map(this.props)
     props.set(prop, type)
     return ok(new NamedClassType(this.name, props, this.parent))
@@ -3494,6 +3490,11 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
     (lhsType.isFloat() && typeAssertion.isFloat()) ||
     (lhsType.isRange() && typeAssertion.isRange())
   ) {
+    // if typeAssertion is entirely within lhsType, return typeAssertion
+    if (Narrowed.testNumber(typeAssertion.narrowed, lhsType.narrowed)) {
+      return typeAssertion
+    }
+
     return lhsType.narrow(typeAssertion.narrowed.min, typeAssertion.narrowed.max)
   }
 
@@ -3531,21 +3532,82 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
     )
   }
 
+  if (canBeAssignedTo(lhsType, typeAssertion)) {
+    return NeverType
+  }
+
   if (
     (lhsType.isFloat() && typeAssertion.isFloat()) ||
     (lhsType.isRange() && typeAssertion.isRange())
   ) {
+    // lhsType-+
+    //         |
+    //   if (range is 0..<5) { then: narrowTypeIs, else: narrowTypeIsNot }
+    //                   |                                ^ we are here
+    //                   +- typeAssertion
+    // returns the range of numbers in lhsType that are not in typeAssertion
+    // should this be in narrowed.ts (as "invertNarrow")?
+
+    // If lhsType is entirely in typeAssertion, the inverse case is 'never'
     if (Narrowed.testNumber(lhsType.narrowed, typeAssertion.narrowed)) {
       return NeverType
     }
 
-    if (typeAssertion.narrowed.min === undefined && typeAssertion.narrowed.max !== undefined) {
+    // if typeAssertion is entirely in lhsType, split up lhsType into the before
+    // and after parts
+    if (
+      Narrowed.testNumber(typeAssertion.narrowed, lhsType.narrowed) &&
+      typeAssertion.narrowed.min !== undefined &&
+      typeAssertion.narrowed.max !== undefined
+    ) {
+      if (lhsType.isFloat()) {
+        return oneOf([
+          narrowTypeIsNot(
+            lhsType,
+            (lhsType.isInt() ? IntType : FloatType).narrow(typeAssertion.narrowed.min, undefined),
+          ),
+          narrowTypeIsNot(
+            lhsType,
+            (lhsType.isInt() ? IntType : FloatType).narrow(undefined, typeAssertion.narrowed.max),
+          ),
+        ])
+      }
+
+      if (lhsType.isRange()) {
+        return oneOf([
+          narrowTypeIsNot(
+            lhsType,
+            (lhsType.isIntRange() ? IntRangeType : FloatRangeType).narrow(
+              typeAssertion.narrowed.min,
+              undefined,
+            ),
+          ),
+          narrowTypeIsNot(
+            lhsType,
+            (lhsType.isIntRange() ? IntRangeType : FloatRangeType).narrow(
+              undefined,
+              typeAssertion.narrowed.max,
+            ),
+          ),
+        ])
+      }
+
+      return NeverType
+    }
+
+    if (
+      typeAssertion.narrowed.max !== undefined &&
+      Narrowed.testNumber(typeAssertion.narrowed.max, lhsType.narrowed)
+    ) {
+      // invert the max from inclusive to exclusive and vice-versa
       let min: number | [number] = Array.isArray(typeAssertion.narrowed.max)
         ? typeAssertion.narrowed.max[0]
         : [typeAssertion.narrowed.max]
       if (lhsType.isInt() || lhsType.isIntRange()) {
         if (Array.isArray(min)) {
           min = Math.floor(min[0]) + 1
+        } else {
+          min = Math.ceil(min)
         }
 
         if (lhsType.isIntRange()) {
@@ -3560,13 +3622,19 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
       return float({min, max: lhsType.narrowed.max})
     }
 
-    if (typeAssertion.narrowed.max === undefined && typeAssertion.narrowed.min !== undefined) {
+    if (
+      typeAssertion.narrowed.min !== undefined &&
+      Narrowed.testNumber(typeAssertion.narrowed.min, lhsType.narrowed)
+    ) {
+      // invert the min from inclusive to exclusive and vice-versa
       let max: number | [number] = Array.isArray(typeAssertion.narrowed.min)
         ? typeAssertion.narrowed.min[0]
         : [typeAssertion.narrowed.min]
       if (lhsType.isInt() || lhsType.isIntRange()) {
         if (Array.isArray(max)) {
           max = Math.ceil(max[0]) - 1
+        } else {
+          max = Math.floor(max)
         }
 
         if (lhsType.isIntRange()) {
@@ -3576,10 +3644,6 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
       }
       return float({min: lhsType.narrowed.min, max})
     }
-  }
-
-  if (canBeAssignedTo(lhsType, typeAssertion)) {
-    return NeverType
   }
 
   return lhsType
@@ -3879,7 +3943,24 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
       }
     }
   } else if (lhs.isFloatRange() && rhs.isFloatRange()) {
-    debugger
+    const lhsNumber = lhs.toNumberType()
+    const rhsNumber = rhs.toNumberType()
+    const compat = compatibleWithBothTypes(lhsNumber, rhsNumber)
+    if (compat instanceof OneOfType) {
+      return _privateOneOf(
+        compat.of.map(type => {
+          if (type.isFloat()) {
+            return RangeType.fromNumberType(type)
+          } else {
+            return type
+          }
+        }),
+      )
+    }
+    if (compat.isFloat()) {
+      return RangeType.fromNumberType(compat)
+    }
+    return compat
   } else if (lhs instanceof MetaStringType && rhs instanceof MetaStringType) {
     // both are strings, but not literal strings
     const type = lhs.compatibleWithBothNarrowed(rhs)

@@ -126,6 +126,10 @@ export abstract class Value {
     return this.getType().isRegex()
   }
 
+  isRange(): this is RangeValue {
+    return this.getType().isRange()
+  }
+
   validKey(): Types.Key | undefined {
     return undefined
   }
@@ -1493,6 +1497,114 @@ export class NamedFormulaValue extends FormulaValue {
     fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>,
   ) {
     super(fn)
+  }
+}
+
+/**
+ * Each enum type declaration has a corresponding Enum value (singleton), which
+ * is a namespace containing functions that return `EnumValue`-s.
+ *
+ *     enum UserRole { .admin, .staff, .user, .anon }
+ *
+ *     let
+ *       role = UserRole.admin -- UserRole is retrieved from runtime, returns a
+ *                             -- namespace. `.admin` returns the `EnumValue`
+ *       foo = UserRole  -- not sure what the intention is here, but returns an
+ *                       -- object of type `NamespaceType`
+ *       role: UserRole = .admin -- .admin is "decorated" with the namespace during compilation
+ *     in …
+ */
+export class Enum extends Value {
+  readonly is = 'enum-value'
+  readonly namespaceType: Types.NamespaceType
+
+  constructor(readonly name: string) {
+    super()
+    this.namespaceType = new Types.NamespaceType(name, new Map())
+  }
+
+  isEqual(value: Value): boolean {
+    return value === this
+  }
+
+  isTruthy() {
+    return true
+  }
+
+  getType(): Types.Type {
+    return this.namespaceType
+  }
+
+  toLisp() {
+    return this.name
+  }
+
+  toCode() {
+    return this.name
+  }
+
+  printable() {
+    return this.name
+  }
+
+  static _props: Map<string, (value: EnumValue) => Value> = new Map([])
+
+  propValue(_propName: string): Value | undefined {
+    return
+  }
+}
+
+export class EnumValue extends Value {
+  readonly is = 'enum-value'
+
+  constructor(
+    readonly namespace: Enum,
+    readonly name: string,
+    readonly args: Map<string, Value>,
+  ) {
+    super()
+  }
+
+  isEqual(value: Value): boolean {
+    if (!(value instanceof EnumValue) || value.namespace !== this.namespace) {
+      return false
+    }
+    if (value.name !== this.name) {
+      return false
+    }
+    for (const [key, thisValue] of this.args.entries()) {
+      const otherValue = value.args.get(key)
+      if (otherValue === undefined || !thisValue.isEqual(otherValue)) {
+        return false
+      }
+    }
+    return true
+  }
+
+  isTruthy() {
+    return true
+  }
+
+  getType(): Types.Type {
+    return Types.NullType
+  }
+
+  toLisp() {
+    return ''
+  }
+
+  toCode() {
+    return `${this.namespace.name}.${this.name}`
+  }
+
+  printable() {
+    return ''
+  }
+
+  static _props: Map<string, (value: EnumValue) => Value> = new Map([])
+
+  propValue(_propName: string): Value | undefined {
+    return
   }
 }
 
