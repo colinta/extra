@@ -8,6 +8,7 @@ export interface Case<T> {
 export interface CaseCreate {
   <T>(input: T): Case<T>
   only<T>(input: T): Case<T>
+  hold<T>(input: T): Case<T>
   skip<T>(input: T): Case<T>
 }
 
@@ -55,6 +56,10 @@ export const c: CaseCreate = Object.assign(
   {
     only<T>(input: T) {
       return createCase(input, true, false)
+    },
+    // identical to 'skip', it's just handy having an alias for it
+    hold<T>(input: T) {
+      return createCase(input, false, true)
     },
     skip<T>(input: T) {
       return createCase(input, false, true)
