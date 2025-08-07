@@ -37,8 +37,8 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case '___':
       throw new ParseError(scanner, `Invalid use of reserved symbol '${currentToken}'`)
     case 'let':
-    case 'if':
     case 'is':
+    case 'if':
     case 'elseif':
     case 'guard':
     case 'switch':
@@ -49,11 +49,14 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case 'true':
     case 'false':
     case 'this':
+    case 'object':
+    case 'array':
+    case 'dict':
+    case 'set':
     case 'Boolean':
     case 'Float':
     case 'Int':
     case 'String':
-    case 'object':
     case 'Object':
     case 'Array':
     case 'Dict':

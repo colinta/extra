@@ -991,7 +991,7 @@ export class SetExpression extends Expression {
 
 function combineAllTypesForArray(expr: ArrayExpression, runtime: TypeRuntime) {
   return mapAll(
-    // returns [isSpread, Type][]
+    // returns [isSpread, isInclusionOp, Type][]
     expr.values.map((arg): GetRuntimeResult<[boolean, boolean, Types.Type]> => {
       const isSpread = arg instanceof SpreadArrayArgument
       const isInclusionOp = isSpread ? arg.value.isInclusionOp() : arg.isInclusionOp()
@@ -1954,26 +1954,26 @@ export class LetAssign extends NamedArgument {
     range: Range,
     precedingComments: Comment[],
     alias: string,
-    readonly type: Expression | undefined,
+    readonly typeExpression: Expression | undefined,
     value: Expression,
   ) {
     super(range, precedingComments, alias, value)
   }
 
   toLisp() {
-    if (this.type === undefined) {
+    if (this.typeExpression === undefined) {
       return `(${this.alias} = ${this.value.toLisp()})`
     }
 
-    return `(${this.alias}: ${this.type.toLisp()} = ${this.value.toLisp()})`
+    return `(${this.alias}: ${this.typeExpression.toLisp()} = ${this.value.toLisp()})`
   }
 
   toCode() {
-    if (this.type === undefined) {
+    if (this.typeExpression === undefined) {
       return `${this.alias} = ${this.value}`
     }
 
-    return `${this.alias}: ${this.type} = ${this.value}`
+    return `${this.alias}: ${this.typeExpression} = ${this.value}`
   }
 }
 
@@ -2041,8 +2041,8 @@ export class LetExpression extends Expression {
         exprCode = arg.toCode()
       } else {
         line = alias
-        if (arg.type !== undefined) {
-          line += `: ${arg.type}`
+        if (arg.typeExpression !== undefined) {
+          line += `: ${arg.typeExpression}`
         }
         line += ' = '
         exprCode = arg.value.toCode()
@@ -2080,110 +2080,16 @@ export class LetExpression extends Expression {
       localType = inferredType
     }
 
-    runtime.addLocalType(name, localType)
+    const id = runtime.addLocalType(name, localType)
 
-    const id = runtime.refId(name)
-    if (id) {
+    if (localType === inferredType) {
       const refFormula = relationshipFormula.reference(name, id)
-      const lengthFormula = relationshipFormula.propertyAccess(refFormula, 'length')
-
-      // TODO: assign relationships based on explicitType
-      // IE `index: Int(0...5) = 2` should assign
-      //   index >= 0
-      //   index <= 5
-      // and not
-      //   index == 2
-      if (assignment instanceof LetAssign && localType === inferredType) {
-        const assignmentRelationship = assignment.value.relationshipFormula(runtime)
-        if (assignmentRelationship) {
-          runtime.addRelationshipFormula({
-            formula: refFormula,
-            comparison: {operator: '==', rhs: assignmentRelationship},
-          })
-        }
-      }
-
-      if (localType.isFloat()) {
-        const isInt = localType.isInt()
-        if (localType.narrowed.min !== undefined) {
-          if (Array.isArray(localType.narrowed.min)) {
-            runtime.addRelationshipFormula({
-              formula: refFormula,
-              comparison: {
-                operator: '>',
-                rhs: relationshipFormula.float(localType.narrowed.min[0]),
-              },
-            })
-          } else {
-            runtime.addRelationshipFormula({
-              formula: refFormula,
-              comparison: {
-                operator: '>=',
-                rhs: relationshipFormula.number(localType.narrowed.min, isInt),
-              },
-            })
-          }
-        }
-
-        if (localType.narrowed.max !== undefined) {
-          if (Array.isArray(localType.narrowed.max)) {
-            runtime.addRelationshipFormula({
-              formula: refFormula,
-              comparison: {
-                operator: '<',
-                rhs: relationshipFormula.float(localType.narrowed.max[0]),
-              },
-            })
-          } else {
-            runtime.addRelationshipFormula({
-              formula: refFormula,
-              comparison: {
-                operator: '<=',
-                rhs: relationshipFormula.number(localType.narrowed.max, isInt),
-              },
-            })
-          }
-        }
-      } else if (localType.isString()) {
-        if (localType.narrowedString.length.min > 0) {
-          runtime.addRelationshipFormula({
-            formula: lengthFormula,
-            comparison: {
-              operator: '>=',
-              rhs: relationshipFormula.int(localType.narrowedString.length.min),
-            },
-          })
-        }
-
-        if (localType.narrowedString.length.max !== undefined) {
-          runtime.addRelationshipFormula({
-            formula: lengthFormula,
-            comparison: {
-              operator: '<=',
-              rhs: relationshipFormula.int(localType.narrowedString.length.max),
-            },
-          })
-        }
-      } else if (localType instanceof Types.ContainerType) {
-        if (localType.narrowedLength.min > 0) {
-          runtime.addRelationshipFormula({
-            formula: lengthFormula,
-            comparison: {
-              operator: '>=',
-              rhs: relationshipFormula.int(localType.narrowedLength.min),
-            },
-          })
-        }
-
-        if (localType.narrowedLength.max !== undefined) {
-          runtime.addRelationshipFormula({
-            formula: lengthFormula,
-            comparison: {
-              operator: '<=',
-              rhs: relationshipFormula.int(localType.narrowedLength.max),
-            },
-          })
-        }
+      const assignmentRelationship = assignment.value.relationshipFormula(runtime)
+      if (assignmentRelationship) {
+        runtime.addRelationshipFormula({
+          formula: refFormula,
+          comparison: {operator: '==', rhs: assignmentRelationship},
+        })
       }
     }
   }
@@ -2197,8 +2103,8 @@ export class LetExpression extends Expression {
             assignment
               .getType(nextRuntime)
               .map((inferredType): GetRuntimeResult<[Types.Type, Types.Type | undefined]> => {
-                if (assignment instanceof LetAssign && assignment.type) {
-                  return assignment.type
+                if (assignment instanceof LetAssign && assignment.typeExpression) {
+                  return assignment.typeExpression
                     .getAsTypeExpression(runtime)
                     .mapResult(decorateError(this))
                     .map(explicitType => [inferredType, explicitType])
@@ -4517,10 +4423,10 @@ export class MatchTypeExpression extends MatchExpression {
 }
 
 export abstract class MatchIdentifier extends MatchExpression {
-  abstract readonly reference?: Identifier
+  abstract readonly nameRef?: Identifier
 
   matchAssignReferences() {
-    return this.reference ? [this.reference.name] : []
+    return this.nameRef ? [this.nameRef.name] : []
   }
 
   gimmeTrueStuffWith(
@@ -4528,24 +4434,24 @@ export abstract class MatchIdentifier extends MatchExpression {
     _formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    if (!this.reference) {
+    if (!this.nameRef) {
       return ok([])
     }
 
     return ok([
       {
-        formula: relationshipFormula.assign(this.reference.name),
+        formula: relationshipFormula.assign(this.nameRef.name),
         comparison: {operator: 'instanceof', rhs: lhsType},
       },
     ])
   }
 
   provides() {
-    if (!this.reference) {
+    if (!this.nameRef) {
       return super.provides()
     }
 
-    return new Set([this.reference.name])
+    return new Set([this.nameRef.name])
   }
 }
 
@@ -4553,7 +4459,7 @@ export abstract class MatchIdentifier extends MatchExpression {
  * `_` will match anything, but will not assign it to scope.
  */
 export class MatchIgnore extends MatchIdentifier {
-  readonly reference?: Identifier = undefined
+  readonly nameRef?: Identifier = undefined
 
   toLisp() {
     return '_'
@@ -4569,16 +4475,16 @@ export class MatchIgnore extends MatchIdentifier {
  * implementation.
  */
 export class MatchReference extends MatchIdentifier {
-  constructor(readonly reference: Reference) {
-    super(reference.range, reference.precedingComments)
+  constructor(readonly nameRef: Reference) {
+    super(nameRef.range, nameRef.precedingComments)
   }
 
   toLisp() {
-    return this.reference.toLisp()
+    return this.nameRef.toLisp()
   }
 
   toCode() {
-    return this.reference.toCode()
+    return this.nameRef.toCode()
   }
 }
 
@@ -4591,7 +4497,7 @@ export class MatchReference extends MatchIdentifier {
  *     .some(arg, ...remaining)
  */
 export class MatchIgnoreRemainingExpression extends MatchIdentifier {
-  readonly reference?: Identifier = undefined
+  readonly nameRef?: Identifier = undefined
 
   toLisp() {
     return SPLAT_OP
@@ -4609,7 +4515,7 @@ export class MatchAssignRemainingExpression extends MatchIdentifier {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly reference: Reference,
+    readonly nameRef: Reference,
   ) {
     super(range, precedingComments)
   }
@@ -4619,7 +4525,7 @@ export class MatchAssignRemainingExpression extends MatchIdentifier {
   }
 
   toCode() {
-    return `${SPLAT_OP}${this.reference.name}`
+    return `${SPLAT_OP}${this.nameRef.name}`
   }
 }
 
@@ -4903,7 +4809,7 @@ export class MatchLiteral extends MatchExpression {
     super(literal.range, literal.precedingComments)
   }
 
-  matchAssignReferences() {
+  matchAssignReferences(): string[] {
     return []
   }
 
@@ -5491,7 +5397,7 @@ export class MatchStringExpression extends MatchExpression {
   gimmeFalseStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    _lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -5541,7 +5447,10 @@ export class MatchArrayExpression extends MatchExpression {
     let maxLength: number | undefined = 0
 
     for (const arg of this.args) {
-      if (arg instanceof MatchAssignRemainingExpression) {
+      if (
+        arg instanceof MatchAssignRemainingExpression ||
+        arg instanceof MatchIgnoreRemainingExpression
+      ) {
         maxLength = undefined
       } else {
         minLength += 1
@@ -5623,7 +5532,8 @@ export class MatchArrayExpression extends MatchExpression {
 
     // this code already supports [a, b, ...c, d, e]
     // a,b,d,e would contribute to minMatchLength, and so the min/max
-    // calculation is correct
+    // calculation is correct (and already sanity checked above to avoid 'never'
+    // type in here).
     for (const arg of this.args) {
       let argType: Types.Type
       if (arg instanceof MatchAssignRemainingExpression) {
@@ -5687,7 +5597,11 @@ export class MatchArrayExpression extends MatchExpression {
       return ok([])
     }
 
-    const matchesAll = this.args.some(arg => arg instanceof MatchAssignRemainingExpression)
+    const matchesAll = this.args.some(
+      arg =>
+        arg instanceof MatchAssignRemainingExpression ||
+        arg instanceof MatchIgnoreRemainingExpression,
+    )
     const matchCount = matchesAll ? undefined : this.args.length
     const min =
       matchCount !== undefined && matchCount === arrayType.narrowedLength.min

@@ -608,7 +608,7 @@ function parseInternal(
           isUnaryOperatorName(scanner.remainingInput)
         ) {
           processOperator(scanUnaryOperator(scanner))
-        } else if (isStringStartChar(scanner.char)) {
+        } else if (isStringStartChar(scanner)) {
           processExpression(scanString(scanner, true, parseNext))
         } else if (isTaggedString(scanner)) {
           processExpression(scanString(scanner, true, parseNext))

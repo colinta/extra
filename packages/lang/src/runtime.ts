@@ -186,6 +186,7 @@ export class MutableTypeRuntime {
   addLocalType(name: string, type: Type) {
     const id = this.addId(name)
     this.types.set(id, type)
+    return id
   }
 
   addLocalTypeWithId(name: string, id: string, type: Type) {

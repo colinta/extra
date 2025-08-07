@@ -11,6 +11,7 @@ import {
   isArgumentStartChar,
   isNumberStart,
   IGNORE_TOKEN,
+  isStringStartChar,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -20,7 +21,7 @@ import {unexpectedToken} from './basics'
 import {scanAnyReference, scanValidReferenceName} from './identifier'
 import {scanNumber} from './number'
 import {scanRegex} from './regex'
-import {scanString} from './string'
+import {scanStringLiteral} from './string'
 
 /**
  * scans for:
@@ -73,12 +74,18 @@ export function scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.M
 }
 
 function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchExpression {
+  if (scanner.is('(')) {
+    throw new ParseError(scanner, "TODO: support '(...)' in scanMatch")
+  }
+
   if (
     scanner.is(/[A-Z]/) ||
     scanner.isWord('view') ||
     scanner.isWord('null') ||
     scanner.isWord('true') ||
-    scanner.isWord('false')
+    scanner.isWord('false') ||
+    scanner.test(isNumberList) ||
+    scanner.test(isStringList)
   ) {
     const argType = scanArgumentType(scanner, 'argument_type', parseNext)
     let assignRef: Expressions.Reference | undefined
@@ -282,7 +289,7 @@ function scanMatchString(scanner: Scanner, parseNext: ParseNext) {
       }
       prev = 'string'
 
-      const stringExpression = scanString(scanner, false, parseNext) as Expressions.StringLiteral
+      const stringExpression = scanStringLiteral(scanner)
       const matchExpression = new Expressions.MatchStringLiteral(stringExpression)
       args.push(matchExpression)
     } else if (isRefStartChar(scanner)) {
@@ -469,4 +476,22 @@ function isNamedArg(scanner: Scanner) {
 function isAsKeyword(scanner: Scanner) {
   scanner.scanSpaces()
   return scanner.isWord('as')
+}
+
+function isNumberList(scanner: Scanner) {
+  if (!isNumberStart(scanner)) {
+    return false
+  }
+  scanNumber(scanner)
+  scanner.scanAllWhitespace()
+  return scanner.is('|')
+}
+
+function isStringList(scanner: Scanner) {
+  if (!isStringStartChar(scanner)) {
+    return false
+  }
+  scanStringLiteral(scanner)
+  scanner.scanAllWhitespace()
+  return scanner.is('|')
 }

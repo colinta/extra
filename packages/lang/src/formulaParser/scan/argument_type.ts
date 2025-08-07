@@ -113,7 +113,7 @@ export function scanArgumentType(
       scanner.whereAmI(`scanArgumentType: () ${argType.toCode()}`)
     } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
       argType = scanNumber(scanner, 'float')
-    } else if (isStringStartChar(scanner.char)) {
+    } else if (isStringStartChar(scanner)) {
       argType = scanString(scanner, false, parseNext)
     } else if (scanner.scanIfString(ENUM_START)) {
       if (applicationOrArgument === 'application_type') {

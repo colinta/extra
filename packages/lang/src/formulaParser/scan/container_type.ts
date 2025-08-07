@@ -310,7 +310,7 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
       let value: Expression
       if (isNumberStart(scanner)) {
         name = value = scanNumber(scanner, 'float')
-      } else if (isStringStartChar(scanner.char)) {
+      } else if (isStringStartChar(scanner)) {
         name = value = scanString(scanner, true, parseNext)
         scanner.whereAmI(`scanDictArg: Dict( ${name.toCode()} )`)
       } else if (scanner.is(PARENS_OPEN)) {

@@ -143,6 +143,14 @@ export abstract class Value {
    * points added.
    */
   abstract printable(): string
+
+  /**
+   * Returns the string as it should appear in a view. `null` => '', [] => '',
+   * false => '' (but true => 'true').
+   */
+  viewPrintable(): string {
+    return this.printable()
+  }
 }
 
 class MetaNullValue extends Value {
@@ -174,6 +182,10 @@ class MetaNullValue extends Value {
   }
 
   printable() {
+    return 'null'
+  }
+
+  viewPrintable() {
     return ''
   }
 
@@ -245,7 +257,11 @@ export abstract class BooleanValue extends BasicValue {
     return this.is
   }
 
-  // private static _props: Map<string, (value: BooleanValue) => Value> = new Map([])
+  viewPrintable(): string {
+    return this.value ? 'true' : ''
+  }
+
+  // static _props: Map<string, (value: BooleanValue) => Value> = new Map([])
 
   // propValue(propName: string): Value | undefined {
   //   const prop = BooleanValue._props.get(propName)
@@ -311,7 +327,7 @@ export class FloatValue extends BasicValue {
     return new Types.LiteralFloatType(this.value)
   }
 
-  // private static _floatProps: Map<string, (value: FloatValue) => Value> = new Map([])
+  // static _floatProps: Map<string, (value: FloatValue) => Value> = new Map([])
 
   // propValue(propName: string): Value | undefined {
   //   const prop = FloatValue._floatProps.get(propName)
@@ -337,7 +353,7 @@ export class IntValue extends FloatValue {
     return new Types.LiteralIntType(this.value, this.magnitude)
   }
 
-  // private static _intProps: Map<string, (value: IntValue) => Value> = new Map([])
+  // static _intProps: Map<string, (value: IntValue) => Value> = new Map([])
 
   // propValue(propName: string): Value | undefined {
   //   const prop = IntValue._intProps.get(propName)
@@ -414,6 +430,10 @@ class MetaNaNValue extends Value {
 
   printable() {
     return 'NaN'
+  }
+
+  viewPrintable() {
+    return ''
   }
 
   propValue() {
@@ -533,7 +553,7 @@ export class StringValue extends BasicValue {
     return this.value
   }
 
-  private static _stringProps = new Map<string, (value: StringValue) => Value>([
+  static _stringProps = new Map<string, (value: StringValue) => Value>([
     ['length', (value: StringValue) => int(value.value.length)],
     [
       'mapChars',
@@ -617,7 +637,7 @@ export class UnicodeStringValue extends StringValue {
     return new Types.LiteralStringType(this.value)
   }
 
-  private static _unicodeProps = new Map<string, (value: UnicodeStringValue) => Value>([
+  static _unicodeProps = new Map<string, (value: UnicodeStringValue) => Value>([
     ['length', (value: UnicodeStringValue) => int(value.length)],
   ])
 
@@ -680,7 +700,7 @@ export class RegexValue extends BasicValue {
     return this.toCode()
   }
 
-  private static _props: Map<string, (value: RegExp) => Value> = new Map([])
+  static _props: Map<string, (value: RegExp) => Value> = new Map([])
 
   propValue(propName: string): Value | undefined {
     const prop = RegexValue._props.get(propName)
@@ -847,7 +867,7 @@ export class RangeValue extends Value {
     return Types.floatRange({min, max})
   }
 
-  private static _props: Map<string, (value: RangeValue) => Value> = new Map([])
+  static _props: Map<string, (value: RangeValue) => Value> = new Map([])
 
   propValue(propName: string): Value | undefined {
     const prop = RangeValue._props.get(propName)
@@ -946,7 +966,7 @@ export class ObjectValue extends Value {
     return `{${tupleCode}${tupleCode && namedCode ? ', ' : ''}${namedCode}}`
   }
 
-  private static _props: Map<string, (value: ObjectValue) => Value> = new Map([])
+  static _props: Map<string, (value: ObjectValue) => Value> = new Map([])
 
   /**
    * Fetching value via `object[prop]` access operator
@@ -1071,6 +1091,13 @@ export class ArrayValue extends Value {
     return `[${code}]`
   }
 
+  viewPrintable() {
+    if (this.values.length === 0) {
+      return ''
+    }
+    return this.printable()
+  }
+
   isTruthy() {
     return this.values.length > 0
   }
@@ -1079,26 +1106,7 @@ export class ArrayValue extends Value {
     return this.runtimeType
   }
 
-  private static _props: Map<string, (value: ArrayValue) => Value> = new Map([])
-  static init() {
-    ArrayValue._props.set('length', (value: ArrayValue) => int(value.values.length))
-    ArrayValue._props.set('map', (array: ArrayValue) =>
-      namedFormula('map', args =>
-        args.at(0, FormulaValue).map(apply =>
-          mapAll(
-            array.values.map((val, index) =>
-              apply.call(
-                new FormulaArgs([
-                  [undefined, val],
-                  [undefined, int(index)],
-                ]),
-              ),
-            ),
-          ).map(values => new ArrayValue(values)),
-        ),
-      ),
-    )
-  }
+  static _props: Map<string, (value: ArrayValue) => Value> = new Map([])
 
   propValue(propName: string): Value | undefined {
     const prop = ArrayValue._props.get(propName)
@@ -1195,7 +1203,14 @@ export class DictValue extends Value {
     return `Set(${values})`
   }
 
-  private static _props: Map<string, (value: DictValue) => Value> = new Map([])
+  viewPrintable() {
+    if (this.values.size === 0) {
+      return ''
+    }
+    return this.printable()
+  }
+
+  static _props: Map<string, (value: DictValue) => Value> = new Map([])
 
   /**
    * Fetching value via `object[prop]` access operator
@@ -1303,6 +1318,13 @@ export class SetValue extends Value {
     return `Set(${code})`
   }
 
+  viewPrintable() {
+    if (this.values.length === 0) {
+      return ''
+    }
+    return this.printable()
+  }
+
   isTruthy() {
     return this.values.length > 0
   }
@@ -1311,7 +1333,7 @@ export class SetValue extends Value {
     return this.runtimeType
   }
 
-  private static _props: Map<string, (value: SetValue) => Value> = new Map([])
+  static _props: Map<string, (value: SetValue) => Value> = new Map([])
 
   propValue(propName: string): Value | undefined {
     const prop = SetValue._props.get(propName)
@@ -1446,7 +1468,7 @@ export class FormulaValue extends Value {
     return ''
   }
 
-  private static _props: Map<string, (value: FormulaValue) => Value> = new Map([])
+  static _props: Map<string, (value: FormulaValue) => Value> = new Map([])
 
   propValue(propName: string): Value | undefined {
     const prop = FormulaValue._props.get(propName)
@@ -1541,4 +1563,22 @@ export class FragmentViewValue extends Value {
   }
 }
 
-ArrayValue.init()
+;(function init() {
+  ArrayValue._props.set('length', (value: ArrayValue) => int(value.values.length))
+  ArrayValue._props.set('map', (array: ArrayValue) =>
+    namedFormula('map', args =>
+      args.at(0, FormulaValue).map(apply =>
+        mapAll(
+          array.values.map((val, index) =>
+            apply.call(
+              new FormulaArgs([
+                [undefined, val],
+                [undefined, int(index)],
+              ]),
+            ),
+          ),
+        ).map(values => new ArrayValue(values)),
+      ),
+    ),
+  )
+})()

@@ -171,8 +171,12 @@ export function isTaggedString(scanner: Scanner) {
   return scanner.is(/^[a-zA-Z_][a-zA-Z0-9_-]*`/)
 }
 
-export function isStringStartChar(char: string) {
-  return char === '"' || char === "'" || char === '`' || char === ATOM_START
+// special care for ATOM_START, because it's also an operator we check for
+//     :<anything>
+// but not
+//     ::<anything>
+export function isStringStartChar(scanner: Scanner) {
+  return scanner.is(/^["'`]/) || (scanner.is(ATOM_START) && scanner.nextChar !== ATOM_START)
 }
 
 export function isObjectLiteralStart(input: string) {

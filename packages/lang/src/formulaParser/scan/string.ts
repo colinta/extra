@@ -255,3 +255,16 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
     tag,
   )
 }
+
+export function scanStringLiteral(scanner: Scanner) {
+  const stringExpr = scanString(scanner, false, () => {
+    throw new ParseError(
+      scanner,
+      'scanString should never call parseNext when enableInterpolation is false',
+    )
+  })
+  if (!(stringExpr instanceof Expressions.StringLiteral)) {
+    throw new ParseError(scanner, `Expected a string literal, found ${stringExpr} instead`)
+  }
+  return stringExpr
+}
