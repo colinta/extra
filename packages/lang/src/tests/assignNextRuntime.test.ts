@@ -244,7 +244,12 @@ describe('comparisons', () => {
       c([Types.int(), '==', relationshipFormula.float(1.1), Types.never()]),
       c([Types.literal(1), '==', relationshipFormula.int(1), Types.literal(1)]),
       c([Types.literal(1), '==', relationshipFormula.int(2), Types.never()]),
-      c([Types.int(), '!=', relationshipFormula.int(1)]),
+      c([
+        Types.int(),
+        '!=',
+        relationshipFormula.int(1),
+        Types.oneOf([Types.int({min: 2}), Types.int({max: 0})]),
+      ]),
       c([Types.int(), '!=', relationshipFormula.string('1')]),
       c([Types.literal(1), '!=', relationshipFormula.int(1), Types.never()]),
       c([Types.literal(1), '!=', relationshipFormula.int(2), Types.literal(1)]),
@@ -267,7 +272,12 @@ describe('comparisons', () => {
       //|  Int(min: 4)
       //|
       c([Types.int({min: 4}), '==', relationshipFormula.int(6), Types.literal(6)]),
-      c([Types.int({min: 4}), '!=', relationshipFormula.int(6)]),
+      c([
+        Types.int({min: 4}),
+        '!=',
+        relationshipFormula.int(6),
+        Types.oneOf([Types.int({min: 4, max: 5}), Types.int({min: 7})]),
+      ]),
       c([Types.int({min: 4}), '!=', relationshipFormula.int(4), Types.int({min: 5})]),
       c([Types.int({min: 4}), '<', relationshipFormula.int(6), Types.int({min: 4, max: 5})]),
       c([Types.int({min: 4}), '<', relationshipFormula.int(3), Types.never()]),
@@ -278,7 +288,12 @@ describe('comparisons', () => {
       //|  Int(max: 4)
       //|
       c([Types.int({max: 4}), '==', relationshipFormula.int(1), Types.literal(1)]),
-      c([Types.int({max: 4}), '!=', relationshipFormula.int(1)]),
+      c([
+        Types.int({max: 4}),
+        '!=',
+        relationshipFormula.int(1),
+        Types.oneOf([Types.int({max: 0}), Types.int({min: 2, max: 4})]),
+      ]),
       c([Types.int({max: 4}), '<', relationshipFormula.int(1), Types.int({max: 0})]),
       c([Types.int({max: 4}), '<=', relationshipFormula.int(1), Types.int({max: 1})]),
       c([Types.int({max: 4}), '>', relationshipFormula.int(1), Types.int({min: 2, max: 4})]),
@@ -290,7 +305,12 @@ describe('comparisons', () => {
       c([Types.int({min: 4, max: 10}), '==', relationshipFormula.int(6), Types.literal(6)]),
       c([Types.int({min: 4, max: 10}), '==', relationshipFormula.int(3), Types.never()]),
       c([Types.int({min: 4, max: 10}), '==', relationshipFormula.int(11), Types.never()]),
-      c([Types.int({min: 4, max: 10}), '!=', relationshipFormula.int(6)]),
+      c([
+        Types.int({min: 4, max: 10}),
+        '!=',
+        relationshipFormula.int(6),
+        Types.oneOf([Types.int({min: 4, max: 5}), Types.int({min: 7, max: 10})]),
+      ]),
       c([
         Types.int({min: 4, max: 10}),
         '!=',

@@ -1,7 +1,8 @@
-import {err, ok, type Result} from '@extra-lang/result'
+import {err, mapAll, ok, type Result} from '@extra-lang/result'
 import {intersection} from './formulaParser/set'
 import {splitter} from './graphemes'
 import * as Narrowed from './narrowed'
+import {narrowedFloatToInt, narrowedFloatToLength} from './narrowed'
 
 export const FN = 'fn'
 export const VIEW = 'view'
@@ -1223,8 +1224,144 @@ export abstract class OneOfType extends Type {
   }
 }
 
+function scoreType(type: Type): number | undefined {
+  if (type instanceof EnumType) {
+    return 1
+  }
+  if (type instanceof EnumCase) {
+    return 2
+  }
+  if (type instanceof ClassType) {
+    return 3
+  }
+  if (type instanceof SetType) {
+    return 4
+  }
+  if (type instanceof DictType) {
+    return 5
+  }
+  if (type instanceof ArrayType) {
+    return 6
+  }
+  if (type instanceof ObjectType) {
+    return 7
+  }
+  if (type instanceof MetaFloatRangeType) {
+    return 8
+  }
+  if (type instanceof MetaIntRangeType) {
+    return 9
+  }
+  if (type instanceof MetaIntType) {
+    return 10
+  }
+  if (type instanceof MetaFloatType) {
+    return 11
+  }
+  if (type instanceof MetaStringType) {
+    return 12
+  }
+  if (type instanceof MetaRegexType) {
+    return 13
+  }
+  if (type instanceof LiteralStringType) {
+    return 14
+  }
+  if (type instanceof LiteralRegexType) {
+    return 15
+  }
+  if (type instanceof LiteralIntType) {
+    return 16
+  }
+  if (type instanceof LiteralFloatType) {
+    return 17
+  }
+  if (type instanceof MetaIntType) {
+    return 18
+  }
+  switch (type) {
+    case LiteralTrueType:
+      return 19
+    case LiteralFalseType:
+      return 20
+    case NullType:
+      return 21
+    case AllType:
+      return 22
+    case AlwaysType:
+      return 23
+    case NeverType:
+      return 24
+  }
+  return 25
+}
+
+function _sortNarrowed(a: Narrowed.NarrowedFloat, b: Narrowed.NarrowedFloat) {
+  let aMin = Array.isArray(a.min) ? a.min[0] : a.min
+  let aMax = Array.isArray(a.max) ? a.max[0] : a.max
+  let bMin = Array.isArray(b.min) ? b.min[0] : b.min
+  let bMax = Array.isArray(b.max) ? b.max[0] : b.max
+
+  if (aMax !== undefined && bMin !== undefined) {
+    return aMax - bMin
+  }
+  if (aMin !== undefined && bMax !== undefined) {
+    return aMin - bMax
+  }
+  if (aMax !== undefined && bMax !== undefined) {
+    return aMax - bMax
+  }
+  if (aMin !== undefined && bMin !== undefined) {
+    return aMin - bMin
+  }
+  if (aMax !== undefined) {
+    return -1
+  }
+  if (bMax !== undefined) {
+    return 1
+  }
+  if (aMin !== undefined) {
+    return -1
+  }
+  if (bMin !== undefined) {
+    return 1
+  }
+  return 0
+}
+
+function _sortTypes(a: Type, b: Type): number {
+  if (a instanceof OneOfType) {
+    return _sortTypes(a.of[0], b instanceof OneOfType ? b.of[0] : b)
+  }
+
+  if (a instanceof ContainerType && b instanceof ContainerType && a.constructor === b.constructor) {
+    const sorted = _sortTypes(a.of, b.of)
+    if (sorted !== 0) return sorted
+    return _sortNarrowed(a.narrowedLength, b.narrowedLength)
+  }
+
+  if (a instanceof LiteralFloatType && b instanceof LiteralFloatType) {
+    return a.value - b.value
+  }
+
+  if (a instanceof MetaFloatType && b instanceof MetaFloatType) {
+    return _sortNarrowed(a.narrowed, b.narrowed)
+  }
+
+  const [lhsScore, rhsScore] = [scoreType(a), scoreType(b)]
+  if (lhsScore && rhsScore && lhsScore !== rhsScore) {
+    return lhsScore - rhsScore
+  }
+
+  return a.toString().toLowerCase().localeCompare(b.toString().toLowerCase())
+}
+
 export function _privateOneOf(types: Type[]): __OneOfType {
-  return new __OneOfType(types)
+  if (types.some(type => type instanceof OneOfType)) {
+    throw 'I should not be. OneOfType passed to _privateOneOf'
+  }
+
+  return new __OneOfType(types.slice().sort(_sortTypes))
 }
 
 /**
@@ -1495,7 +1632,20 @@ export abstract class NumberType<
     return this.narrowed.min === 0 && this.narrowed.max === 0
   }
 
+  /**
+   * Returns a type that is a subset of 'this', intersecting w/ `min` & `max`.
+   * Possibly 'never'.
+   */
   abstract narrow(min: number | [number] | undefined, max: number | [number] | undefined): Type
+  /**
+   * Returns a type that is a subset of 'this', subtracting the region between
+   * `min` & `max`. Possibly 'never'.
+   */
+  exclude(narrowed: Narrowed.NarrowedFloat) {
+    const ranges = Narrowed.exclude(this.narrowed, narrowed)
+    return oneOf(ranges.map(range => this.narrow(range.min, range.max)))
+  }
+
   abstract adjustNarrow(amount: number): Type
   abstract negateNarrow(amount: number): Type
 }
@@ -1561,7 +1711,7 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
 
     // if the literal is in the range of this FloatType, return the FloatType.
     // otherwise `compatibleWithBothTypes` will return oneOf(literal, this)
-    if (Narrowed.testNumber(literal.value, this.narrowed)) {
+    if (Narrowed.isInNarrowedRange(literal.value, this.narrowed)) {
       return this
     }
   }
@@ -1601,7 +1751,7 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
   }
 
   narrow(min: number | [number] | undefined, max: number | [number] | undefined) {
-    const next = this === FloatType ? {min, max} : Narrowed.narrowFloats(this.narrowed, {min, max})
+    const next = this === FloatType ? {min, max} : Narrowed.narrow(this.narrowed, {min, max})
 
     if (next === undefined) {
       return NeverType
@@ -1739,7 +1889,7 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
   combineLiteral(literal: LiteralType) {
     if (!literal.isInt()) {
       // if the float is in the range of this int, return float type version of this
-      if (literal.isFloat() && Narrowed.testNumber(literal.value, this.narrowed)) {
+      if (literal.isFloat() && Narrowed.isInNarrowedRange(literal.value, this.narrowed)) {
         return new MetaFloatType(this.narrowed)
       }
 
@@ -1748,7 +1898,7 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
 
     // we have a literal int - if it is compatible with this, return this
     // otherwise oneOf(literal | int) will be returned by `compatibleWithBothTypes`
-    if (Narrowed.testNumber(literal.value, this.narrowed)) {
+    if (Narrowed.isInNarrowedRange(literal.value, this.narrowed)) {
       return this
     }
 
@@ -1788,15 +1938,11 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
     return new MetaIntType(narrowed)
   }
 
-  narrow(min: number | [number] | undefined, max: number | [number] | undefined): Type {
-    if (Array.isArray(min)) {
-      return this.narrow(Math.floor(min[0]) + 1, max)
+  narrow(anyMin: number | [number] | undefined, anyMax: number | [number] | undefined): Type {
+    const {min, max} = narrowedFloatToInt({min: anyMin, max: anyMax})
+    if (max !== undefined && min !== undefined && min > max) {
+      return NeverType
     }
-
-    if (Array.isArray(max)) {
-      return this.narrow(min, Math.ceil(max[0]) - 1)
-    }
-
     const next = this === IntType ? {min, max} : Narrowed.narrowInts(this.narrowed, {min, max})
 
     if (next === undefined) {
@@ -2108,16 +2254,18 @@ export class MetaStringType extends Type {
    */
   replacingProp(propName: string, type: Type): Result<Type, string> {
     if (propName === 'length') {
+      if (type instanceof OneOfType) {
+        return mapAll(type.of.map(ofType => this.replacingProp(propName, ofType))).map(oneOf)
+      }
+
       if (type === NeverType) {
         return ok(NeverType)
       }
 
-      if (type instanceof LiteralIntType) {
-        return ok(this.narrowLength(Math.max(type.value, 0), type.value))
-      }
-
-      if (type instanceof MetaIntType) {
-        return ok(this.narrowLength(Math.max(type.narrowed.min ?? 0, 0), type.narrowed.max))
+      if (type.isInt()) {
+        return ok(
+          this.narrowLength(type.narrowed.min ?? this.narrowedString.length.min, type.narrowed.max),
+        )
       }
 
       return err(
@@ -2196,6 +2344,17 @@ export abstract class RangeType<
     } else {
       return new MetaFloatRangeType(type.narrowed)
     }
+  }
+
+  abstract narrow(min: number | [number] | undefined, max: number | [number] | undefined): Type
+
+  /**
+   * Returns a type that is a subset of 'this', subtracting the region between
+   * `min` & `max`. Possibly 'never'.
+   */
+  exclude(narrowed: Narrowed.NarrowedFloat) {
+    const ranges = Narrowed.exclude(this.narrowed, narrowed)
+    return oneOf(ranges.map(range => this.narrow(range.min, range.max)))
   }
 
   toCode() {
@@ -2466,6 +2625,18 @@ export class LiteralFloatType extends LiteralType {
     return this
   }
 
+  /**
+   * Returns a type that is a subset of 'this', subtracting the region between
+   * `min` & `max`. Possibly 'never'.
+   */
+  exclude(narrowed: Narrowed.NarrowedFloat) {
+    if (this.narrow(narrowed.min, narrowed.max) === NeverType) {
+      return this
+    }
+
+    return NeverType
+  }
+
   toCode() {
     const s = JSON.stringify(this.value)
     if (!s.includes('.') && !s.includes('e')) {
@@ -2593,6 +2764,8 @@ export abstract class ContainerType<T extends ContainerType<T>> extends Type {
     }
   }
 
+  abstract create(narrowed: Narrowed.NarrowedFloat): T
+
   typeConstructor(): TypeConstructor {
     return new TypeConstructor(this.is, this, this, [
       positionalArgument({name: 'input', type: this, isRequired: true}),
@@ -2665,7 +2838,7 @@ export abstract class ContainerType<T extends ContainerType<T>> extends Type {
       return NeverType
     }
 
-    return this.narrowLengthSafe(minLength, maxLength)
+    return this.narrowLengthSafe(next.min, next.max)
   }
 }
 
@@ -2894,7 +3067,13 @@ export class ArrayType extends ContainerType<ArrayType> {
     of: Type,
     narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
   ) {
+    // hmm if narrowedLength.max === 0, 'of' could be 'always' type... just a
+    // thought.
     super(of, narrowedLength)
+  }
+
+  create(narrowed: Narrowed.NarrowedFloat): ArrayType {
+    return new ArrayType(this.of, narrowedFloatToLength(narrowed))
   }
 
   fromTypeConstructor() {
@@ -2928,6 +3107,10 @@ export class ArrayType extends ContainerType<ArrayType> {
 
   compatibleWithBothNarrowed(rhs: ArrayType) {
     const length = Narrowed.compatibleWithBothLengths(this.narrowedLength, rhs.narrowedLength)
+    if (!length) {
+      return _privateOneOf([this, rhs])
+    }
+
     return new ArrayType(this.of, length)
   }
 
@@ -2989,6 +3172,10 @@ export class ArrayType extends ContainerType<ArrayType> {
    */
   replacingProp(propName: string, type: Type): Result<Type, string> {
     if (propName === 'length') {
+      if (type instanceof OneOfType) {
+        return mapAll(type.of.map(ofType => this.replacingProp(propName, ofType))).map(oneOf)
+      }
+
       if (type === NeverType) {
         return ok(NeverType)
       }
@@ -3034,6 +3221,13 @@ export class DictType extends ContainerType<DictType> {
       }
     }
     super(of, narrowed)
+  }
+
+  create(narrowed: Narrowed.NarrowedFloat): DictType {
+    if (this.narrowedNames.size) {
+      throw new Error(`TODO: DictType.create, keys = ${this.narrowedNames}`)
+    }
+    return new DictType(this.of, narrowedFloatToLength(narrowed))
   }
 
   fromTypeConstructor() {
@@ -3101,6 +3295,10 @@ export class DictType extends ContainerType<DictType> {
 
   compatibleWithBothNarrowed(rhs: DictType) {
     const length = Narrowed.compatibleWithBothLengths(this.narrowedLength, rhs.narrowedLength)
+    if (!length) {
+      return _privateOneOf([this, rhs])
+    }
+
     const names = intersection(this.narrowedNames, rhs.narrowedNames)
     return new DictType(this.of, length, names)
   }
@@ -3149,6 +3347,10 @@ export class SetType extends ContainerType<SetType> {
     super(of, narrowedLength)
   }
 
+  create(narrowed: Narrowed.NarrowedFloat): SetType {
+    return new SetType(this.of, narrowedFloatToLength(narrowed))
+  }
+
   fromTypeConstructor() {
     return new SetType(this.of.fromTypeConstructor(), this.narrowedLength)
   }
@@ -3181,6 +3383,10 @@ export class SetType extends ContainerType<SetType> {
 
   compatibleWithBothNarrowed(rhs: SetType) {
     const length = Narrowed.compatibleWithBothLengths(this.narrowedLength, rhs.narrowedLength)
+    if (!length) {
+      return _privateOneOf([this, rhs])
+    }
+
     return new SetType(this.of, length)
   }
 
@@ -3491,7 +3697,7 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
     (lhsType.isRange() && typeAssertion.isRange())
   ) {
     // if typeAssertion is entirely within lhsType, return typeAssertion
-    if (Narrowed.testNumber(typeAssertion.narrowed, lhsType.narrowed)) {
+    if (Narrowed.isInNarrowedRange(typeAssertion.narrowed, lhsType.narrowed)) {
       return typeAssertion
     }
 
@@ -3532,118 +3738,31 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
     )
   }
 
+  // if lhsType is a subet of typeAssertion, the resulting set is empty
   if (canBeAssignedTo(lhsType, typeAssertion)) {
     return NeverType
+  }
+
+  if (lhsType instanceof ContainerType && typeAssertion instanceof ContainerType) {
+    // make sure that the array type of typeAssertion completely covers the
+    // array type of lhsType
+    if (!canBeAssignedTo(lhsType.of, typeAssertion.of)) {
+      return lhsType
+    }
+
+    // narrow the lengths
+    const lengths = Narrowed.exclude(lhsType.narrowedLength, typeAssertion.narrowedLength)
+    if (lengths.length === 0) {
+      return NeverType
+    }
+    return oneOf(lengths.map(length => lhsType.create(length)))
   }
 
   if (
     (lhsType.isFloat() && typeAssertion.isFloat()) ||
     (lhsType.isRange() && typeAssertion.isRange())
   ) {
-    // lhsType-+
-    //         |
-    //   if (range is 0..<5) { then: narrowTypeIs, else: narrowTypeIsNot }
-    //                   |                                ^ we are here
-    //                   +- typeAssertion
-    // returns the range of numbers in lhsType that are not in typeAssertion
-    // should this be in narrowed.ts (as "invertNarrow")?
-
-    // If lhsType is entirely in typeAssertion, the inverse case is 'never'
-    if (Narrowed.testNumber(lhsType.narrowed, typeAssertion.narrowed)) {
-      return NeverType
-    }
-
-    // if typeAssertion is entirely in lhsType, split up lhsType into the before
-    // and after parts
-    if (
-      Narrowed.testNumber(typeAssertion.narrowed, lhsType.narrowed) &&
-      typeAssertion.narrowed.min !== undefined &&
-      typeAssertion.narrowed.max !== undefined
-    ) {
-      if (lhsType.isFloat()) {
-        return oneOf([
-          narrowTypeIsNot(
-            lhsType,
-            (lhsType.isInt() ? IntType : FloatType).narrow(typeAssertion.narrowed.min, undefined),
-          ),
-          narrowTypeIsNot(
-            lhsType,
-            (lhsType.isInt() ? IntType : FloatType).narrow(undefined, typeAssertion.narrowed.max),
-          ),
-        ])
-      }
-
-      if (lhsType.isRange()) {
-        return oneOf([
-          narrowTypeIsNot(
-            lhsType,
-            (lhsType.isIntRange() ? IntRangeType : FloatRangeType).narrow(
-              typeAssertion.narrowed.min,
-              undefined,
-            ),
-          ),
-          narrowTypeIsNot(
-            lhsType,
-            (lhsType.isIntRange() ? IntRangeType : FloatRangeType).narrow(
-              undefined,
-              typeAssertion.narrowed.max,
-            ),
-          ),
-        ])
-      }
-
-      return NeverType
-    }
-
-    if (
-      typeAssertion.narrowed.max !== undefined &&
-      Narrowed.testNumber(typeAssertion.narrowed.max, lhsType.narrowed)
-    ) {
-      // invert the max from inclusive to exclusive and vice-versa
-      let min: number | [number] = Array.isArray(typeAssertion.narrowed.max)
-        ? typeAssertion.narrowed.max[0]
-        : [typeAssertion.narrowed.max]
-      if (lhsType.isInt() || lhsType.isIntRange()) {
-        if (Array.isArray(min)) {
-          min = Math.floor(min[0]) + 1
-        } else {
-          min = Math.ceil(min)
-        }
-
-        if (lhsType.isIntRange()) {
-          return intRange({min, max: lhsType.narrowed.max})
-        }
-        return int({min, max: lhsType.narrowed.max})
-      }
-
-      if (lhsType.isRange()) {
-        return floatRange({min, max: lhsType.narrowed.max})
-      }
-      return float({min, max: lhsType.narrowed.max})
-    }
-
-    if (
-      typeAssertion.narrowed.min !== undefined &&
-      Narrowed.testNumber(typeAssertion.narrowed.min, lhsType.narrowed)
-    ) {
-      // invert the min from inclusive to exclusive and vice-versa
-      let max: number | [number] = Array.isArray(typeAssertion.narrowed.min)
-        ? typeAssertion.narrowed.min[0]
-        : [typeAssertion.narrowed.min]
-      if (lhsType.isInt() || lhsType.isIntRange()) {
-        if (Array.isArray(max)) {
-          max = Math.ceil(max[0]) - 1
-        } else {
-          max = Math.floor(max)
-        }
-
-        if (lhsType.isIntRange()) {
-          return intRange({min: lhsType.narrowed.min, max})
-        }
-        return int({min: lhsType.narrowed.min, max})
-      }
-      return float({min: lhsType.narrowed.min, max})
-    }
+    return lhsType.exclude(typeAssertion.narrowed)
   }
 
   return lhsType
@@ -3971,60 +4090,47 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     // merge the types if they are compatible, otherwise retain their types
     // e.g. Array(Int) | Array(Float) --> Array(Float)
     // e.g. Array(Int) | Array(String) --> Array(Int) | Array(String)
-    const common = compatibleWithBothTypes(lhs.of, rhs.of)
-    if (!(common instanceof OneOfType)) {
+    const common = canBeAssignedTo(lhs.of, rhs.of)
+      ? rhs.of
+      : canBeAssignedTo(rhs.of, lhs.of)
+        ? lhs.of
+        : undefined
+    if (common) {
       // try not to create a new ArrayType (optimize for lhs === rhs comparisons)
       // compatibleWithBothTypes will return lhs.of or rhs.of if one or the other is
       // the superset of both. In that case, we only need to check the narrowed length
-      let type: ArrayType | undefined
       if (common === lhs.of) {
-        type = lhs.compatibleWithBothNarrowed(rhs)
+        return lhs.compatibleWithBothNarrowed(rhs)
       } else if (common === rhs.of) {
-        type = rhs.compatibleWithBothNarrowed(lhs)
-      } else {
-        type = new ArrayType(common, lhs.narrowedLength).compatibleWithBothNarrowed(rhs)
-      }
-
-      if (type) {
-        return type
+        return rhs.compatibleWithBothNarrowed(lhs)
       }
     }
   } else if (lhs instanceof DictType && rhs instanceof DictType) {
     // same logic as ArrayType
-    const common = compatibleWithBothTypes(lhs.of, rhs.of)
-    if (!(common instanceof OneOfType)) {
-      let type: DictType | undefined
+    const common = canBeAssignedTo(lhs.of, rhs.of)
+      ? rhs.of
+      : canBeAssignedTo(rhs.of, lhs.of)
+        ? lhs.of
+        : undefined
+    if (common) {
       if (common === lhs.of) {
-        type = lhs.compatibleWithBothNarrowed(rhs)
+        return lhs.compatibleWithBothNarrowed(rhs)
       } else if (common === rhs.of) {
-        type = rhs.compatibleWithBothNarrowed(lhs)
-      } else {
-        type = new DictType(
-          common,
-          lhs.narrowedLength,
-          lhs.narrowedNames,
-        ).compatibleWithBothNarrowed(rhs)
-      }
-
-      if (type) {
-        return type
+        return rhs.compatibleWithBothNarrowed(lhs)
       }
     }
   } else if (lhs instanceof SetType && rhs instanceof SetType) {
     // same logic as ArrayType
-    const common = compatibleWithBothTypes(lhs.of, rhs.of)
-    if (!(common instanceof OneOfType)) {
-      let type: SetType | undefined
+    const common = canBeAssignedTo(lhs.of, rhs.of)
+      ? rhs.of
+      : canBeAssignedTo(rhs.of, lhs.of)
+        ? lhs.of
+        : undefined
+    if (common) {
       if (common === lhs.of) {
-        type = lhs.compatibleWithBothNarrowed(rhs)
+        return lhs.compatibleWithBothNarrowed(rhs)
       } else if (common === rhs.of) {
-        type = rhs.compatibleWithBothNarrowed(lhs)
-      } else {
-        type = new SetType(common, lhs.narrowedLength).compatibleWithBothNarrowed(rhs)
-      }
-
-      if (type) {
-        return type
+        return rhs.compatibleWithBothNarrowed(lhs)
       }
     }
   } else if (lhs instanceof ObjectType && rhs instanceof ObjectType) {
@@ -4477,7 +4583,7 @@ function canBeAssignedToRange(
     return false
   }
 
-  return Narrowed.testNumber(testType.narrowed, assignTo.narrowed)
+  return Narrowed.isInNarrowedRange(testType.narrowed, assignTo.narrowed)
 }
 
 function canBeAssignedToFloat(
@@ -4493,18 +4599,18 @@ function canBeAssignedToFloat(
       return testType.value === assignTo.value
     }
 
-    return Narrowed.testNumber(testType.narrowed, {
+    return Narrowed.isInNarrowedRange(testType.narrowed, {
       min: assignTo.value,
       max: assignTo.value,
     })
   }
 
   if (testType instanceof LiteralIntType) {
-    return Narrowed.testNumber({min: testType.value, max: testType.value}, assignTo.narrowed)
+    return Narrowed.isInNarrowedRange({min: testType.value, max: testType.value}, assignTo.narrowed)
   } else if (testType instanceof LiteralFloatType) {
     return (
       !(assignTo instanceof MetaIntType) &&
-      Narrowed.testNumber({min: testType.value, max: testType.value}, assignTo.narrowed)
+      Narrowed.isInNarrowedRange({min: testType.value, max: testType.value}, assignTo.narrowed)
     )
   }
 
@@ -4512,7 +4618,7 @@ function canBeAssignedToFloat(
     return false
   }
 
-  return Narrowed.testNumber(testType.narrowed, assignTo.narrowed)
+  return Narrowed.isInNarrowedRange(testType.narrowed, assignTo.narrowed)
 }
 
 function canBeAssignedToString(

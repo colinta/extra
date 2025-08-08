@@ -3,7 +3,6 @@ import * as Types from '../../types'
 import {type TypeRuntime} from '../../runtime'
 import * as Values from '../../values'
 import {parse} from '../../formulaParser'
-import {type TestingTypes} from '../operators'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
 
 let runtimeTypes: {[K in string]: [Types.Type, Values.Value]}
@@ -36,6 +35,26 @@ describe('narrowed types', () => {
       Types.int({min: 2, max: 4}),
       Types.oneOf([Types.int({min: 0, max: 1}), Types.int({min: 5, max: 7})]),
     ]),
+    c([
+      Types.int({min: 0, max: 7}),
+      'foo == 4',
+      Types.literal(4),
+      Types.oneOf([Types.int({min: 0, max: 3}), Types.int({min: 5, max: 7})]),
+    ]),
+    c([
+      Types.int({min: 0, max: 7}),
+      'foo == 4.0',
+      Types.literal(4),
+      Types.oneOf([Types.int({min: 0, max: 3}), Types.int({min: 5, max: 7})]),
+    ]),
+    c([Types.int({min: 0, max: 7}), 'foo == 4.4', Types.never(), Types.int({min: 0, max: 7})]),
+    c([
+      Types.int({min: 0, max: 7}),
+      'foo != 4',
+      Types.oneOf([Types.int({min: 0, max: 3}), Types.int({min: 5, max: 7})]),
+      Types.literal(4),
+    ]),
+    c([Types.int({min: 0, max: 7}), 'foo != 4.5', Types.int({min: 0, max: 7}), Types.never()]),
     c([Types.int({min: 6}), 'foo <= 5', Types.never(), Types.int({min: 6})]),
     c([Types.int(), 'foo', Types.int(), Types.literal(0)]),
     c([Types.int(), 'not foo', Types.literal(0), Types.int()]),
@@ -308,7 +327,13 @@ describe('narrowed types', () => {
       Types.array(Types.string()),
       'foo.length == 10',
       Types.array(Types.string(), {min: 10, max: 10}),
+      Types.oneOf([Types.array(Types.string(), {max: 9}), Types.array(Types.string(), {min: 11})]),
+    ]),
+    c([
       Types.array(Types.string()),
+      'foo.length != 10',
+      Types.oneOf([Types.array(Types.string(), {max: 9}), Types.array(Types.string(), {min: 11})]),
+      Types.array(Types.string(), {min: 10, max: 10}),
     ]),
     c([
       Types.array(Types.string()),
@@ -329,20 +354,14 @@ describe('narrowed types', () => {
         runtimeTypes[name] = [type, Values.nullValue()]
       })
       ;(only ? it.only : skip ? it.skip : it)(`truthy: ${truthyType}`, () => {
-        const expression = parse(`(${formula}) and ${name}`).get()
-        const andExpression = expression as TestingTypes.LogicalAndOperator
-        const [lhsExpr, rhsExpr] = andExpression.args
-        const lhsType = lhsExpr.getType(typeRuntime).get()
-        const andType = andExpression.rhsType(typeRuntime, lhsType, lhsExpr, rhsExpr)
-        expect(andType.get()).toEqual(truthyType)
+        const expression = parse(formula).get()
+        const nextRuntime = expression.assumeTrue(typeRuntime).get()
+        expect(nextRuntime.getLocalType(name)).toEqual(truthyType)
       })
       ;(only ? it.only : skip ? it.skip : it)(`falsey: ${falseyType}`, () => {
-        const expression = parse(`(${formula}) or ${name}`).get()
-        const orExpression = expression as TestingTypes.LogicalAndOperator
-        const [lhsExpr, rhsExpr] = orExpression.args
-        const lhsType = lhsExpr.getType(typeRuntime).get()
-        const orType = orExpression.rhsType(typeRuntime, lhsType, lhsExpr, rhsExpr)
-        expect(orType.get()).toEqual(falseyType)
+        const expression = parse(formula).get()
+        const nextRuntime = expression.assumeFalse(typeRuntime).get()
+        expect(nextRuntime.getLocalType(name)).toEqual(falseyType)
       })
     })
   })
@@ -369,6 +388,51 @@ describe('narrowed types', () => {
         Types.oneOf([Types.int(), Types.string()]),
         Types.int({min: 1}),
         {is: Types.int({min: 1}), isNot: Types.oneOf([Types.int({max: 0}), Types.string()])},
+      ]),
+      c([
+        Types.int({min: 0, max: 5}),
+        Types.int({min: -10, max: 10}),
+        {is: Types.int({min: 0, max: 5}), isNot: Types.never()},
+      ]),
+      c([
+        Types.int({min: -10, max: 10}),
+        Types.int({min: 0, max: 5}),
+        {
+          is: Types.int({min: 0, max: 5}),
+          isNot: Types.oneOf([Types.int({min: -10, max: -1}), Types.int({min: 6, max: 10})]),
+        },
+      ]),
+      c([
+        Types.float({min: -10, max: 10}),
+        Types.float({min: 0, max: 5}),
+        {
+          is: Types.float({min: 0, max: 5}),
+          isNot: Types.oneOf([Types.float({min: -10, max: [0]}), Types.float({min: [5], max: 10})]),
+        },
+      ]),
+      c([
+        Types.float({min: -10, max: 10}),
+        Types.float({min: 0, max: [5]}),
+        {
+          is: Types.float({min: 0, max: [5]}),
+          isNot: Types.oneOf([Types.float({min: -10, max: [0]}), Types.float({min: 5, max: 10})]),
+        },
+      ]),
+      c([
+        Types.float({min: -10, max: 10}),
+        Types.float({min: [0], max: [5]}),
+        {
+          is: Types.float({min: [0], max: [5]}),
+          isNot: Types.oneOf([Types.float({min: -10, max: 0}), Types.float({min: 5, max: 10})]),
+        },
+      ]),
+      c([
+        Types.float({min: -10, max: 10}),
+        Types.float({min: [0], max: 5}),
+        {
+          is: Types.float({min: [0], max: 5}),
+          isNot: Types.oneOf([Types.float({min: -10, max: 0}), Types.float({min: [5], max: 10})]),
+        },
       ]),
     ).run(([lhs, rhs, {is: expectedIs, isNot: expectedIsNot}], {only, skip}) => {
       ;(only ? it.only : skip ? it.skip : it)(

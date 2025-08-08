@@ -104,68 +104,6 @@ export function isEqualNarrowed(narrowed: NarrowedFloat, nextNarrowed: NarrowedF
 }
 
 /**
- * This function accepts two float ranges and finds the intersection of the two.
- *
- * If the intersection is empty, it returns undefined.
- */
-export function narrowFloats(
-  narrowed: NarrowedFloat,
-  nextNarrowed: NarrowedFloat,
-): NarrowedFloat | undefined {
-  const {min, max} = narrowed
-  const {min: nextMin, max: nextMax} = nextNarrowed
-  let retMin: NarrowedFloat['min']
-  let retMax: NarrowedFloat['max']
-
-  if (min === undefined || nextMin === undefined) {
-    retMin = min ?? nextMin
-  } else if (Array.isArray(min)) {
-    if (Array.isArray(nextMin)) {
-      retMin = [Math.max(min[0], nextMin[0])]
-    } else if (min[0] >= nextMin) {
-      retMin = min
-    } else {
-      retMin = nextMin
-    }
-  } else if (Array.isArray(nextMin)) {
-    if (nextMin[0] >= min) {
-      retMin = nextMin
-    } else {
-      retMin = min
-    }
-  } else {
-    retMin = Math.max(min, nextMin)
-  }
-
-  if (max === undefined || nextMax === undefined) {
-    retMax = max ?? nextMax
-  } else if (Array.isArray(max)) {
-    if (Array.isArray(nextMax)) {
-      retMax = [Math.min(max[0], nextMax[0])]
-    } else if (max[0] <= nextMax) {
-      retMax = max
-    } else {
-      retMax = nextMax
-    }
-  } else if (Array.isArray(nextMax)) {
-    if (nextMax[0] <= max) {
-      retMax = nextMax
-    } else {
-      retMax = max
-    }
-  } else {
-    retMax = Math.min(max, nextMax)
-  }
-
-  const next = {min: retMin, max: retMax}
-  if (floatIsNever(next)) {
-    return undefined
-  }
-
-  return next
-}
-
-/**
  * Unlike narrowFloats, which returns the intersection of the two 'narrowed'
  * types, this one returns the union. Returns `undefined` if the two ranges
  * don't intersect.
@@ -178,9 +116,9 @@ export function compatibleWithBothFloats(
   const {min: nextMin, max: nextMax} = nextNarrowed
   if (
     min !== undefined &&
-    !testNumber(min, nextNarrowed) &&
+    !isInNarrowedRange(min, nextNarrowed) &&
     max !== undefined &&
-    !testNumber(max, nextNarrowed)
+    !isInNarrowedRange(max, nextNarrowed)
   ) {
     return undefined
   }
@@ -289,11 +227,161 @@ export function narrowInts(
   }
 
   const next = {min: retMin, max: retMax}
-  if (intIsNever(next)) {
+  if (floatIsNever(next)) {
     return undefined
   }
 
   return next
+}
+
+/**
+ * This function accepts two float or int ranges and finds the intersection of
+ * the two. If the intersection is empty, it returns `undefined`.
+ */
+export function narrow<T extends NarrowedLength | NarrowedInt | NarrowedFloat>(
+  narrowed: T,
+  nextNarrowed: T,
+): T | undefined {
+  const {min, max} = narrowed
+  const {min: nextMin, max: nextMax} = nextNarrowed
+  let retMin: number | [number] | undefined
+  let retMax: number | [number] | undefined
+
+  if (min === undefined || nextMin === undefined) {
+    retMin = min ?? nextMin
+  } else if (Array.isArray(min)) {
+    if (Array.isArray(nextMin)) {
+      retMin = [Math.max(min[0], nextMin[0])]
+    } else if (min[0] >= nextMin) {
+      retMin = min
+    } else {
+      retMin = nextMin
+    }
+  } else if (Array.isArray(nextMin)) {
+    if (nextMin[0] >= min) {
+      retMin = nextMin
+    } else {
+      retMin = min
+    }
+  } else {
+    retMin = Math.max(min, nextMin)
+  }
+
+  if (max === undefined || nextMax === undefined) {
+    retMax = max ?? nextMax
+  } else if (Array.isArray(max)) {
+    if (Array.isArray(nextMax)) {
+      retMax = [Math.min(max[0], nextMax[0])]
+    } else if (max[0] <= nextMax) {
+      retMax = max
+    } else {
+      retMax = nextMax
+    }
+  } else if (Array.isArray(nextMax)) {
+    if (nextMax[0] <= max) {
+      retMax = nextMax
+    } else {
+      retMax = max
+    }
+  } else {
+    retMax = Math.min(max, nextMax)
+  }
+
+  const next = {min: retMin, max: retMax}
+  if (floatIsNever(next)) {
+    return undefined
+  }
+
+  return next as T
+}
+
+export function narrowedFloatToInt({min, max}: NarrowedFloat): NarrowedInt {
+  if (min !== undefined) {
+    const nextMin = Array.isArray(min) ? min[0] : min
+    // AI did not produce this slop. This is hand-crafted, Grade A slop, made
+    // the old fashioned way: Writing tests and editing the code until the
+    // tests pass, without bothering to understand why it works. Vibe coding the
+    // way Kent Beck and Martin Fowler taught just after the turn of the 20th
+    // century.
+    min = Math.floor(nextMin) + (!Array.isArray(min) && Math.floor(nextMin) === nextMin ? 0 : 1)
+  }
+
+  if (max !== undefined) {
+    const nextMax = Array.isArray(max) ? max[0] : max
+    max = Math.ceil(nextMax) - (!Array.isArray(max) && Math.ceil(nextMax) === nextMax ? 0 : 1)
+  }
+
+  return {min, max}
+}
+
+export function narrowedFloatToLength({min, max}: NarrowedFloat): NarrowedLength {
+  if (Array.isArray(min)) {
+    min = Math.floor(min[0]) + 1
+  }
+
+  if (typeof min === 'number') {
+    min = Math.max(0, min)
+  } else {
+    min = 0
+  }
+
+  if (Array.isArray(max)) {
+    max = Math.ceil(max[0]) - 1
+  }
+
+  if (typeof max === 'number') {
+    max = Math.max(0, max)
+  }
+  return {min, max}
+}
+
+/**
+ * Compares narrowed and excludeNarrowed, returns the range or ranges that are
+ * in narrowed but are not in excludeNarrowed, i.e. the "remaining" ranges.
+ * Used in Types.narrowTypeIsNot.
+ *
+ * If `[]` is returned, that indicates that no elements in `narrowed` are
+ * in `excludeNarrowed`.
+ */
+export function exclude<T extends NarrowedLength | NarrowedInt | NarrowedFloat>(
+  narrowed: T,
+  excludeNarrowed: T,
+): T[] {
+  // If narrowed is entirely in excludeNarrowed, no ranges are remaining
+  if (isInNarrowedRange(narrowed, excludeNarrowed)) {
+    return []
+  }
+
+  // if excludeNarrowed is entirely in narrowed, split up narrowed into the before
+  // and after parts
+  if (
+    isInNarrowedRange(excludeNarrowed, narrowed) &&
+    excludeNarrowed.min !== undefined &&
+    excludeNarrowed.max !== undefined
+  ) {
+    return exclude(narrowed, {min: excludeNarrowed.min} as T).concat(
+      exclude(narrowed, {max: excludeNarrowed.max} as T),
+    )
+  }
+
+  if (excludeNarrowed.max !== undefined && isInNarrowedRange(excludeNarrowed.max, narrowed)) {
+    // invert the max from inclusive to exclusive and vice-versa
+    let min: number | [number] = Array.isArray(excludeNarrowed.max)
+      ? excludeNarrowed.max[0]
+      : [excludeNarrowed.max]
+    return [{min, max: narrowed.max} as T]
+  }
+
+  if (excludeNarrowed.min !== undefined && isInNarrowedRange(excludeNarrowed.min, narrowed)) {
+    // invert the min from inclusive to exclusive and vice-versa
+    let max: number | [number] = Array.isArray(excludeNarrowed.min)
+      ? excludeNarrowed.min[0]
+      : [excludeNarrowed.min]
+    return [{min: narrowed.min, max} as T]
+  }
+
+  // else: no change, return original
+  return [narrowed]
 }
 
 export function compatibleWithBothInts(
@@ -326,20 +414,11 @@ export function compatibleWithBothInts(
   }
 
   const next = {min: retMin, max: retMax}
-  if (intIsNever(next)) {
+  if (floatIsNever(next)) {
     return undefined
   }
 
   return next
-}
-
-function intIsNever(narrowed: NarrowedInt) {
-  const {min, max} = narrowed
-  if (min === undefined || max === undefined) {
-    return false
-  }
-
-  return min > max
 }
 
 /**
@@ -387,6 +466,10 @@ export function combineSetLengths(
   return next
 }
 
+/**
+ * Returns the intersection of narrowed and nextNarrowed (always shrinks
+ * narrowed, never splits it).
+ */
 export function narrowLengths(
   narrowed: NarrowedLength,
   nextNarrowed: NarrowedLength,
@@ -403,7 +486,7 @@ export function narrowLengths(
   }
 
   const next = {min: retMin, max: retMax}
-  if (intIsNever(next)) {
+  if (floatIsNever(next)) {
     return undefined
   }
 
@@ -420,6 +503,19 @@ export function compatibleWithBothLengths(
 ): NarrowedLength | undefined {
   const {min, max} = narrowed
   const {min: nextMin, max: nextMax} = nextNarrowed
+  // overlap by one
+  if (max !== undefined && max === nextMin - 1) {
+    return {min: Math.min(min, nextMin), max: nextMax}
+  }
+  if (nextMax !== undefined && nextMax === min - 1) {
+    return {min: Math.min(min, nextMin), max}
+  }
+
+  // no overlap
+  if ((max !== undefined && max < nextMin) || (nextMax !== undefined && nextMax < min)) {
+    return undefined
+  }
+
   const retMin = Math.min(min, nextMin)
   let retMax: number | undefined
 
@@ -430,7 +526,7 @@ export function compatibleWithBothLengths(
   }
 
   const next = {min: retMin, max: retMax}
-  if (intIsNever(next)) {
+  if (floatIsNever(next)) {
     return undefined
   }
 
@@ -444,7 +540,7 @@ export function compatibleWithBothLengths(
 /**
  * Returns 'true' if the testRange is entirely within assertRange.
  */
-export function testNumber(
+export function isInNarrowedRange(
   testRange: number | [number] | NarrowedFloat | NarrowedInt,
   assertRange: NarrowedFloat | NarrowedInt,
 ) {
@@ -454,7 +550,7 @@ export function testNumber(
   }
 
   if (typeof testRange === 'number') {
-    return testNumber({min: testRange, max: testRange}, assertRange)
+    return isInNarrowedRange({min: testRange, max: testRange}, assertRange)
   }
 
   if (Array.isArray(testRange)) {
@@ -603,7 +699,7 @@ export function testLength(testRange: NarrowedLength | number, assertRange: Narr
 
   // same tests, with the addition (unncessary in this case) of the Array cases
   // for open ranges.
-  return testNumber(testRange, assertRange)
+  return isInNarrowedRange(testRange, assertRange)
 }
 
 export function testRegex(testString: string, regex: RegExp | RegExp[] | undefined): boolean {

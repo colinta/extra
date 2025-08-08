@@ -1,7 +1,7 @@
 import {c, cases} from '@extra-lang/cases'
 import * as Types from '../../types'
 import {type TypeRuntime, type ValueRuntime} from '../../runtime'
-import {parse} from '../../formulaParser'
+import {parse, parseType} from '../../formulaParser'
 import * as Values from '../../values'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
 import {mockValueRuntime} from '../../tests/mockValueRuntime'
@@ -17,26 +17,57 @@ beforeEach(() => {
 })
 
 describe('getType', () => {
-  describe('BooleanOperation', () => {
-    it('true or false => Boolean', () => {
-      const expression = parse('true or false').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.literal(true))
-    })
+  describe('LogicalOr', () => {
+    cases<[string, Types.Type]>(
+      c([
+        '0|1|2 or String',
+        Types.oneOf([
+          //
+          Types.literal(1),
+          Types.string(),
+          Types.literal(2),
+        ]),
+      ]),
+    ).run(([formula, expectedType], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`${formula}`, () => {
+        const [lhs, rhs] = formula.split(' or ', 2)
+        const lhsType = parseType(lhs).get().getType(typeRuntime).get().fromTypeConstructor()
+        const rhsType = parseType(rhs).get().getType(typeRuntime).get().fromTypeConstructor()
+        runtimeTypes['lhs'] = [lhsType, Values.nullValue()]
+        runtimeTypes['rhs'] = [rhsType, Values.nullValue()]
+        const expression = parse('lhs or rhs').get()
+        expect(expression.getType(typeRuntime).get()).toEqual(expectedType)
+      }),
+    )
+  })
 
-    it('true and false => Boolean', () => {
-      const expression = parse('true and false').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.literal(false))
-    })
+  describe('LogicalAnd', () => {
+    cases<[string, Types.Type]>(
+      c(['0|1|2 and String', Types.oneOf([Types.literal(0), Types.string()])]),
+    ).run(([formula, expectedType], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`${formula}`, () => {
+        const [lhs, rhs] = formula.split(' and ', 2)
+        const lhsType = parseType(lhs).get().getType(typeRuntime).get().fromTypeConstructor()
+        const rhsType = parseType(rhs).get().getType(typeRuntime).get().fromTypeConstructor()
+        runtimeTypes['lhs'] = [lhsType, Values.nullValue()]
+        runtimeTypes['rhs'] = [rhsType, Values.nullValue()]
+        const expression = parse('lhs and rhs').get()
+        expect(expression.getType(typeRuntime).get()).toEqual(expectedType)
+      }),
+    )
+  })
 
-    it('not true => Boolean', () => {
-      const expression = parse('not true').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.literal(false))
-    })
-
-    it('false or stringVar => string', () => {
-      runtimeTypes['stringVar'] = [Types.string(), Values.string('')]
-      expect(parse('false or stringVar').get().getType(typeRuntime).get()).toEqual(Types.StringType)
-    })
+  describe('LogicalNot', () => {
+    cases<[string, Types.Type]>(c(['not 0|1|2', Types.oneOf([Types.booleanType()])])).run(
+      ([formula, expectedType], {only, skip}) =>
+        (only ? it.only : skip ? it.skip : it)(`${formula}`, () => {
+          const [_, lhs] = formula.split('not ', 2)
+          const lhsType = parseType(lhs).get().getType(typeRuntime).get().fromTypeConstructor()
+          runtimeTypes['lhs'] = [lhsType, Values.nullValue()]
+          const expression = parse('not lhs').get()
+          expect(expression.getType(typeRuntime).get()).toEqual(expectedType)
+        }),
+    )
   })
 
   describe('FloatOperations', () => {

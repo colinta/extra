@@ -27,6 +27,49 @@ describe('toCode', () => {
       'Array(Array(Int | String))',
     ]),
     c([
+      Types.oneOf([
+        Types.array(Types.int(), {max: 3}),
+        Types.array(Types.string(), {min: 7, max: 10}),
+      ]),
+      'Array(Int, length: <=3) | Array(String, length: 7...10)',
+    ]),
+    c([
+      Types.oneOf([
+        Types.array(Types.oneOf([Types.string(), Types.int()]), {min: 3}),
+        Types.array(Types.booleanType(), {min: 3}),
+      ]),
+      'Array(Boolean, length: >=3) | Array(Int | String, length: >=3)',
+    ]),
+    c([
+      Types.oneOf([
+        Types.array(Types.int(), {max: 5}),
+        Types.array(Types.string(), {min: 7, max: 10}),
+      ]),
+      'Array(Int, length: <=5) | Array(String, length: 7...10)',
+    ]),
+    c([
+      Types.oneOf([
+        Types.array(Types.oneOf([Types.int(), Types.string()]), {max: 15}),
+        Types.array(Types.string(), {min: 7, max: 10}),
+      ]),
+      'Array(Int | String, length: <=15)',
+    ]),
+    c([
+      Types.oneOf([
+        Types.array(Types.int(), {max: 3}),
+        Types.array(Types.int(), {min: 7, max: 10}),
+      ]),
+      'Array(Int, length: <=3) | Array(Int, length: 7...10)',
+    ]),
+    c([
+      Types.oneOf([Types.array(Types.string(), {max: 1}), Types.array(Types.string(), {min: 2})]),
+      'Array(String)',
+    ]),
+    c([
+      Types.oneOf([Types.array(Types.string(), {max: 1}), Types.array(Types.string(), {min: 3})]),
+      'Array(String, length: <=1) | Array(String, length: >=3)',
+    ]),
+    c([
       Types.formula(
         args(
           {name: 'name', type: Types.string()},
@@ -67,7 +110,7 @@ describe('toCode', () => {
     c([Types.oneOf([Types.int()]), 'Int']),
     c([
       Types.oneOf([Types.float({min: 1, max: [2]}), Types.float({min: [4], max: 7})]),
-      'Float(4<..7) | Float(1..<2)',
+      'Float(1..<2) | Float(4<..7)',
     ]),
     c([
       Types.formula(

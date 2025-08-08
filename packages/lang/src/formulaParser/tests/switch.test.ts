@@ -23,6 +23,15 @@ describe('switch', () => {
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
       c([
+        `switch (a-letter) { case _: '' }`,
+        "(switch (a-letter) { (case (_) : '') })",
+        `\
+switch (a-letter) {
+case _:
+  ''
+}`,
+      ]),
+      c([
         `switch (a-letter) { case 'a': [1], else: [3] }`,
         "(switch (a-letter) { (case ('a') : [1]) (else: [3]) })",
         `\
@@ -63,6 +72,12 @@ else:
 
   describe('getType / eval', () => {
     cases<[string, [string, Types.Type, Values.Value][], Types.Type, Values.Value]>(
+      c([
+        `switch (a-letter) { case _: '' }`,
+        [['a-letter', Types.string({max: 1}), Values.string(' ')]],
+        Types.literal(''),
+        Values.string(''),
+      ]),
       c([
         `\
 switch (letters) {

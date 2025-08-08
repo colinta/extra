@@ -20,6 +20,7 @@ import {
   type Operator,
   type GetTypeResult,
   type GetValueResult,
+  type GetValueRuntimeResult,
   type GetRuntimeResult,
 } from './types'
 import {
@@ -136,7 +137,7 @@ export abstract class Expression {
    * `evalWithRuntime` is not called universally - it is only invoked from
    * `and`, `or`, `if`, `guard`, and `switch` expressions.
    */
-  evalReturningRuntime(runtime: ValueRuntime): GetRuntimeResult<[Values.Value, ValueRuntime]> {
+  evalReturningRuntime(runtime: ValueRuntime): GetValueRuntimeResult {
     return this.eval(runtime).map(value => [value, runtime])
   }
 
@@ -199,14 +200,14 @@ export abstract class Expression {
    * comparisons, no inference can be made.
    */
   gimmeTrueStuff(runtime: TypeRuntime): GetRuntimeResult<Relationship[]> {
-    return this.getType(runtime).map(type => {
-      const formula = this.relationshipFormula(runtime)
-      if (!formula) {
-        return []
-      }
+    const formula = this.relationshipFormula(runtime)
+    if (!formula) {
+      return ok([])
+    }
 
-      return [{formula, comparison: {operator: 'truthy'}}]
-    })
+    return ok([{formula, comparison: {operator: 'truthy'}}])
+    // return this.getType(runtime).map(type => {
+    // })
   }
 
   /**
@@ -214,14 +215,14 @@ export abstract class Expression {
    * gimmeTrueStuff to find true assertions.
    */
   gimmeFalseStuff(runtime: TypeRuntime): GetRuntimeResult<Relationship[]> {
-    return this.getType(runtime).map(type => {
-      const formula = this.relationshipFormula(runtime)
-      if (!formula) {
-        return []
-      }
+    const formula = this.relationshipFormula(runtime)
+    if (!formula) {
+      return ok([])
+    }
 
-      return [{formula, comparison: {operator: 'falsey'}}]
-    })
+    return ok([{formula, comparison: {operator: 'falsey'}}])
+    // return this.getType(runtime).map(type => {
+    // })
   }
 
   /**
@@ -4346,6 +4347,14 @@ export abstract class MatchExpression extends Expression {
     return ok([])
   }
 
+  /**
+   * MatchIdentifier type returns 'true', indicating a match that will always
+   * succeed.
+   */
+  alwaysMatches(_lhs: Types.Type) {
+    return false
+  }
+
   getType(): GetTypeResult {
     return err(new RuntimeError(this, `${this.constructor.name} does not have a type`))
   }
@@ -4354,15 +4363,21 @@ export abstract class MatchExpression extends Expression {
     return err(new RuntimeError(this, `${this.constructor.name} cannot be evaluated`))
   }
 
-  abstract evalWithSubject(runtime: ValueRuntime, op: Operation, lhs: Values.Value): GetValueResult
+  evalWithSubject(_runtime: ValueRuntime, _op: Expression, _lhs: Values.Value): GetValueResult {
+    return err(
+      new RuntimeError(this, `TODO: implement evalWithSubject on ${this.constructor.name}`),
+    )
+  }
 
-  evalReturningRuntime(runtime: ValueRuntime): GetRuntimeResult<[Values.Value, ValueRuntime]> {
-    return this.eval().map(value => [value, runtime])
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    op: Expression,
+    lhs: Values.Value,
+  ): GetValueRuntimeResult {
+    return this.evalWithSubject(runtime, op, lhs).map(value => [value, runtime])
   }
 
   checkAssignRefs() {
-    // TODO: examine gimmeTrueStuffWith results, looking for duplicate
-    // assignments.
     const assignRefs = this.matchAssignReferences()
     const found = new Set<string>()
     for (const ref of assignRefs) {
@@ -4434,7 +4449,7 @@ export class MatchTypeExpression extends MatchExpression {
     })
   }
 
-  evalWithSubject(runtime: ValueRuntime, op: Operation, lhs: Values.Value) {
+  evalWithSubject(runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
     return this.getAsTypeExpression(runtime).map(type => {
       const isType = Types.canBeAssignedTo(lhs.getType(), type)
       return okBoolean(isType)
@@ -4461,25 +4476,68 @@ export class MatchTypeExpression extends MatchExpression {
 export abstract class MatchIdentifier extends MatchExpression {
   abstract readonly nameRef?: Identifier
 
+  alwaysMatches(_lhs: Types.Type) {
+    return true
+  }
+
   matchAssignReferences() {
     return this.nameRef ? [this.nameRef.name] : []
   }
 
   gimmeTrueStuffWith(
-    runtime: TypeRuntime,
-    _formula: RelationshipFormula | undefined,
+    _runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!this.nameRef) {
       return ok([])
     }
 
-    return ok([
+    const assign = relationshipFormula.assign(this.nameRef.name)
+    const relationships: Relationship[] = [
       {
-        formula: relationshipFormula.assign(this.nameRef.name),
+        formula: assign,
         comparison: {operator: 'instanceof', rhs: lhsType},
       },
-    ])
+    ]
+    if (formula) {
+      relationships.push({
+        formula: relationshipFormula.reference(this.nameRef.name, assign.id),
+        comparison: {operator: '==', rhs: formula!},
+      })
+    }
+    return ok(relationships)
+  }
+
+  gimmeFalseStuffWith(
+    _runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    _lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    const relationships: Relationship[] = []
+    if (formula) {
+      relationships.push({
+        formula,
+        comparison: {operator: 'instanceof', rhs: Types.NeverType},
+      })
+    }
+
+    if (this.nameRef) {
+      const assign = relationshipFormula.assign(this.nameRef.name)
+      relationships.push({
+        formula: assign,
+        comparison: {operator: 'instanceof', rhs: Types.NeverType},
+      })
+
+      if (formula) {
+        relationships.push({
+          formula: relationshipFormula.reference(this.nameRef.name, assign.id),
+          comparison: {operator: '==', rhs: formula!},
+        })
+      }
+    }
+
+    return ok(relationships)
   }
 
   provides() {
@@ -4488,10 +4546,6 @@ export abstract class MatchIdentifier extends MatchExpression {
     }
 
     return new Set([this.nameRef.name])
-  }
-
-  evalWithSubject() {
-    return okTrue
   }
 }
 
@@ -4507,6 +4561,14 @@ export class MatchIgnore extends MatchIdentifier {
 
   toCode() {
     return '_'
+  }
+
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    _op: Expression,
+    lhs: Values.Value,
+  ): GetValueRuntimeResult {
+    return ok([Values.TrueValue, runtime])
   }
 }
 
@@ -4525,6 +4587,16 @@ export class MatchReference extends MatchIdentifier {
 
   toCode() {
     return this.nameRef.toCode()
+  }
+
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    _op: Expression,
+    lhs: Values.Value,
+  ): GetValueRuntimeResult {
+    const mutableRuntime = new MutableValueRuntime(runtime)
+    mutableRuntime.addLocalValue(this.nameRef.name, lhs)
+    return ok([Values.TrueValue, mutableRuntime])
   }
 }
 
@@ -4566,6 +4638,16 @@ export class MatchAssignRemainingExpression extends MatchIdentifier {
 
   toCode() {
     return `${SPLAT_OP}${this.nameRef.name}`
+  }
+
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    _op: Expression,
+    lhs: Values.Value,
+  ): GetValueRuntimeResult {
+    const mutableRuntime = new MutableValueRuntime(runtime)
+    mutableRuntime.addLocalValue(this.nameRef.name, lhs)
+    return ok([lhs, mutableRuntime])
   }
 }
 
@@ -4612,7 +4694,7 @@ export class MatchNamedArgument extends MatchExpression {
     return this.matchExpr.gimmeFalseStuffWith(runtime, formula, lhsType)
   }
 
-  evalWithSubject(runtime: ValueRuntime, op: Operation, lhs: Values.Value) {
+  evalWithSubject(runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
     return this.matchExpr.evalWithSubject(runtime, op, lhs)
   }
 
@@ -4654,10 +4736,6 @@ export class MatchEnumExpression extends MatchExpression {
         this.positionalCount += 1
       }
     }
-  }
-
-  matchAssigns(): string[] {
-    return this.args.flatMap(arg => arg.matchAssigns())
   }
 
   matchAssignReferences() {
@@ -4829,7 +4907,7 @@ export class MatchEnumExpression extends MatchExpression {
   //     .map(([type]) => [{formula, type: 'instanceof', right: relationshipFormula.type(type)}])
   // }
 
-  evalWithSubject(_runtime: ValueRuntime, _op: Operation, lhs: Values.Value) {
+  evalWithSubject(_runtime: ValueRuntime, _op: Expression, lhs: Values.Value) {
     if (!(lhs instanceof Values.EnumValue)) {
       return okFalse
     }
@@ -4905,7 +4983,7 @@ export class MatchLiteral extends MatchExpression {
     })
   }
 
-  evalWithSubject(_runtime: ValueRuntime, _op: Operation, lhs: Values.Value) {
+  evalWithSubject(_runtime: ValueRuntime, _op: Expression, lhs: Values.Value) {
     if (this.literal.value.isInt() && !lhs.isInt()) {
       return okFalse
     }
@@ -5043,7 +5121,7 @@ export class MatchUnaryRange extends MatchExpression {
     return ok(relationships)
   }
 
-  evalWithSubject(_runtime: ValueRuntime, op: Operation, lhs: Values.Value) {
+  evalWithSubject(_runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
     if (lhs.isRange()) {
       const [min, exclusiveMin] = lhs.start ?? []
       const [max, exclusiveMax] = lhs.stop ?? []
@@ -5340,7 +5418,7 @@ export class MatchBinaryRange extends MatchExpression {
     return ok(relationships)
   }
 
-  evalWithSubject(_runtime: ValueRuntime, op: Operation, lhs: Values.Value) {
+  evalWithSubject(_runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
     if (lhs.isRange()) {
       const [min, exclusiveMin] = lhs.start ?? []
       const [max, exclusiveMax] = lhs.stop ?? []
@@ -5456,44 +5534,97 @@ export class MatchRegexLiteral extends MatchLiteral {
     })
   }
 
-  evalWithSubject(_runtime: ValueRuntime, _op: Operation, lhs: Values.Value) {
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    _op: Expression,
+    lhs: Values.Value,
+  ): GetValueRuntimeResult {
     if (!lhs.isString()) {
-      return okFalse
+      return ok([Values.FalseValue, runtime])
     }
 
-    return okBoolean(this.literal.value.value.test(lhs.value))
+    const matchInfo = lhs.value.match(this.literal.value.value)
+    if (!matchInfo || !this.literal.groups.size || !matchInfo.groups) {
+      return ok([Values.booleanValue(!!matchInfo), runtime])
+    }
+
+    const mutableRuntime = new MutableValueRuntime(runtime)
+    for (const [name, value] of Object.entries(matchInfo.groups)) {
+      mutableRuntime.addLocalValue(name, Values.string(value))
+    }
+    return ok([Values.TrueValue, mutableRuntime])
   }
 }
 
 /**
- * foo is "prefix"
- * foo is "prefix" <> value
- * foo is value <> "suffix"
- * foo is "pre" <> value <> "post"
+ * The types of prefix, matches, and last enforce the alternation requirement:
+ *     foo is "prefix"
+ *     -- prefix = "prefix"
+ *     -- matches = []
+ *     -- lastRef = undefined
+ *
+ *     foo is "prefix" <> value
+ *     -- prefix = "prefix"
+ *     -- matches = []
+ *     -- lastRef = value
+ *
+ *     foo is value <> "suffix"
+ *     -- prefix = undefined
+ *     -- matches = [value, 'suffix']
+ *     -- lastRef = undefined
+ *
+ *     foo is "pre" <> value <> "post"
+ *     -- prefix = "pre"
+ *     -- matches = [value, 'post']
+ *     -- lastRef = undefined
+ *
+ *     foo is "pre" <> value <> "post" <> remainder
+ *     -- prefix = "pre"
+ *     -- matches = [value, 'post']
+ *     -- lastRef = remainder
  */
 export class MatchStringExpression extends MatchExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly args: (MatchStringLiteral | MatchReference)[],
+    readonly prefix: MatchStringLiteral | undefined,
+    readonly matches: [MatchReference, MatchStringLiteral][],
+    readonly lastRef: MatchReference | undefined,
   ) {
     super(range, precedingComments)
   }
 
+  all(): (MatchReference | MatchStringLiteral)[] {
+    const all: (MatchReference | MatchStringLiteral)[] = this.prefix ? [this.prefix] : []
+    for (const [match, literal] of this.matches) {
+      all.push(match)
+      all.push(literal)
+    }
+    if (this.lastRef) {
+      all.push(this.lastRef)
+    }
+    return all
+  }
+
+  refs(): MatchReference[] {
+    return this.matches.map(([match]) => match).concat(this.lastRef ? [this.lastRef] : [])
+  }
+
+  literals(): MatchStringLiteral[] {
+    return (this.prefix ? [this.prefix] : []).concat(this.matches.map(([, literal]) => literal))
+  }
+
   matchAssignReferences() {
-    return this.args.flatMap(match => match.matchAssignReferences())
+    return this.refs().flatMap(match => match.matchAssignReferences())
   }
 
   provides() {
-    return this.args.reduce((set, arg) => union(set, arg.provides()), new Set<string>())
+    return new Set(this.matchAssignReferences())
   }
 
   private calcMatchLength() {
-    return this.args.reduce((minLength, arg) => {
-      if (arg instanceof MatchStringLiteral) {
-        return minLength + arg.literal.value.length
-      }
-      return minLength
+    return this.literals().reduce((minLength, arg) => {
+      return minLength + arg.literal.value.length
     }, 0)
   }
 
@@ -5586,7 +5717,7 @@ export class MatchStringExpression extends MatchExpression {
       regex: [],
     })
 
-    for (const arg of this.args) {
+    for (const arg of this.all()) {
       const result = arg.gimmeTrueStuffWith(runtime, undefined, type)
       if (result.isErr()) {
         return err(result.error)
@@ -5611,9 +5742,20 @@ export class MatchStringExpression extends MatchExpression {
     })
   }
 
-  private searchRemainder(remainder: string, matches: string[]): boolean {
+  /**
+   * Returns a tuple of either
+   *     [didMatch: true, assignments, remainder]`
+   * or
+   *     [didMatch: false, [], '']
+   */
+  private searchRemainder(
+    remainder: string,
+    // array of [ref-name, literal]
+    matches: [string, string][],
+    assigns: [string, string][] = [],
+  ): [boolean, [string, string][], string] {
     if (matches.length === 0) {
-      return true
+      return [true, assigns, remainder]
     }
 
     if (remainder === '') {
@@ -5623,69 +5765,96 @@ export class MatchStringExpression extends MatchExpression {
     // find all the indices of 'remainder' that contain matches[0],
     // for every match, search for the remaining matches. this is a
     // breadth-first search.
-    const [match, ...remaining] = matches
+    const [matchInfo, ...remaining] = matches
+    const [ref, match] = matchInfo
     let index = remainder.indexOf(match)
     while (index !== -1) {
-      remainder = remainder.slice(index + match.length)
-      if (this.searchRemainder(remainder, remaining)) {
-        return true
+      const skipped = remainder.slice(0, index)
+      const nextRemainder = remainder.slice(index + match.length)
+
+      assigns.push([ref, skipped])
+      const [found, finalAssigns, finalRemainder] = this.searchRemainder(
+        nextRemainder,
+        remaining,
+        assigns,
+      )
+      if (found) {
+        return [true, finalAssigns, finalRemainder]
       }
+      assigns.pop()
 
       index = remainder.indexOf(match)
     }
 
-    return false
+    return [false, [], '']
   }
 
-  evalWithSubject(_runtime: ValueRuntime, _op: Operation, lhs: Values.Value) {
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    _op: Expression,
+    lhs: Values.Value,
+  ): GetValueRuntimeResult {
     if (!lhs.isString()) {
-      return okFalse
+      return ok([Values.FalseValue, runtime])
     }
 
     let subject = lhs.value
     // check the first arg for MatchStringLiteral, and see if it's the prefix
-    const firstMatch =
-      this.args[0] instanceof MatchStringLiteral && this.args[0].literal.value.value
-    if (firstMatch) {
+    if (this.prefix) {
+      const firstMatch = this.prefix.literal.value.value
       if (!subject.startsWith(firstMatch)) {
-        return okFalse
+        return ok([Values.FalseValue, runtime])
       }
       subject = subject.slice(firstMatch.length)
     }
 
-    // skip the first arg no matter what - if it's a literal, we just checked
-    // it, otherwise it's a reference, so skip it.
-    const args = this.args.slice(1)
-    // if the last arg is a MatchStringLiteral, check for suffix (and pop it
-    // from the args stack)
-    const last = args.at(-1)
-    const lastMatch =
-      this.args.length > 1 && last instanceof MatchStringLiteral && last.literal.value.value
+    // because of how args are parsed, we always have an alternation of
+    // [literal, ref, literal, ref, ...]. We removed the first and last literal
+    // (if they exist), so if we have anything, we have a reference, followed by
+    // (if any) a string, and another reference.
+    const matches: [string, string][] = this.matches.map(([ref, lit]) => [
+      ref.nameRef.name,
+      lit.literal.value.value,
+    ])
+
+    // small optimization: if the last arg is a MatchStringLiteral, check for
+    // suffix (and pop it from the args stack)
+    const lastAssign: [string, string][] = []
+    const lastMatch = this.lastRef === undefined && matches.pop()
     if (lastMatch) {
-      if (!subject.endsWith(lastMatch)) {
-        return okFalse
+      const [matchRef, matchString] = lastMatch
+      if (!subject.endsWith(matchString)) {
+        return ok([Values.FalseValue, runtime])
       }
 
-      subject = subject.slice(0, -lastMatch.length)
-      args.pop()
+      subject = subject.slice(0, -matchString.length)
+      lastAssign.push([matchRef, subject])
     }
 
-    const matches = args
-      .filter(arg => arg instanceof MatchStringLiteral)
-      .map(arg => arg.literal.value.value)
+    // check the remainders and return. if didMatch is false, assigns is empty.
+    const [didMatch, assigns, remainder] = this.searchRemainder(subject, matches)
+    if (!didMatch) {
+      ok([Values.FalseValue, runtime])
+    }
 
-    // check the remainders
-    return okBoolean(this.searchRemainder(subject, matches))
+    const mutableRuntime = new MutableValueRuntime(runtime)
+    for (const [name, value] of assigns) {
+      mutableRuntime.addLocalValue(name, Values.string(value))
+    }
+    if (this.lastRef) {
+      mutableRuntime.addLocalValue(this.lastRef.nameRef.name, Values.string(remainder))
+    }
+    return ok([Values.booleanValue(didMatch), mutableRuntime])
   }
 
   toLisp() {
-    const args = this.args.map(arg => arg.toLisp())
+    const args = this.all().map(arg => arg.toLisp())
 
     return `(${args.join(' <> ')})`
   }
 
   toCode() {
-    const args = this.args.map(arg => arg.toCode())
+    const args = this.all().map(arg => arg.toCode())
 
     return args.join(' <> ')
   }
@@ -5699,56 +5868,52 @@ export class MatchArrayExpression extends MatchExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly args: MatchExpression[],
+    readonly initialExprs: MatchExpression[],
+    readonly remainingExpr:
+      | MatchIgnoreRemainingExpression
+      | MatchAssignRemainingExpression
+      | undefined,
+    readonly trailingExprs: MatchExpression[],
   ) {
     super(range, precedingComments)
   }
 
+  all() {
+    return this.initialExprs
+      .concat(this.remainingExpr ? [this.remainingExpr] : [])
+      .concat(this.trailingExprs)
+  }
+
+  alwaysMatches(lhs: Types.Type): boolean {
+    if (lhs instanceof Types.OneOfType) {
+      return lhs.of.every(type => this.alwaysMatches(lhs))
+    }
+    if (!(lhs instanceof Types.ArrayType)) {
+      return false
+    }
+    if (this.remainingExpr) {
+      return this.remainingExpr.alwaysMatches(lhs.of)
+    }
+
+    const minLength = this.initialExprs.length + this.trailingExprs.length
+    if (
+      lhs.narrowedLength.min === undefined ||
+      lhs.narrowedLength.max === undefined ||
+      lhs.narrowedLength.min !== minLength ||
+      lhs.narrowedLength.max !== minLength
+    ) {
+      return false
+    }
+
+    return this.initialExprs.concat(this.trailingExprs).every(expr => expr.alwaysMatches(lhs.of))
+  }
+
   matchAssignReferences() {
-    return this.args.flatMap(match => match.matchAssignReferences())
+    return this.all().flatMap(match => match.matchAssignReferences())
   }
 
   provides() {
-    return this.args.reduce((set, arg) => union(set, arg.provides()), new Set<string>())
-  }
-
-  private calcMatchLength(): [number, number | undefined] {
-    let minLength = 0
-    let maxLength: number | undefined = 0
-
-    for (const arg of this.args) {
-      if (
-        arg instanceof MatchAssignRemainingExpression ||
-        arg instanceof MatchIgnoreRemainingExpression
-      ) {
-        maxLength = undefined
-      } else {
-        minLength += 1
-        maxLength = maxLength === undefined ? undefined : maxLength + 1
-      }
-    }
-
-    return [minLength, maxLength]
-  }
-
-  private calcArrayType(lhsType: Types.Type) {
-    if (lhsType instanceof Types.OneOfType) {
-      let arrayType: Types.ArrayType | undefined
-      for (const type of lhsType.of) {
-        if (!(type instanceof Types.ArrayType)) {
-          continue
-        }
-
-        if (!arrayType) {
-          arrayType = type
-        } else {
-          arrayType = Types.compatibleWithBothTypes(arrayType, type) as Types.ArrayType
-        }
-      }
-      return arrayType
-    } else if (lhsType instanceof Types.ArrayType) {
-      return lhsType
-    }
+    return this.all().reduce((set, arg) => union(set, arg.provides()), new Set<string>())
   }
 
   gimmeTrueStuffWith(
@@ -5756,8 +5921,17 @@ export class MatchArrayExpression extends MatchExpression {
     formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    const arrayType = this.calcArrayType(lhsType)
-    if (!arrayType) {
+    let checkType = lhsType
+    if (lhsType instanceof Types.OneOfType) {
+      for (const type of lhsType.of) {
+        if (type instanceof Types.ArrayType) {
+          checkType = type
+          break
+        }
+      }
+    }
+
+    if (!(checkType instanceof Types.ArrayType)) {
       return err(
         new RuntimeError(
           this,
@@ -5766,65 +5940,74 @@ export class MatchArrayExpression extends MatchExpression {
       )
     }
 
-    const [minMatchLength, maxMatchLength] = this.calcMatchLength()
-    if (maxMatchLength !== undefined && maxMatchLength < arrayType.narrowedLength.min) {
-      return err(
-        new RuntimeError(
-          this,
-          `Invalid match expression - '${this}: ${lhsType}' always contains more values than '${this}'`,
-        ),
-      )
-    }
-
-    if (
-      arrayType.narrowedLength.max !== undefined &&
-      minMatchLength > arrayType.narrowedLength.max
-    ) {
-      return err(
-        new RuntimeError(
-          this,
-          `Invalid match expression - '${this}: ${lhsType}' always contains less values than '${this}'`,
-        ),
-      )
-    }
-
     const relationships: Relationship[] = []
     if (formula) {
-      const replaceType = new Types.ArrayType(arrayType.of, {
-        min: minMatchLength,
-        max: maxMatchLength,
-      })
-      relationships.push({
-        formula,
-        comparison: {operator: 'instanceof', rhs: replaceType},
-      })
-    }
-
-    // this code already supports [a, b, ...c, d, e]
-    // a,b,d,e would contribute to minMatchLength, and so the min/max
-    // calculation is correct (and already sanity checked above to avoid 'never'
-    // type in here).
-    for (const arg of this.args) {
-      let argType: Types.Type
-      if (arg instanceof MatchAssignRemainingExpression) {
-        const min = Math.max(0, arrayType.narrowedLength.min - minMatchLength)
-        const max =
-          arrayType.narrowedLength.max === undefined
-            ? undefined
-            : Math.max(0, arrayType.narrowedLength.max - minMatchLength)
-        argType = new Types.ArrayType(arrayType.of, {min, max})
-      } else {
-        argType = arrayType.of
+      if (this.remainingExpr) {
+        const result = this.gimmeFalseStuffRemovingArrays(formula, lhsType)
+        if (result.isErr()) {
+          return result
+        }
+        relationships.push(...result.value)
       }
 
-      const result = arg.gimmeTrueStuffWith(runtime, undefined, argType)
+      const result = this.gimmeTrueTypes(lhsType).map(
+        (type): Relationship => ({
+          formula,
+          comparison: {
+            operator: 'instanceof',
+            rhs: type,
+          },
+        }),
+      )
       if (result.isErr()) {
         return err(result.error)
       }
-      relationships.push(...result.value)
+      relationships.push(result.value)
     }
 
     return ok(relationships)
+  }
+
+  gimmeTrueTypes(lhsType: Types.Type): GetTypeResult {
+    if (lhsType instanceof Types.OneOfType) {
+      return mapAll(
+        lhsType.of
+          .filter(lhsType => lhsType instanceof Types.ArrayType)
+          .map(lhsType => this.gimmeTrueTypes(lhsType)),
+      )
+        .map(types => types.filter(lhsType => lhsType !== Types.NeverType))
+        .map(types => Types.oneOf(types))
+    } else if (!(lhsType instanceof Types.ArrayType)) {
+      return ok(Types.NeverType)
+    }
+
+    const arrayOfType = lhsType.of
+    const minLength = this.initialExprs.length + this.trailingExprs.length
+    const nextNarrow = Narrowed.narrow(lhsType.narrowedLength, {min: minLength, max: minLength})
+    if (nextNarrow === undefined) {
+      return ok(Types.NeverType)
+    }
+
+    return ok(Types.array(arrayOfType, nextNarrow))
+  }
+
+  /**
+   * After an exhaustive array check, only array types are left. Remove
+   * all other types from one-of. Inverse of gimmeFalseStuffRemovingArrays
+   */
+  gimmeTrueStuffKeepingArrays(
+    formula: RelationshipFormula,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    let rhsType: Types.Type
+    if (lhsType instanceof Types.OneOfType) {
+      rhsType = Types.oneOf(lhsType.of.filter(type => type instanceof Types.ArrayType))
+    } else if (lhsType instanceof Types.ArrayType) {
+      rhsType = lhsType
+    } else {
+      rhsType = Types.NeverType
+    }
+    return ok([{formula, comparison: {operator: 'instanceof', rhs: rhsType}}])
   }
 
   /**
@@ -5834,27 +6017,15 @@ export class MatchArrayExpression extends MatchExpression {
    * the minimum increased by one
    * - Likewise if the array matches the maximum array length, the false case
    * has the maximum decreased by one
+   * - It gets weirder... if the array matches *somewhere* in the length
+   * range, the array could have less OR more than the matched items.
    *
-   *   -- foo: Array(T)
-   *   if (foo is []) {
-   *   then: -- foo: Array(T, length: =0)
-   *   else: -- foo: Array(T, length: >=1)
-   *   }
-   *
-   *   -- foo: Array(T)
-   *   if (foo is [...]) {
-   *   then: -- foo: Array(T)
-   *   else: -- foo: never
-   *   }
-   *
-   *   -- foo: Array(T, length: <=2)
-   *   if (foo is [_, _]) {
-   *   then: -- foo: Array(T, length: =2)
-   *   else: -- foo: Array(T, length: <=1)
-   *   }
+   * But oh, good news, it's all handled by asserting against the length, using
+   * `Array(all, minLength ... minLength)`. This comment was a lot more relevant
+   * when this implementation was a hundred+ lines.
    */
   gimmeFalseStuffWith(
-    runtime: TypeRuntime,
+    _runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
@@ -5862,37 +6033,133 @@ export class MatchArrayExpression extends MatchExpression {
       return ok([])
     }
 
-    const arrayType = this.calcArrayType(lhsType)
-    if (!arrayType) {
-      return ok([])
+    if (this.remainingExpr) {
+      return this.gimmeFalseStuffRemovingArrays(formula, lhsType)
     }
 
-    const matchesAll = this.args.some(
-      arg =>
-        arg instanceof MatchAssignRemainingExpression ||
-        arg instanceof MatchIgnoreRemainingExpression,
+    let minLength = this.initialExprs.length + this.trailingExprs.length
+    // return this.gimmeFalseTypes(lhsType).map(arrayType =>
+    //   ok([{formula, comparison: {operator: 'instanceof', rhs: arrayType}}]),
+    // )
+    return this.gimmeFalseTypes(lhsType).map(arrayType =>
+      ok([
+        {
+          formula,
+          comparison: {
+            operator: '!instanceof',
+            rhs: Types.array(Types.all(), {min: minLength, max: minLength}),
+          },
+        },
+      ]),
     )
-    const matchCount = matchesAll ? undefined : this.args.length
-    const min =
-      matchCount !== undefined && matchCount === arrayType.narrowedLength.min
-        ? matchCount + 1
-        : arrayType.narrowedLength.min
-    const max =
-      matchCount !== undefined && matchCount === arrayType.narrowedLength.max
-        ? matchCount - 1
-        : arrayType.narrowedLength.max
-    const nextArrayType = matchesAll ? Types.NeverType : arrayType.narrowLength(min, max)
-    return ok([{formula, comparison: {operator: 'instanceof', rhs: nextArrayType}}])
+  }
+
+  /**
+   * Implements the logic of gimmeFalseStuffWith, handling one-of cases.
+   */
+  gimmeFalseTypes(lhsType: Types.Type): GetTypeResult {
+    if (lhsType instanceof Types.OneOfType) {
+      return mapAll(
+        lhsType.of
+          .filter(lhsType => lhsType instanceof Types.ArrayType)
+          .map(lhsType => this.gimmeFalseTypes(lhsType)),
+      )
+        .map(types => types.filter(lhsType => lhsType !== Types.NeverType))
+        .map(types => Types.oneOf(types))
+    } else if (!(lhsType instanceof Types.ArrayType)) {
+      // in the false case, `lhs is []` will never match, and so if lhs isn't an
+      // array, it will always be whatever it was a the start. Also, this raises
+      // an error in 'gimmeTrueStuffWith'.
+      return ok(lhsType)
+    }
+
+    const arrayOfType = lhsType.of
+    const minLength = this.initialExprs.length + this.trailingExprs.length
+    const nextNarrow = Narrowed.exclude(lhsType.narrowedLength, {min: minLength, max: minLength})
+    return ok(Types.oneOf(nextNarrow.map(nextNarrow => Types.array(arrayOfType, nextNarrow))))
+  }
+
+  /**
+   * After an exhaustive array check, only non-array types are left. Remove
+   * arrays from one-of, return 'never' if lhs is Array, otherwise return lhs.
+   */
+  gimmeFalseStuffRemovingArrays(
+    formula: RelationshipFormula,
+    lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    let rhsType: Types.Type
+    if (lhsType instanceof Types.OneOfType) {
+      rhsType = Types.oneOf(lhsType.of.filter(type => !(type instanceof Types.ArrayType)))
+    } else if (lhsType instanceof Types.ArrayType) {
+      rhsType = Types.NeverType
+    } else {
+      rhsType = lhsType
+    }
+    return ok([{formula, comparison: {operator: 'instanceof', rhs: rhsType}}])
+  }
+
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    _op: Expression,
+    lhs: Values.Value,
+  ): GetValueRuntimeResult {
+    if (!(lhs instanceof Values.ArrayValue)) {
+      return ok([Values.FalseValue, runtime])
+    }
+
+    const minLength = this.initialExprs.length + this.trailingExprs.length
+    if ((!this.remainingExpr && lhs.values.length !== minLength) || lhs.values.length < minLength) {
+      return ok([Values.FalseValue, runtime])
+    }
+
+    const initialValues = lhs.values.slice(0, this.initialExprs.length)
+    const trailingValues = lhs.values.slice(-this.trailingExprs.length)
+
+    let nextRuntime = runtime
+    for (const index in this.initialExprs) {
+      const matchExpr = this.initialExprs[index]
+      const value = initialValues[index]
+      const nextRuntimeResult = matchExpr.evalWithSubjectReturningRuntime(nextRuntime, this, value)
+      if (nextRuntimeResult.isErr()) {
+        return err(nextRuntimeResult.error)
+      }
+      nextRuntime = nextRuntimeResult.value[1]
+    }
+
+    if (this.remainingExpr) {
+      const remainingValues = lhs.values.slice(this.initialExprs.length, -this.trailingExprs.length)
+      const nextRuntimeResult = this.remainingExpr.evalWithSubjectReturningRuntime(
+        nextRuntime,
+        this,
+        Values.array(remainingValues),
+      )
+      if (nextRuntimeResult.isErr()) {
+        return err(nextRuntimeResult.error)
+      }
+      nextRuntime = nextRuntimeResult.value[1]
+    }
+
+    for (const index in this.trailingExprs) {
+      const matchExpr = this.trailingExprs[index]
+      const value = trailingValues[index]
+      const nextRuntimeResult = matchExpr.evalWithSubjectReturningRuntime(nextRuntime, this, value)
+      if (nextRuntimeResult.isErr()) {
+        return err(nextRuntimeResult.error)
+      }
+      nextRuntime = nextRuntimeResult.value[1]
+    }
+
+    return ok([Values.TrueValue, nextRuntime])
   }
 
   toLisp() {
-    const args = this.args.map(arg => arg.toLisp())
+    const args = this.all().map(arg => arg.toLisp())
 
     return `[${args.join(' ')}]`
   }
 
   toCode() {
-    const args = this.args.map(arg => arg.toCode())
+    const args = this.all().map(arg => arg.toCode())
 
     return `[${args.join(', ')}]`
   }
@@ -5917,7 +6184,10 @@ export class CaseExpression extends MatchExpression {
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    return this.gimmeStuffImpl(match => match.gimmeTrueStuffWith(runtime, formula, subjectType))
+    return this.gimmeStuffImpl(
+      match => match.gimmeTrueStuffWith(runtime, formula, subjectType),
+      combineOrRelationships,
+    )
   }
 
   gimmeFalseStuffWith(
@@ -5925,7 +6195,10 @@ export class CaseExpression extends MatchExpression {
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    return this.gimmeStuffImpl(match => match.gimmeFalseStuffWith(runtime, formula, subjectType))
+    return this.gimmeStuffImpl(
+      match => match.gimmeFalseStuffWith(runtime, formula, subjectType),
+      (lhsStuff, rhsStuff) => lhsStuff.concat(rhsStuff),
+    )
   }
 
   /**
@@ -5946,17 +6219,17 @@ export class CaseExpression extends MatchExpression {
    * `combineOrRelationships`. This ends up being identical to the
    * LogicalOrOperator `gimmeTrueStuff` implementation.
    */
-  private gimmeStuffImpl(stuffer: (match: MatchExpression) => GetRuntimeResult<Relationship[]>) {
-    return mapAll(this.matches.map(match => stuffer(match))).map(trueStuff => {
-      const lhsStuff = trueStuff.at(0)
+  private gimmeStuffImpl(
+    stuffer: (match: MatchExpression) => GetRuntimeResult<Relationship[]>,
+    combiner: (lhsStuff: Relationship[], rhsStuff: Relationship[]) => Relationship[],
+  ) {
+    return mapAll(this.matches.map(match => stuffer(match))).map(stuff => {
+      const lhsStuff = stuff.at(0)
       if (!lhsStuff) {
         return []
       }
 
-      return trueStuff.slice(1).reduce((lhsStuff, rhsStuff) => {
-        const combined = combineOrRelationships(lhsStuff, rhsStuff)
-        return combined
-      }, lhsStuff)
+      return stuff.slice(1).reduce(combiner, lhsStuff)
     })
   }
 
@@ -6497,7 +6770,7 @@ function decorateError(expr: Expression) {
 }
 
 export function comparisonOperation(
-  expr: Operation,
+  expr: Expression,
   lhs: Values.Value,
   rhs: Values.Value,
   op: (lhs: number, rhs: number) => boolean,
@@ -6512,10 +6785,11 @@ export function comparisonOperation(
     return okBoolean(op(lhs.value, rhs.value))
   }
 
-  if (lhs.isFloat() && rhs) {
-    return err(new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1], rhs)))
+  const [lhsExpr, rhsExpr] = expr instanceof Operation ? expr.args : [expr, expr]
+  if (lhs.isFloat()) {
+    return err(new RuntimeError(rhsExpr, expectedNumberMessage(rhsExpr, rhs)))
   } else {
-    return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0], lhs)))
+    return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr, lhs)))
   }
 }
 

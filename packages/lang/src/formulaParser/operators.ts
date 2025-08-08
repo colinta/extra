@@ -38,10 +38,12 @@ import {
   type GetRuntimeResult,
   type GetTypeResult,
   type GetValueResult,
+  type GetValueRuntimeResult,
   type Operator,
 } from './types'
 import {indent, SMALL_LEN} from './util'
 import {KWARG_OP} from '../types'
+import {difference} from './set'
 
 export const BINARY_OP_NAMES = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
 export const BINARY_OP_ALIASES = {
@@ -353,6 +355,14 @@ abstract class UnaryOperator extends OperatorOperation {
     return this.toCode()
   }
 
+  /**
+   * Gives some operators - `not` in particular - a chance to early-exit if
+   * the lhs is always true or always false.
+   */
+  checkLhsType(_lhs: Types.Type, _lhsExpr: Expression): GetRuntimeResult<Types.Type | undefined> {
+    return ok(undefined)
+  }
+
   abstract operatorType(
     runtime: TypeRuntime,
     lhs: Types.Type,
@@ -363,20 +373,26 @@ abstract class UnaryOperator extends OperatorOperation {
   getType(runtime: TypeRuntime): GetTypeResult {
     const [lhsExpr] = this.args
     return getChildType(this, lhsExpr, runtime).map(lhType => {
-      if (lhType instanceof Types.OneOfType) {
-        return mapAll(
-          lhType.of.map(
-            oneLhType =>
-              guardNeverType(oneLhType) ?? this.operatorType(runtime, oneLhType, lhsExpr, lhType),
-          ),
-        ).map(Types.oneOf)
-      }
+      return this.checkLhsType(lhType, lhsExpr).map(checkType => {
+        if (checkType) {
+          return checkType
+        }
 
-      if (lhType === Types.NeverType) {
-        return ok(Types.NeverType)
-      }
+        if (lhType instanceof Types.OneOfType) {
+          return mapAll(
+            lhType.of.map(
+              oneLhType =>
+                guardNeverType(oneLhType) ?? this.operatorType(runtime, oneLhType, lhsExpr, lhType),
+            ),
+          ).map(Types.oneOf)
+        }
 
-      return guardNeverType(lhType) ?? this.operatorType(runtime, lhType, lhsExpr, lhType)
+        if (lhType === Types.NeverType) {
+          return ok(Types.NeverType)
+        }
+
+        return guardNeverType(lhType) ?? this.operatorType(runtime, lhType, lhsExpr, lhType)
+      })
     })
   }
 
@@ -427,6 +443,14 @@ abstract class BinaryOperator extends OperatorOperation {
     return getChildType(this, rhsExpr, runtime)
   }
 
+  /**
+   * Gives some operators - `or` `and` in particular - a chance to early-exit if
+   * the lhs is always true or always false.
+   */
+  checkLhsType(_lhs: Types.Type, _lhsExpr: Expression): GetRuntimeResult<Types.Type | undefined> {
+    return ok(undefined)
+  }
+
   abstract operatorType(
     runtime: TypeRuntime,
     lhs: Types.Type,
@@ -440,54 +464,60 @@ abstract class BinaryOperator extends OperatorOperation {
   getType(runtime: TypeRuntime): GetTypeResult {
     const [lhsExpr, rhsExpr] = this.args
     return getChildType(this, lhsExpr, runtime).map(lhType => {
-      const rhResult = this.rhsType(runtime, lhType, lhsExpr, rhsExpr)
-      return rhResult.map((rhType): GetTypeResult => {
-        // if we have a OneOfType, we need to map every combination into op.getType, and
-        // then collect all the errors, or return Types.oneOf()
-        if (lhType instanceof Types.OneOfType && rhType instanceof Types.OneOfType) {
-          return mapAll(
-            lhType.of.flatMap(oneLhType =>
+      return this.checkLhsType(lhType, lhsExpr).map(type => {
+        if (type) {
+          return type
+        }
+
+        const rhResult = this.rhsType(runtime, lhType, lhsExpr, rhsExpr)
+        return rhResult.map((rhType): GetTypeResult => {
+          // if we have a OneOfType, we need to map every combination into op.getType, and
+          // then collect all the errors, or return Types.oneOf()
+          if (lhType instanceof Types.OneOfType && rhType instanceof Types.OneOfType) {
+            return mapAll(
+              lhType.of.flatMap(oneLhType =>
+                rhType.of.map(
+                  oneRhType =>
+                    guardNeverType(oneLhType, oneRhType) ??
+                    this.operatorType(
+                      runtime,
+                      oneLhType,
+                      oneRhType,
+                      lhsExpr,
+                      rhsExpr,
+                      lhType,
+                      rhType,
+                    ),
+                ),
+              ),
+            ).map(Types.oneOf)
+          }
+
+          if (lhType instanceof Types.OneOfType) {
+            return mapAll(
+              lhType.of.map(
+                oneLhType =>
+                  guardNeverType(oneLhType, rhType) ??
+                  this.operatorType(runtime, oneLhType, rhType, lhsExpr, rhsExpr, lhType, rhType),
+              ),
+            ).map(Types.oneOf)
+          }
+
+          if (rhType instanceof Types.OneOfType) {
+            return mapAll(
               rhType.of.map(
                 oneRhType =>
-                  guardNeverType(oneLhType, oneRhType) ??
-                  this.operatorType(
-                    runtime,
-                    oneLhType,
-                    oneRhType,
-                    lhsExpr,
-                    rhsExpr,
-                    lhType,
-                    rhType,
-                  ),
+                  guardNeverType(lhType, oneRhType) ??
+                  this.operatorType(runtime, lhType, oneRhType, lhsExpr, rhsExpr, lhType, rhType),
               ),
-            ),
-          ).map(Types.oneOf)
-        }
+            ).map(Types.oneOf)
+          }
 
-        if (lhType instanceof Types.OneOfType) {
-          return mapAll(
-            lhType.of.map(
-              oneLhType =>
-                guardNeverType(oneLhType, rhType) ??
-                this.operatorType(runtime, oneLhType, rhType, lhsExpr, rhsExpr, lhType, rhType),
-            ),
-          ).map(Types.oneOf)
-        }
-
-        if (rhType instanceof Types.OneOfType) {
-          return mapAll(
-            rhType.of.map(
-              oneRhType =>
-                guardNeverType(lhType, oneRhType) ??
-                this.operatorType(runtime, lhType, oneRhType, lhsExpr, rhsExpr, lhType, rhType),
-            ),
-          ).map(Types.oneOf)
-        }
-
-        return (
-          guardNeverType(lhType, rhType) ??
-          this.operatorType(runtime, lhType, rhType, lhsExpr, rhsExpr, lhType, rhType)
-        )
+          return (
+            guardNeverType(lhType, rhType) ??
+            this.operatorType(runtime, lhType, rhType, lhsExpr, rhsExpr, lhType, rhType)
+          )
+        })
       })
     })
   }
@@ -710,23 +740,32 @@ addBinaryOperator({
 class LogicalOrOperator extends BinaryOperator {
   symbol = 'or'
 
+  /**
+   * Short-circuit because we need to control the evaluation of rhs.
+   */
+  rhsType(): GetTypeResult {
+    return ok(Types.AllType)
+  }
+
   gimmeTrueStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
     const myRuntime = new MutableTypeRuntime(runtime)
     return lhsExpr
       .gimmeTrueStuff(myRuntime)
-      .map(lhsStuff => rhsExpr.gimmeTrueStuff(myRuntime).map(rhsStuff => [lhsStuff, rhsStuff]))
-      .map(([lhsStuff, rhsStuff]) => {
-        const relationships = combineOrRelationships(lhsStuff, rhsStuff)
-        return relationships
-      })
+      .map(lhsStuff =>
+        rhsExpr
+          .gimmeTrueStuff(myRuntime)
+          .map(rhsStuff => combineOrRelationships(lhsStuff, rhsStuff)),
+      )
   }
 
   gimmeFalseStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
 
-    // I'm avoiding lhsExpr.assumeFalse here because that would end up calling
-    // gimmeFalseStuff twice
+    // I'm avoiding lhsExpr.assumeFalse because that would end up calling
+    // `gimmeFalseStuff` twice (once to call
+    // `gimmeFalseStuff/assignRelationshipsToRuntime`, and then again here to
+    // concat `lhsStuff ++ rhsStuff`)
     return lhsExpr
       .gimmeFalseStuff(runtime)
       .map(lhsStuff =>
@@ -744,27 +783,24 @@ class LogicalOrOperator extends BinaryOperator {
     return lhsAssigns.concat(rhsAssigns.filter(assign => !lhsAssigns.includes(assign)))
   }
 
-  rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
-    return lhsExpr
-      .assumeFalse(runtime)
-      .map(falseyRuntime => getChildType(this, rhsExpr, falseyRuntime))
-  }
-
-  rhsEval(
-    runtime: ValueRuntime,
-    lhsValue: Values.Value,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ): GetValueResult {
-    if (this.matchAssignReferences().length === 0) {
-      return super.rhsEval(runtime, lhsValue, lhsExpr, rhsExpr)
+  checkLhsType(lhs: Types.Type, lhsExpr: Expression) {
+    if (lhs.isOnlyTruthyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Left hand side of 'or' operator is always true. '${lhsExpr}' is of type '${lhs}', which is never false.`,
+        ),
+      )
     }
-
-    return super.rhsEval(runtime, lhsValue, lhsExpr, rhsExpr)
-  }
-
-  evalReturningRuntime(runtime: ValueRuntime): GetRuntimeResult<[Values.Value, ValueRuntime]> {
-    return this.eval(runtime).map(value => [value, runtime])
+    if (lhs.isOnlyFalseyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Left hand side of 'or' operator is always false. '${lhsExpr}' is of type '${lhs}', which is never true.`,
+        ),
+      )
+    }
+    return ok(undefined)
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
@@ -783,18 +819,40 @@ class LogicalOrOperator extends BinaryOperator {
     return ok(Types.oneOf([lhs.toTruthyType(), rhs]))
   }
 
-  operatorEval(
-    _runtime: ValueRuntime,
-    lhs: Values.Value,
-    rhs: () => GetValueResult,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ) {
-    if (lhs.isTruthy()) {
-      return ok(lhs)
-    } else {
-      return rhs()
-    }
+  operatorEval(): GetValueResult {
+    throw 'LogicalOrOperator.eval() should be evaluated via evalReturningRuntime'
+  }
+
+  /**
+   * Reverse of the default implementation of eval/evalReturningRuntime. Most
+   * operations call `eval`, so we need to intercept here to do the right thing.
+   */
+  eval(runtime: ValueRuntime) {
+    return this.evalReturningRuntime(runtime).map(([value]) => value)
+  }
+
+  /**
+   * If lhs is truthy, the value and runtime are returned, otherwise rhs is run.
+   * Whichever runtime is returned, it is checked for all assignments from lhs
+   * and rhs.
+   */
+  evalReturningRuntime(runtime: ValueRuntime): GetValueRuntimeResult {
+    const [lhsExpr, rhsExpr] = this.args
+    const allAssigns = allNamesFrom(this.args)
+
+    return lhsExpr
+      .evalReturningRuntime(runtime)
+      .map(([lhs, lhsRuntime]): GetValueRuntimeResult => {
+        if (lhs.isTruthy()) {
+          return ok([lhs, lhsRuntime])
+        } else {
+          return rhsExpr.evalReturningRuntime(runtime)
+        }
+      })
+      .map(([value, nextRuntime]) => {
+        const reconciledRuntime = includeMissingNames(nextRuntime, allAssigns, lhsExpr)
+        return [value, reconciledRuntime]
+      })
   }
 }
 
@@ -823,6 +881,13 @@ addBinaryOperator({
 class LogicalAndOperator extends BinaryOperator {
   symbol = 'and'
 
+  /**
+   * Short-circuit because we need to control the evaluation of rhs.
+   */
+  rhsType(): GetTypeResult {
+    return ok(Types.AllType)
+  }
+
   gimmeTrueStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
     // I'm avoiding lhsExpr.assumeTrue here because that would end up calling
@@ -839,14 +904,13 @@ class LogicalAndOperator extends BinaryOperator {
   gimmeFalseStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
     const myRuntime = new MutableTypeRuntime(runtime)
-    return lhsExpr.gimmeFalseStuff(myRuntime).map(lhsStuff =>
-      rhsExpr
-        .gimmeFalseStuff(myRuntime)
-        .map(rhsStuff => [lhsStuff, rhsStuff])
-        .map(([lhsStuff, rhsStuff]) => {
-          const relationships = combineOrRelationships(lhsStuff, rhsStuff)
-          return relationships
-        }),
+    return mapAll([lhsExpr.gimmeTrueStuff(myRuntime), lhsExpr.gimmeFalseStuff(myRuntime)]).map(
+      ([lhsTrueStuff, lhsFalseStuff]) =>
+        assignRelationshipsToRuntime(runtime, lhsTrueStuff, true).map(lhsRuntime =>
+          rhsExpr
+            .gimmeFalseStuff(lhsRuntime)
+            .map(rhsStuff => combineOrRelationships(lhsFalseStuff, rhsStuff)),
+        ),
     )
   }
 
@@ -854,59 +918,62 @@ class LogicalAndOperator extends BinaryOperator {
     const [lhsExpr, rhsExpr] = this.args
     const lhsAssigns = lhsExpr.matchAssignReferences()
     const rhsAssigns = rhsExpr.matchAssignReferences()
-    if (rhsAssigns.filter(assign => lhsAssigns.includes(assign))) {
+    if (rhsAssigns.filter(assign => lhsAssigns.includes(assign)).length) {
       throw 'TODO: Remove this check - duplicative of the scanMatch function that looks for duplicate assigns.'
     }
 
     return lhsAssigns.concat(rhsAssigns)
   }
 
-  rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
-    return lhsExpr
-      .assumeTrue(runtime)
-      .map(truthyRuntime => getChildType(this, rhsExpr, truthyRuntime))
+  /**
+   * Reverse of the default implementation of eval/evalReturningRuntime. Most
+   * operations call `eval`, so we need to intercept here to do the right thing.
+   */
+  eval(runtime: ValueRuntime) {
+    return this.evalReturningRuntime(runtime).map(([value]) => value)
   }
 
-  rhsEval(
-    runtime: ValueRuntime,
-    lhsValue: Values.Value,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ): GetValueResult {
-    if (this.matchAssignReferences().length === 0) {
-      return super.rhsEval(runtime, lhsValue, lhsExpr, rhsExpr)
+  /**
+   * If lhs is truthy rhs is run with its runtime, otherwise the original
+   * runtime is returned (along with the falsey value).
+   */
+  evalReturningRuntime(runtime: ValueRuntime): GetValueRuntimeResult {
+    const [lhsExpr, rhsExpr] = this.args
+    return lhsExpr.evalReturningRuntime(runtime).map(([lhs, lhsRuntime]): GetValueRuntimeResult => {
+      if (lhs.isTruthy()) {
+        return rhsExpr.evalReturningRuntime(lhsRuntime)
+      } else {
+        return ok([lhs, runtime])
+      }
+    })
+  }
+
+  checkLhsType(lhs: Types.Type, lhsExpr: Expression) {
+    if (lhs.isOnlyTruthyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Left hand side of 'and' operator is always true. '${lhsExpr}' is of type '${lhs}', which is never false.`,
+        ),
+      )
     }
-
-    return super.rhsEval(runtime, lhsValue, lhsExpr, rhsExpr)
-  }
-
-  evalReturningRuntime(runtime: ValueRuntime): GetRuntimeResult<[Values.Value, ValueRuntime]> {
-    return this.eval(runtime).map(value => [value, runtime])
+    if (lhs.isOnlyFalseyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Left hand side of 'or' operator is always false. '${lhsExpr}' is of type '${lhs}', which is never true.`,
+        ),
+      )
+    }
+    return ok(undefined)
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
     return ok(Types.oneOf([lhs.toFalseyType(), rhs]))
   }
 
-  operatorEval(
-    _runtime: ValueRuntime,
-    lhs: Values.Value,
-    rhs: () => GetValueResult,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ) {
-    const lhsAssigns = lhsExpr.matchAssignReferences()
-    const rhsAssigns = rhsExpr.matchAssignReferences()
-    if (lhsAssigns.length || rhsAssigns.length) {
-      console.log('=========== operators.ts at line 766 ===========')
-      console.log({lhsAssigns, rhsAssigns})
-    }
-
-    if (lhs.isTruthy()) {
-      return rhs()
-    } else {
-      return ok(lhs)
-    }
+  operatorEval(): GetValueResult {
+    throw 'LogicalAndOperator.eval() should be evaluated via evalReturningRuntime'
   }
 }
 
@@ -1310,7 +1377,9 @@ class AssignmentOperator extends BinaryOperator {
     lhsExpr: Expression,
     rhsExpr: Expression,
   ): GetTypeResult {
-    return err(new RuntimeError(lhsExpr, `Still working on assignment ${lhsExpr} = ${rhsExpr}`))
+    return err(
+      new RuntimeError(lhsExpr, 'Still working on assignment ' + lhsExpr + ' = ' + rhsExpr),
+    )
   }
 
   operatorEval(
@@ -1320,7 +1389,9 @@ class AssignmentOperator extends BinaryOperator {
     lhsExpr: Expression,
     rhsExpr: Expression,
   ): GetRuntimeResult<Values.BooleanValue> {
-    return err(new RuntimeError(lhsExpr, `Still working on assignment ${lhsExpr} = ${rhsExpr}`))
+    return err(
+      new RuntimeError(lhsExpr, 'Still working on assignment ' + lhsExpr + ' = ' + rhsExpr),
+    )
   }
 }
 
@@ -1619,30 +1690,51 @@ abstract class MatchOperator extends BinaryOperator {
 
   operatorType(
     runtime: TypeRuntime,
-    _lhs: Types.Type,
+    lhs: Types.Type,
     rhs: Types.Type,
-    _lhsExpr: Expression,
+    lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
     if (!(rhsExpr instanceof Expressions.MatchExpression)) {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr, rhs)))
     }
 
+    // this little gem prevents 'expr is bar and bar', which might look fine,
+    // but try to calculate the 'false' branch of that thing... expr should be
+    // 'never', but it... assigns to bar? Doesn't assign? I don't know. So it's
+    // a compile-time error instead. 😎
+    if (rhsExpr.alwaysMatches(lhs)) {
+      return ok(Types.LiteralTrueType)
+    }
+
     return ok(Types.BooleanType)
   }
 
-  operatorEval(
-    runtime: ValueRuntime,
-    lhs: Values.Value,
-    _rhs: () => GetValueResult,
-    _lhsExpr: Expression,
-    rhsExpr: Expression,
-  ): GetValueResult {
+  operatorEval(): GetValueResult {
+    throw 'MatchOperator.eval() should be evaluated via evalReturningRuntime'
+  }
+
+  /**
+   * Reverse of the default implementation of eval/evalReturningRuntime. Most
+   * operations call `eval`, so we need to intercept here to do the right thing.
+   */
+  eval(runtime: ValueRuntime) {
+    return this.evalReturningRuntime(runtime).map(([value]) => value)
+  }
+
+  /**
+   * If lhs is truthy rhs is run with its runtime, otherwise the original
+   * runtime is returned (along with the falsey value).
+   */
+  evalReturningRuntime(runtime: ValueRuntime): GetValueRuntimeResult {
+    const [lhsExpr, rhsExpr] = this.args
     if (!(rhsExpr instanceof Expressions.MatchExpression)) {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
     }
 
-    return rhsExpr.evalWithSubject(runtime, this, lhs)
+    return lhsExpr
+      .eval(runtime)
+      .map(lhs => rhsExpr.evalWithSubjectReturningRuntime(runtime, this, lhs))
   }
 }
 
@@ -1652,6 +1744,16 @@ class MatchAssertionOperator extends MatchOperator {
 
 class MatchRefutationOperator extends MatchOperator {
   readonly symbol = '!is'
+  evalReturningRuntime(runtime: ValueRuntime): GetValueRuntimeResult {
+    const [lhsExpr, rhsExpr] = this.args
+    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+      return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
+    }
+    return lhsExpr
+      .eval(runtime)
+      .map(lhs => rhsExpr.evalWithSubjectReturningRuntime(runtime, this, lhs))
+      .map(([rhs, runtime]) => ok([Values.booleanValue(!rhs.isTruthy()), runtime]))
+  }
 }
 
 addBinaryOperator({
@@ -3468,9 +3570,35 @@ class LogicalNotOperator extends UnaryOperator {
     return this.args[0].gimmeFalseStuff(runtime).map(stuff => stuff.map(invertRelationship))
   }
 
+  checkLhsType(lhs: Types.Type, lhsExpr: Expression) {
+    if (lhs.isOnlyTruthyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `'not' operator always returns false. '${lhsExpr}' is of type '${lhs}', which is never false.`,
+        ),
+      )
+    }
+    if (lhs.isOnlyFalseyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `'not' operator always returns true. '${lhsExpr}' is of type '${lhs}', which is never true.`,
+        ),
+      )
+    }
+    return ok(undefined)
+  }
+
   operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
     if (lhs.isLiteral()) {
       return ok(Types.literal(!lhs.value))
+    }
+    if (lhs.isOnlyTruthyType()) {
+      return ok(Types.LiteralFalseType)
+    }
+    if (lhs.isOnlyFalseyType()) {
+      return ok(Types.LiteralTrueType)
     }
 
     return ok(Types.BooleanType)
@@ -4129,9 +4257,9 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
       return err(new RuntimeError(this, expectedIfThenResult()))
     }
 
-    return conditionExpr.evalReturningRuntime(runtime).map(([conditionValue, runtime]) => {
+    return conditionExpr.evalReturningRuntime(runtime).map(([conditionValue, thenRuntime]) => {
       if (conditionValue.isTruthy()) {
-        return thenExpr.eval(runtime)
+        return thenExpr.eval(thenRuntime)
       }
 
       for (const elseif of elseifExprs) {
@@ -4149,13 +4277,14 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
           return err(new RuntimeError(elseif, expectedElseifConditionResult()))
         }
 
-        const elseifCondition = elseifConditionExpr.eval(runtime)
+        const elseifCondition = elseifConditionExpr.evalReturningRuntime(runtime)
         if (elseifCondition.isErr()) {
           return elseifCondition
         }
 
-        if (elseifCondition.value.isTruthy()) {
-          return elseifThen.eval(runtime)
+        const [elseifValue, elseifThenRuntime] = elseifCondition.value
+        if (elseifValue.isTruthy()) {
+          return elseifThen.eval(elseifThenRuntime)
         }
       }
 
@@ -4280,10 +4409,10 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
 
     return ok(
       Values.formula(() =>
-        conditionExpr.eval(runtime).map(conditionValue => {
+        conditionExpr.evalReturningRuntime(runtime).map(([conditionValue, thenRuntime]) => {
           if (conditionValue.isTruthy()) {
             return thenExpr
-              .eval(runtime)
+              .eval(thenRuntime)
               .map(thenValue => ok(Values.tuple([Values.booleanValue(true), thenValue])))
           }
 
@@ -4433,16 +4562,13 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
       return err(new RuntimeError(this, expectedGuardElseResult()))
     }
 
-    const conditionValue = conditionExpr.eval(runtime)
-    if (conditionValue.isErr()) {
-      return err(conditionValue.error)
-    }
+    return conditionExpr.evalReturningRuntime(runtime).map(([conditionValue, bodyRuntime]) => {
+      if (!conditionValue.isTruthy()) {
+        return elseExpr.eval(runtime)
+      }
 
-    if (!conditionValue.value.isTruthy()) {
-      return elseExpr.eval(runtime)
-    }
-
-    return bodyExpr.eval(runtime)
+      return bodyExpr.eval(bodyRuntime)
+    })
   }
 }
 
@@ -4533,10 +4659,6 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
     }
 
     const subjectFormula = subjectExpr.relationshipFormula(runtime)
-    // const trackingFormula =
-    //   subjectFormula && subjectFormula.type === 'reference'
-    //     ? subjectFormula
-    //     : relationshipFormula.assign(subjectExpr.toCode())
     let nextRuntime: TypeRuntime = runtime
     return getChildType(this, subjectExpr, runtime)
       .map(initialSubjectType => {
@@ -4544,11 +4666,12 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
         if (subjectFormula && isAssign(subjectFormula)) {
           trackingFormula = subjectFormula
         } else {
-          // ok, this hack. If subjectFormula is not defined, or not expressible
-          // as an assignment, then relationshipToType below will fail. We need
-          // an assignable relationship in order to check the type of the
-          // subject in each caseExpr 'false' branch. So we fake it! We "assign"
-          // the subject to a variable named after the expression... the runtime
+          // Let me explain this hack. No, it will take too long. Let me sum up.
+          // If subjectFormula is not defined, or not expressible as an
+          // assignment, then relationshipToType below will fail. We need an
+          // assignable relationship in order to check the type of the subject
+          // in each caseExpr 'false' branch. So we fake it! We "assign" the
+          // subject to a variable named after the expression... the runtime
           // only cares about strings, so we are guaranteed this expression will
           // not be expressible by "user-land" references, and it makes
           // debugging a joy.
@@ -4565,6 +4688,15 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
             }
 
             const [subjectType, bodyTypes] = info.get()
+            if (subjectType === Types.NeverType) {
+              return err(
+                new RuntimeError(
+                  caseExpr,
+                  `Unreachable case detected. '${subjectExpr}' is of type '${subjectType}' because the previous cases are exhaustive.`,
+                ),
+              )
+            }
+
             const typeResult = caseExpr
               .gimmeTrueStuffWith(nextRuntime, trackingFormula, subjectType)
               .map(stuff => assignRelationshipsToRuntime(nextRuntime, stuff, true))
@@ -4583,7 +4715,6 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
             }
 
             nextRuntime = runtimeResult.get()
-            debugger
             const caseSubjectType = relationshipToType(nextRuntime, trackingFormula)
             if (!caseSubjectType) {
               throw new RuntimeError(
@@ -4601,6 +4732,15 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
       })
       .map(([subjectType, bodyTypes]) => {
         if (elseExpr) {
+          if (subjectType === Types.NeverType) {
+            return err(
+              new RuntimeError(
+                elseExpr,
+                `Unreachable case detected. '${subjectExpr}' is of type '${subjectType}' because the previous cases are exhaustive.`,
+              ),
+            )
+          }
+
           const typeResult = elseExpr.getType(nextRuntime)
           if (typeResult.isErr()) {
             return err(typeResult.error)
@@ -4626,6 +4766,8 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
   eval(runtime: ValueRuntime): GetValueResult {
     const subjectExpr = this.subjectExpr
     const caseExprs = this.caseExprs
+    const elseExpr = this.elseExpr
+
     if (!subjectExpr) {
       return err(new RuntimeError(this, expectedSubjectCondition()))
     }
@@ -4634,9 +4776,34 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
       return err(new RuntimeError(this, expectedCaseConditions()))
     }
 
-    const elseExpr = this.elseExpr
+    return subjectExpr.eval(runtime).map(subject => {
+      for (const caseExpr of caseExprs) {
+        const allAssigns = allNamesFrom(caseExpr.matches)
 
-    return elseExpr?.eval(runtime) ?? subjectExpr.eval(runtime)
+        for (const matchExpr of caseExpr.matches) {
+          const didMatchResult = matchExpr.evalWithSubjectReturningRuntime(
+            runtime,
+            caseExpr,
+            subject,
+          )
+          if (didMatchResult.isErr()) {
+            return err(didMatchResult.error)
+          }
+
+          const [didMatch, matchRuntimeUnchecked] = didMatchResult.value
+          if (didMatch.isTruthy()) {
+            const matchRuntime = includeMissingNames(matchRuntimeUnchecked, allAssigns, matchExpr)
+            return caseExpr.bodyExpression.eval(matchRuntime)
+          }
+        }
+      }
+
+      if (elseExpr) {
+        return elseExpr.eval(runtime)
+      }
+
+      throw 'TODO: hm, should never reach here - no cases (or else) matched'
+    })
   }
 }
 
@@ -4701,10 +4868,6 @@ addBinaryOperator({
     )
   },
 })
-
-function unexpectedOnlyType(conditionType: Types.Type, only: boolean): string {
-  return `Type '${conditionType}' is invalid as an if condition, because it is always ${only ? 'true' : 'false'}.`
-}
 
 type _IntermediateArgs =
   | ['positional', undefined, Types.Type]
@@ -5021,6 +5184,10 @@ function expectedCaseConditions() {
   return "Missing case expressions '...# cases: T' in 'switch()' expression"
 }
 
+function unexpectedOnlyType(conditionType: Types.Type, only: boolean): string {
+  return `Type '${conditionType}' is invalid as an if condition, because it is always ${only ? 'true' : 'false'}.`
+}
+
 // yup, that's what I named this function. At me in the comments.
 // the 'float' | undefined signature makes this easy to pass to the
 // Types.literal function, which accepts the 'float' type hint.
@@ -5057,6 +5224,30 @@ function decorateError(expr: Expression) {
     }
     return result
   }
+}
+
+function allNamesFrom(expressions: Expression[]) {
+  const names = new Set<string>()
+  for (const matchExpr of expressions) {
+    for (const name of matchExpr.matchAssignReferences()) {
+      names.add(name)
+    }
+  }
+  return names
+}
+
+function includeMissingNames(runtime: ValueRuntime, allNames: Set<string>, fromExpr: Expression) {
+  const matchNames = new Set(fromExpr.matchAssignReferences())
+  const missingNames = difference(allNames, matchNames)
+  if (!missingNames.size) {
+    return runtime
+  }
+
+  const mutableRuntime = new MutableValueRuntime(runtime)
+  for (const missingName of missingNames) {
+    mutableRuntime.addLocalValue(missingName, Values.NullValue)
+  }
+  return mutableRuntime
 }
 
 type _LogicalAndOperator = LogicalAndOperator

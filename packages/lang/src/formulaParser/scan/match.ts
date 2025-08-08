@@ -102,12 +102,14 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
     return scanMatchRegex(scanner)
   } else if (isNumberStart(scanner) || scanner.is(/[<=>]/)) {
     return scanMatchRange(scanner)
+  } else if (scanner.test(isReferenceThenConcat)) {
+    return scanMatchString(scanner)
   } else if (isArgumentStartChar(scanner)) {
-    return scanMatchReference(scanner, parseNext)
+    return scanMatchReference(scanner)
   } else if (scanner.is('.')) {
     return scanMatchEnum(scanner, parseNext)
   } else if (scanner.is(/[\'"`]/)) {
-    return scanMatchString(scanner, parseNext)
+    return scanMatchString(scanner)
   } else if (scanner.is(ARRAY_OPEN)) {
     return scanMatchArray(scanner, parseNext)
   } else {
@@ -124,11 +126,8 @@ function scanMatchIgnore(scanner: Scanner) {
   return new Expressions.MatchIgnore([arg0, scanner.charIndex], scanner.flushComments())
 }
 
-function scanMatchReference(scanner: Scanner, parseNext: ParseNext) {
+function scanMatchReference(scanner: Scanner) {
   scanner.whereAmI('scanMatchReference')
-  if (scanner.test(isReferenceThenConcat)) {
-    return scanMatchString(scanner, parseNext)
-  }
   const reference = scanValidReferenceName(scanner)
   return new Expressions.MatchReference(reference)
 }
@@ -272,12 +271,14 @@ function isRange(scanner: Scanner) {
   return scanner.is(/[<.]/)
 }
 
-function scanMatchString(scanner: Scanner, parseNext: ParseNext) {
+function scanMatchString(scanner: Scanner) {
   scanner.whereAmI('scanMatchString')
   const range0 = scanner.charIndex
   const precedingComments = scanner.flushComments()
 
-  const args: (Expressions.MatchStringLiteral | Expressions.MatchReference)[] = []
+  const args: [Expressions.MatchReference, Expressions.MatchStringLiteral][] = []
+  let prefix: Expressions.MatchStringLiteral | undefined
+  let lastRef: Expressions.MatchReference | undefined
   let prev: 'string' | 'ref' | undefined
   for (;;) {
     if (scanner.is(/['"`]/)) {
@@ -290,8 +291,20 @@ function scanMatchString(scanner: Scanner, parseNext: ParseNext) {
       prev = 'string'
 
       const stringExpression = scanStringLiteral(scanner)
+      if (stringExpression.stringValue === '') {
+        throw new ParseError(scanner, `Empty string is invalid in match expression`)
+      }
+
       const matchExpression = new Expressions.MatchStringLiteral(stringExpression)
-      args.push(matchExpression)
+
+      if (lastRef) {
+        args.push([lastRef!, matchExpression])
+        lastRef = undefined
+      } else if (prefix === undefined) {
+        prefix = matchExpression
+      } else {
+        throw `Unexpected... found '${stringExpression}' but prefix is already defined, and lastRef is undefined`
+      }
     } else if (isRefStartChar(scanner)) {
       if (prev === 'ref') {
         throw new ParseError(
@@ -303,7 +316,7 @@ function scanMatchString(scanner: Scanner, parseNext: ParseNext) {
 
       const reference = scanValidReferenceName(scanner)
       const matchExpression = new Expressions.MatchReference(reference)
-      args.push(matchExpression)
+      lastRef = matchExpression
     } else {
       throw new ParseError(scanner, invalidMatch(unexpectedToken(scanner)))
     }
@@ -318,22 +331,17 @@ function scanMatchString(scanner: Scanner, parseNext: ParseNext) {
     scanner.scanAllWhitespace()
   }
 
-  if (args.length === 1) {
-    return args[0]
+  if (args.length === 0 && prefix && !lastRef) {
+    return prefix
   }
 
-  if (
-    args.some(
-      arg => arg instanceof Expressions.MatchStringLiteral && arg.literal.stringValue === '',
-    )
-  ) {
-    throw new ParseError(
-      scanner,
-      `Empty string is invalid in match expression '${args.join(' <> ')}'`,
-    )
-  }
-
-  return new Expressions.MatchStringExpression([range0, scanner.charIndex], precedingComments, args)
+  return new Expressions.MatchStringExpression(
+    [range0, scanner.charIndex],
+    precedingComments,
+    prefix,
+    args,
+    lastRef,
+  )
 }
 
 function scanMatchRegex(scanner: Scanner) {
@@ -345,11 +353,15 @@ function scanMatchRegex(scanner: Scanner) {
 function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
   scanner.whereAmI('scanMatchArray')
   const precedingComments = scanner.flushComments()
-  const args: Expressions.MatchExpression[] = []
+  const initialExprs: Expressions.MatchExpression[] = []
+  let remainingExpr:
+    | Expressions.MatchIgnoreRemainingExpression
+    | Expressions.MatchAssignRemainingExpression
+    | undefined
+  const trailingExprs: Expressions.MatchExpression[] = []
   const range0 = scanner.charIndex
   scanner.expectString(ARRAY_OPEN)
   scanner.scanAllWhitespace()
-  let hasRemaining = false
   if (!scanner.scanIfString(ARRAY_CLOSE)) {
     for (;;) {
       if (scanner.is('...')) {
@@ -357,10 +369,9 @@ function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
         const precedingComments = scanner.flushComments()
         scanner.expectString('...')
         scanner.scanSpaces()
-        if (hasRemaining) {
+        if (remainingExpr) {
           throw new ParseError(scanner, 'Already matched remaining array elements')
         }
-        hasRemaining = true
 
         if (scanner.is(/_+\b/)) {
           throw new ParseError(
@@ -371,27 +382,25 @@ function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
 
         if (isRefStartChar(scanner)) {
           const reference = scanValidReferenceName(scanner)
-          args.push(
-            new Expressions.MatchAssignRemainingExpression(
-              [arg0, scanner.charIndex],
-              precedingComments,
-              reference,
-            ),
+          remainingExpr = new Expressions.MatchAssignRemainingExpression(
+            [arg0, scanner.charIndex],
+            precedingComments,
+            reference,
           )
         } else {
-          args.push(
-            new Expressions.MatchIgnoreRemainingExpression(
-              [arg0, scanner.charIndex],
-              precedingComments,
-            ),
+          remainingExpr = new Expressions.MatchIgnoreRemainingExpression(
+            [arg0, scanner.charIndex],
+            precedingComments,
           )
         }
       } else {
         const matchExpression = scanMatch(scanner, parseNext)
-        args.push(matchExpression)
+        if (remainingExpr) {
+          trailingExprs.push(matchExpression)
+        } else {
+          initialExprs.push(matchExpression)
+        }
       }
-
-      scanner.scanAllWhitespace()
 
       const shouldBreak = scanner.scanCommaOrBreak(
         ARRAY_CLOSE,
@@ -406,7 +415,13 @@ function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
     }
   }
 
-  return new Expressions.MatchArrayExpression([range0, scanner.charIndex], precedingComments, args)
+  return new Expressions.MatchArrayExpression(
+    [range0, scanner.charIndex],
+    precedingComments,
+    initialExprs,
+    remainingExpr,
+    trailingExprs,
+  )
 }
 
 export function scanCase(scanner: Scanner, parseNext: ParseNext): Expression {
@@ -434,6 +449,7 @@ export function scanCase(scanner: Scanner, parseNext: ParseNext): Expression {
   }
 
   const bodyExpression = parseNext('case')
+  scanner.whereAmI(`case: ${bodyExpression}`)
 
   return new Expressions.CaseExpression(
     [range0, scanner.charIndex],

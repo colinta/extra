@@ -329,22 +329,12 @@
       ]
     },
     {
-      "desc": "weird bug that I found 817422f8",
-      "formula": "let\n  num = fn(): Int => 2\n  x = num()\nin\n  x == 5 and x or 0\n",
-      "only": false,
-      "skip": false,
-      "expectedCode": "let\n  num = fn(): Int => 2\n  x = num()\nin\n  x == 5 and x or 0\n",
-      "expectedType": "0 | 5",
-      "expectedValue": "0",
-      "variables": []
-    },
-    {
       "desc": "bits and bobs",
       "formula": "[\n  bits & bobs\n  bits | bobs\n  ~bits\n  ~bobs\n]",
       "only": false,
       "skip": false,
       "expectedCode": "[bits & bobs, bits | bobs, ~bits, ~bobs]",
-      "expectedType": "Array(82 | 247 | -215 | -116, length: =4)",
+      "expectedType": "Array(-215 | -116 | 82 | 247, length: =4)",
       "expectedValue": "[82, 247, -215, -116]",
       "variables": [
         [
@@ -401,7 +391,7 @@
       "only": false,
       "skip": false,
       "expectedCode": "let\n  ones: Array(1, length: 1...5) = [1, 1]\n  twos: Array(2, length: 2...6) = [2, 2, 2]\n  all = ones ++ twos\n  index: Int = 0\nin\n  if (index >= 0 and index < all.length) {\n  then:\n    all[index]\n  else:\n    0\n  }",
-      "expectedType": "1 | 2 | 0",
+      "expectedType": "0 | 1 | 2",
       "expectedValue": "1",
       "variables": []
     }

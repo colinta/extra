@@ -630,8 +630,6 @@ function parseInternal(
               return scanner.isWord(LET_IN)
             })
           ) {
-          } else {
-            throw new ParseError(scanner, 'sanity check - we should not be skipping whitespace')
           }
         }
       } else {

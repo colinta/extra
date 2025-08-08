@@ -1137,68 +1137,16 @@ function mergeAssignableTypeInt(
           // TODO: this is always true/redundant
           return prevType
         }
-      } else if (prevType instanceof Types.MetaIntType) {
-        // check for an int or integral-float - if the comparison is true,
-        // the prevType will be that a literal of that value
-        if (
-          literal.type === 'int' ||
-          (literal.type === 'float' && Number.isInteger(literal.value))
-        ) {
-          if (isOutsideOfNarrowedNumeric(prevType.narrowed, literal.value)) {
-            return Types.NeverType
-          }
-
-          return Types.literal(literal.value)
-        }
+      } else if (prevType.isFloat()) {
+        return prevType.narrow(literal.value, literal.value)
       } else {
         // unreachable
       }
 
       return Types.NeverType
     case '!=':
-      if (prevType instanceof Types.LiteralIntType) {
-        // the only check we need to do is if the literal value equals the comparison, we
-        // can return 'never'. Otherwise it's always true.
-        if (literal.value === prevType.value) {
-          return Types.NeverType
-        }
-
-        // the != comparison will always be true, and the prevType will not change
-        // TODO: this is always true/redundant
-        return prevType
-      } else if (prevType instanceof Types.MetaIntType) {
-        // MetaIntType - maybe we can adjust the range?
-        // (this same comparison won't work w/ Floats)
-
-        // If literal.value == narrowed.min, then in the 'true' branch of this comparison
-        // the value of the int will be _higher_ than narrowed.min.
-        //     x: Int(>=5)
-        //     x != 5 => x >= 6
-        // Similarly, if the value matches narrowed.max, then in the 'true' branch of this
-        // comparison the value of the int will be _lower_ than narrowed.max.
-        let nextType = prevType
-
-        if (literal.value === nextType.narrowed.min) {
-          const narrowedType = nextType.narrow(nextType.narrowed.min + 1, nextType.narrowed.max)
-          if (narrowedType instanceof Types.MetaIntType) {
-            nextType = narrowedType
-          } else {
-            // NeverType | LiteralIntType
-            return narrowedType
-          }
-        }
-
-        if (literal.value === nextType.narrowed.max) {
-          const narrowedType = nextType.narrow(nextType.narrowed.min, nextType.narrowed.max - 1)
-          if (narrowedType instanceof Types.MetaIntType) {
-            nextType = narrowedType
-          } else {
-            // NeverType | LiteralIntType
-            return narrowedType
-          }
-        }
-
-        return nextType
+      if (prevType.isFloat()) {
+        return prevType.exclude({min: literal.value, max: literal.value})
       } else {
         // unreachable - fallthrough to NeverType
       }
