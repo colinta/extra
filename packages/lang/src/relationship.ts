@@ -499,6 +499,135 @@ function mergeNextTruthyRuntime(
   return [[formula, operator === 'truthy' ? prevType.toTruthyType() : prevType.toFalseyType()]]
 }
 
+export function combineAndRelationships(
+  lhsStuff: Relationship[],
+  rhsStuff: Relationship[],
+): Relationship[] {
+  // I don't think I need to sort lhsStuff like I do in combineOrRelationships
+  let lhsSet = [...lhsStuff]
+  let rhsRemaining = rhsStuff
+
+  const combined: Relationship[] = []
+  while (lhsSet.length) {
+    const lhs = lhsSet.shift()!
+    const commonFormulas = [lhs]
+    lhsSet = lhsSet.reduce((remaining, lhs2) => {
+      if (isEqualFormula(lhs.formula, lhs2.formula)) {
+        commonFormulas.push(lhs2)
+      } else {
+        remaining.push(lhs2)
+      }
+      return remaining
+    }, [] as Relationship[])
+
+    const rhsNext: Relationship[] = []
+    for (const rhs of rhsRemaining) {
+      if (isEqualFormula(lhs.formula, rhs.formula)) {
+        commonFormulas.push(rhs)
+      } else {
+        rhsNext.push(rhs)
+      }
+    }
+    rhsRemaining = rhsNext
+
+    // heads up, _combineAndRelationships mangles commonFormulas (shift())
+    const all = _combineAndRelationships(commonFormulas)
+    combined.push(...all)
+  }
+  combined.push(...rhsRemaining)
+
+  return combined
+}
+
+function _combineAndRelationships(relationships: Relationship[]): Relationship[] {
+  if (relationships.length <= 1) {
+    return relationships
+  }
+
+  if (relationships.length > 2) {
+    const first = relationships.shift()!
+    for (const relationship of relationships) {
+      const combinedOne = _combineAndRelationships([first, relationship])
+      if (combinedOne.length === 1) {
+        return _combineAndRelationships([combinedOne[0], ...relationships])
+      }
+    }
+
+    return [first, ..._combineAndRelationships(relationships)]
+  }
+
+  const [lhs, rhs] = relationships
+  if (isMathRelationship(lhs) && isMathRelationship(rhs)) {
+    return combineAndMathRelationships(lhs, rhs)
+  }
+
+  return relationships
+}
+
+function combineAndMathRelationships(
+  lhs: MathRelationship,
+  rhs: MathRelationship,
+): MathRelationship[] {
+  // regardless of the rhs type '==' comparisons are the most precise
+  if (lhs.comparison.operator === '==' && rhs.comparison.operator !== '==') {
+    return [lhs]
+  }
+  if (lhs.comparison.operator !== '==' && rhs.comparison.operator === '==') {
+    return [rhs]
+  }
+  if (lhs.comparison.operator === '==' && rhs.comparison.operator === '==') {
+    return [lhs, rhs]
+  }
+
+  if (!isNumeric(lhs.comparison.rhs) || !isNumeric(rhs.comparison.rhs)) {
+    return [lhs, rhs]
+  }
+
+  const [lhsValue, rhsValue] = [lhs.comparison.rhs, rhs.comparison.rhs]
+  const [lhsNumber, rhsNumber] = [lhsValue.value, rhsValue.value]
+  const isInt = lhs.comparison.rhs.type === 'int' && rhs.comparison.rhs.type === 'int'
+
+  if (lhs.comparison.operator === '<' && rhs.comparison.operator === '<') {
+    return [
+      {
+        formula: lhs.formula,
+        comparison: {
+          operator: '<',
+          rhs: relationshipFormula.number(Math.min(lhsNumber, rhsNumber), isInt),
+        },
+      },
+    ]
+  } else if (lhs.comparison.operator === '<' && rhs.comparison.operator === '<=') {
+    if (lhsNumber <= rhsNumber) {
+      return [lhs]
+    }
+    return [rhs]
+  } else if (lhs.comparison.operator === '<') {
+    return [lhs, rhs]
+  }
+
+  if (lhs.comparison.operator === '>' && rhs.comparison.operator === '>') {
+    return [
+      {
+        formula: lhs.formula,
+        comparison: {
+          operator: '>',
+          rhs: relationshipFormula.number(Math.max(lhsNumber, rhsNumber), isInt),
+        },
+      },
+    ]
+  } else if (lhs.comparison.operator === '>' && rhs.comparison.operator === '>=') {
+    if (lhsNumber >= rhsNumber) {
+      return [lhs]
+    }
+    return [rhs]
+  } else if (lhs.comparison.operator === '>') {
+    return [lhs, rhs]
+  }
+
+  return [lhs, rhs]
+}
+
 /**
  * Return new relationships that are an OR combination of the relationships.
  *
@@ -527,6 +656,7 @@ export function combineOrRelationships(
   })
 
   const combined: Relationship[] = []
+  // TODO: refactor out common code in combineAndRelationships
   while (lhsSet.length) {
     const lhs = lhsSet.shift()!
     const commonFormulas = [lhs]
@@ -663,7 +793,7 @@ export function combineOrRelationships(
 
 function _combineOrRelationships(relationships: Relationship[]): Relationship | undefined {
   // flatten the array when passing around a one-of comparison
-  if (relationships.some(({comparison}) => isOneOfComparison(comparison))) {
+  if (relationships.some(relationship => isOneOfRelationship(relationship))) {
     const comparisons: ValidOneOfComparison[] = []
     for (const relationship of relationships) {
       if (isOneOfRelationship(relationship)) {

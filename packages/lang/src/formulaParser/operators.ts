@@ -20,6 +20,7 @@ import {
   invertRelationship,
   relationshipToType,
   isAssign,
+  combineAndRelationships,
 } from '../relationship'
 import * as Expressions from './expressions'
 import {
@@ -893,7 +894,9 @@ class LogicalAndOperator extends BinaryOperator {
       .gimmeTrueStuff(runtime)
       .map(lhsStuff =>
         assignRelationshipsToRuntime(runtime, lhsStuff, true).map(lhsRuntime =>
-          rhsExpr.gimmeTrueStuff(lhsRuntime).map(rhsStuff => lhsStuff.concat(rhsStuff)),
+          rhsExpr
+            .gimmeTrueStuff(lhsRuntime)
+            .map(rhsStuff => combineAndRelationships(lhsStuff, rhsStuff)),
         ),
       )
   }
@@ -904,9 +907,12 @@ class LogicalAndOperator extends BinaryOperator {
     return mapAll([lhsExpr.gimmeTrueStuff(myRuntime), lhsExpr.gimmeFalseStuff(myRuntime)]).map(
       ([lhsTrueStuff, lhsFalseStuff]) =>
         assignRelationshipsToRuntime(runtime, lhsTrueStuff, true).map(lhsRuntime =>
-          rhsExpr
-            .gimmeFalseStuff(lhsRuntime)
-            .map(rhsStuff => combineOrRelationships(lhsFalseStuff, rhsStuff)),
+          rhsExpr.gimmeFalseStuff(lhsRuntime).map(rhsStuff =>
+            combineOrRelationships(
+              lhsFalseStuff,
+              combineAndRelationships(lhsTrueStuff, rhsStuff),
+            ),
+          ),
         ),
     )
   }
