@@ -740,23 +740,16 @@ addBinaryOperator({
 class LogicalOrOperator extends BinaryOperator {
   symbol = 'or'
 
-  /**
-   * Short-circuit because we need to control the evaluation of rhs.
-   */
-  rhsType(): GetTypeResult {
-    return ok(Types.AllType)
-  }
-
   gimmeTrueStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
-    const myRuntime = new MutableTypeRuntime(runtime)
-    return lhsExpr
-      .gimmeTrueStuff(myRuntime)
-      .map(lhsStuff =>
-        rhsExpr
-          .gimmeTrueStuff(myRuntime)
-          .map(rhsStuff => combineOrRelationships(lhsStuff, rhsStuff)),
-      )
+    return mapAll([lhsExpr.gimmeTrueStuff(runtime), lhsExpr.gimmeFalseStuff(runtime)]).map(
+      ([lhsTrueStuff, lhsFalseStuff]) =>
+        assignRelationshipsToRuntime(runtime, lhsFalseStuff, true).map(lhsRuntime =>
+          rhsExpr
+            .gimmeTrueStuff(lhsRuntime)
+            .map(rhsStuff => combineOrRelationships(lhsTrueStuff, rhsStuff)),
+        ),
+    )
   }
 
   gimmeFalseStuff(runtime: TypeRuntime) {
@@ -768,9 +761,11 @@ class LogicalOrOperator extends BinaryOperator {
     // concat `lhsStuff ++ rhsStuff`)
     return lhsExpr
       .gimmeFalseStuff(runtime)
-      .map(lhsStuff =>
-        assignRelationshipsToRuntime(runtime, lhsStuff, false).map(lhsRuntime =>
-          rhsExpr.gimmeFalseStuff(lhsRuntime).map(rhsStuff => lhsStuff.concat(rhsStuff)),
+      .map(lhsFalseStuff =>
+        assignRelationshipsToRuntime(runtime, lhsFalseStuff, true).map(lhsRuntime =>
+          rhsExpr
+            .gimmeFalseStuff(lhsRuntime)
+            .map(rhsStuff => combineAndRelationships(lhsFalseStuff, rhsStuff)),
         ),
       )
   }
@@ -801,6 +796,15 @@ class LogicalOrOperator extends BinaryOperator {
       )
     }
     return ok(undefined)
+  }
+
+  /**
+   * rhs needs to be run assuming lhs is false.
+   */
+  rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+    return lhsExpr
+      .assumeFalse(runtime)
+      .map(falseyRuntime => getChildType(this, rhsExpr, falseyRuntime))
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
@@ -881,13 +885,6 @@ addBinaryOperator({
 class LogicalAndOperator extends BinaryOperator {
   symbol = 'and'
 
-  /**
-   * Short-circuit because we need to control the evaluation of rhs.
-   */
-  rhsType(): GetTypeResult {
-    return ok(Types.AllType)
-  }
-
   gimmeTrueStuff(runtime: TypeRuntime) {
     const [lhsExpr, rhsExpr] = this.args
     // I'm avoiding lhsExpr.assumeTrue here because that would end up calling
@@ -966,6 +963,15 @@ class LogicalAndOperator extends BinaryOperator {
       )
     }
     return ok(undefined)
+  }
+
+  /**
+   * rhs needs to be run assuming lhs is true.
+   */
+  rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+    return lhsExpr
+      .assumeTrue(runtime)
+      .map(falseyRuntime => getChildType(this, rhsExpr, falseyRuntime))
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {

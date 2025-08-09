@@ -199,7 +199,7 @@ describe('match operator', () => {
           reverse: false,
         },
       ]),
-      c.only([
+      c([
         Types.optional(Types.string()),
         [
           [valueNull, valueFalse],
@@ -952,7 +952,7 @@ describe('match operator', () => {
     })
 
     cases<[Types.Type, string, Types.Type, string]>(
-      c.only([
+      c([
         Types.optional(Types.string()),
         'foo is String and foo.length',
         Types.oneOf([Types.literal(false), Types.int({min: 0})]),

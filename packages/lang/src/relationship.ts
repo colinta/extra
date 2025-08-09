@@ -126,7 +126,7 @@ type RelationshipOperation =
   | RelationshipArrayConcat
 
 type RelationshipReference = {type: 'reference'; name: string; id: string}
-type RelationshipReferenceAssign = {type: 'assign'; name: string; id: string}
+type RelationshipReferenceAssign = {type: 'assign'; name: string; unstableId: string}
 type RelationshipReferenceMask = {type: 'mask'; name: string; nextId: string; prevId: string}
 
 export type RelationshipAssign =
@@ -206,7 +206,7 @@ export const relationshipFormula = {
     return {type: 'reference', name, id}
   },
   assign(name: string): RelationshipReferenceAssign {
-    return {type: 'assign', name, id: uid(name)}
+    return {type: 'assign', name, unstableId: uid(name)}
   },
   /**
    * foo[bar]
@@ -576,7 +576,7 @@ export function combineOrRelationships(
         const mask = {
           type: 'mask',
           name: lhsAssign.name,
-          nextId: lhsAssign.id,
+          nextId: lhsAssign.unstableId,
           prevId: (rhsRef.formula as RelationshipReference).id,
         } as const
         commonFormulas.forEach(lhs => {
@@ -594,7 +594,7 @@ export function combineOrRelationships(
         // always feasible), or do what I did here, which is default to `null`.
         alsoOnRhs = true
         commonFormulas.push({
-          formula: {type: 'assign', name: lhsAssign.name, id: lhsAssign.id},
+          formula: {type: 'assign', name: lhsAssign.name, unstableId: lhsAssign.unstableId},
           comparison: {operator: 'instanceof', rhs: Types.NullType},
         })
       }
@@ -631,14 +631,30 @@ export function combineOrRelationships(
   // All assignments with the same name must use the same id
   const assigns = combined.filter(relationship => relationship.formula.type === 'assign')
   const newAssignIds = new Map<string, string>()
+  const reassignIds = new Map<string, string>()
   for (const assign of assigns) {
     const formula = assign.formula as RelationshipReferenceAssign
     const prevAssignId = newAssignIds.get(formula.name)
     if (prevAssignId) {
       // risky business here, replacing an `id` mid-flight like this... 🤷‍♂️
-      formula.id = prevAssignId
+      reassignIds.set(formula.unstableId, prevAssignId)
+      formula.unstableId = prevAssignId
     } else {
-      newAssignIds.set(formula.name, formula.id)
+      newAssignIds.set(formula.name, formula.unstableId)
+    }
+  }
+  // and now update all references to the previous assign.id
+  if (reassignIds.size) {
+    for (const relationship of combined) {
+      if (relationship.formula.type !== 'reference') {
+        continue
+      }
+
+      const assignId = relationship.formula.id
+      const reassignId = reassignIds.get(assignId)
+      if (reassignId) {
+        relationship.formula.id = reassignId
+      }
     }
   }
 
@@ -650,7 +666,7 @@ function _combineOrRelationships(relationships: Relationship[]): Relationship | 
   if (relationships.some(({comparison}) => isOneOfComparison(comparison))) {
     const comparisons: ValidOneOfComparison[] = []
     for (const relationship of relationships) {
-      if (isOneOfComparison(relationship.comparison)) {
+      if (isOneOfRelationship(relationship)) {
         comparisons.push(...relationship.comparison.comparisons)
       } else {
         comparisons.push(relationship.comparison)
@@ -917,7 +933,7 @@ function mergeAssignableType(
   comparison: RelationshipTruthyComparison | RelationshipMathComparison,
 ): Types.Type {
   if (isTruthyComparison(comparison)) {
-    throw `TODO - mergeAssignableType with truthy comparison ${comparison.operator} on ${prevType}`
+    throw `TODO: mergeAssignableType with truthy comparison ${comparison.operator} on ${prevType}`
   }
 
   if (!isLiteral(comparison.rhs)) {
@@ -956,7 +972,7 @@ function mergeAssignableType(
     return mergeAssignableTypeRange(prevType, literalComparison)
   }
 
-  throw `TODO - do something with ${prevType} in mergeAssignableType (or ignore?)`
+  throw `TODO: do something with ${prevType} in mergeAssignableType (or ignore?)`
   return prevType
 }
 
@@ -1536,7 +1552,7 @@ function handleRelationship(
   const assertRef1 = findEventualRef(prevRelationship.formula)
   const assertRef2 = findEventualRef(newRelationship.formula)
   if (assertRef1.id !== assertRef2.id) {
-    throw `handleRelationship() - unexpected: ${assertRef1.id} !== ${assertRef2.id}`
+    throw `TODO: handleRelationship() - unexpected: ${assertRef1.id} !== ${assertRef2.id}`
   }
 
   if (prevRelationship.comparison.operator === '==') {
@@ -1594,7 +1610,7 @@ function handleRelationship(
     //|        ^   ^
     //|        |   + newRelationship.comparison.rhs
     //|        + newRelationship.formula
-    throw `TODO - handleRelationship with truthy comparison ${toS(prevRelationship)} to ${toS(newRelationship)}`
+    throw `TODO: handleRelationship with truthy comparison ${toS(prevRelationship)} to ${toS(newRelationship)}`
   } else if (isMathRelationship(newRelationship, '==')) {
     //|        + prevRelationship.formula
     //|        |    + prevRelationship.comparison.rhs
@@ -1699,7 +1715,7 @@ function replaceType(
 
     const nextAssignableType = type.replacingProp(assignable.index.value, nextType)
     if (nextAssignableType.isErr()) {
-      throw `todo - error assigning ${assignable.type} type '${assignable.index.value}' to '${nextType}': ${nextAssignableType.error}`
+      throw `TODO: error assigning ${assignable.type} type '${assignable.index.value}' to '${nextType}': ${nextAssignableType.error}`
     }
 
     return replaceType(mutableRuntime, assignable.of, nextAssignableType.get())
@@ -1726,7 +1742,7 @@ function replaceType(
   if (assignable.type === 'reference') {
     mutableRuntime.replaceTypeById(assignable.id, nextType)
   } else if (assignable.type === 'assign') {
-    mutableRuntime.addLocalTypeWithId(assignable.name, assignable.id, nextType)
+    mutableRuntime.addLocalTypeWithId(assignable.name, assignable.unstableId, nextType)
   } else if (assignable.type === 'mask') {
     mutableRuntime.addLocalTypeWithId(assignable.name, assignable.nextId, nextType)
   }
@@ -2118,9 +2134,9 @@ function reverseComparisonSymbol(
   }
 }
 
-export function invertComparison(comparison: RelationshipTypeSymbol): RelationshipTypeSymbol
-export function invertComparison(comparison: RelationshipTruthySymbol): RelationshipTruthySymbol
-export function invertComparison(comparison: RelationshipMathSymbol): RelationshipMathSymbol
+export function invertSymbol(comparison: RelationshipTypeSymbol): RelationshipTypeSymbol
+export function invertSymbol(comparison: RelationshipTruthySymbol): RelationshipTruthySymbol
+export function invertSymbol(comparison: RelationshipMathSymbol): RelationshipMathSymbol
 
 /**
  * Returns the inverse operation, ie `a <op> b` to `a <!op> b`.
@@ -2128,7 +2144,7 @@ export function invertComparison(comparison: RelationshipMathSymbol): Relationsh
  *     a == 4 => a != 4  (invertComparison('==') => '!=')
  * @see invertRelationship
  */
-export function invertComparison(
+export function invertSymbol(
   comparison: RelationshipMathSymbol | RelationshipTruthySymbol | RelationshipTypeSymbol,
 ): RelationshipMathSymbol | RelationshipTruthySymbol | RelationshipTypeSymbol {
   switch (comparison) {
@@ -2155,25 +2171,19 @@ export function invertComparison(
   }
 }
 
-export function invertActualComparison(
-  comparison: RelationshipMathComparison,
-): RelationshipMathComparison
-export function invertActualComparison(
+function invertComparison(comparison: RelationshipMathComparison): RelationshipMathComparison
+function invertComparison(
   comparison: RelationshipMathCompareLiteral,
 ): RelationshipMathCompareLiteral
-export function invertActualComparison(
-  comparison: RelationshipTypeComparison,
-): RelationshipTypeComparison
-export function invertActualComparison(
-  comparison: RelationshipTruthyComparison,
-): RelationshipTruthyComparison
-export function invertActualComparison(
+function invertComparison(comparison: RelationshipTypeComparison): RelationshipTypeComparison
+function invertComparison(comparison: RelationshipTruthyComparison): RelationshipTruthyComparison
+function invertComparison(
   comparison:
     | RelationshipMathComparison
     | RelationshipTypeComparison
     | RelationshipTruthyComparison,
 ): RelationshipMathComparison | RelationshipTypeComparison | RelationshipTruthyComparison
-export function invertActualComparison(
+function invertComparison(
   comparison:
     | RelationshipMathComparison
     | RelationshipTypeComparison
@@ -2184,33 +2194,30 @@ export function invertActualComparison(
   | RelationshipTypeComparison
   | RelationshipTruthyComparison
   | RelationshipOneOfComparison
-export function invertActualComparison(
-  comparison: RelationshipOneOfComparison,
-): RelationshipOneOfComparison
+function invertComparison(comparison: RelationshipOneOfComparison): RelationshipOneOfComparison
 
-export function invertActualComparison(
-  comparison: RelationshipAnyComparison,
-): RelationshipAnyComparison {
+function invertComparison(
+  comparison: RelationshipNormalizedComparison,
+): RelationshipNormalizedComparison {
   if (isOneOfComparison(comparison)) {
     return {
       operator: 'one-of',
       comparisons: comparison.comparisons.map(comp => {
-        return invertActualComparison(comp)
+        return invertComparison(comp)
       }),
     }
   }
-
   switch (comparison.operator) {
     case 'instanceof':
     case '!instanceof': {
       return {
-        operator: invertComparison(comparison.operator),
+        operator: invertSymbol(comparison.operator),
         rhs: comparison.rhs,
       }
     }
     case 'truthy':
     case 'falsey':
-      return {operator: invertComparison(comparison.operator)}
+      return {operator: invertSymbol(comparison.operator)}
 
     case '==':
     case '!=':
@@ -2218,7 +2225,7 @@ export function invertActualComparison(
     case '<=':
     case '>':
     case '>=': {
-      const operator = invertComparison(comparison.operator)
+      const operator = invertSymbol(comparison.operator)
       if (isMathComparison(comparison)) {
         return {operator, rhs: comparison.rhs}
       } else {
@@ -2234,7 +2241,7 @@ export function invertActualComparison(
 export function invertRelationship(relationship: Relationship): Relationship {
   return {
     formula: relationship.formula,
-    comparison: invertActualComparison(relationship.comparison),
+    comparison: invertComparison(relationship.comparison),
   } as Relationship
 }
 
@@ -2427,7 +2434,7 @@ export function verifyRelationship(
       case '<=':
         return verifyRelationshipIsLte(rel, rhs)
       default:
-        throw `TODO - implement '${comparison}' in verifyRelationship`
+        throw `TODO: implement '${comparison}' in verifyRelationship`
     }
   })
 }
@@ -2490,7 +2497,7 @@ function verifyRelationshipIsEq(
     }
   }
 
-  throw `TODO - verifyRelationshipIsEq(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
+  throw `TODO: verifyRelationshipIsEq(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
 }
 
 function verifyRelationshipIsGte(
@@ -2576,7 +2583,7 @@ function verifyRelationshipIsGte(
     }
   }
 
-  throw `TODO - verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
+  throw `TODO: verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
 }
 
 /**
@@ -2677,7 +2684,7 @@ function verifyRelationshipIsGt(
     }
   }
 
-  throw `TODO - verifyRelationshipIsLt(rhs is '${target.type}', formula is '${toS(relationship.formula)}')`
+  throw `TODO: verifyRelationshipIsLt(rhs is '${target.type}', formula is '${toS(relationship.formula)}')`
 }
 
 /**
@@ -2780,7 +2787,7 @@ function verifyRelationshipIsLt(
     return false
   }
 
-  throw `TODO - verify(formula is '${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.comparison.rhs)}' <? rhs is '${target.type}')`
+  throw `TODO: verify(formula is '${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.comparison.rhs)}' <? rhs is '${target.type}')`
 }
 
 function verifyRelationshipIsLte(
@@ -2866,7 +2873,7 @@ function verifyRelationshipIsLte(
     }
   }
 
-  throw `TODO - verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
+  throw `TODO: verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
 }
 
 export function isEqualFormula(lhs: RelationshipFormula, rhs: RelationshipFormula): boolean {
@@ -2946,6 +2953,8 @@ export function isEqualRelationship(
   }
 
   if (isTruthyComparison(lhs.comparison) || isTruthyComparison(rhs.comparison)) {
+    // comparison.operator is either 'truthy' or 'falsey', with no rhs argument,
+    // and we already checked for lhs-operator == rhs-operator
     return true
   }
 

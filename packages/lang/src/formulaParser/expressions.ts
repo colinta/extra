@@ -25,8 +25,9 @@ import {
 } from './types'
 import {
   assignRelationshipsToRuntime,
+  combineAndRelationships,
   combineOrRelationships,
-  invertComparison,
+  invertSymbol,
   type Relationship,
   relationshipFormula,
   type RelationshipFormula,
@@ -4444,6 +4445,10 @@ export class MatchTypeExpression extends MatchExpression {
       return ok([])
     }
 
+    // I was tempted to just use 'instanceof' and store the desired type (i.e.
+    // use `Types.narrowTypeIsNot` here). The problem is that operators like
+    // `not` modify the return value of gimmeFalseStuff, changing `!instanceof`
+    // to `instanceof`.
     return this.getAsTypeExpression(runtime).map(type => {
       return [{formula, comparison: {operator: '!instanceof', rhs: type}}]
     })
@@ -4500,10 +4505,12 @@ export abstract class MatchIdentifier extends MatchExpression {
         comparison: {operator: 'instanceof', rhs: lhsType},
       },
     ]
+    // assign.unstableId is not a reliable reference, it can change in
+    // `combineOrRelationships`. This is handled by a scan of `reassignIds`.
     if (formula) {
       relationships.push({
-        formula: relationshipFormula.reference(this.nameRef.name, assign.id),
-        comparison: {operator: '==', rhs: formula!},
+        formula: relationshipFormula.reference(this.nameRef.name, assign.unstableId),
+        comparison: {operator: '==', rhs: formula},
       })
     }
     return ok(relationships)
@@ -4529,9 +4536,11 @@ export abstract class MatchIdentifier extends MatchExpression {
         comparison: {operator: 'instanceof', rhs: Types.NeverType},
       })
 
+      // assign.unstableId is not a reliable reference, it can change in
+      // `combineOrRelationships`. This is handled by a scan of `reassignIds`.
       if (formula) {
         relationships.push({
-          formula: relationshipFormula.reference(this.nameRef.name, assign.id),
+          formula: relationshipFormula.reference(this.nameRef.name, assign.unstableId),
           comparison: {operator: '==', rhs: formula!},
         })
       }
@@ -4960,13 +4969,9 @@ export class MatchLiteral extends MatchExpression {
       return ok([])
     }
 
-    return this.getAsTypeExpression(runtime).map((type): Relationship[] => {
-      if (formula) {
-        return [{formula, comparison: {operator: 'instanceof', rhs: type}}]
-      }
-
-      return []
-    })
+    return this.getAsTypeExpression(runtime).map((type): Relationship[] => [
+      {formula, comparison: {operator: 'instanceof', rhs: type}},
+    ])
   }
 
   gimmeFalseStuffWith(
@@ -5116,7 +5121,7 @@ export class MatchUnaryRange extends MatchExpression {
     ]
     const narrowType = Types.narrowTypeIsNot(lhsType, type)
     if (narrowType.isFloat()) {
-      relationships.push({formula, comparison: {operator: invertComparison(operator), rhs}})
+      relationships.push({formula, comparison: {operator: invertSymbol(operator), rhs}})
     }
     return ok(relationships)
   }
@@ -5731,7 +5736,7 @@ export class MatchStringExpression extends MatchExpression {
   gimmeFalseStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    _lhsType: Types.Type,
+    lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -5921,6 +5926,7 @@ export class MatchArrayExpression extends MatchExpression {
     formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
+    // if no types are an array, raise an error
     let checkType = lhsType
     if (lhsType instanceof Types.OneOfType) {
       for (const type of lhsType.of) {
@@ -5943,27 +5949,30 @@ export class MatchArrayExpression extends MatchExpression {
     const relationships: Relationship[] = []
     if (formula) {
       if (this.remainingExpr) {
-        const result = this.gimmeFalseStuffRemovingArrays(formula, lhsType)
+        const result = this.gimmeTrueStuffKeepingArrays(formula, lhsType)
         if (result.isErr()) {
           return result
         }
         relationships.push(...result.value)
+      } else {
+        const result = this.gimmeTrueTypes(lhsType).map(
+          (type): Relationship => ({
+            formula,
+            comparison: {
+              operator: 'instanceof',
+              rhs: type,
+            },
+          }),
+        )
+        if (result.isErr()) {
+          return err(result.error)
+        }
+        relationships.push(result.value)
       }
-
-      const result = this.gimmeTrueTypes(lhsType).map(
-        (type): Relationship => ({
-          formula,
-          comparison: {
-            operator: 'instanceof',
-            rhs: type,
-          },
-        }),
-      )
-      if (result.isErr()) {
-        return err(result.error)
-      }
-      relationships.push(result.value)
     }
+
+    // TODO: add relationships for matching expressions in initialExprs and
+    // trailingExprs
 
     return ok(relationships)
   }
@@ -6041,21 +6050,21 @@ export class MatchArrayExpression extends MatchExpression {
     // return this.gimmeFalseTypes(lhsType).map(arrayType =>
     //   ok([{formula, comparison: {operator: 'instanceof', rhs: arrayType}}]),
     // )
-    return this.gimmeFalseTypes(lhsType).map(arrayType =>
-      ok([
-        {
-          formula,
-          comparison: {
-            operator: '!instanceof',
-            rhs: Types.array(Types.all(), {min: minLength, max: minLength}),
-          },
+    const type = Types.array(Types.all(), {min: minLength, max: minLength})
+    return ok([
+      {
+        formula,
+        comparison: {
+          operator: '!instanceof',
+          rhs: type,
         },
-      ]),
-    )
+      },
+    ])
   }
 
   /**
-   * Implements the logic of gimmeFalseStuffWith, handling one-of cases.
+   * Used to implement the logic of gimmeFalseStuffWith, and will again when I
+   * add support for scanning initialExprs/trailingExprs for array types.
    */
   gimmeFalseTypes(lhsType: Types.Type): GetTypeResult {
     if (lhsType instanceof Types.OneOfType) {
@@ -6068,8 +6077,8 @@ export class MatchArrayExpression extends MatchExpression {
         .map(types => Types.oneOf(types))
     } else if (!(lhsType instanceof Types.ArrayType)) {
       // in the false case, `lhs is []` will never match, and so if lhs isn't an
-      // array, it will always be whatever it was a the start. Also, this raises
-      // an error in 'gimmeTrueStuffWith'.
+      // array, it will always be whatever it was at the start. Also, this
+      // case raises an error in 'gimmeTrueStuffWith'.
       return ok(lhsType)
     }
 
