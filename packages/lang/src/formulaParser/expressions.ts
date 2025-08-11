@@ -25,7 +25,6 @@ import {
 } from './types'
 import {
   assignRelationshipsToRuntime,
-  combineAndRelationships,
   combineOrRelationships,
   invertSymbol,
   type Relationship,
@@ -4326,6 +4325,26 @@ export class MainFormulaExpression extends ViewFormulaExpression {
 //|
 
 export abstract class MatchExpression extends Expression {
+  assumeTrueWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    subjectType: Types.Type,
+  ) {
+    return this.gimmeTrueStuffWith(runtime, formula, subjectType).map(stuff =>
+      assignRelationshipsToRuntime(runtime, stuff, true),
+    )
+  }
+
+  assumeFalseWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    subjectType: Types.Type,
+  ) {
+    return this.gimmeFalseStuffWith(runtime, formula, subjectType).map(stuff =>
+      assignRelationshipsToRuntime(runtime, stuff, false),
+    )
+  }
+
   /**
    * Called from MatchOperator with the formula and expression of lhs.
    */
@@ -4535,15 +4554,6 @@ export abstract class MatchIdentifier extends MatchExpression {
         formula: assign,
         comparison: {operator: 'instanceof', rhs: Types.NeverType},
       })
-
-      // assign.unstableId is not a reliable reference, it can change in
-      // `combineOrRelationships`. This is handled by a scan of `reassignIds`.
-      if (formula) {
-        relationships.push({
-          formula: relationshipFormula.reference(this.nameRef.name, assign.unstableId),
-          comparison: {operator: '==', rhs: formula!},
-        })
-      }
     }
 
     return ok(relationships)
@@ -4963,7 +4973,7 @@ export class MatchLiteral extends MatchExpression {
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    _lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -5021,6 +5031,11 @@ export class MatchUnaryRange extends MatchExpression {
   }
 
   getTypeWithHint(hint: Types.Type): Types.Type {
+    // TODO: replace Literal with FloatValue and remove this check
+    if (!this.start.value.isFloat()) {
+      return Types.NeverType
+    }
+
     if (hint.isRange()) {
       const numberType = this.getTypeWithHint(hint.type)
       if (numberType.isInt()) {
@@ -5028,10 +5043,6 @@ export class MatchUnaryRange extends MatchExpression {
       } else if (numberType.isFloat()) {
         return Types.floatRange(numberType.narrowed)
       }
-      return Types.NeverType
-    }
-
-    if (!this.start.value.isFloat()) {
       return Types.NeverType
     }
 
@@ -5093,11 +5104,7 @@ export class MatchUnaryRange extends MatchExpression {
       return ok([])
     }
 
-    const operator = this.op === '=' ? '==' : this.op
-    return ok([
-      {formula, comparison: {operator: 'instanceof', rhs: type}},
-      {formula, comparison: {operator, rhs}},
-    ])
+    return ok([{formula, comparison: {operator: 'instanceof', rhs: type}}])
   }
 
   gimmeFalseStuffWith(
@@ -5213,6 +5220,7 @@ export class MatchBinaryRange extends MatchExpression {
   }
 
   getTypeWithHint(hint: Types.Type): Types.Type {
+    // TODO: replace Literal with FloatValue and remove this check
     if (!this.start.value.isFloat() || !this.stop.value.isFloat()) {
       return Types.NeverType
     }
@@ -5285,119 +5293,7 @@ export class MatchBinaryRange extends MatchExpression {
       return ok([])
     }
 
-    const relationships: Relationship[] = [
-      {formula, comparison: {operator: 'instanceof', rhs: type}},
-    ]
-
-    if (this.start.value.isFloat() && this.stop.value.isFloat()) {
-      // if the lhs type is an Int, assign int ranges
-      if (type.isInt()) {
-        if (this.op === '...' || this.op === '..<') {
-          relationships.push({
-            formula,
-            comparison: {
-              operator: '>=',
-              rhs: relationshipFormula.int(Math.floor(this.start.value.value)),
-            },
-          })
-        } else {
-          relationships.push({
-            formula,
-            comparison: {
-              operator: '>=',
-              rhs: relationshipFormula.int(Math.floor(this.start.value.value + 1)),
-            },
-          })
-        }
-
-        if (this.op === '...' || this.op === '<..') {
-          relationships.push({
-            formula,
-            comparison: {
-              operator: '<=',
-              rhs: relationshipFormula.int(Math.floor(this.stop.value.value)),
-            },
-          })
-        } else {
-          relationships.push({
-            formula,
-            comparison: {
-              operator: '<=',
-              rhs: relationshipFormula.int(Math.floor(this.stop.value.value - 1)),
-            },
-          })
-        }
-      } else if (type.isFloat()) {
-        switch (this.op) {
-          case '...':
-            relationships.push({
-              formula,
-              comparison: {
-                operator: '>=',
-                rhs: relationshipFormula.float(this.start.value.value),
-              },
-            })
-            relationships.push({
-              formula,
-              comparison: {
-                operator: '<=',
-                rhs: relationshipFormula.float(this.stop.value.value),
-              },
-            })
-            break
-          case '<..':
-            relationships.push({
-              formula,
-              comparison: {
-                operator: '>',
-                rhs: relationshipFormula.float(this.start.value.value),
-              },
-            })
-            relationships.push({
-              formula,
-              comparison: {
-                operator: '<=',
-                rhs: relationshipFormula.float(this.stop.value.value),
-              },
-            })
-            break
-          case '..<':
-            relationships.push({
-              formula,
-              comparison: {
-                operator: '>=',
-                rhs: relationshipFormula.float(this.start.value.value),
-              },
-            })
-            relationships.push({
-              formula,
-              comparison: {
-                operator: '<',
-                rhs: relationshipFormula.float(this.stop.value.value),
-              },
-            })
-            break
-          case '<.<':
-            relationships.push({
-              formula,
-              comparison: {
-                operator: '>',
-                rhs: relationshipFormula.float(this.start.value.value),
-              },
-            })
-            relationships.push({
-              formula,
-              comparison: {
-                operator: '<',
-                rhs: relationshipFormula.float(this.stop.value.value),
-              },
-            })
-            break
-        }
-      }
-    }
-
-    return ok(relationships)
+    return ok([{formula, comparison: {operator: 'instanceof', rhs: type}}])
   }
 
   gimmeFalseStuffWith(
@@ -5415,12 +5311,9 @@ export class MatchBinaryRange extends MatchExpression {
       return ok([])
     }
 
-    const relationships: Relationship[] = [
-      {formula, comparison: {operator: '!instanceof', rhs: type}},
-    ]
     // no more information available here (the number is either less than the
     // minimum, or greater than the maximum)
-    return ok(relationships)
+    return ok([{formula, comparison: {operator: '!instanceof', rhs: type}}])
   }
 
   evalWithSubject(_runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
@@ -5528,15 +5421,37 @@ export class MatchRegexLiteral extends MatchLiteral {
       for (const [name, pattern] of this.literal.groups) {
         const regex = new RegExp(pattern, this.literal.flags)
         const type = Types.StringType.narrowRegex(regex)
-        const assign = {
+        relationships.push({
           formula: relationshipFormula.assign(name),
           comparison: {operator: 'instanceof', rhs: type},
-        } as const
-        relationships.push(assign)
+        })
       }
 
       return relationships
     })
+  }
+
+  gimmeFalseStuffWith(
+    _runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    _lhsType: Types.Type,
+  ): GetRuntimeResult<Relationship[]> {
+    const relationships: Relationship[] = []
+    if (formula) {
+      const relationships: Relationship[] = []
+      if (formula) {
+        const ref = {
+          formula,
+          comparison: {
+            operator: 'instanceof',
+            rhs: Types.string({regex: [this.literal.value.value]}),
+          },
+        } as const
+        relationships.push(ref)
+      }
+    }
+
+    return ok(relationships)
   }
 
   evalWithSubjectReturningRuntime(
@@ -5947,27 +5862,38 @@ export class MatchArrayExpression extends MatchExpression {
     }
 
     const relationships: Relationship[] = []
-    if (formula) {
-      if (this.remainingExpr) {
-        const result = this.gimmeTrueStuffKeepingArrays(formula, lhsType)
-        if (result.isErr()) {
-          return result
-        }
-        relationships.push(...result.value)
-      } else {
-        const result = this.gimmeTrueTypes(lhsType).map(
-          (type): Relationship => ({
+    if (this.remainingExpr) {
+      const result = this.gimmeTrueStuffKeepingArrays(runtime, formula, lhsType)
+      if (result.isErr()) {
+        return result
+      }
+      relationships.push(...result.value)
+    }
+
+    if (formula || this.initialExprs.length || this.trailingExprs.length) {
+      const result = this.gimmeTrueTypes(lhsType).map(type => {
+        if (formula) {
+          relationships.push({
             formula,
             comparison: {
               operator: 'instanceof',
               rhs: type,
             },
-          }),
-        )
-        if (result.isErr()) {
-          return err(result.error)
+          })
         }
-        relationships.push(result.value)
+
+        const ofType = this.arrayTypeFromTypes(type)
+        for (const expr of this.initialExprs.concat(this.trailingExprs)) {
+          const result = expr.gimmeTrueStuffWith(runtime, undefined, ofType)
+          if (result.isErr()) {
+            return err(result.error)
+          }
+          relationships.push(...result.value)
+        }
+      })
+
+      if (result.isErr()) {
+        return err(result.error)
       }
     }
 
@@ -5977,22 +5903,40 @@ export class MatchArrayExpression extends MatchExpression {
     return ok(relationships)
   }
 
-  gimmeTrueTypes(lhsType: Types.Type): GetTypeResult {
-    if (lhsType instanceof Types.OneOfType) {
+  /**
+   * returns `type.of` if it is an ArrayType, or combines all the 'of' types if
+   * type is a one-of type (it should contain arrays in that case). Otherwise
+   * returns `never`.
+   */
+  private arrayTypeFromTypes(type: Types.Type) {
+    if (type instanceof Types.OneOfType) {
+      return Types.oneOf(
+        type.of.flatMap(type => (type instanceof Types.ArrayType ? [type.of] : [])),
+      )
+    } else if (type instanceof Types.ArrayType) {
+      return type.of
+    } else {
+      return Types.NeverType
+    }
+  }
+
+  private gimmeTrueTypes(type: Types.Type): GetTypeResult {
+    if (type instanceof Types.OneOfType) {
       return mapAll(
-        lhsType.of
+        type.of
           .filter(lhsType => lhsType instanceof Types.ArrayType)
           .map(lhsType => this.gimmeTrueTypes(lhsType)),
       )
         .map(types => types.filter(lhsType => lhsType !== Types.NeverType))
         .map(types => Types.oneOf(types))
-    } else if (!(lhsType instanceof Types.ArrayType)) {
+    } else if (!(type instanceof Types.ArrayType)) {
       return ok(Types.NeverType)
     }
 
-    const arrayOfType = lhsType.of
+    const arrayOfType = type.of
     const minLength = this.initialExprs.length + this.trailingExprs.length
-    const nextNarrow = Narrowed.narrow(lhsType.narrowedLength, {min: minLength, max: minLength})
+    const maxLength = this.remainingExpr ? undefined : minLength
+    const nextNarrow = Narrowed.narrow(type.narrowedLength, {min: minLength, max: maxLength})
     if (nextNarrow === undefined) {
       return ok(Types.NeverType)
     }
@@ -6005,18 +5949,40 @@ export class MatchArrayExpression extends MatchExpression {
    * all other types from one-of. Inverse of gimmeFalseStuffRemovingArrays
    */
   gimmeTrueStuffKeepingArrays(
-    formula: RelationshipFormula,
-    lhsType: Types.Type,
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    type: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     let rhsType: Types.Type
-    if (lhsType instanceof Types.OneOfType) {
-      rhsType = Types.oneOf(lhsType.of.filter(type => type instanceof Types.ArrayType))
-    } else if (lhsType instanceof Types.ArrayType) {
-      rhsType = lhsType
+    if (type instanceof Types.OneOfType) {
+      rhsType = Types.oneOf(type.of.filter(type => type instanceof Types.ArrayType))
+    } else if (type instanceof Types.ArrayType) {
+      rhsType = type
     } else {
       rhsType = Types.NeverType
     }
-    return ok([{formula, comparison: {operator: 'instanceof', rhs: rhsType}}])
+
+    const relationships: Relationship[] = []
+    if (formula) {
+      relationships.push({formula, comparison: {operator: 'instanceof', rhs: rhsType}})
+    }
+
+    if (this.remainingExpr?.nameRef) {
+      const ofType = this.arrayTypeFromTypes(rhsType)
+      const name = this.remainingExpr.nameRef.name
+      const assign = {
+        formula: relationshipFormula.assign(name),
+        comparison: {operator: 'instanceof', rhs: ofType},
+      } as const
+      relationships.push(assign)
+      const result = this.remainingExpr.gimmeTrueStuffWith(runtime, undefined, ofType)
+      if (result.isErr()) {
+        return err(result.error)
+      }
+      relationships.push(...result.value)
+    }
+
+    return ok(relationships)
   }
 
   /**
@@ -6038,28 +6004,24 @@ export class MatchArrayExpression extends MatchExpression {
     formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    if (!formula) {
-      return ok([])
-    }
+    const relationships: Relationship[] = []
+    if (formula) {
+      if (this.remainingExpr) {
+        return this.gimmeFalseStuffRemovingArrays(formula, lhsType)
+      }
 
-    if (this.remainingExpr) {
-      return this.gimmeFalseStuffRemovingArrays(formula, lhsType)
-    }
-
-    let minLength = this.initialExprs.length + this.trailingExprs.length
-    // return this.gimmeFalseTypes(lhsType).map(arrayType =>
-    //   ok([{formula, comparison: {operator: 'instanceof', rhs: arrayType}}]),
-    // )
-    const type = Types.array(Types.all(), {min: minLength, max: minLength})
-    return ok([
-      {
+      const minLength = this.initialExprs.length + this.trailingExprs.length
+      const type = Types.array(Types.all(), {min: minLength, max: minLength})
+      relationships.push({
         formula,
         comparison: {
           operator: '!instanceof',
           rhs: type,
         },
-      },
-    ])
+      })
+    }
+
+    return ok(relationships)
   }
 
   /**

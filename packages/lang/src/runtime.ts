@@ -95,6 +95,22 @@ export class MutableTypeRuntime {
     return resolved
   }
 
+  additions() {
+    const names = new Set(this.ids.keys())
+    for (const id of this.types.keys()) {
+      const name = this.refName(id)
+      if (name) {
+        names.add(name)
+      }
+    }
+
+    return {
+      names,
+      types: this.types,
+      relationships: this.relationships,
+    }
+  }
+
   refId(name: string): string | undefined {
     return this.ids.get(name) ?? this.parent?.refId(name)
   }
@@ -119,11 +135,7 @@ export class MutableTypeRuntime {
    */
   getLocalType(name: string): Type | undefined {
     const id = this.refId(name)
-    if (id) {
-      return this.types.get(id) ?? this.parent?.getLocalType(name)
-    }
-
-    return this.parent?.getLocalType(name)
+    return (id ? this.types.get(id) : undefined) ?? this.parent?.getLocalType(name)
   }
 
   /**
@@ -228,6 +240,17 @@ export class MutableTypeRuntime {
         this.relationships.set(ref.id, prevRelationships)
       }
     }
+  }
+
+  /**
+   * Called from 'combineEitherTypeRuntimes' which checks lhsRuntime and
+   * rhsRuntime for duplicates. All relationships in those runtimes have already
+   * been checked by 'addRelationshipFormula' (but not checked against each
+   * other).
+   */
+  addTrustedRelationshipsFormulas(id: string, relationships: AssignedRelationship[]) {
+    const prevRelationships = this.relationships.get(id) ?? []
+    this.relationships.set(id, prevRelationships.concat(relationships))
   }
 
   /**

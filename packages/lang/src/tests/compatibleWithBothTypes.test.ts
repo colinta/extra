@@ -71,6 +71,7 @@ describe('compatibleWithBothTypes', () => {
     ]),
     // strings
     c([Types.string(), Types.string(), Types.string()]),
+    c([Types.string(), Types.string({regex: [/test/]}), Types.string()]),
     c([Types.string({min: 1}), Types.string(), Types.string()]),
     c([Types.string({min: 1}), Types.string({min: 1}), Types.string({min: 1})]),
     c([

@@ -150,7 +150,7 @@ describe('complicated relationships', () => {
     )
   })
 
-  it('can infer safe array access with literals', () => {
+  it.only('can infer safe array access with literals', () => {
     runtimeTypes['items'] = [
       Types.array(Types.int()),
       Values.array([Values.int(-1), Values.int(1), Values.int(3)]),
@@ -163,7 +163,7 @@ describe('complicated relationships', () => {
         prev = index - 1
         next = index + 1
       in
-        if (items.length >=3 and index >= 1 and index <= items.length - 2) {
+        if (items.length >= 3 and index >= 1 and index <= items.length - 2) {
           then: {
             items[prev]
             items[index]

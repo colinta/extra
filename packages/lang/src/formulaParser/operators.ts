@@ -1,4 +1,4 @@
-import {err, mapAll, ok} from '@extra-lang/result'
+import {err, mapAll, ok, type Result} from '@extra-lang/result'
 import * as Types from '../types'
 import * as Values from '../values'
 import {
@@ -15,12 +15,9 @@ import {
   type RelationshipMathSymbol,
   type RelationshipFormula,
   type RelationshipAssign,
-  combineOrRelationships,
-  assignRelationshipsToRuntime,
-  invertRelationship,
   relationshipToType,
   isAssign,
-  combineAndRelationships,
+  combineEitherTypeRuntimes,
 } from '../relationship'
 import * as Expressions from './expressions'
 import {
@@ -738,37 +735,49 @@ addBinaryOperator({
   },
 })
 
-class LogicalOrOperator extends BinaryOperator {
-  symbol = 'or'
-
-  gimmeTrueStuff(runtime: TypeRuntime) {
-    const [lhsExpr, rhsExpr] = this.args
-    return mapAll([lhsExpr.gimmeTrueStuff(runtime), lhsExpr.gimmeFalseStuff(runtime)]).map(
-      ([lhsTrueStuff, lhsFalseStuff]) =>
-        assignRelationshipsToRuntime(runtime, lhsFalseStuff, true).map(lhsRuntime =>
-          rhsExpr
-            .gimmeTrueStuff(lhsRuntime)
-            .map(rhsStuff => combineOrRelationships(lhsTrueStuff, rhsStuff)),
-        ),
+function mapCombineEitherError(
+  lhs: Expression,
+  rhs: Expression,
+  result: Result<TypeRuntime, [string, string]>,
+  where: 'and' | 'or',
+): GetRuntimeResult<TypeRuntime> {
+  if (result.isErr()) {
+    const missingExpr = result.error[0] === 'missing-lhs' ? lhs : rhs
+    const hasExpr = result.error[0] === 'missing-lhs' ? rhs : lhs
+    const assign = result.error[1]
+    return err(
+      new RuntimeError(
+        missingExpr,
+        `Invalid expressions in '${where}'. '${hasExpr}' assigns to '${assign}', but '${missingExpr}' does not.`,
+      ),
     )
   }
 
-  gimmeFalseStuff(runtime: TypeRuntime) {
-    const [lhsExpr, rhsExpr] = this.args
+  return ok(result.value)
+}
 
-    // I'm avoiding lhsExpr.assumeFalse because that would end up calling
-    // `gimmeFalseStuff` twice (once to call
-    // `gimmeFalseStuff/assignRelationshipsToRuntime`, and then again here to
-    // concat `lhsStuff ++ rhsStuff`)
-    return lhsExpr
-      .gimmeFalseStuff(runtime)
-      .map(lhsFalseStuff =>
-        assignRelationshipsToRuntime(runtime, lhsFalseStuff, true).map(lhsRuntime =>
-          rhsExpr
-            .gimmeFalseStuff(lhsRuntime)
-            .map(rhsStuff => combineAndRelationships(lhsFalseStuff, rhsStuff)),
-        ),
+class LogicalOrOperator extends BinaryOperator {
+  symbol = 'or'
+
+  assumeTrue(runtime: TypeRuntime) {
+    const [lhs, rhs] = this.args
+    return lhs
+      .assumeFalse(runtime)
+      .map(lhsFalseRuntime => rhs.assumeTrue(lhsFalseRuntime))
+      .map(rhsTrueRuntime =>
+        lhs
+          .assumeTrue(runtime)
+          .map(lhsTrueRuntime =>
+            combineEitherTypeRuntimes(runtime, lhsTrueRuntime, rhsTrueRuntime, true).mapResult(
+              result => mapCombineEitherError(lhs, rhs, result, 'or'),
+            ),
+          ),
       )
+  }
+
+  assumeFalse(runtime: TypeRuntime) {
+    const [lhs, rhs] = this.args
+    return lhs.assumeFalse(runtime).map(lhsFalseRuntime => rhs.assumeFalse(lhsFalseRuntime))
   }
 
   matchAssignReferences() {
@@ -886,35 +895,25 @@ addBinaryOperator({
 class LogicalAndOperator extends BinaryOperator {
   symbol = 'and'
 
-  gimmeTrueStuff(runtime: TypeRuntime) {
-    const [lhsExpr, rhsExpr] = this.args
-    // I'm avoiding lhsExpr.assumeTrue here because that would end up calling
-    // gimmeTrueStuff twice
-    return lhsExpr
-      .gimmeTrueStuff(runtime)
-      .map(lhsStuff =>
-        assignRelationshipsToRuntime(runtime, lhsStuff, true).map(lhsRuntime =>
-          rhsExpr
-            .gimmeTrueStuff(lhsRuntime)
-            .map(rhsStuff => combineAndRelationships(lhsStuff, rhsStuff)),
-        ),
-      )
+  assumeTrue(runtime: TypeRuntime) {
+    const [lhs, rhs] = this.args
+    return lhs.assumeTrue(runtime).map(lhsFalseRuntime => rhs.assumeTrue(lhsFalseRuntime))
   }
 
-  gimmeFalseStuff(runtime: TypeRuntime) {
-    const [lhsExpr, rhsExpr] = this.args
-    const myRuntime = new MutableTypeRuntime(runtime)
-    return mapAll([lhsExpr.gimmeTrueStuff(myRuntime), lhsExpr.gimmeFalseStuff(myRuntime)]).map(
-      ([lhsTrueStuff, lhsFalseStuff]) =>
-        assignRelationshipsToRuntime(runtime, lhsTrueStuff, true).map(lhsRuntime =>
-          rhsExpr.gimmeFalseStuff(lhsRuntime).map(rhsStuff =>
-            combineOrRelationships(
-              lhsFalseStuff,
-              combineAndRelationships(lhsTrueStuff, rhsStuff),
+  assumeFalse(runtime: TypeRuntime) {
+    const [lhs, rhs] = this.args
+    return lhs
+      .assumeTrue(runtime)
+      .map(lhsTrueRuntime => rhs.assumeFalse(lhsTrueRuntime))
+      .map(rhsFalseRuntime =>
+        lhs
+          .assumeFalse(runtime)
+          .map(lhsFalseRuntime =>
+            combineEitherTypeRuntimes(runtime, lhsFalseRuntime, rhsFalseRuntime, false).mapResult(
+              result => mapCombineEitherError(lhs, rhs, result, 'and'),
             ),
           ),
-        ),
-    )
+      )
   }
 
   matchAssignReferences() {
@@ -3080,14 +3079,22 @@ class ArrayAccessOperator extends PropertyChainOperator {
       const lhsRef = findEventualRef(lhsRel)
       if (lhsRef) {
         const lhsLength = relationshipFormula.propertyAccess(lhsRef, 'length')
+        const getTypeById = runtime.getTypeById.bind(runtime)
         const getRelationships = runtime.getRelationships.bind(runtime)
         const rhsIsGtZero = verifyRelationship(
           rhsRel,
           '>=',
           relationshipFormula.int(0),
+          getTypeById,
           getRelationships,
         )
-        const rhsIsLtLength = verifyRelationship(rhsRel, '<', lhsLength, getRelationships)
+        const rhsIsLtLength = verifyRelationship(
+          rhsRel,
+          '<',
+          lhsLength,
+          getTypeById,
+          getRelationships,
+        )
         if (rhsIsGtZero && rhsIsLtLength) {
           return true
         }
@@ -3574,12 +3581,12 @@ addBinaryOperator({
 class LogicalNotOperator extends UnaryOperator {
   symbol = 'not'
 
-  gimmeTrueStuff(runtime: TypeRuntime) {
-    return this.args[0].gimmeTrueStuff(runtime).map(stuff => stuff.map(invertRelationship))
+  assumeTrue(runtime: TypeRuntime) {
+    return this.args[0].assumeFalse(runtime)
   }
 
-  gimmeFalseStuff(runtime: TypeRuntime) {
-    return this.args[0].gimmeFalseStuff(runtime).map(stuff => stuff.map(invertRelationship))
+  assumeFalse(runtime: TypeRuntime) {
+    return this.args[0].assumeTrue(runtime)
   }
 
   checkLhsType(lhs: Types.Type, lhsExpr: Expression) {
@@ -4710,17 +4717,19 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
             }
 
             const typeResult = caseExpr
-              .gimmeTrueStuffWith(nextRuntime, trackingFormula, subjectType)
-              .map(stuff => assignRelationshipsToRuntime(nextRuntime, stuff, true))
+              .assumeTrueWith(nextRuntime, trackingFormula, subjectType)
               .map(truthyRuntime => caseExpr.bodyExpression.getType(truthyRuntime))
 
             if (typeResult.isErr()) {
               return err(typeResult.error)
             }
+            bodyTypes.push(typeResult.get())
 
-            const runtimeResult = caseExpr
-              .gimmeFalseStuffWith(nextRuntime, trackingFormula, subjectType)
-              .map(stuff => assignRelationshipsToRuntime(nextRuntime, stuff, false))
+            const runtimeResult = caseExpr.assumeFalseWith(
+              nextRuntime,
+              trackingFormula,
+              subjectType,
+            )
 
             if (runtimeResult.isErr()) {
               return err(runtimeResult.error)
@@ -4734,7 +4743,6 @@ export class SwitchExpressionInvocation extends FunctionInvocationOperator {
                 "No subjectType type in SwitchExpression? that shouldn't happen",
               )
             }
-            bodyTypes.push(typeResult.get())
 
             const nextSubjectType = Types.narrowTypeIs(subjectType, caseSubjectType)
             return ok([nextSubjectType, bodyTypes])

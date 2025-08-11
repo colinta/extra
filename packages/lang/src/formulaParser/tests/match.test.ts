@@ -131,7 +131,7 @@ describe('match operator', () => {
       // I think this should be prevented by the compiler - and in most cases
       // _it is_ (in 'if', 'and', 'or', 'not' operations), but 'assumeFalse'
       // still needs to work, if only to return 'never' for the subject.
-      c.skip([
+      c([
         Types.oneOf([Types.string(), Types.int(), Types.nullType()]),
         [
           [Values.int(0), Values.int(0)],
@@ -140,8 +140,8 @@ describe('match operator', () => {
         ],
         'foo is bar and bar',
         {
-          // truthy: Types.oneOf([Types.string(), Types.int(), Types.nullType()]),
-          falsey: Types.oneOf([Types.string({min: 1}), Types.int()]),
+          truthy: Types.oneOf([Types.string({min: 1}), Types.int()]),
+          falsey: Types.never(),
           reverse: false,
         },
       ]),
@@ -761,7 +761,7 @@ describe('match operator', () => {
           [Values.array([Values.string('one')]), valueTrue],
           [Values.array([Values.string('one'), Values.string('two')]), valueFalse],
         ],
-        'foo is [bar]',
+        'foo is [_]',
         {
           truthy: Types.array(Types.string(), {min: 1, max: 1}),
           falsey: Types.oneOf([
@@ -781,7 +781,7 @@ describe('match operator', () => {
             Values.array([Values.string('one'), Values.string('two')]),
           ],
         ],
-        'foo is [bar] or foo',
+        'foo is [_] or foo',
         {
           truthy: Types.array(Types.string(), {min: 1}),
           falsey: Types.array(Types.string(), {max: 0}),
@@ -795,14 +795,14 @@ describe('match operator', () => {
           [Values.array([Values.string('one')]), valueTrue],
           [Values.array([Values.string('one'), Values.string('two')]), valueFalse],
         ],
-        'foo is [bar] or !foo',
+        'foo is [_] or !foo',
         {
           truthy: Types.array(Types.string(), {min: 0, max: 1}),
           falsey: Types.array(Types.string(), {min: 2}),
           reverse: false,
         },
       ]),
-      c.skip([
+      c([
         Types.array(Types.string()),
         [
           [Values.array([]), valueFalse],
@@ -813,11 +813,23 @@ describe('match operator', () => {
         'foo is [bar] and bar',
         {
           truthy: Types.array(Types.string(), {min: 1, max: 1}),
-          falsey: Types.oneOf([
-            Types.array(Types.string(), {max: 1}),
-            Types.array(Types.string(), {min: 2}),
-          ]),
+          falsey: Types.array(Types.string()),
           reverse: false,
+        },
+      ]),
+      c([
+        Types.array(Types.string()),
+        [
+          [Values.array([]), valueFalse],
+          [Values.array([Values.string('one')]), Values.string('one')],
+          [Values.array([Values.string('')]), Values.string('')],
+          [Values.array([Values.string('one'), Values.string('two')]), valueFalse],
+        ],
+        'foo is [bar] and bar',
+        {
+          truthy: Types.string({min: 1}),
+          reverse: false,
+          fetch: 'bar',
         },
       ]),
       c([
@@ -858,26 +870,38 @@ describe('match operator', () => {
           reverse: false,
         },
       ]),
-      c.skip([
+      c([
+        Types.array(Types.string()),
+        [],
+        'foo is [bar] or foo is [bar, _]',
+        {
+          truthy: Types.array(Types.string(), {min: 1, max: 2}),
+          falsey: Types.oneOf([
+            Types.array(Types.string(), {min: 0, max: 0}),
+            Types.array(Types.string(), {min: 3}),
+          ]),
+          reverse: false,
+        },
+      ]),
+      c([
         Types.array(Types.string()),
         [],
         'foo is [bar] or foo is [bar, _]',
         {
           truthy: Types.string(),
-          falsey: undefined,
+          falsey: Types.never(),
           reverse: false,
           fetch: 'bar',
         },
       ]),
-      c.skip([
+      c([
         Types.array(Types.string()),
         [],
-        'foo is [bar] or !foo',
+        'foo is [_] or !foo',
         {
-          truthy: Types.oneOf([Types.string(), Types.nullType()]),
+          truthy: Types.array(Types.string(), {max: 1}),
           falsey: undefined,
           reverse: false,
-          fetch: 'bar',
         },
       ]),
     ).run(([fooType, values, formula, expectedTypes], {only, skip}) => {
@@ -1022,15 +1046,25 @@ describe('match operator', () => {
   })
 
   describe('invalid getType', () => {
-    cases<[string, string]>(
+    cases<[string, [string, Types.Type][], string]>(
       //
-      c.skip(['1 is .some(value)', "Invalid left hand side of 'is'"]),
-    ).run(([formula, message], {only, skip}) =>
+      c.skip(['1 is .some(value)', [], "Invalid left hand side of 'is'"]),
+      c([
+        'foo is [bar] or foo',
+        [['foo', Types.array(Types.string())]],
+        "Invalid expressions in 'or'. 'foo is [bar]' assigns to 'bar', but 'foo' does not.",
+      ]),
+    ).run(([formula, values, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not parse ${formula}`, () => {
         expect(() => {
-          const type = parse(formula).get().getType(typeRuntime)
+          values.forEach(([name, type]) => {
+            runtimeTypes[name] = [type, Values.NullValue]
+          })
+
+          const expr = parse(formula).get()
+          const runtime = expr.assumeTrue(typeRuntime).get()
           console.log('=========== match.test.ts at line 226 ===========')
-          console.log({type})
+          console.log({runtime})
         }).toThrow(message)
       }),
     )

@@ -168,7 +168,7 @@ describe('toCode', () => {
     ),
   )
 
-  it('oneOf is smart', () => {
+  describe('oneOf is smart', () => {
     const human = Types.namedClass('human', new Map([['name', Types.string()]]))
     const student = Types.namedClass('student', new Map([['grade', Types.int()]]), human)
     const college = Types.namedClass('college', new Map([['debt', Types.int()]]), student)
@@ -176,34 +176,46 @@ describe('toCode', () => {
     const animal = Types.namedClass('animal', new Map([['legs', Types.int()]]))
     const dog = Types.namedClass('dog', new Map([['name', Types.string()]]), animal)
 
-    expect(Types.oneOf([])).toBe(Types.never())
-    expect(Types.oneOf([Types.int()])).toBe(Types.int())
-    expect(Types.oneOf([Types.int(), Types.nullType()])).toEqual(
-      Types.OptionalType._privateOptional(Types.int()),
-    )
-    expect(Types.oneOf([Types.int(), Types.string()])).toEqual(
-      privateOneOf(Types.int(), Types.string()),
-    )
-    expect(Types.oneOf([Types.int(), Types.string(), Types.nullType()])).toEqual(
-      privateOneOf(Types.int(), Types.string(), Types.nullType()),
-    )
-    expect(Types.oneOf([Types.oneOf([Types.int(), Types.string()])])).toEqual(
-      privateOneOf(Types.int(), Types.string()),
-    )
-    expect(
-      Types.oneOf([
-        Types.oneOf([Types.int(), Types.string()]),
-        Types.oneOf([Types.int(), Types.booleanType()]),
+    cases<[Types.Type, Types.Type]>(
+      c([Types.oneOf([]), Types.never()]),
+      c([Types.oneOf([Types.int()]), Types.int()]),
+      c([
+        Types.oneOf([Types.int(), Types.nullType()]),
+        Types.OptionalType._privateOptional(Types.int()),
       ]),
-    ).toEqual(privateOneOf(Types.int(), Types.string(), Types.booleanType()))
-    expect(Types.oneOf([human, student])).toEqual(human)
-    expect(Types.oneOf([human, worker])).toEqual(human)
-    expect(Types.oneOf([human, worker, student])).toEqual(human)
-    expect(Types.oneOf([human, worker, student, animal])).toEqual(privateOneOf(human, animal))
-    expect(Types.oneOf([human, worker, student, animal, dog])).toEqual(privateOneOf(human, animal))
-    expect(Types.oneOf([worker, student])).toEqual(privateOneOf(worker, student))
-    expect(Types.oneOf([worker, student, college])).toEqual(privateOneOf(worker, student))
-    expect(Types.oneOf([worker, college, student])).toEqual(privateOneOf(worker, student))
+      c([Types.oneOf([Types.int(), Types.string()]), privateOneOf(Types.int(), Types.string())]),
+      c([
+        Types.oneOf([Types.int(), Types.string(), Types.nullType()]),
+        privateOneOf(Types.int(), Types.string(), Types.nullType()),
+      ]),
+      c([
+        Types.oneOf([Types.oneOf([Types.int(), Types.string()])]),
+        privateOneOf(Types.int(), Types.string()),
+      ]),
+
+      c([
+        Types.oneOf([
+          Types.oneOf([Types.int(), Types.string()]),
+          Types.oneOf([Types.int(), Types.booleanType()]),
+        ]),
+        privateOneOf(Types.int(), Types.string(), Types.booleanType()),
+      ]),
+      c([Types.oneOf([human, student]), human]),
+      c([Types.oneOf([human, worker]), human]),
+      c([Types.oneOf([human, worker, student]), human]),
+      c([Types.oneOf([human, worker, student, animal]), privateOneOf(human, animal)]),
+      c([Types.oneOf([human, worker, student, animal, dog]), privateOneOf(human, animal)]),
+      c([Types.oneOf([worker, student]), privateOneOf(worker, student)]),
+      c([Types.oneOf([worker, student, college]), privateOneOf(worker, student)]),
+      c([Types.oneOf([worker, college, student]), privateOneOf(worker, student)]),
+    ).run(([type, expected], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(
+        `toCode of ${type.toCode()} should be ${expected}`,
+        () => {
+          expect(type).toEqual(expected)
+        },
+      ),
+    )
   })
 })
 

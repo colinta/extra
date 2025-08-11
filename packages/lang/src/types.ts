@@ -2024,13 +2024,21 @@ export class MetaStringType extends Type {
   }
 
   compatibleWithBothNarrowed(rhs: MetaStringType) {
+    const sameRegex =
+      this.narrowedString.regex.length === rhs.narrowedString.regex.length &&
+      this.narrowedString.regex.every(lhsRegex =>
+        rhs.narrowedString.regex.some(
+          rhsRegex => lhsRegex.source === rhsRegex.source && lhsRegex.flags === rhsRegex.flags,
+        ),
+      )
+
+    // if both strings have regex, but the regex isn't the same, use 'one-of' type
     // originally I had concatenated lhs.narrowedString.regex and
     // rhs.narrowedString.regex, but I see that's incorrect.
     //     a: String(matches: /^foo/)
     //     b: String(matches: /^bar/)
     //     a | b => ?
-    if (this.narrowedString.regex.length || rhs.narrowedString.regex.length) {
-      // TODO: if the regex's are identical, we can keep that narrowed type
+    if (!sameRegex && this.narrowedString.regex.length && rhs.narrowedString.regex.length) {
       return undefined
     }
 
@@ -2038,7 +2046,13 @@ export class MetaStringType extends Type {
       this.narrowedString.length,
       rhs.narrowedString.length,
     )
-    return new MetaStringType({length: length ?? Narrowed.DEFAULT_NARROWED_LENGTH, regex: []})
+
+    // either one of the string types doesn't have regex, or the regex is the same
+    const regex =
+      !this.narrowedString.regex.length || !rhs.narrowedString.regex.length
+        ? []
+        : rhs.narrowedString.regex
+    return new MetaStringType({length: length ?? Narrowed.DEFAULT_NARROWED_LENGTH, regex})
   }
 
   typeConstructor(): TypeConstructor {
