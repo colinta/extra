@@ -1638,6 +1638,10 @@ export abstract class Argument extends Expression {
     return this.value.dependencies()
   }
 
+  isPositional() {
+    return this.alias === undefined
+  }
+
   innerLisp() {
     if (this.alias !== undefined) {
       return `${this.alias}: ${this.value.toLisp()}`

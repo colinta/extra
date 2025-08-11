@@ -4486,25 +4486,25 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
 
     const condition = this.conditionExpr.toCode()
     const elseCode = this.elseExpr.toCode()
-    const bodyCode = this.bodyExpr.toCode()
-    const hasNewline =
-      condition.includes('\n') || elseCode.includes('\n') || bodyCode.includes('\n')
-    let totalLength = 0
-    if (!hasNewline) {
-      totalLength += condition.length + elseCode.length + bodyCode.length
-      totalLength += ' else:'.length
-    }
-    if (hasNewline || totalLength > SMALL_LEN) {
-      let code = 'guard (\n'
-      code += indent(condition) + '\n'
-      code += 'else:\n'
-      code += indent(elseCode) + '\n'
-      code += '):\n'
-      code += indent(bodyCode)
-      return code
+    let bodyCode: string
+    if (
+      this.bodyExpr instanceof Expressions.ArgumentsList &&
+      this.bodyExpr.parenArgs.length === 0 &&
+      this.bodyExpr.blockArgs.length === 1 &&
+      this.bodyExpr.blockArgs[0] &&
+      this.bodyExpr.blockArgs[0].isPositional()
+    ) {
+      bodyCode = this.bodyExpr.blockArgs[0].toCode()
     } else {
-      return `guard (${condition}, else: ${elseCode}): ${bodyCode}`
+      bodyCode = this.bodyExpr.toCode()
     }
+    let code = 'guard (\n'
+    code += indent(condition) + '\n'
+    code += 'else:\n'
+    code += indent(elseCode) + '\n'
+    code += '):\n\n'
+    code += bodyCode
+    return code
   }
 
   // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {

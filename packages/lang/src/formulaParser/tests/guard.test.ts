@@ -30,24 +30,54 @@ guard (
 else:
   [3]
 ):
-  [1]`,
+
+[1]`,
       ]),
       c([
         'guard (not a or b, else: 3, 1)',
         '(guard ((or (not a) b) (else: 3) 1))',
-        `guard (not a or b, else: 3): 1`,
+        `guard (
+  not a or b
+else:
+  3
+):
+
+1`,
       ]),
       c([
         '1 + guard (a) { else: 3, 1 }',
         '(+ 1 (guard (a) { (else: 3) 1 }))',
-        '1 + guard (a, else: 3): 1',
+        `1 + guard (
+  a
+else:
+  3
+):
+
+1`,
       ]),
       c([
         '1 + guard (a) { 1\nelse: 3 }',
         '(+ 1 (guard (a) { 1 (else: 3) }))',
-        '1 + guard (a, else: 3): 1',
+        `1 + guard (
+  a
+else:
+  3
+):
+
+1`,
       ]),
-      c(["guard (a) { 1, else: '4' }", "(guard (a) { 1 (else: '4') })", "guard (a, else: '4'): 1"]),
+      c([
+        "guard (a) { 1, else: '4' }",
+        "(guard (a) { 1 (else: '4') })",
+        `\
+guard (
+  a
+else:
+  '4'
+):
+
+1`,
+      ]),
       c([
         `[
   guard (a) {
@@ -69,7 +99,14 @@ else:
   else:
     1
   ):
-    guard (b, else: '4'): 3
+
+  guard (
+    b
+  else:
+    '4'
+  ):
+
+  3
   '4'
 ]`,
       ]),
@@ -82,7 +119,14 @@ else:
 }
 `,
         "(guard (a) { 1 (else: '4') })",
-        "guard (a, else: '4'): 1",
+        `\
+guard (
+  a
+else:
+  '4'
+):
+
+1`,
       ]),
       c([
         `\
@@ -103,7 +147,8 @@ guard (
 else:
   '4' <> '5'
 ):
-  1 + 2`,
+
+1 + 2`,
       ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse guard '${formula}'`, () => {
@@ -112,6 +157,9 @@ else:
 
         expect(expression!.toCode()).toEqual(expectedCode)
         expect(expression!.toLisp()).toEqual(expectedLisp)
+
+        expression = parse(expectedCode).get()
+        expect(expression!.toCode()).toEqual(expectedCode)
       }),
     )
   })
