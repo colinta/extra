@@ -17,7 +17,7 @@ describe('comments', () => {
           "[-1, 2, 3] |> -- start with an array\n\n  join(', ')",
           "[-1, 2, 3] |>\n -- start with an array\n  join(', ')",
           // this doesn't work! `join` is a valid expression, we stop
-          // scannig at the end of the line
+          // scanning at the end of the line
           // "[-1, 2, 3] |>\n  join -- start with an array\n(', ')",
           "[-1, 2, 3] |>\n  join( -- start with an array\n', ')",
           "[-1, 2, 3] |>\n  join(', ' -- start with an array\n)",
