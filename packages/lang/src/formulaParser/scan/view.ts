@@ -1,252 +1,78 @@
 import * as Expressions from '../expressions'
-import {type Expression} from '../expressions'
-import {isViewStart, isWhitespaceChar} from '../grammars'
-
-import {type Scanner} from '../scanner'
-import {ParseError, type ParseNext} from '../types'
-
-import {unexpectedToken} from './basics'
-import {scanValidName} from './identifier'
-
-export function scanView(scanner: Scanner, parseNext: ParseNext) {
-  scanner.whereAmI('scanView')
-  const range0 = scanner.charIndex
-
-  scanner.expectString('<')
-  // no whitespace allowed after '<'
-
-  let nameRef: Expressions.Reference | undefined // '' --> <></> fragment
-  let scanChildren = true
-  const props: Expressions.NamedArgument[] = []
-  let children: Expression[] = []
-  if (scanner.scanIfString('>')) {
-    scanner.whereAmI('scanView <>')
-    // fragment - don't scan name or props
-  } else {
-    nameRef = scanValidName(scanner)
-
-    scanner.scanAllWhitespace()
-
-    if (scanner.scanIfString('/>')) {
-      scanner.whereAmI(`scanView:closer <${nameRef.name} />`)
-      scanChildren = false
-    } else {
-      // scan props a=b a=(b + c) a=foo.bar, etc
-      scanner.whereAmI(`scanView <${nameRef?.name}`)
-      for (;;) {
-        if (scanner.scanIfString('>')) {
-          scanner.whereAmI(
-            `scanView <${nameRef?.name} ${props.map(prop => prop.alias + '=…').join(' ')}>`,
-          )
-          break
-        }
-
-        if (scanner.scanIfString('/>')) {
-          scanner.whereAmI(`scanView:closer <${nameRef?.name} />`)
-          scanChildren = false
-          break
-        }
-
-        const isNegate = scanner.scanIfString('!')
-        const argRange0 = scanner.charIndex
-        const propName = scanPropName(scanner)
-
-        if (isNegate) {
-          scanner.whereAmI(`scanView:isNegate <${nameRef?.name} !${propName}`)
-          props.push(
-            new Expressions.NamedArgument(
-              [argRange0, scanner.charIndex],
-              scanner.flushComments(),
-              propName,
-              new Expressions.FalseExpression(
-                [argRange0, scanner.charIndex],
-                scanner.flushComments(),
-              ),
-            ),
-          )
-          if (!isWhitespaceChar(scanner.char) && scanner.char !== '>') {
-            throw new ParseError(
-              scanner,
-              `Expected property name or '>', found '${unexpectedToken(scanner)}'`,
-            )
-          }
-
-          scanner.scanAllWhitespace()
-        } else if (scanner.scanIfString('=')) {
-          scanner.whereAmI(`scanView:propName <${nameRef?.name} ${propName}=`)
-          const propValue = parseNext('view_property')
-          scanner.whereAmI(`scanView:propValue <${nameRef?.name} ${propName}=${propValue}`)
-
-          props.push(
-            new Expressions.NamedArgument(
-              [argRange0, scanner.charIndex],
-              scanner.flushComments(),
-              propName,
-              propValue,
-            ),
-          )
-
-          scanner.scanAllWhitespace()
-        } else {
-          scanner.whereAmI(`scanView:boolean <${nameRef?.name} ${propName}`)
-          props.push(
-            new Expressions.NamedArgument(
-              [argRange0, scanner.charIndex],
-              scanner.flushComments(),
-              propName,
-              new Expressions.TrueExpression(
-                [argRange0, scanner.charIndex],
-                scanner.flushComments(),
-              ),
-            ),
-          )
-
-          scanner.scanAllWhitespace()
-        }
-      }
-    }
-  }
-
-  const name = nameRef?.name ?? ''
-  if (scanChildren) {
-    let indent = ''
-    scanner.whereAmI(`scanView <${name}>{children}`)
-    for (;;) {
-      const scanStart = scanner.charIndex
-      if (scanner.scanIfString('</')) {
-        if (!scanner.scanIfString(name + '>')) {
-          throw new ParseError(
-            scanner,
-            `Expected a matching closing tag '</${name}>', found '</${unexpectedToken(scanner)}>'`,
-          )
-        }
-
-        // save location after closing tag
-        const rewind = scanner.charIndex
-        // rewind to just before '</...>'
-        scanner.rewindTo(scanStart - 1)
-        // rewind as long as we are at a space or tab
-        while (scanner.charIndex > 0 && (scanner.is(' ') || scanner.is('\t'))) {
-          scanner.charIndex -= 1
-        }
-
-        // if we are at the start of the line, save the indent
-        if (scanner.charIndex === 0 || scanner.is('\n')) {
-          const offset = scanner.is('\n') ? 1 : 0
-          indent = scanner.input.substring(scanner.charIndex + offset, scanStart)
-          scanner.whereAmI(`scanView <${name}>indent: '${indent}'`)
-        }
-        scanner.whereAmI(`scanView <${name}>…(${children.length})…</${name}>`)
-        scanner.rewindTo(rewind)
-        break
-      }
-
-      // only {- -} comments are supported in views
-      // -- should be printed
-      if (scanner.is('{-')) {
-        scanner.scanComment()
-      } else if (scanner.scanIfString('{')) {
-        const child = parseNext('view_embed')
-        scanner.expectString('}')
-        children.push(child)
-        scanner.whereAmI(`scanView <${name}> {${child}}`)
-      } else if (isViewStart(scanner.remainingInput)) {
-        const view = scanView(scanner, parseNext)
-        children.push(view)
-        scanner.whereAmI(`scanView <${name}> ${view}`)
-      } else {
-        // anything but whitespace --> text node, until EOL
-        const textRange0 = scanner.charIndex
-        let stringBuffer = ''
-        for (;;) {
-          if (scanner.scanIfString('\\{', false)) {
-            stringBuffer += '{'
-          } else if (scanner.scanIfString('\\}', false)) {
-            stringBuffer += '}'
-          } else if (scanner.scanIfString('\\<', false)) {
-            stringBuffer += '<'
-          } else if (scanner.scanIfString('\\>', false)) {
-            stringBuffer += '>'
-          } else if (scanner.scanIfString('\\\n', false)) {
-            stringBuffer += '\n'
-          } else if (scanner.is('<')) {
-            if (scanner.is(/<[a-zA-Z/]/)) {
-              break
-            }
-            stringBuffer += scanner.char
-            scanner.charIndex += 1
-          } else if (scanner.is('{')) {
-            // don't consume, leave for next iteration
-            break
-          } else {
-            stringBuffer += scanner.char
-            scanner.charIndex += 1
-          }
-        }
-
-        if (stringBuffer.length > 0) {
-          scanner.whereAmI(`scanView <${name}>: ${stringBuffer}`)
-          children.push(
-            new Expressions.StringLiteral(
-              [textRange0, scanner.charIndex],
-              scanner.flushComments(),
-              stringBuffer,
-            ),
-          )
-        }
-      }
-    }
-
-    children = children.map(child => {
-      if (child instanceof Expressions.StringLiteral) {
-        const lines = child.stringValue.split('\n').map(line => {
-          if (line === '') {
-            return line
-          } else if (line.startsWith(indent)) {
-            return line.substring(indent.length)
-          } else {
-            return line
-          }
-        })
-
-        return new Expressions.StringLiteral(child.range, scanner.flushComments(), lines.join('\n'))
-      } else {
-        return child
-      }
-    })
-  }
-
-  if (nameRef) {
-    return new Expressions.NamedViewExpression(
-      [range0, scanner.charIndex],
-      scanner.flushComments(),
-      nameRef,
-      props,
-      children,
-    )
-  } else {
-    return new Expressions.FragmentViewExpression(
-      [range0, scanner.charIndex],
-      scanner.flushComments(),
-      props,
-      children,
-    )
-  }
-}
+import {ARGS_OPEN, PUBLIC_KEYWORD, VIEW_KEYWORD} from '../grammars'
+import type {Scanner} from '../scanner'
+import {type ParseNext, ParseError} from '../types'
+import {scanValidViewName} from './identifier'
+import {scanClassBody} from './class'
+import {scanViewFormula} from './formula'
 
 /**
- * Any valid name character, _plus_ ':'
+ * Scans a view type:
+ *
+ *     view Name {}
+ *     public view Name {}
+ *
+ * Must have a render function, but this is part of runtime type checking.
+ *     override render(…props…) => ...<JSX />
+ *
+ * State
+ *     \@name: Type = 'value'
+ *
+ * Could have Context and Children
+ *     Context: <Type>
+ *     Children: <Type>
+ *
+ * Helpers and Messages
+ *     fn message() => @foo = 'bar'
+ *     fn addOne(a: String) => a + 1
  */
-function scanPropName(scanner: Scanner) {
-  let name = ''
-  for (;;) {
-    name += scanValidName(scanner).name
-    if (scanner.scanIfString(':', false)) {
-      name += ':'
-    } else {
-      break
-    }
+
+export function scanView(scanner: Scanner, parseNext: ParseNext) {
+  const precedingComments = scanner.flushComments()
+  const range0 = scanner.charIndex
+  const isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
+  scanner.whereAmI('isPublic: ' + isPublic)
+  if (isPublic) {
+    scanner.expectWhitespace()
   }
 
-  return name
+  if (scanner.test(isViewFormula)) {
+    const formula = scanViewFormula(scanner, 'expression', parseNext)
+    return new Expressions.ViewDefinition(
+      [range0, scanner.charIndex],
+      precedingComments,
+      formula,
+      isPublic,
+    )
+  }
+  scanner.expectWord(VIEW_KEYWORD)
+
+  const nameRef = scanValidViewName(scanner)
+  scanner.whereAmI('name: ' + nameRef)
+  scanner.scanAllWhitespace()
+  const {properties, formulas} = scanClassBody(scanner, parseNext, 'view')
+  scanner.debug = false
+
+  const lastComments = scanner.flushComments()
+
+  return new Expressions.View(
+    [range0, scanner.charIndex],
+    precedingComments,
+    lastComments,
+    nameRef,
+    properties,
+    formulas,
+    isPublic,
+  )
+}
+
+function isViewFormula(scanner: Scanner) {
+  if (!scanner.scanIfWord(VIEW_KEYWORD)) {
+    return false
+  }
+  scanner.expectWhitespace()
+  scanValidViewName(scanner)
+  scanner.scanAllWhitespace()
+
+  return scanner.is(ARGS_OPEN)
 }

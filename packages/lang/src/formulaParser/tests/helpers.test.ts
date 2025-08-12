@@ -1,5 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
-import {parseInternalTest} from '../../formulaParser'
+import {testScan} from '../../formulaParser'
+import {scanHelperDefinition} from '../scan/application'
 
 describe('helper', () => {
   cases<[string, string] | [string, string, string]>(
@@ -8,7 +9,7 @@ describe('helper', () => {
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse helper definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula
-      const [expression] = parseInternalTest(formula, 'app_helper_definition').get()
+      const expression = testScan(formula, scanHelperDefinition)
 
       expect(expression!.toCode()).toEqual(expectedCode)
       expect(expression!.toLisp()).toEqual(expectedLisp)
@@ -18,12 +19,12 @@ describe('helper', () => {
 
 describe('bad helpers', () => {
   cases<[string, string]>(
-    c(['fn Asdf() => ""', 'Formulas must start with an uppercased letter']),
+    c(['fn Asdf() => ""', 'References must start with a lowercased letter']),
   ).run(([formula, error], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
       `should error parsing Helper definitions ${formula}`,
       () => {
-        expect(() => parseInternalTest(formula, 'app_helper_definition').get()).toThrow(error)
+        expect(() => testScan(formula, scanHelperDefinition)).toThrow(error)
       },
     ),
   )

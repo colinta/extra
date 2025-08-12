@@ -1,5 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
-import {parseInternalTest} from '../../formulaParser'
+import {testScan} from '../../formulaParser'
+import {scanTypeDefinition} from '../scan/application'
 
 describe('application types', () => {
   cases<[string, string] | [string, string, string]>(
@@ -131,7 +132,8 @@ public class User<T> {
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse type definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula
-      const [expression] = parseInternalTest(formula, 'app_type_definition').get()
+      debugger
+      const expression = testScan(formula, scanTypeDefinition)
 
       expect(expression?.toCode()).toEqual(expectedCode)
       expect(expression?.toLisp()).toEqual(expectedLisp)
@@ -194,7 +196,7 @@ class User {
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse class definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula
-      const [expression] = parseInternalTest(formula, 'app_type_definition').get()
+      const expression = testScan(formula, scanTypeDefinition)
 
       expect(expression?.toCode()).toEqual(expectedCode)
       expect(expression?.toLisp()).toEqual(expectedLisp)

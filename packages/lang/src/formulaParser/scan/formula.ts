@@ -2,11 +2,17 @@ import * as Expressions from '../expressions'
 import {type Expression} from '../expressions'
 import {type Scanner} from '../scanner'
 import {type ExpressionType, type Comment, ParseError, type ParseNext} from '../types'
-import {FUNCTION_BODY_START, GENERIC_CLOSE, GENERIC_OPEN, isArgumentStartChar} from '../grammars'
+import {
+  FUNCTION_BODY_START,
+  GENERIC_CLOSE,
+  GENERIC_OPEN,
+  isArgumentStartChar,
+  OVERRIDE_KEYWORD,
+} from '../grammars'
 
 import {scanArgumentType} from './argument_type'
 import {scanFormulaArgumentDefinitions} from './formula_arguments'
-import {scanValidFormulaName, scanValidTypeName, scanValidViewName} from './identifier'
+import {scanValidReferenceName, scanValidTypeName, scanValidViewName} from './identifier'
 
 export function scanFormula(
   scanner: Scanner,
@@ -45,6 +51,16 @@ export function scanNamedFormula(
   }) as Expressions.NamedFormulaExpression
 }
 
+export function scanRenderFormula(scanner: Scanner, parseNext: ParseNext) {
+  const value = _scanFormula(scanner, 'class', parseNext, {
+    type: 'render',
+    isNamedFn: false,
+    bodyExpressionType: 'class',
+  }) as Expressions.ViewFormulaExpression
+
+  return value
+}
+
 export function scanViewFormula(
   scanner: Scanner,
   expressionType: ExpressionType,
@@ -67,31 +83,19 @@ export function scanViewFormula(
   return value
 }
 
-export function scanMainFormula(
-  scanner: Scanner,
-  parseNext: ParseNext,
-  bodyExpressionType?: ExpressionType,
-) {
-  return _scanFormula(scanner, 'expression', parseNext, {
-    type: 'Main',
-    isNamedFn: false,
-    bodyExpressionType,
-  }) as Expressions.MainFormulaExpression
-}
-
 function _scanFormula(
   scanner: Scanner,
   expressionType: ExpressionType,
   parseNext: ParseNext,
   options: {
-    type: 'Main' | 'view' | 'fn' | 'static'
+    type: 'fn' | 'static' | 'view' | 'render'
     isNamedFn: boolean
     bodyExpressionType: ExpressionType | undefined
   },
 ) {
   const {type, isNamedFn} = options
   let {bodyExpressionType} = options
-  const isInView = type === 'view' || type === 'Main'
+  const isInView = type === 'view' || type === 'render'
   // not all expressionTypes are supported as scanFormula expression types
   if (bodyExpressionType === undefined) {
     switch (expressionType) {
@@ -107,7 +111,8 @@ function _scanFormula(
       case 'expression':
       case 'interpolation':
       case 'parens':
-      case 'view_embed':
+      case 'jsx_embed':
+      case 'app_view_definition':
         bodyExpressionType = expressionType
         break
       default:
@@ -120,7 +125,16 @@ function _scanFormula(
 
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  scanner.expectString(typeExpect, `Expected '${type}(' to start the formula expression`)
+
+  let isOverride = false
+  if (bodyExpressionType === 'class' && typeExpect === 'fn') {
+    isOverride = scanner.scanIfWord(OVERRIDE_KEYWORD)
+    if (isOverride) {
+      scanner.expectWhitespace()
+    }
+  }
+
+  scanner.expectString(typeExpect, `Expected '${typeExpect}(' to start the formula expression`)
   if (isNamedFn) {
     scanner.expectWhitespace()
   }
@@ -132,7 +146,7 @@ function _scanFormula(
     if (type === 'view') {
       nameRef = scanValidViewName(scanner)
     } else {
-      nameRef = scanValidFormulaName(scanner)
+      nameRef = scanValidReferenceName(scanner)
     }
   }
   scanner.whereAmI(`scanFormula name = ${nameRef}`)
@@ -140,12 +154,12 @@ function _scanFormula(
   if (isNamedFn && nameRef === undefined) {
     throw new ParseError(scanner, `Expected function name after '${type}'`)
   } else if (!isNamedFn && nameRef !== undefined) {
-    throw new ParseError(scanner, `Unexpected named for '${type}'`)
+    throw new ParseError(scanner, `Unexpected name '${nameRef}' for formula type '${type}'`)
   }
   scanner.scanAllWhitespace()
 
   let generics: string[] = []
-  if (type === 'fn') {
+  if (type === 'fn' || type === 'static') {
     if (scanner.scanIfString(GENERIC_OPEN)) {
       generics = scanGenerics(scanner, parseNext)
     }
@@ -208,18 +222,6 @@ function _scanFormula(
       argDeclarations,
       returnType,
       body,
-      generics,
-    )
-  } else if (type === 'Main') {
-    return new Expressions.MainFormulaExpression(
-      [range0, body.range[1]],
-      precedingComments,
-      precedingNameComments,
-      precedingReturnTypeComments,
-      argDeclarations,
-      returnType,
-      body,
-      generics,
     )
   } else {
     if (type === 'static' && nameRef) {
@@ -245,6 +247,7 @@ function _scanFormula(
         returnType,
         body,
         generics,
+        isOverride,
       )
     }
 

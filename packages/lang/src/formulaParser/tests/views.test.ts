@@ -1,5 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
-import {parseInternalTest} from '../../formulaParser'
+import {testScan} from '../../formulaParser'
+import {scanView} from '../scan/view'
 
 describe('view', () => {
   cases<[string, string] | [string, string, string]>(
@@ -115,7 +116,7 @@ describe('view', () => {
     ]),
   ).run(([formula, expectedLisp, expectedFormula], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse view definition '${formula}'`, () => {
-      const [expression] = parseInternalTest(formula, 'app_view_definition').get()
+      const expression = testScan(formula, scanView)
 
       expect(expression!.toCode()).toEqual(expectedFormula ?? formula)
       expect(expression!.toLisp()).toEqual(expectedLisp)
@@ -125,13 +126,13 @@ describe('view', () => {
 
 describe('bad views', () => {
   cases<[string, string]>(
-    c(['asdf() => <></>', "Expected 'view(' to start the formula expression"]),
+    c(['asdf() => <></>', "Expected 'view', found 'asdf()'"]),
     c(['view asdf() => <></>', 'Views must start with an uppercased letter']),
   ).run(([formula, error], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
       `should error parsing View definitions ${formula}`,
       () => {
-        expect(() => parseInternalTest(formula, 'app_view_definition').get()).toThrow(error)
+        expect(() => testScan(formula, scanView)).toThrow(error)
       },
     ),
   )

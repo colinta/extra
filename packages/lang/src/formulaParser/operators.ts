@@ -63,9 +63,14 @@ export const HIGHEST_PRECEDENCE = 100
 
 export const SPREAD_OPERATOR = '...'
 
-export const BINARY_OP_SYMBOLS = ['=', '|>', '?|>', '??', '^', '|', '&', '==', '!=', '>']
-  .concat(['>=', '<', '<=', '<=>', '::', '++', '<>', '~~', '...', '<..', '..<', '<.<', '<<', '>>'])
-  .concat(['+', '-', '*', '/', '//', '%', '**', '.', '?.', '&&', '||', '!?', '?!', '≤', '≥', '≠'])
+export const BINARY_ASSIGN_SYMBOLS = ['&=', '|=', '^=', '::=', '++=', '<>=']
+  .concat(['~~=', '<<=', '>>=', '+=', '-=', '*=', '/=', '//=', '%=', '**='])
+  .concat(['and=', 'or='])
+export const BINARY_OP_SYMBOLS = ['=', '|>', '?|>', '??', '^', '|', '&']
+  .concat(['==', '!=', '>', '>=', '<', '<=', '<=>', '::', '++', '<>', '~~'])
+  .concat(['...', '<..', '..<', '<.<', '<<', '>>', '+', '-', '*', '/', '//'])
+  .concat(['%', '**', '.', '?.', '&&', '||', '!?', '?!', '≤', '≥', '≠'])
+
 export const UNARY_OP_SYMBOLS = ['=', '>', '>=', '<', '<=', '-', '~', '$', '.', '!']
 
 const PRECEDENCE = {
@@ -166,7 +171,7 @@ export function binaryOperatorNamed(
   followingOperatorComments: Comment[] = [],
 ): Operator {
   const op = BINARY_OPERATORS.get(symbol)!
-  return {...op, precedingComments, followingOperatorComments: followingOperatorComments}
+  return {...op, precedingComments, followingOperatorComments}
 }
 
 export function unaryOperatorNamed(

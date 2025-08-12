@@ -1,5 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
-import {parseInternalTest} from '../../formulaParser'
+import {testScan} from '../../formulaParser'
+import {scanFormulaArgumentDefinitions} from '../scan/formula_arguments'
 
 describe('argument parser', () => {
   describe('arguments', () => {
@@ -85,7 +86,9 @@ describe('argument parser', () => {
         `should parse argument definitions '${formula}'`,
         () => {
           expectedCode = expectedCode ?? formula
-          const [expression] = parseInternalTest(`(${formula})`, 'test_formula_arguments').get()
+          const expression = testScan(`(${formula})`, (scanner, parseNext) =>
+            scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
+          )
 
           expect(expression!.toCode()).toEqual(expectedCode)
           expect(expression!.toLisp()).toEqual(expectedLisp)
@@ -105,7 +108,9 @@ describe('argument parser', () => {
         `should not parse argument definitions ${formula}`,
         () => {
           expect(() => {
-            parseInternalTest(`(${formula})`, 'test_formula_arguments').get()
+            testScan(`(${formula})`, (scanner, parseNext) =>
+              scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
+            )
           }).toThrow(message)
         },
       ),
@@ -124,7 +129,9 @@ describe('argument parser', () => {
       c(['number  :Int,asdf:Float', '((number: `Int`) (asdf: `Float`))']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse arguments ${formula}`, () => {
-        const [expression] = parseInternalTest(`(${formula})`, 'test_formula_arguments').get()
+        const expression = testScan(`(${formula})`, (scanner, parseNext) =>
+          scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
+        )
 
         expect(expression!.toLisp()).toEqual(expected)
       }),
@@ -145,7 +152,9 @@ describe('argument parser', () => {
     ).run(([formula, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not parse arguments ${formula}`, () => {
         expect(() => {
-          parseInternalTest(`(${formula})`, 'test_formula_arguments').get()
+          testScan(`(${formula})`, (scanner, parseNext) =>
+            scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
+          )
         }).toThrow(message)
       }),
     )

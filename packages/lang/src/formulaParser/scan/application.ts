@@ -8,8 +8,7 @@ import {
   scanValidTypeName,
 } from './identifier'
 import {type Comment, ParseError, type ParseNext} from '../types'
-import {type Expression} from '../expressions'
-import {scanGenerics, scanMainFormula, scanNamedFormula, scanViewFormula} from './formula'
+import {scanGenerics, scanNamedFormula} from './formula'
 import {
   CLASS_KEYWORD,
   ENUM_KEYWORD,
@@ -19,7 +18,9 @@ import {
   PUBLIC_KEYWORD,
   TYPE_KEYWORD,
 } from '../grammars'
-import {scanClass, scanEnum} from './argument_type'
+import {scanClass} from './class'
+import {scanEnum} from './enum'
+import {scanArgumentType} from './argument_type'
 
 export function scanRequiresStatement(scanner: Scanner) {
   const precedingComments = scanner.flushComments()
@@ -46,16 +47,43 @@ export function scanRequiresStatement(scanner: Scanner) {
       break
     }
   }
+  const followingComments = scanner.flushComments()
 
-  return new Expressions.RequiresStatement([range0, scanner.charIndex], precedingComments, envs)
+  return new Expressions.RequiresStatement(
+    [range0, scanner.charIndex],
+    precedingComments,
+    envs,
+    followingComments,
+  )
+}
+
+export function scanProvidesStatement(scanner: Scanner) {
+  const precedingComments = scanner.flushComments()
+  scanner.expectString('provides')
+  if (scanner.is('\n') || scanner.isEOF()) {
+    throw new ParseError(scanner, `Expected export type after 'provides' expression`)
+  }
+
+  scanner.expectSpaces()
+
+  const range0 = scanner.charIndex
+  const name = scanAnyReference(scanner).name
+  scanner.scanSpaces()
+  const followingComments = scanner.flushComments()
+
+  return new Expressions.ProvidesStatement(
+    [range0, scanner.charIndex],
+    precedingComments,
+    name,
+    followingComments,
+  )
 }
 
 export function scanImportStatement(scanner: Scanner) {
   const precedingComments = scanner.flushComments()
   let precedingSpecifierComments: Comment[] = []
 
-  scanner.expectString(IMPORT_KEYWORD)
-  scanner.expectWhitespace()
+  scanner.expectWord(IMPORT_KEYWORD)
   const precedingSourceComments = scanner.flushComments()
 
   const range0 = scanner.charIndex
@@ -195,26 +223,26 @@ export function scanImportStatement(scanner: Scanner) {
 }
 
 export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
+  if (scanner.test(isClass)) {
+    return scanClass(scanner, parseNext)
+  }
+
+  if (scanner.test(isEnum)) {
+    return scanEnum(scanner, parseNext, {isFnArg: false})
+  }
+
+  return scanApplicationType(scanner, parseNext)
+}
+
+export function scanApplicationType(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
+
   let isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
   if (isPublic) {
     scanner.expectWhitespace()
   }
-
-  if (scanner.is(CLASS_KEYWORD)) {
-    return scanClass(scanner, parseNext, {isPublic})
-  } else if (scanner.is(ENUM_KEYWORD)) {
-    return scanEnum(scanner, parseNext, {isPublic, isFnArg: false})
-  }
-
-  scanner.expectString(TYPE_KEYWORD, 'Types must be preceded by the "type" keyword.')
-  scanner.expectWhitespace()
-
-  if (!isPublic && scanner.isWord(PUBLIC_KEYWORD)) {
-    isPublic = true
-    scanner.expectWhitespace()
-  }
+  scanner.expectWord(TYPE_KEYWORD, 'Types must be preceded by the "type" keyword.')
 
   const name = scanValidTypeName(scanner).name
   scanner.scanAllWhitespace()
@@ -227,7 +255,7 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
 
   scanner.expectString('=')
   scanner.scanAllWhitespace()
-  const type = parseNext('application_type')
+  const type = scanArgumentType(scanner, 'application_type', parseNext)
 
   return new Expressions.TypeDefinition(
     [range0, scanner.charIndex],
@@ -235,66 +263,6 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
     name,
     type,
     generics,
-    isPublic,
-  )
-}
-
-export function scanStateDefinition(scanner: Scanner, parseNext: ParseNext) {
-  const precedingComments = scanner.flushComments()
-  const range0 = scanner.charIndex
-  const isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
-  if (isPublic) {
-    scanner.expectWhitespace()
-  }
-
-  scanner.expectString('@', "States must start with the at '@' symbol")
-  const name = scanValidReferenceName(scanner).name
-  scanner.whereAmI(`scanState ${isPublic ? 'public ' : ''} ${name}`)
-  scanner.scanAllWhitespace()
-
-  let type: Expression = new Expressions.InferIdentifier([scanner.charIndex, scanner.charIndex], [])
-  if (scanner.scanIfString(':')) {
-    const argType = parseNext('argument_type')
-    type = argType
-    scanner.scanAllWhitespace()
-  }
-
-  scanner.expectString('=')
-  const value = parseNext('expression')
-
-  return new Expressions.StateDefinition(
-    [range0, scanner.charIndex],
-    precedingComments,
-    name,
-    type,
-    value,
-    isPublic,
-  )
-}
-
-export function scanMainDefinition(scanner: Scanner, parseNext: ParseNext) {
-  const expression = scanMainFormula(scanner, parseNext)
-  if (!(expression instanceof Expressions.MainFormulaExpression)) {
-    throw new ParseError(scanner, `Expected Main function definition, found '${expression}'`)
-  }
-
-  return expression
-}
-
-export function scanViewDefinition(scanner: Scanner, parseNext: ParseNext) {
-  const precedingComments = scanner.flushComments()
-  const range0 = scanner.charIndex
-  const isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
-  if (isPublic) {
-    scanner.expectWhitespace()
-  }
-
-  const value = scanViewFormula(scanner, 'expression', parseNext)
-
-  return new Expressions.ViewDefinition(
-    [range0, scanner.charIndex],
-    precedingComments,
-    value,
     isPublic,
   )
 }
@@ -321,4 +289,18 @@ export function scanHelperDefinition(scanner: Scanner, parseNext: ParseNext) {
     value,
     isPublic,
   )
+}
+
+function skipPublic(scanner: Scanner) {
+  if (scanner.scanIfWord(PUBLIC_KEYWORD)) {
+    scanner.expectWhitespace()
+  }
+}
+function isClass(scanner: Scanner) {
+  skipPublic(scanner)
+  return scanner.is(CLASS_KEYWORD)
+}
+function isEnum(scanner: Scanner) {
+  skipPublic(scanner)
+  return scanner.is(ENUM_KEYWORD)
 }

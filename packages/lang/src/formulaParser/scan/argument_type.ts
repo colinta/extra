@@ -1,5 +1,5 @@
 import {DEFAULT_NARROWED_LENGTH, lengthDesc, type NarrowedLength} from '../../narrowed'
-import {ARRAY, BOOLEAN, DICT, FLOAT, INT, OBJECT, SET, STATIC, STRING} from '../../types'
+import {ARRAY, BOOLEAN, DICT, FLOAT, INT, OBJECT, SET, STRING} from '../../types'
 import * as Expressions from '../expressions'
 import {type Expression} from '../expressions'
 import {
@@ -18,12 +18,6 @@ import {
   ARRAY_OPEN,
   ARRAY_CLOSE,
   ENUM_START,
-  ENUM_OPEN,
-  GENERIC_OPEN,
-  ENUM_CLOSE,
-  CLASS_OPEN,
-  CLASS_CLOSE,
-  CLASS_EXTENDS,
   ENUM_KEYWORD,
   CLASS_KEYWORD,
 } from '../grammars'
@@ -31,18 +25,12 @@ import {type Scanner} from '../scanner'
 import {type ArgumentType, ParseError, type ParseNext} from '../types'
 
 import {unexpectedToken} from './basics'
-import {scanNamedFormula, scanGenerics, scanStaticFormula} from './formula'
+import {scanGenerics} from './formula'
 import {
   scanFormulaArgumentDefinitions,
   scanFormulaTypeArgumentDefinitions,
 } from './formula_arguments'
-import {
-  scanAnyReference,
-  scanAtom,
-  scanIdentifier,
-  scanValidName,
-  scanValidTypeName,
-} from './identifier'
+import {scanAnyReference, scanAtom, scanIdentifier, scanValidName} from './identifier'
 import {
   scanNarrowedFloat,
   scanNarrowedInt,
@@ -659,210 +647,4 @@ function scanOfAndLength(
   scanner.expectString(PARENS_CLOSE)
 
   return {ofType, narrowedLength}
-}
-
-export function scanEnum(
-  scanner: Scanner,
-  parseNext: ParseNext,
-  {
-    isPublic,
-    isFnArg,
-  }: {
-    // isPublic is only scanned during application scanning
-    isPublic: boolean
-    // fn args do not support features like member and static methods
-    isFnArg: boolean
-  },
-): Expressions.NamedEnumTypeExpression {
-  const range0 = scanner.charIndex
-  const precedingComments = scanner.flushComments()
-  scanner.expectString(ENUM_KEYWORD)
-  scanner.expectWhitespace()
-  const nameRef = scanValidTypeName(scanner)
-  scanner.scanAllWhitespace()
-
-  const generics: string[] = []
-  if (scanner.scanIfString(GENERIC_OPEN)) {
-    generics.push(...scanGenerics(scanner, parseNext))
-    scanner.scanAllWhitespace()
-  }
-
-  scanner.expectString(ENUM_OPEN)
-  scanner.scanAllWhitespace()
-
-  let range1 = scanner.charIndex
-  scanner.whereAmI('scanEnum')
-
-  const members: Expressions.EnumMemberExpression[] = []
-  const formulas: Expressions.NamedFormulaExpression[] = []
-  while (!scanner.scanIfString(ENUM_CLOSE)) {
-    if (scanner.scanIfString(ENUM_START)) {
-      scanner.scanAllWhitespace()
-
-      const enum0 = scanner.charIndex
-      const enumCaseName = scanAnyReference(scanner).name
-      scanner.whereAmI(`scanEnum: ${enumCaseName}`)
-      let args: Expressions.FormulaLiteralArgumentAndTypeDeclaration[]
-      if (scanner.is(ARGS_OPEN)) {
-        args = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false).args
-
-        // TODO: I'm being lazy, and don't want to implement spread arguments support
-        // in the new enum code (specifically in the matching code)
-        args.forEach(arg => {
-          if (arg.spreadArg) {
-            throw new ParseError(
-              scanner,
-              'Spread, repeated, and keyword-list arguments are not allowed in enum case definitions, only positional and named arguments.',
-              scanner.charIndex - 1,
-            )
-          }
-        })
-      } else {
-        args = []
-      }
-      range1 = scanner.charIndex
-
-      members.push(
-        new Expressions.EnumMemberExpression(
-          [enum0, range1],
-          scanner.flushComments(),
-          enumCaseName,
-          args,
-        ),
-      )
-
-      scanner.scanCommaOrNewline()
-    } else if (isFnArg && (scanner.isWord(FN_KEYWORD) || scanner.isWord(STATIC))) {
-      throw new ParseError(
-        scanner,
-        `Enum formulas are not supported in argument definitions, only enum cases.`,
-        scanner.charIndex - 1,
-      )
-    } else if (scanner.isWord(FN_KEYWORD)) {
-      const formula = scanNamedFormula(scanner, parseNext, 'enum')
-      formulas.push(formula)
-    } else if (scanner.isWord(STATIC)) {
-      const formula = scanStaticFormula(scanner, parseNext, 'enum')
-      formulas.push(formula)
-    } else {
-      throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
-    }
-
-    scanner.scanAllWhitespace()
-  }
-
-  if (members.length === 0) {
-    throw new ParseError(scanner, `Expected at least one enum member.`, scanner.charIndex - 1)
-  }
-
-  return new Expressions.NamedEnumTypeExpression(
-    [range0, scanner.charIndex],
-    precedingComments,
-    nameRef,
-    members,
-    formulas,
-    generics,
-    isPublic,
-  )
-}
-
-export function scanClass(
-  scanner: Scanner,
-  parseNext: ParseNext,
-  {
-    isPublic,
-  }: {
-    // isPublic is only scanned during application scanning
-    isPublic: boolean
-  },
-): Expressions.ClassExpression {
-  const range0 = scanner.charIndex
-  const precedingComments = scanner.flushComments()
-  scanner.expectString(CLASS_KEYWORD)
-  scanner.expectWhitespace()
-  const nameRef = scanValidTypeName(scanner)
-  scanner.scanAllWhitespace()
-
-  const generics: string[] = []
-  if (scanner.scanIfString(GENERIC_OPEN)) {
-    generics.push(...scanGenerics(scanner, parseNext))
-    scanner.scanAllWhitespace()
-  }
-
-  let extendsExpression: Expressions.Reference | undefined
-  if (scanner.scanIfWord(CLASS_EXTENDS)) {
-    scanner.scanAllWhitespace()
-    extendsExpression = scanValidTypeName(scanner)
-    scanner.scanAllWhitespace()
-  }
-
-  scanner.expectString(CLASS_OPEN)
-  scanner.scanAllWhitespace()
-
-  scanner.whereAmI('scanClass')
-
-  const properties: Expressions.ClassPropertyExpression[] = []
-  const formulas: Expressions.NamedFormulaExpression[] = []
-  while (!scanner.scanIfString(CLASS_CLOSE)) {
-    if (scanner.isWord(FN_KEYWORD)) {
-      const formula = scanNamedFormula(scanner, parseNext, 'class')
-      formulas.push(formula)
-    } else if (scanner.isWord(STATIC)) {
-      const formula = scanStaticFormula(scanner, parseNext, 'class')
-      formulas.push(formula)
-    } else {
-      const precedingComments = scanner.flushComments()
-      const range1 = scanner.charIndex
-      const nameRef = scanValidName(scanner)
-      // support comments here? ug, the first person to open that pull request gets
-      // a frown emoji for sure. _why_ just _why_ would you want a comment here
-      // ("because I can" is the answer, and not entirely unreasonable, I know)
-      scanner.scanAllWhitespace()
-      scanner.expectString(':')
-      const argType = parseNext('argument_type')
-      let defaultValue: Expression | undefined
-      if (scanner.scanAhead('=')) {
-        scanner.scanAllWhitespace()
-        defaultValue = parseNext('single_expression')
-      }
-
-      const followingComments = scanner.flushComments()
-      if (followingComments.length) {
-        throw new ParseError(
-          scanner,
-          `Unexpected comments after class property '${nameRef.name}'. Comments should be before the property definition.`,
-        )
-      }
-
-      const property = new Expressions.ClassPropertyExpression(
-        [range1, scanner.charIndex],
-        precedingComments,
-        nameRef,
-        argType,
-        defaultValue,
-      )
-      properties.push(property)
-    }
-
-    scanner.scanAllWhitespace()
-    if (scanner.scanIfString(',')) {
-      scanner.scanAllWhitespace()
-    }
-  }
-
-  if (properties.length === 0) {
-    throw new ParseError(scanner, `Expected at least one enum member.`, scanner.charIndex - 1)
-  }
-
-  return new Expressions.ClassExpression(
-    [range0, scanner.charIndex],
-    precedingComments,
-    scanner.flushComments(),
-    nameRef,
-    generics,
-    extendsExpression,
-    properties,
-    formulas,
-    isPublic,
-  )
 }

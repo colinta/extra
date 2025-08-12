@@ -8,6 +8,7 @@ import {Expression} from './expressions'
 import {LOWEST_PRECEDENCE, binaryOperatorNamed, isOperator} from './operators'
 import {
   ParseError,
+  type ParseNext,
   type ExpressionType,
   type GetParserResult,
   type Operator,
@@ -21,7 +22,6 @@ import {
   isNumberChar,
   isNumberStart,
   isRefStartChar,
-  isScanningType,
   isStringStartChar,
   isUnaryOperatorChar,
   isUnaryOperatorName,
@@ -59,6 +59,8 @@ import {
   IS_KEYWORD,
   NOT_IS_KEYWORD,
   CASE_KEYWORD,
+  PROVIDES_KEYWORD,
+  ENUM_KEYWORD,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -71,16 +73,13 @@ import {
   scanRequiresStatement,
   scanImportStatement,
   scanHelperDefinition,
-  scanMainDefinition,
-  scanStateDefinition,
   scanTypeDefinition,
-  scanViewDefinition,
+  scanProvidesStatement,
 } from './scan/application'
 import {scanFormula, scanViewFormula} from './scan/formula'
 import {scanArray, scanDict, scanObject, scanSet} from './scan/container_type'
-import {scanFormulaArgumentDefinitions} from './scan/formula_arguments'
-import {scanArgumentType} from './scan/argument_type'
 import {scanView} from './scan/view'
+import {scanJsx} from './scan/jsx'
 import {scanPipePlaceholder} from './scan/pipe'
 import {scanParensGroup} from './scan/parens'
 import {scanArrayAccess} from './scan/array_access'
@@ -89,6 +88,7 @@ import {scanBinaryOperator} from './scan/binary_operator'
 import {scanUnaryOperator} from './scan/unary_operator'
 import {scanLet} from './scan/let'
 import {scanCase, scanMatch} from './scan/match'
+import {scanArgumentType} from './scan/argument_type'
 
 const LOWEST_OP: Operator = {
   name: 'lowest op',
@@ -122,23 +122,10 @@ export function parse(input: string, debug = 0): GetParserResult<Expression> {
   return err(result.error)
 }
 
-export function parseType(input: string, debug = 0): GetParserResult<Expression> {
-  const scanner = new Scanner(input, {debug})
-  const result = attempt<Expression, ParseError>(
-    () => parseInternal(scanner, 'argument_type'),
-    e => e instanceof ParseError,
+export function parseType(input: string, debug = 0) {
+  return testScan(input, (scanner, parseNext) =>
+    scanArgumentType(scanner, 'argument_type', parseNext),
   )
-
-  if (result.isOk()) {
-    const expression = result.value
-    scanner.scanAllWhitespace()
-    if (scanner.charIndex < input.length) {
-      return err(new ParseError(scanner, 'Unexpected end of formula before the input was parsed'))
-    }
-    return ok(expression)
-  }
-
-  return err(result.error)
 }
 
 export function parseApplication(input: string, debug = 0): GetParserResult<Application> {
@@ -146,26 +133,22 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
 
   const range0 = scanner.charIndex
   const applicationTokens: {
+    provides: Expressions.ProvidesStatement | undefined
     requires: Expressions.RequiresStatement | undefined
     imports: Expressions.ImportStatement[]
     types: Expressions.TypeDefinition[]
-    states: Expressions.StateDefinition[]
-    main: Expressions.MainFormulaExpression | undefined
     helpers: Expressions.HelperDefinition[]
     views: Expressions.ViewDefinition[]
   } = {
+    provides: undefined,
     requires: undefined,
     imports: [],
     types: [],
-    states: [],
-    main: undefined,
     helpers: [],
     views: [],
   }
 
   scanner.scanAllWhitespace()
-  // requires must be the first thing
-  let isFirstToken = true
   for (;;) {
     if (scanner.isEOF()) {
       break
@@ -175,10 +158,6 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       //
       //  REQUIRES
       //
-      if (!isFirstToken) {
-        return err(new ParseError(scanner, `'requires' must be the first expression in the file`))
-      }
-
       const requires = scanRequiresStatement(scanner)
 
       if (applicationTokens.requires) {
@@ -186,11 +165,29 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       } else {
         applicationTokens.requires = requires
       }
+    } else if (scanner.isWord(PROVIDES_KEYWORD)) {
+      //
+      //  PROVIDES
+      //
+      if (applicationTokens.provides) {
+        return err(
+          new ParseError(
+            scanner,
+            `Provides statement already defined: ${applicationTokens.provides}`,
+          ),
+        )
+      }
+
+      const provides = scanProvidesStatement(scanner)
+      applicationTokens.provides = provides
     } else if (scanner.isWord(IMPORT_KEYWORD)) {
       //
       //  IMPORT
       //
       applicationTokens.imports.push(scanImportStatement(scanner))
+    } else if (scanner.test(isPublic(TYPE_KEYWORD))) {
+    } else if (scanner.test(isPublic(CLASS_KEYWORD))) {
+    } else if (scanner.test(isPublic(ENUM_KEYWORD))) {
     } else if (
       scanner.test(() => {
         scanner.scanIfWord(PUBLIC_KEYWORD) && scanner.expectWhitespace()
@@ -205,32 +202,6 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
         return err(type.error)
       }
       applicationTokens.types.push(type.value as Expressions.TypeDefinition)
-    } else if (
-      scanner.test(() => {
-        scanner.scanIfWord(PUBLIC_KEYWORD) && scanner.expectWhitespace()
-        return scanner.is('@')
-      })
-    ) {
-      //
-      //  @STATE
-      //
-      const state = parseAttempt(scanner, 'app_state_definition')
-      if (state.isErr()) {
-        return err(state.error)
-      }
-      applicationTokens.states.push(state.value as Expressions.StateDefinition)
-    } else if (scanner.isWord('Main')) {
-      //
-      //  MAIN
-      //
-      if (applicationTokens.main) {
-        return err(new ParseError(scanner, `Main function already defined`))
-      }
-      const main = parseAttempt(scanner, 'app_main_definition')
-      if (main.isErr()) {
-        return err(main.error)
-      }
-      applicationTokens.main = main.value as Expressions.MainFormulaExpression
     } else if (scanner.isWord(FN_KEYWORD)) {
       //
       //  HELPER
@@ -253,7 +224,6 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
     }
 
-    isFirstToken = false
     scanner.scanAllWhitespace()
   }
 
@@ -264,12 +234,17 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       applicationTokens.requires,
       /* imports */ applicationTokens.imports,
       /* types   */ applicationTokens.types,
-      /* states  */ applicationTokens.states,
-      /* main    */ applicationTokens.main,
       /* helpers */ applicationTokens.helpers,
       /* views   */ applicationTokens.views,
     ) as any,
   )
+}
+
+function isPublic(keyword: string) {
+  return (scanner: Scanner) => {
+    scanner.scanIfWord(PUBLIC_KEYWORD) && scanner.expectWhitespace()
+    return scanner.isWord(keyword)
+  }
 }
 
 /**
@@ -284,6 +259,19 @@ export function parseInternalTest(
   return parseAttempt(scanner, expressionType).map(expression => [expression, scanner])
 }
 
+/**
+ * Only for testing.
+ */
+export function testScan(
+  input: string,
+  scanFn: (scanner: Scanner, parseNext: ParseNext) => Expression,
+  options?: Options,
+): Expression {
+  const scanner = new Scanner(input, options)
+  const parseNext = prepareParseNext(scanner)
+  return scanFn(scanner, parseNext)
+}
+
 function parseAttempt(
   scanner: Scanner,
   expressionType: ExpressionType = 'expression',
@@ -294,19 +282,9 @@ function parseAttempt(
   )
 }
 
-function parseInternal(
-  scanner: Scanner,
-  expressionType: ExpressionType = 'expression',
-): Expression {
+function prepareParseNext(scanner: Scanner) {
   scanner.scanAllWhitespace()
-
-  let isMatchingExpression = true
-  let prevOperator: Operator = LOWEST_OP
-  // [range0, Operator]
-  const operatorStack: [number, Operator][] = []
-  const expressionStack: Expression[] = []
-
-  function parseNext(
+  return function parseNext(
     expressionType: ExpressionType,
     options: Pick<Options, 'isInPipe' | 'isInView'> = {},
   ) {
@@ -316,6 +294,18 @@ function parseInternal(
 
     return value
   }
+}
+
+function parseInternal(
+  scanner: Scanner,
+  expressionType: ExpressionType = 'expression',
+): Expression {
+  let isMatchingExpression = true
+  let prevOperator: Operator = LOWEST_OP
+  // [range0, Operator]
+  const operatorStack: [number, Operator][] = []
+  const expressionStack: Expression[] = []
+  const parseNext = prepareParseNext(scanner)
 
   function processOperator(nextOperator: Operator) {
     // once we're "in the pipe", since it's the lowest precedence, we can't really
@@ -452,7 +442,6 @@ function parseInternal(
     return (
       !isMatchingExpression &&
       (expressionType === 'argument_type' ||
-        expressionType === 'application_type' ||
         expressionType === 'single_expression' ||
         expressionType === 'view_property')
     )
@@ -575,8 +564,8 @@ function parseInternal(
           (expressionType === 'block_argument' || expressionType === 'argument')
         ) {
           processExpression(scanCase(scanner, parseNext))
-        } else if (scanner.isInView && scanner.is('<') && isViewStart(scanner.remainingInput)) {
-          processExpression(scanView(scanner, parseNext))
+        } else if (scanner.isInView && isViewStart(scanner.remainingInput)) {
+          processExpression(scanJsx(scanner, parseNext))
         } else if (isDiceStart(scanner.remainingInput)) {
           processExpression(scanDice(scanner))
         } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
@@ -742,24 +731,13 @@ function parseInternal(
   } // end of scanExpression()
 
   let expression: Expression
-  if (expressionType === 'app_requires_definition') {
-    expression = scanRequiresStatement(scanner)
-  } else if (expressionType === 'app_import_definition') {
-    expression = scanImportStatement(scanner)
-  } else if (expressionType === 'app_type_definition') {
+  if (expressionType === 'app_type_definition') {
     expression = scanTypeDefinition(scanner, parseNext)
-  } else if (expressionType === 'app_state_definition') {
-    expression = scanStateDefinition(scanner, parseNext)
-  } else if (expressionType === 'app_main_definition') {
-    expression = scanMainDefinition(scanner, parseNext)
   } else if (expressionType === 'app_view_definition') {
-    expression = scanViewDefinition(scanner, parseNext)
+    expression = scanView(scanner, parseNext)
   } else if (expressionType === 'app_helper_definition') {
     expression = scanHelperDefinition(scanner, parseNext)
-  } else if (expressionType === 'test_formula_arguments') {
-    expression = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false)
-  } else if (isScanningType(expressionType)) {
-    // isScanningType => 'argument_type' | 'application_type'
+  } else if (expressionType === 'argument_type') {
     expression = scanArgumentType(scanner, expressionType, parseNext)
   } else {
     expression = scanExpression()

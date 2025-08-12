@@ -12,15 +12,12 @@ import {
   type GetValueResult,
   type GetRuntimeResult,
 } from './types'
-import {binaryOperatorNamed, FunctionInvocationOperator} from './operators'
 import {dependencySort} from './dependencySort'
 
 export class Application extends Expression {
   readonly requires: Expressions.RequiresStatement | undefined
   readonly imports: Expressions.ImportStatement[]
   readonly types: Map<string, Expressions.TypeDefinition>
-  readonly states: Map<string, Expressions.StateDefinition>
-  readonly main: Expressions.MainFormulaExpression | undefined
   readonly helpers: Map<string, Expressions.HelperDefinition>
   readonly views: Map<string, Expressions.ViewDefinition>
 
@@ -30,8 +27,6 @@ export class Application extends Expression {
     requires: Expressions.RequiresStatement | undefined,
     imports: Expressions.ImportStatement[],
     types: Expressions.TypeDefinition[],
-    states: Expressions.StateDefinition[],
-    main: Expressions.MainFormulaExpression | undefined,
     helpers: Expressions.HelperDefinition[],
     views: Expressions.ViewDefinition[],
   ) {
@@ -48,10 +43,6 @@ export class Application extends Expression {
     this.types = new Map(
       types.map((type): [string, Expressions.TypeDefinition] => [type.name, type]),
     )
-    this.states = new Map(
-      states.map((state): [string, Expressions.StateDefinition] => [state.name, state]),
-    )
-    this.main = main
     this.helpers = new Map(
       helpers.map((helper): [string, Expressions.HelperDefinition] => [
         helper.value.nameRef.name,
@@ -84,8 +75,6 @@ export class Application extends Expression {
     code += (
       [
         ['types', [...this.types.values()]],
-        ['state', [...this.states.values()]],
-        ['main', this.main ? [this.main] : []],
         ['helpers', [...this.helpers.values()]],
         ['views', [...this.views.values()]],
       ] as [ApplicationHeader, Expression[]][]
@@ -308,30 +297,15 @@ export class Application extends Expression {
       return err(nextRuntimeResult.error)
     }
 
-    const nextRuntime = nextRuntimeResult.get()
-
-    // TODO: receive args from parent caller
-    if (this.main) {
-      const op = new FunctionInvocationOperator(this.main.range, [], [], binaryOperatorNamed('.'), [
-        this.main,
-        new Expressions.ArgumentsList(this.main.range, [], [], [], []),
-      ])
-      return op.eval(nextRuntime).map(result => {
-        return result
-      })
-    } else {
-      return ok(Values.NullValue)
-    }
+    return ok(Values.NullValue)
   }
 }
 
-type ApplicationHeader = 'imports' | 'types' | 'state' | 'main' | 'helpers' | 'views'
+type ApplicationHeader = 'imports' | 'types' | 'helpers' | 'views'
 
 const headers: [ApplicationHeader, string][] = [
   ['imports', 'Imports'],
   ['types', 'Types'],
-  ['state', '@State'],
-  ['main', '<Main />'],
   ['helpers', 'Helpers()'],
   ['views', '<Views>'],
 ]

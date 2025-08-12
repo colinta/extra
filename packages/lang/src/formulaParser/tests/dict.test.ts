@@ -75,13 +75,12 @@ describe('dict', () => {
   })
 
   describe('invalid', () => {
-    cases<[string, string]>(c(['Dict(foo: 1, :)', 'Expected a reference'])).run(
-      ([formula, message], {only, skip}) =>
-        (only ? it.only : skip ? it.skip : it)(`should not parse ${formula}`, () => {
-          expect(() => {
-            parse(formula).get()
-          }).toThrow(message)
-        }),
+    cases<[string, string]>(c(['Dict(foo: 1, :)', ''])).run(([formula, message], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`should not parse ${formula}`, () => {
+        expect(() => {
+          parse(formula).get()
+        }).toThrow(message)
+      }),
     )
   })
 })

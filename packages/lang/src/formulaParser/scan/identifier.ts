@@ -6,7 +6,7 @@ import {unexpectedToken} from './basics'
 
 /**
  * scanValidName is just like scanIdentifier, but it doesn't support state
- * references (@foo), and fails on reserved words.
+ * references (@foo), and and cannot be a reserved word.
  */
 export function scanValidName(scanner: Scanner): Expressions.Reference {
   scanner.whereAmI('scanValidName')
@@ -73,14 +73,14 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
 }
 
 /**
- * requires lower-case names, fails on reserved words.
+ * References must be lower-cased, and cannot be a reserved word.
  */
 export function scanValidReferenceName(scanner: Scanner): Expressions.Reference {
   const ref = scanValidName(scanner)
-  if (!ref.name.match(/^[_a-z]/)) {
+  if (!isValidLowercased(ref.name)) {
     throw new ParseError(
       scanner,
-      `Invalid reference name '${ref.name}'. References must start with an uppercased letter`,
+      `Invalid reference name '${ref.name}'. References must start with a lowercased letter.`,
     )
   }
 
@@ -88,29 +88,14 @@ export function scanValidReferenceName(scanner: Scanner): Expressions.Reference 
 }
 
 /**
- * requires lower-case names, fails on reserved words.
- */
-export function scanValidFormulaName(scanner: Scanner): Expressions.Reference {
-  const ref = scanValidName(scanner)
-  if (!ref.name.match(/^[a-z]/)) {
-    throw new ParseError(
-      scanner,
-      `Invalid formula name '${ref.name}'. Formulas must start with an uppercased letter`,
-    )
-  }
-
-  return ref
-}
-
-/**
- * view names must be capitalized, fails on reserved words.
+ * View names must be capitalized, and cannot be a reserved word.
  */
 export function scanValidViewName(scanner: Scanner): Expressions.Reference {
   const ref = scanValidName(scanner)
-  if (!ref.name.match(/^[A-Z]/)) {
+  if (!isValidUppercased(ref.name)) {
     throw new ParseError(
       scanner,
-      `Invalid view name '${ref.name}'. Views must start with an uppercased letter`,
+      `Invalid view name '${ref.name}'. Views must start with an uppercased letter.`,
     )
   }
 
@@ -118,15 +103,38 @@ export function scanValidViewName(scanner: Scanner): Expressions.Reference {
 }
 
 /**
- * type names must be capitalized, fails on reserved words.
+ * Type names must be capitalized, and cannot be a reserved word.
  */
 export function scanValidTypeName(scanner: Scanner): Expressions.Reference {
   const ref = scanValidName(scanner)
-  if (!ref.name.match(/^[A-Z]/)) {
+  if (!isValidUppercased(ref.name)) {
     throw new ParseError(
       scanner,
-      `Invalid type name '${ref.name}'. Types must start with an uppercased letter`,
+      `Invalid type name '${ref.name}'. Types must start with an uppercased letter.`,
     )
+  }
+
+  return ref
+}
+
+/**
+ * Class properties can be "plain" (similar to object properties) or "state"
+ * (`@`-prefixed), which indicates they can be mutated (via a Message, of
+ * course).
+ */
+export function scanValidClassPropertyName(scanner: Scanner): Expressions.Reference {
+  const isState = scanner.scanIfString('@')
+  const ref = scanValidName(scanner)
+  if (!isValidLowercased(ref.name)) {
+    const name = (isState ? '@' : '') + ref.name
+    throw new ParseError(
+      scanner,
+      `Invalid property name '${name}'. Property names must start with a lowercased letter.`,
+    )
+  }
+
+  if (isState) {
+    return new Expressions.StateReference(ref.range, ref.precedingComments, ref.name)
   }
 
   return ref
@@ -148,7 +156,7 @@ export function scanAtom(scanner: Scanner) {
   }
 
   if (!isRef(currentToken)) {
-    throw new ParseError(scanner, `Expected a reference, found '${currentToken}'`)
+    throw new ParseError(scanner, `Expected an atom, found '${currentToken}'`)
   }
 
   scanner.whereAmI(`scanAtom: ${currentToken}`)
@@ -159,6 +167,10 @@ export function scanAtom(scanner: Scanner) {
   )
 }
 
+/**
+ * The most generic and permissive. Could be a `@state` reference, a reserved
+ * word (`if` `switch` `guard` etc), or a plain reference.
+ */
 export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
   scanner.whereAmI('scanIdentifier')
   const range0 = scanner.charIndex
@@ -255,6 +267,7 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
       break
   }
 
+  // If it's a reserved word, it cannot be a state reference
   if (identifier) {
     if (isState) {
       throw new ParseError(scanner, `Invalid identifier '${isState ? '@' : ''}${identifier.name}'`)
@@ -279,7 +292,7 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
 }
 
 export function scanAnyReference(scanner: Scanner): Expressions.Reference {
-  scanner.whereAmI('scanAnyIdentifier')
+  scanner.whereAmI('scanAnyReference')
   const range0 = scanner.charIndex
 
   let currentToken = ''
@@ -297,4 +310,16 @@ export function scanAnyReference(scanner: Scanner): Expressions.Reference {
     scanner.flushComments(),
     currentToken,
   )
+}
+
+/**
+ * This just checks for *not* uppercased, because we do want to allow emoji as
+ * valid start characters. Blame Surma for that one. 🫡
+ */
+function isValidLowercased(str: string) {
+  return !/^[A-Z]/.test(str)
+}
+
+function isValidUppercased(str: string) {
+  return /^[A-Z]/.test(str)
 }

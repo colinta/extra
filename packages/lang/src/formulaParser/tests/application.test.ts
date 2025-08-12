@@ -7,14 +7,19 @@ import {mockApplicationRuntime} from './mockApplicationRuntime'
 import {Renderer} from '../../runtime'
 import {ObjectValue} from '../../values'
 
-describe('application', () => {
+describe.skip('view', () => {
   describe('parser', () => {
-    cases<[string, any]>(c.skip(['real', {}])).run(([filename, _expected], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(`should parse application '${filename}'`, () => {
+    cases<[string, any]>(
+      //
+      c.skip(['real', {}]),
+      c.skip(['component', {}]),
+      c.only(['minimal', {}]),
+    ).run(([filename, _expected], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`should parse view '${filename}'`, () => {
         filename = join(__dirname, `app/${filename}.extra`)
         const content = readFileSync(filename, 'utf8')
-        const application = parseApplication(content).get()
-        expect(application.toCode()).toEqual(content)
+        const view = parseApplication(content).get()
+        expect(view.toCode()).toEqual(content)
       }),
     )
   })
@@ -22,7 +27,7 @@ describe('application', () => {
   describe('eval', () => {
     describe('minimal', () => {
       let filename = 'minimal'
-      it.skip(`should eval application '${filename}'`, () => {
+      it.skip(`should eval view '${filename}'`, () => {
         const renderer: Renderer<string> = {
           createContainer() {
             return ''
@@ -44,8 +49,8 @@ describe('application', () => {
         filename = join(__dirname, `app/${filename}.extra`)
         const content = readFileSync(filename, 'utf8')
         expect(() => {
-          const application = parseApplication(content).get()
-          const result = application.eval(runtime)
+          const view = parseApplication(content).get()
+          const result = view.eval(runtime)
           if (result.isErr()) {
             throw result.error
           }

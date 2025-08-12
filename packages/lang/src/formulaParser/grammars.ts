@@ -1,8 +1,15 @@
-import {BINARY_OP_ALIASES, BINARY_OP_NAMES, BINARY_OP_SYMBOLS, UNARY_OP_NAMES} from './operators'
+import {
+  BINARY_ASSIGN_SYMBOLS,
+  BINARY_OP_ALIASES,
+  BINARY_OP_NAMES,
+  BINARY_OP_SYMBOLS,
+  UNARY_OP_NAMES,
+} from './operators'
 import {type Scanner} from './scanner'
-import {type ArgumentType, type ExpressionType} from './types'
+import {type ExpressionType} from './types'
 
 export const REQUIRES_KEYWORD = 'requires'
+export const PROVIDES_KEYWORD = 'provides'
 export const PUBLIC_KEYWORD = 'public'
 export const IMPORT_KEYWORD = 'import'
 export const IS_KEYWORD = 'is'
@@ -12,7 +19,9 @@ export const LET_KEYWORD = 'let'
 export const LET_IN = 'in'
 export const IGNORE_TOKEN = '_'
 export const FN_KEYWORD = 'fn'
+export const OVERRIDE_KEYWORD = 'override'
 export const VIEW_KEYWORD = 'view'
+export const RENDER_KEYWORD = 'render'
 export const STATIC_KEYWORD = 'static'
 export const TYPE_KEYWORD = 'type'
 export const SPLAT_OP = '...'
@@ -49,6 +58,7 @@ export const DICT_WORD_START = 'Dict'
 export const SET_WORD_START = 'Set'
 export const REGEX_START = '/'
 export const ATOM_START = ':'
+export const STATE_START = '@'
 export const FUNCTION_BODY_START = '=>'
 
 export const ENUM_KEYWORD = 'enum'
@@ -85,6 +95,7 @@ export function isWord(input: string): boolean {
 }
 
 const BINARY_OPS = new Set<string>(BINARY_OP_SYMBOLS)
+const BINARY_ASSIGNS = new Set<string>(BINARY_ASSIGN_SYMBOLS)
 const BINARY_OP_CHARS = new Set(
   BINARY_OP_SYMBOLS.join('')
     .split('')
@@ -112,10 +123,16 @@ export function scanBinaryOperatorSymbol(scanner: Scanner) {
     op += scanner.char
     scanner.charIndex += 1
   }
-  if (op.endsWith('-') && !BINARY_OPS.has(op)) {
+
+  if (op.endsWith('-') && BINARY_OPS.has(op.slice(0, -1))) {
+    // remove '-' from the operator if the operator is not valid. It is possibly
+    // (likely) part of a negative number, or the unary '-' operator.
     op = op.slice(0, -1)
     scanner.rewindTo(scanner.charIndex - 1)
+  } else if (op.endsWith('=') && BINARY_ASSIGNS.has(op)) {
+    return op
   }
+
   if (!BINARY_OPS.has(op)) {
     scanner.rewindTo(rewind)
     return undefined
@@ -227,10 +244,6 @@ export function isRef(input: string) {
   )
 }
 
-export function isScanningType(expressionType: ExpressionType): expressionType is ArgumentType {
-  return expressionType === 'argument_type' || expressionType === 'application_type'
-}
-
 export function expressionSupportsSplat(expressionType: ExpressionType) {
   return (
     expressionType === 'object' ||
@@ -290,7 +303,7 @@ export function terminatesWithSquareBracket(expressionType: ExpressionType) {
 export function terminatesWithCurlyBracket(expressionType: ExpressionType) {
   return (
     expressionType === 'block_argument' ||
-    expressionType === 'view_embed' ||
+    expressionType === 'jsx_embed' ||
     expressionType === 'interpolation' ||
     expressionType === 'object' ||
     expressionType === 'enum' ||

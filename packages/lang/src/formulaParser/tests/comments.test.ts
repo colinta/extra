@@ -1,6 +1,7 @@
 import {c, cases} from '@extra-lang/cases'
-import {parse, parseInternalTest} from '../'
+import {parse, testScan} from '../'
 import * as Expressions from '../expressions'
+import {scanImportStatement} from '../scan/application'
 
 describe('comments', () => {
   describe('skipping comments', () => {
@@ -930,7 +931,7 @@ import
         } --comment19
 `
 
-      const [importExpr] = parseInternalTest(formula, 'app_import_definition').get()
+      const importExpr = testScan(formula, scanImportStatement)
 
       if (!(importExpr! instanceof Expressions.ImportStatement)) {
         expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)
@@ -1030,7 +1031,7 @@ import
       } --comment9
 `
 
-      const [importExpr] = parseInternalTest(formula, 'app_import_definition').get()
+      const importExpr = testScan(formula, scanImportStatement)
 
       if (!(importExpr! instanceof Expressions.ImportStatement)) {
         expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)

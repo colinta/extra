@@ -123,19 +123,13 @@ export type ExpressionType =
   | 'generic' // separated by ',' and terminated by '>'
   | 'argument' // function value, separated by ',' and terminated by ')'
   | 'block_argument' // function value, separated by ',' and terminated by ')'
-  | 'single_expression' // default argument value
-  | 'view_embed' // inside {} while parsing a <View/>
+  | 'single_expression' // default argument value (and class/state properties)
+  | 'jsx_embed' // inside {} while parsing a <View/>
   | 'view_property' // view property
   | 'argument_type' // argument types, like Int, Array<Int>, String[:], (Int | String)
-  | 'app_requires_definition'
-  | 'app_import_definition'
-  | 'app_type_definition' // Type = Array<Int> - Object and Class types can have default values
-  | 'app_state_definition' // foo = 0
-  | 'app_main_definition' // Main() => …
-  | 'app_view_definition' // SomeView() => <>…</>
-  | 'app_helper_definition' // helper(input: A) => …
-  | 'application_type' // Array<Int> - Object and Class types can have default values
-  | 'test_formula_arguments' // for testing only: name: type pairs, separated by ',' and terminated by ')'
+  | 'app_type_definition' // type Type = Array<Int> - Object and Class types can have default values
+  | 'app_view_definition' // view SomeView() => <>…</>
+  | 'app_helper_definition' // fn helper(input: A) => …
 
 export type ArgumentType = 'application_type' | 'argument_type'
 

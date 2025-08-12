@@ -1,0 +1,42 @@
+╭───────╮
+│ Types │
+╰───────╯
+type Point = {x: Int, y: Int}
+
+view Minimal {
+  ╭────────╮
+  │ @State │
+  ╰────────╯
+  @pt = {x: 0, y: 0}
+
+  ╭──────────╮
+  │ <Main /> │
+  ╰──────────╯
+  override render() =>
+    <Pt pt=@pt />
+
+  ╭──────────╮
+  │ Commands │
+  ╰──────────╯
+  -- fn moveRight() => @pt = {...@pt, x: @pt.x + 1})
+  -- fn moveRight() => @pt.x = @pt.x + 1
+  fn moveRight() =>
+    @pt.x += 1
+}
+
+╭───────────╮
+│ Helpers() │
+╰───────────╯
+fn pointDesc(pt: Point) =>
+  $(pt.x) ++ ', ' ++ $(pt.y)
+
+╭─────────╮
+│ <Views> │
+╰─────────╯
+view Pt(pt: Point) =>
+  <>{pointDesc(pt: pt)}</>
+
+view Pointer {
+  overide render(pt: Point) =>
+    <>{pointDesc(pt: pt)}</>
+}

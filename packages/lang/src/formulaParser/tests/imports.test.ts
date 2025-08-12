@@ -1,5 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
-import {parseInternalTest} from '../../formulaParser'
+import {testScan} from '../../formulaParser'
+import {scanImportStatement} from '../scan/application'
 
 describe('import parser', () => {
   describe('imports', () => {
@@ -56,7 +57,7 @@ import Foo : {
       c(['import sheety://user/foo@1.2.3-pre']),
     ).run(([formula, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse import definitions ${formula}`, () => {
-        const [expression] = parseInternalTest(formula, 'app_import_definition').get()
+        const expression = testScan(formula, scanImportStatement)
 
         expect(expression!.toCode()).toEqual(expectedCode ?? formula)
         expect(expression!.toLisp()).toEqual(`(${expectedCode ?? formula})`)
@@ -71,7 +72,7 @@ describe('bad imports', () => {
     c(['import Foo: {bar\n', 'Unexpected end of input']),
   ).run(([formula, error], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`bad import definitions ${formula}`, () => {
-      expect(() => parseInternalTest(formula, 'app_import_definition').get()).toThrow(error)
+      expect(() => testScan(formula, scanImportStatement)).toThrow(error)
     }),
   )
 })

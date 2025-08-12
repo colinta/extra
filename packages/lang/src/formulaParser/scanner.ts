@@ -196,11 +196,15 @@ export class Scanner {
   scanIfWord(search: string) {
     if (this.isWord(search)) {
       this.charIndex += search.length
-      this.whereAmI(`scanIfWord '${search}' ? yes`)
+      if (!this.#pauseComments) {
+        this.whereAmI(`scanIfWord '${search}' ? yes`)
+      }
       return true
     }
 
-    this.whereAmI(`scanIfWord '${search}' ? no`)
+    if (!this.#pauseComments) {
+      this.whereAmI(`scanIfWord '${search}' ? no`)
+    }
     return false
   }
 
@@ -275,6 +279,11 @@ export class Scanner {
     this.expectString(closer, expectedCommaMessage)
     this.whereAmI('scanCommaOrBreak: break')
     return true
+  }
+
+  expectWord(str: string, message?: string) {
+    this.expectString(str, message)
+    this.expectWhitespace()
   }
 
   expectString(str: string, message?: string) {
@@ -432,6 +441,7 @@ export class Scanner {
 
     if (this.isDebug) {
       console.log(output)
+      this.debugLines.length = 0
     } else {
       this.debugLines.push(output)
     }

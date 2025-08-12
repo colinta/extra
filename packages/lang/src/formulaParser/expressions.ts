@@ -2676,7 +2676,7 @@ export class ClassPropertyExpression extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly nameRef: Reference,
+    readonly nameRef: Reference, // could be StateReference
     readonly argType: Expression,
     readonly defaultValue: Expression | undefined,
   ) {
@@ -2795,6 +2795,30 @@ export class ClassExpression extends Expression {
 
   eval(): GetValueResult {
     throw 'TODO - class eval'
+  }
+}
+
+export class View extends ClassExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    lastComments: Comment[],
+    nameRef: Reference,
+    properties: ClassPropertyExpression[],
+    formulas: NamedFormulaExpression[],
+    isPublic: boolean,
+  ) {
+    super(
+      range,
+      precedingComments,
+      lastComments,
+      nameRef,
+      [],
+      undefined,
+      properties,
+      formulas,
+      isPublic,
+    )
   }
 }
 
@@ -3990,6 +4014,7 @@ export class NamedFormulaExpression extends FormulaExpression {
     returnType: Expression,
     body: Expression,
     generics: string[],
+    public isOverride: boolean,
   ) {
     super(
       range,
@@ -4020,9 +4045,34 @@ export class NamedFormulaExpression extends FormulaExpression {
  */
 export class StaticFormulaExpression extends NamedFormulaExpression {
   prefix = 'static'
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    precedingNameComments: Comment[],
+    precedingReturnTypeComments: Comment[],
+    nameRef: Reference,
+    argDefinitions: FormulaLiteralArgumentDeclarations,
+    returnType: Expression,
+    body: Expression,
+    generics: string[],
+  ) {
+    super(
+      range,
+      precedingComments,
+      precedingNameComments,
+      precedingReturnTypeComments,
+      nameRef,
+      argDefinitions,
+      returnType,
+      body,
+      generics,
+      false,
+    )
+  }
 }
 
-abstract class ViewExpression extends Expression {
+abstract class JsxExpression extends Expression {
   readonly nameRef: Reference | undefined
 
   constructor(
@@ -4130,7 +4180,7 @@ abstract class ViewExpression extends Expression {
 
       let childrenCode = this.children
         .map(child => {
-          if (child instanceof ViewExpression) {
+          if (child instanceof JsxExpression) {
             return child.toViewChildrenCode().replaceAll('\n', NEWLINE_INDENT)
           } else {
             return child.toViewChildrenCode()
@@ -4256,7 +4306,7 @@ abstract class ViewExpression extends Expression {
   }
 }
 
-export class NamedViewExpression extends ViewExpression {
+export class NamedJsxExpression extends JsxExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -4268,7 +4318,7 @@ export class NamedViewExpression extends ViewExpression {
   }
 }
 
-export class FragmentViewExpression extends ViewExpression {
+export class FragmentJsxExpression extends JsxExpression {
   readonly nameRef: Reference | undefined = undefined
 
   constructor(
@@ -4283,6 +4333,30 @@ export class FragmentViewExpression extends ViewExpression {
 
 export class ViewFormulaExpression extends NamedFormulaExpression {
   prefix = 'view'
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    precedingNameComments: Comment[],
+    precedingReturnTypeComments: Comment[],
+    nameRef: Reference,
+    argDefinitions: FormulaLiteralArgumentDeclarations,
+    returnType: Expression,
+    body: Expression,
+  ) {
+    super(
+      range,
+      precedingComments,
+      precedingNameComments,
+      precedingReturnTypeComments,
+      nameRef,
+      argDefinitions,
+      returnType,
+      body,
+      [],
+      false,
+    )
+  }
 
   eval<T>(runtime: ApplicationRuntime<T>): GetValueResult {
     return super.eval(runtime)
@@ -4311,7 +4385,6 @@ export class MainFormulaExpression extends ViewFormulaExpression {
       argDefinitions,
       returnType,
       body,
-      generics,
     )
   }
 
@@ -6269,13 +6342,41 @@ export class ImportSpecific extends Expression {
   }
 }
 
+export class ProvidesStatement extends Expression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly env: string,
+    followingComments: Comment[],
+  ) {
+    super(range, precedingComments, followingComments)
+  }
+
+  toLisp() {
+    return this.toCode()
+  }
+
+  toCode() {
+    return `provides ${this.env}`
+  }
+
+  getType(): GetTypeResult {
+    return err(new RuntimeError(this, 'ProvidesStatement does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'ProvidesStatement cannot be evaluated'))
+  }
+}
+
 export class RequiresStatement extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
     readonly envs: string[],
+    followingComments: Comment[],
   ) {
-    super(range, precedingComments)
+    super(range, precedingComments, followingComments)
   }
 
   toLisp() {
@@ -6490,66 +6591,6 @@ export class TypeDefinition extends Expression {
 
   eval(runtime: ValueRuntime) {
     return this.type.eval(runtime)
-  }
-}
-
-export class StateDefinition extends Expression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly name: string,
-    readonly type: Expression,
-    readonly value: Expression,
-    readonly isPublic: boolean,
-  ) {
-    super(range, precedingComments)
-  }
-
-  dependencies() {
-    return union(this.type.dependencies(), this.value.dependencies())
-  }
-
-  provides() {
-    return new Set(['@' + this.name])
-  }
-
-  toLisp() {
-    let code = ''
-    if (this.isPublic) {
-      code += 'public '
-    }
-
-    code += `@${this.name}`
-    if (!(this.type instanceof InferIdentifier)) {
-      code += `: ${this.type.toLisp()}`
-    }
-
-    code += ` ${this.value.toLisp()}`
-
-    return '(state ' + code + ')'
-  }
-
-  toCode() {
-    let code = ''
-    if (this.isPublic) {
-      code += 'public '
-    }
-
-    code += `@${this.name}`
-    if (!(this.type instanceof InferIdentifier)) {
-      code += `: ${this.type.toCode()}`
-    }
-
-    code += ` = ${this.value.toCode()}`
-    return code
-  }
-
-  getType(): GetTypeResult {
-    return err(new RuntimeError(this, 'StateDefinition does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'StateDefinition cannot be evaluated'))
   }
 }
 
