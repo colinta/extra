@@ -1598,21 +1598,7 @@ There's also a null-safe version:
 
 ```extra
 -- name is String | null
-name ?|> name <> ':' --> inside the pipe `name` is guaranteed to be a String, otherwise the expression is skipped and `null` is returned.
-```
-
-There's a clever trick with the `=>` operator that allows us to "name" the `#` symbol. This is eerily similar to `fn() =>`, so be mindful that we are using the *match* feature of Extra here, not function invocation.
-
-```extra
-[1,2,3].filter(fn(i) => i < 3).join(',')
-  |> numbers =>
-    if (numbers.length) {
-    then:
-      $numbers <> ','
-    else:
-      ''
-    }
-  |> numbers => `[$numbers]`  --> `"[1,2,3,]"`
+name ?|> # <> ':' --> the pipe `#` is guaranteed to be a `String`, otherwise the expression is skipped and `null` is returned.
 ```
 
 [^1]: JSX
