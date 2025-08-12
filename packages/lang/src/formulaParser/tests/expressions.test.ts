@@ -31,8 +31,8 @@ describe('getType', () => {
     ).run(([formula, expectedType], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`${formula}`, () => {
         const [lhs, rhs] = formula.split(' or ', 2)
-        const lhsType = parseType(lhs).getType(typeRuntime).get().fromTypeConstructor()
-        const rhsType = parseType(rhs).getType(typeRuntime).get().fromTypeConstructor()
+        const lhsType = parseType(lhs).get().getType(typeRuntime).get().fromTypeConstructor()
+        const rhsType = parseType(rhs).get().getType(typeRuntime).get().fromTypeConstructor()
         runtimeTypes['lhs'] = [lhsType, Values.nullValue()]
         runtimeTypes['rhs'] = [rhsType, Values.nullValue()]
         const expression = parse('lhs or rhs').get()
@@ -47,8 +47,8 @@ describe('getType', () => {
     ).run(([formula, expectedType], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`${formula}`, () => {
         const [lhs, rhs] = formula.split(' and ', 2)
-        const lhsType = parseType(lhs).getType(typeRuntime).get().fromTypeConstructor()
-        const rhsType = parseType(rhs).getType(typeRuntime).get().fromTypeConstructor()
+        const lhsType = parseType(lhs).get().getType(typeRuntime).get().fromTypeConstructor()
+        const rhsType = parseType(rhs).get().getType(typeRuntime).get().fromTypeConstructor()
         runtimeTypes['lhs'] = [lhsType, Values.nullValue()]
         runtimeTypes['rhs'] = [rhsType, Values.nullValue()]
         const expression = parse('lhs and rhs').get()
@@ -62,7 +62,7 @@ describe('getType', () => {
       ([formula, expectedType], {only, skip}) =>
         (only ? it.only : skip ? it.skip : it)(`${formula}`, () => {
           const [_, lhs] = formula.split('not ', 2)
-          const lhsType = parseType(lhs).getType(typeRuntime).get().fromTypeConstructor()
+          const lhsType = parseType(lhs).get().getType(typeRuntime).get().fromTypeConstructor()
           runtimeTypes['lhs'] = [lhsType, Values.nullValue()]
           const expression = parse('not lhs').get()
           expect(expression.getType(typeRuntime).get()).toEqual(expectedType)
@@ -334,7 +334,7 @@ describe('getType', () => {
 
     it('foo.name => throws', () => {
       const expression = parse('foo.name').get()
-      expect(() => console.log(expression.getType(typeRuntime).get())).toThrow(
+      expect(() => expression.getType(typeRuntime).get()).toThrow(
         "Cannot get type of variable named 'foo'",
       )
     })

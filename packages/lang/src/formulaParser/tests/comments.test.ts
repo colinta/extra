@@ -931,7 +931,7 @@ import
         } --comment19
 `
 
-      const importExpr = testScan(formula, scanImportStatement)
+      const importExpr = testScan(formula, scanImportStatement).get()
 
       if (!(importExpr! instanceof Expressions.ImportStatement)) {
         expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)
@@ -1031,7 +1031,7 @@ import
       } --comment9
 `
 
-      const importExpr = testScan(formula, scanImportStatement)
+      const importExpr = testScan(formula, scanImportStatement).get()
 
       if (!(importExpr! instanceof Expressions.ImportStatement)) {
         expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)

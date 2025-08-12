@@ -54,7 +54,7 @@ describe('type refinements', () => {
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
         const expression = testScan(formula, (scanner, parseNext) =>
           scanArgumentType(scanner, 'argument_type', parseNext),
-        )
+        ).get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
         const type = expression!.getAsTypeExpression(typeRuntime).get()
@@ -93,7 +93,7 @@ describe('type refinements', () => {
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
         const expression = testScan(formula, (scanner, parseNext) =>
           scanArgumentType(scanner, 'argument_type', parseNext),
-        )
+        ).get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
         const type = expression!.getAsTypeExpression(typeRuntime).get()
@@ -141,7 +141,7 @@ describe('type refinements', () => {
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
         const expression = testScan(formula, (scanner, parseNext) =>
           scanArgumentType(scanner, 'argument_type', parseNext),
-        )
+        ).get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
         const type = expression!.getAsTypeExpression(typeRuntime).get()

@@ -11,13 +11,20 @@ import {
   FN_KEYWORD,
   RENDER_KEYWORD,
   PUBLIC_KEYWORD,
+  VIEW_KEYWORD,
 } from '../grammars'
 import type {Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
-import {scanGenerics, scanNamedFormula, scanRenderFormula, scanStaticFormula} from './formula'
+import {
+  scanGenerics,
+  scanNamedFormula,
+  scanRenderFormula,
+  scanStaticFormula,
+  scanViewFormula,
+} from './formula'
 import {scanValidClassPropertyName, scanValidTypeName} from './identifier'
 
-export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.ClassExpression {
+export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.ClassDefinition {
   const range0 = scanner.charIndex
   const precedingComments = scanner.flushComments()
 
@@ -45,7 +52,7 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
 
   const {properties, formulas} = scanClassBody(scanner, parseNext, 'class')
 
-  return new Expressions.ClassExpression(
+  return new Expressions.ClassDefinition(
     [range0, scanner.charIndex],
     precedingComments,
     scanner.flushComments(),
@@ -65,15 +72,26 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
   scanner.whereAmI(type === 'class' ? 'scanClassBody' : 'scanViewBody')
 
   const properties: Expressions.ClassPropertyExpression[] = []
+  let renderFormula: Expressions.ViewFormulaExpression | undefined
   const formulas: Expressions.NamedFormulaExpression[] = []
   while (!scanner.scanIfString(CLASS_CLOSE)) {
     if (scanner.test(isFnStart)) {
       const formula = scanNamedFormula(scanner, parseNext, 'class')
       formulas.push(formula)
     } else if (type === 'view' && scanner.test(isViewStart)) {
+      const formula = scanViewFormula(scanner, 'class', parseNext, 'class')
+      formulas.push(formula)
+    } else if (type === 'view' && scanner.test(isRenderStart)) {
+      if (renderFormula) {
+        throw new ParseError(
+          scanner,
+          `A view can only have one render function. Already defined '${renderFormula}'`,
+        )
+      }
+
       const formula = scanRenderFormula(scanner, parseNext)
       formulas.push(formula)
-      scanner.debug = true
+      renderFormula = formula
     } else if (type === 'class' && scanner.isWord(STATIC)) {
       const formula = scanStaticFormula(scanner, parseNext, 'class')
       formulas.push(formula)
@@ -137,5 +155,9 @@ function isFnStart(scanner: Scanner) {
 }
 
 function isViewStart(scanner: Scanner) {
+  return scanner.scanIfWord(VIEW_KEYWORD)
+}
+
+function isRenderStart(scanner: Scanner) {
   return scanner.scanIfWord(RENDER_KEYWORD)
 }

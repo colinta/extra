@@ -56,7 +56,7 @@ export function scanRenderFormula(scanner: Scanner, parseNext: ParseNext) {
     type: 'render',
     isNamedFn: false,
     bodyExpressionType: 'class',
-  }) as Expressions.ViewFormulaExpression
+  }) as Expressions.RenderFormulaExpression
 
   return value
 }
@@ -99,6 +99,7 @@ function _scanFormula(
   // not all expressionTypes are supported as scanFormula expression types
   if (bodyExpressionType === undefined) {
     switch (expressionType) {
+      case 'application':
       case 'let':
       case 'argument':
       case 'block_argument':
@@ -112,7 +113,6 @@ function _scanFormula(
       case 'interpolation':
       case 'parens':
       case 'jsx_embed':
-      case 'app_view_definition':
         bodyExpressionType = expressionType
         break
       default:
@@ -127,6 +127,8 @@ function _scanFormula(
   const range0 = scanner.charIndex
 
   let isOverride = false
+  // if we are scanning in the context of a class, and are scanning a 'fn' (not
+  // a 'static' fn), check for the override keyword.
   if (bodyExpressionType === 'class' && typeExpect === 'fn') {
     isOverride = scanner.scanIfWord(OVERRIDE_KEYWORD)
     if (isOverride) {
@@ -214,6 +216,17 @@ function _scanFormula(
 
   if (type === 'view') {
     return new Expressions.ViewFormulaExpression(
+      [range0, scanner.charIndex],
+      precedingComments,
+      precedingNameComments,
+      precedingReturnTypeComments,
+      nameRef ?? new Expressions.Reference([range0, range0], [], ''),
+      argDeclarations,
+      returnType,
+      body,
+    )
+  } else if (type === 'render') {
+    return new Expressions.RenderFormulaExpression(
       [range0, scanner.charIndex],
       precedingComments,
       precedingNameComments,

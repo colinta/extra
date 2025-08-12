@@ -9,7 +9,7 @@ describe('helper', () => {
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse helper definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula
-      const expression = testScan(formula, scanHelperDefinition)
+      const expression = testScan(formula, scanHelperDefinition).get()
 
       expect(expression!.toCode()).toEqual(expectedCode)
       expect(expression!.toLisp()).toEqual(expectedLisp)
@@ -24,7 +24,7 @@ describe('bad helpers', () => {
     (only ? it.only : skip ? it.skip : it)(
       `should error parsing Helper definitions ${formula}`,
       () => {
-        expect(() => testScan(formula, scanHelperDefinition)).toThrow(error)
+        expect(() => testScan(formula, scanHelperDefinition).get()).toThrow(error)
       },
     ),
   )

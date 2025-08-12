@@ -1,7 +1,7 @@
 import * as Expressions from '../expressions'
 import {ARGS_OPEN, PUBLIC_KEYWORD, VIEW_KEYWORD} from '../grammars'
 import type {Scanner} from '../scanner'
-import {type ParseNext, ParseError} from '../types'
+import {type ParseNext} from '../types'
 import {scanValidViewName} from './identifier'
 import {scanClassBody} from './class'
 import {scanViewFormula} from './formula'
@@ -37,7 +37,7 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
   }
 
   if (scanner.test(isViewFormula)) {
-    const formula = scanViewFormula(scanner, 'expression', parseNext)
+    const formula = scanViewFormula(scanner, 'application', parseNext)
     return new Expressions.ViewDefinition(
       [range0, scanner.charIndex],
       precedingComments,
@@ -48,14 +48,12 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
   scanner.expectWord(VIEW_KEYWORD)
 
   const nameRef = scanValidViewName(scanner)
-  scanner.whereAmI('name: ' + nameRef)
   scanner.scanAllWhitespace()
   const {properties, formulas} = scanClassBody(scanner, parseNext, 'view')
-  scanner.debug = false
 
   const lastComments = scanner.flushComments()
 
-  return new Expressions.View(
+  return new Expressions.ViewClassDefinition(
     [range0, scanner.charIndex],
     precedingComments,
     lastComments,

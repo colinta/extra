@@ -7,7 +7,7 @@ import {mockApplicationRuntime} from './mockApplicationRuntime'
 import {Renderer} from '../../runtime'
 import {ObjectValue} from '../../values'
 
-describe.skip('view', () => {
+describe('view', () => {
   describe('parser', () => {
     cases<[string, any]>(
       //

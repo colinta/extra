@@ -275,7 +275,7 @@ export function scanHelperDefinition(scanner: Scanner, parseNext: ParseNext) {
     scanner.expectWhitespace()
   }
 
-  const value = scanNamedFormula(scanner, parseNext)
+  const value = scanNamedFormula(scanner, parseNext, 'application')
   if (!value.nameRef.name.match(/^[a-z]/)) {
     throw new ParseError(
       scanner,

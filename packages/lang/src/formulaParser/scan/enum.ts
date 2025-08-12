@@ -25,8 +25,8 @@ export function scanEnum(
   }: {
     // fn args do not support features like member and static methods
     isFnArg: boolean
-  },
-): Expressions.NamedEnumTypeExpression {
+  } = {isFnArg: false},
+): Expressions.EnumDefinition {
   const range0 = scanner.charIndex
   const precedingComments = scanner.flushComments()
 
@@ -113,7 +113,7 @@ export function scanEnum(
     throw new ParseError(scanner, `Expected at least one enum member.`, scanner.charIndex - 1)
   }
 
-  return new Expressions.NamedEnumTypeExpression(
+  return new Expressions.EnumDefinition(
     [range0, scanner.charIndex],
     precedingComments,
     nameRef,

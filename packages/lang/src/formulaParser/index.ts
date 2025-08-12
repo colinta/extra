@@ -75,8 +75,9 @@ import {
   scanHelperDefinition,
   scanTypeDefinition,
   scanProvidesStatement,
+  scanApplicationType,
 } from './scan/application'
-import {scanFormula, scanViewFormula} from './scan/formula'
+import {scanFormula} from './scan/formula'
 import {scanArray, scanDict, scanObject, scanSet} from './scan/container_type'
 import {scanView} from './scan/view'
 import {scanJsx} from './scan/jsx'
@@ -89,6 +90,8 @@ import {scanUnaryOperator} from './scan/unary_operator'
 import {scanLet} from './scan/let'
 import {scanCase, scanMatch} from './scan/match'
 import {scanArgumentType} from './scan/argument_type'
+import {scanClass} from './scan/class'
+import {scanEnum} from './scan/enum'
 
 const LOWEST_OP: Operator = {
   name: 'lowest op',
@@ -136,16 +139,18 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
     provides: Expressions.ProvidesStatement | undefined
     requires: Expressions.RequiresStatement | undefined
     imports: Expressions.ImportStatement[]
-    types: Expressions.TypeDefinition[]
-    helpers: Expressions.HelperDefinition[]
-    views: Expressions.ViewDefinition[]
+    expressions: (
+      | Expressions.TypeDefinition
+      | Expressions.HelperDefinition
+      | Expressions.ViewDefinition
+      | Expressions.ClassDefinition
+      | Expressions.EnumDefinition
+    )[]
   } = {
     provides: undefined,
     requires: undefined,
     imports: [],
-    types: [],
-    helpers: [],
-    views: [],
+    expressions: [],
   }
 
   scanner.scanAllWhitespace()
@@ -186,40 +191,41 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       //
       applicationTokens.imports.push(scanImportStatement(scanner))
     } else if (scanner.test(isPublic(TYPE_KEYWORD))) {
-    } else if (scanner.test(isPublic(CLASS_KEYWORD))) {
-    } else if (scanner.test(isPublic(ENUM_KEYWORD))) {
-    } else if (
-      scanner.test(() => {
-        scanner.scanIfWord(PUBLIC_KEYWORD) && scanner.expectWhitespace()
-        return scanner.isWord(TYPE_KEYWORD) || scanner.isWord(CLASS_KEYWORD)
-      })
-    ) {
-      //
-      //  TYPES
-      //
-      const type = parseAttempt(scanner, 'app_type_definition')
-      if (type.isErr()) {
-        return err(type.error)
+      const typeExpr = scan(scanner, scanApplicationType)
+      if (typeExpr.isErr()) {
+        return err(typeExpr.error)
       }
-      applicationTokens.types.push(type.value as Expressions.TypeDefinition)
+      applicationTokens.expressions.push(typeExpr.value as Expressions.TypeDefinition)
+    } else if (scanner.test(isPublic(CLASS_KEYWORD))) {
+      const classExpr = scan(scanner, scanClass)
+      if (classExpr.isErr()) {
+        return err(classExpr.error)
+      }
+      applicationTokens.expressions.push(classExpr.value as Expressions.ClassDefinition)
+    } else if (scanner.test(isPublic(ENUM_KEYWORD))) {
+      const enumExpr = scan(scanner, scanEnum)
+      if (enumExpr.isErr()) {
+        return err(enumExpr.error)
+      }
+      applicationTokens.expressions.push(enumExpr.value as Expressions.EnumDefinition)
     } else if (scanner.isWord(FN_KEYWORD)) {
       //
       //  HELPER
       //
-      const helper = parseAttempt(scanner, 'app_helper_definition')
+      const helper = scan(scanner, scanHelperDefinition)
       if (helper.isErr()) {
         return err(helper.error)
       }
-      applicationTokens.helpers.push(helper.value as Expressions.HelperDefinition)
-    } else if (scanner.isWord('view')) {
+      applicationTokens.expressions.push(helper.value as Expressions.HelperDefinition)
+    } else if (scanner.isWord(VIEW_KEYWORD)) {
       //
       //  <VIEW>
       //
-      const view = parseAttempt(scanner, 'app_view_definition')
+      const view = scan(scanner, scanView)
       if (view.isErr()) {
         return err(view.error)
       }
-      applicationTokens.views.push(view.value as Expressions.ViewDefinition)
+      applicationTokens.expressions.push(view.value as Expressions.ViewDefinition)
     } else {
       throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
     }
@@ -232,10 +238,8 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       [range0, scanner.input.length],
       scanner.flushComments(),
       applicationTokens.requires,
-      /* imports */ applicationTokens.imports,
-      /* types   */ applicationTokens.types,
-      /* helpers */ applicationTokens.helpers,
-      /* views   */ applicationTokens.views,
+      applicationTokens.imports,
+      applicationTokens.expressions,
     ) as any,
   )
 }
@@ -266,10 +270,32 @@ export function testScan(
   input: string,
   scanFn: (scanner: Scanner, parseNext: ParseNext) => Expression,
   options?: Options,
-): Expression {
-  const scanner = new Scanner(input, options)
-  const parseNext = prepareParseNext(scanner)
-  return scanFn(scanner, parseNext)
+): GetParserResult<Expression> {
+  return attempt<Expressions.Expression, ParseError>(
+    () => {
+      const scanner = new Scanner(input, options)
+      const parseNext = prepareParseNext(scanner)
+      return scanFn(scanner, parseNext)
+    },
+    e => e instanceof ParseError,
+  )
+}
+
+/**
+ * Provides an easy way to scan an expression using any `scan*` function.
+ */
+function scan(
+  scanner: Scanner,
+  scanFn: (scanner: Scanner, parseNext: ParseNext) => Expression,
+  options?: Options,
+): GetParserResult<Expression> {
+  return attempt<Expressions.Expression, ParseError>(
+    () => {
+      const parseNext = prepareParseNext(scanner)
+      return scanFn(scanner, parseNext)
+    },
+    e => e instanceof ParseError,
+  )
 }
 
 function parseAttempt(
@@ -590,8 +616,6 @@ function parseInternal(
           processExpression(scanSet(scanner, parseNext))
         } else if (scanner.isWord(DICT_WORD_START)) {
           processExpression(scanDict(scanner, parseNext))
-        } else if (scanner.isWord(VIEW_KEYWORD)) {
-          processExpression(scanViewFormula(scanner, expressionType, parseNext))
         } else if (
           isUnaryOperatorChar(scanner.char) ||
           isUnaryOperatorName(scanner.remainingInput)

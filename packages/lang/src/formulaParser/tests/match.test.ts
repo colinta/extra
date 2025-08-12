@@ -1062,9 +1062,7 @@ describe('match operator', () => {
           })
 
           const expr = parse(formula).get()
-          const runtime = expr.assumeTrue(typeRuntime).get()
-          console.log('=========== match.test.ts at line 226 ===========')
-          console.log({runtime})
+          expr.assumeTrue(typeRuntime).get()
         }).toThrow(message)
       }),
     )

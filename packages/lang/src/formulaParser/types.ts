@@ -106,10 +106,11 @@ export function isRuntimeError(error: any): error is RuntimeError {
 }
 
 export type ExpressionType =
-  | 'expression' // default
+  | 'expression' // default, but greedy
   | 'let' // let ... in
   | 'type' // parses the type within <>
   | 'object' // parses the value within {key: value}
+  | 'application' // all module-level definitions are scanned in this context
   | 'enum' // parses enum members, member and static functions, closes w/ }
   | 'case' // parses the argument after 'case [match]:'
   | 'class' // parses properties, member and static functions, closes w/ }

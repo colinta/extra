@@ -88,7 +88,7 @@ describe('argument parser', () => {
           expectedCode = expectedCode ?? formula
           const expression = testScan(`(${formula})`, (scanner, parseNext) =>
             scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
-          )
+          ).get()
 
           expect(expression!.toCode()).toEqual(expectedCode)
           expect(expression!.toLisp()).toEqual(expectedLisp)
@@ -110,7 +110,7 @@ describe('argument parser', () => {
           expect(() => {
             testScan(`(${formula})`, (scanner, parseNext) =>
               scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
-            )
+            ).get()
           }).toThrow(message)
         },
       ),
@@ -131,7 +131,7 @@ describe('argument parser', () => {
       (only ? it.only : skip ? it.skip : it)(`should parse arguments ${formula}`, () => {
         const expression = testScan(`(${formula})`, (scanner, parseNext) =>
           scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
-        )
+        ).get()
 
         expect(expression!.toLisp()).toEqual(expected)
       }),
@@ -154,7 +154,7 @@ describe('argument parser', () => {
         expect(() => {
           testScan(`(${formula})`, (scanner, parseNext) =>
             scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
-          )
+          ).get()
         }).toThrow(message)
       }),
     )

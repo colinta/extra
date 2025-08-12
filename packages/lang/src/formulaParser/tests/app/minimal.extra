@@ -14,9 +14,9 @@ fn pointDesc(pt: Point) =>
   $(pt.x) ++ ', ' ++ $(pt.y)
 
 view Pt(pt: Point) =>
-  <>{pointDesc(pt: pt)}</>
+  <>{pointDesc(pt:)}</>
 
 view Pointer {
   render(pt: Point) =>
-    <>{pointDesc(pt: pt)}</>
+    <>{pointDesc(pt:)}</>
 }

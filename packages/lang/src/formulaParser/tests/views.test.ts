@@ -4,27 +4,40 @@ import {scanView} from '../scan/view'
 
 describe('view', () => {
   cases<[string, string] | [string, string, string]>(
-    c(['view Asdf() => <></>', '(view Asdf() => <></>)']),
-    c(['view Asdf() => <>{a}</>', '(view Asdf() => <> a </>)', 'view Asdf() => <>{a}</>']),
+    c([
+      `view Asdf() =>
+  <></>`,
+      '(view Asdf() => <></>)',
+    ]),
+    c([
+      'view Asdf() => <>{a}</>',
+      '(view Asdf() => <> a </>)',
+      `view Asdf() =>
+  <>{a}</>`,
+    ]),
     c([
       `view AnyView() => <>{- comments? {- more comments wow -} -}</>`,
       '(view AnyView() => <></>)',
-      'view AnyView() => <></>',
+      `view AnyView() =>
+  <></>`,
     ]),
     c([
       'view Asdf() => <>a{a}b</>',
       "(view Asdf() => <> 'a' a 'b' </>)",
-      'view Asdf() => <>a{a}b</>',
+      `view Asdf() =>
+  <>a{a}b</>`,
     ]),
     c([
       'view Asdf() => <>a {a} b</>',
       "(view Asdf() => <> 'a ' a ' b' </>)",
-      'view Asdf() => <>a {a} b</>',
+      `view Asdf() =>
+  <>a {a} b</>`,
     ]),
     c([
       'view Asdf() => <>a\\{a\\}b<\\<\\></>',
       "(view Asdf() => <> 'a{a}b<<>' </>)",
-      'view Asdf() => <>a\\{a\\}b<\\<></>',
+      `view Asdf() =>
+  <>a\\{a\\}b<\\<></>`,
     ]),
     c([
       `view Asdf() => <><!-- is this a comment? -->
@@ -93,7 +106,11 @@ describe('view', () => {
       b<
   </>`,
     ]),
-    c(['view Foo(a: User) => <User user=a />', '(view Foo((a: User)) => <User user=a />)']),
+    c([
+      `view Foo(a: User) =>
+  <User user=a />`,
+      '(view Foo((a: User)) => <User user=a />)',
+    ]),
     c([
       `view AnyView() =>
   <>
@@ -116,7 +133,7 @@ describe('view', () => {
     ]),
   ).run(([formula, expectedLisp, expectedFormula], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse view definition '${formula}'`, () => {
-      const expression = testScan(formula, scanView)
+      const expression = testScan(formula, scanView).get()
 
       expect(expression!.toCode()).toEqual(expectedFormula ?? formula)
       expect(expression!.toLisp()).toEqual(expectedLisp)
@@ -132,7 +149,7 @@ describe('bad views', () => {
     (only ? it.only : skip ? it.skip : it)(
       `should error parsing View definitions ${formula}`,
       () => {
-        expect(() => testScan(formula, scanView)).toThrow(error)
+        expect(() => testScan(formula, scanView).get()).toThrow(error)
       },
     ),
   )

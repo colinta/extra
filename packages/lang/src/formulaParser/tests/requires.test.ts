@@ -7,7 +7,7 @@ describe('requires', () => {
     (args, {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse '${args[0]}'`, () => {
         const [formula, expectedCode] = args
-        const expression = testScan(formula, scanRequiresStatement)
+        const expression = testScan(formula, scanRequiresStatement).get()
 
         expect(expression!.toCode()).toEqual(expectedCode ?? formula)
       }),
@@ -21,7 +21,7 @@ describe('bad requires', () => {
     c(['requires /', "Expected a reference, found '/'"]),
   ).run(([formula, error], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should error parsing '${formula}'`, () => {
-      expect(() => testScan(formula, scanRequiresStatement)).toThrow(error)
+      expect(() => testScan(formula, scanRequiresStatement).get()).toThrow(error)
     }),
   )
 })

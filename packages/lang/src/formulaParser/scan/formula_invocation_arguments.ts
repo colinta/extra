@@ -101,9 +101,19 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
         argName = scanValidReferenceName(scanner)
         scanner.scanAllWhitespace()
         scanner.expectString(':', "Expected ':' followed by the argument type")
+        scanner.scanAllWhitespace()
       }
 
-      const expression = parseNext(what === 'invocation' ? 'argument' : 'block_argument')
+      let expression: Expressions.Expression
+      if (argName && (scanner.is(closer) || scanner.is(','))) {
+        expression = new Expressions.Reference(
+          [scanner.charIndex, scanner.charIndex],
+          scanner.flushComments(),
+          argName.name,
+        )
+      } else {
+        expression = parseNext(what === 'invocation' ? 'argument' : 'block_argument')
+      }
 
       let arg: Expressions.Argument
       if (isKwarg || isSpreadArg) {

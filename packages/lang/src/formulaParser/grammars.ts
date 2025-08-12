@@ -262,6 +262,7 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
     expressionType === 'object' ||
+    expressionType === 'application' ||
     expressionType === 'enum' ||
     expressionType === 'class' ||
     expressionType === 'array[]' ||

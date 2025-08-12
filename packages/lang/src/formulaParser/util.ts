@@ -18,7 +18,7 @@ export function wrapStrings(lhs: string, strings: string[], rhs: string) {
     }
 
     const indented = values.map(code => indent(code)).join('\n')
-    return `${lhs}\n${indented}\n${rhs}`
+    return `${lhs.trim()}\n${indented}\n${rhs.trim()}`
   } else {
     return `${lhs}${values.join(', ')}${rhs}`
   }

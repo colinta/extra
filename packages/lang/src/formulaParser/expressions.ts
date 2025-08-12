@@ -2689,7 +2689,7 @@ export class ClassPropertyExpression extends Expression {
 
   toLisp() {
     let code = ''
-    code += this.nameRef.name
+    code += this.nameRef.toLisp()
 
     code += ': ' + this.argType.toLisp()
 
@@ -2702,7 +2702,7 @@ export class ClassPropertyExpression extends Expression {
 
   toCode() {
     let code = ''
-    code += this.nameRef.name
+    code += this.nameRef.toCode()
     code += ': ' + this.argType.toCode()
 
     if (this.defaultValue) {
@@ -2721,7 +2721,14 @@ export class ClassPropertyExpression extends Expression {
   }
 }
 
-export class ClassExpression extends Expression {
+/**
+ * ClassDefinition, like all definitions, are meant to be declared at the module
+ * scope. They are much like Object types, but do not support positional
+ * properties, only named, and they support `@state` properties.
+ */
+export class ClassDefinition extends Expression {
+  prefix = 'class'
+
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -2762,7 +2769,7 @@ export class ClassExpression extends Expression {
   }
 
   toCode() {
-    let code = `class ${this.nameRef.name}`
+    let code = `${this.prefix} ${this.nameRef.name}`
     if (this.generics.length > 0) {
       code += `<${this.generics.join(', ')}>`
     }
@@ -2771,7 +2778,7 @@ export class ClassExpression extends Expression {
     }
     code += ' {\n'
     let body = ''
-    // if (this.initializer)
+    // TODO: if (this.initializer)
     for (const prop of this.properties) {
       body += prop.toCode() + '\n'
     }
@@ -2781,7 +2788,11 @@ export class ClassExpression extends Expression {
     }
 
     for (const formula of this.formulas) {
-      body += formula.toCodePrefixed(true, true) + '\n'
+      const formulaCode = formula.toCodePrefixed(true, true)
+      body += formulaCode + '\n'
+      if (formula !== this.formulas.at(-1)) {
+        body += '\n'
+      }
     }
     code += indent(body)
     code += '}'
@@ -2798,7 +2809,9 @@ export class ClassExpression extends Expression {
   }
 }
 
-export class View extends ClassExpression {
+export class ViewClassDefinition extends ClassDefinition {
+  prefix = 'view'
+
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -2933,7 +2946,7 @@ export abstract class EnumTypeExpression extends Expression {
  * This is the enum type used when declaring an enum type at the module level
  * scope.
  */
-export class NamedEnumTypeExpression extends EnumTypeExpression {
+export class EnumDefinition extends EnumTypeExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -4358,42 +4371,32 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
     )
   }
 
+  /**
+   * Indicates which formula is the view's 'render' formula.
+   */
+  isRender() {
+    return false
+  }
+
   eval<T>(runtime: ApplicationRuntime<T>): GetValueResult {
     return super.eval(runtime)
   }
 }
 
-export class MainFormulaExpression extends ViewFormulaExpression {
-  prefix = ''
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    precedingNameComments: Comment[],
-    precedingReturnTypeComments: Comment[],
-    argDefinitions: FormulaLiteralArgumentDeclarations,
-    returnType: Expression,
-    body: Expression,
-    generics: string[],
-  ) {
-    super(
-      range,
-      precedingComments,
-      precedingNameComments,
-      precedingReturnTypeComments,
-      new Reference([range[0], range[0]], [], 'Main'),
-      argDefinitions,
-      returnType,
-      body,
-    )
+export class RenderFormulaExpression extends ViewFormulaExpression {
+  /**
+   * Marks this as the 'render' formula for a view.
+   */
+  isRender() {
+    return true
   }
 
-  toLisp() {
-    return this.toLispPrefixed(true)
-  }
-
-  toCode() {
-    return this.toCodePrefixed(false, true)
+  toCodePrefixed(prefixed: boolean, forceNewline: boolean) {
+    let code = super.toCodePrefixed(false, forceNewline)
+    if (prefixed) {
+      code = 'render' + code
+    }
+    return code
   }
 }
 
@@ -6342,6 +6345,10 @@ export class ImportSpecific extends Expression {
   }
 }
 
+/**
+ * Declares the default export type. The compiler can use this to ensure that
+ * all requirements are met for the given export.
+ */
 export class ProvidesStatement extends Expression {
   constructor(
     range: Range,
@@ -6461,6 +6468,25 @@ export class ImportSource extends Expression {
   }
 }
 
+/**
+ * Imports from another package. Imports can come from different "sources":
+ * - package: installed from the packages folder (where is that? TBD...)
+ *   Example:
+ *         import File : { reader }
+ * - project: imported from the project, relative to the root of the project
+ *   folder
+ *   Example:
+ *         import /components/nav : { Header }
+ * - relative: imported from a neighbour or a file in a subfolder. *cannot*
+ *   import from a parent folder. If node taught us one thing, it's that relative
+ *   imports that "reach out" pave the way to darkness and despair.
+ *   Example:
+ *         import ./helpers : { parse }
+ * - scheme: All sorts of import methods supported here, like `github:` and
+ *   that's all of them.
+ *   Example:
+ *         import github://colinta/extra-extra : { amazing }
+ */
 export class ImportStatement extends Expression {
   readonly name: Reference | undefined
 
@@ -6511,7 +6537,7 @@ export class ImportStatement extends Expression {
 
     if (this.importSpecifiers.length) {
       code += ' : '
-      code += wrapValues('{', this.importSpecifiers, '}')
+      code += wrapValues('{ ', this.importSpecifiers, ' }')
       code += ''
     }
 
@@ -6618,6 +6644,9 @@ export class BuiltinCommandIdentifier extends Identifier {
   }
 }
 
+/**
+ * A NamedFormulaExpression with an `isPublic` boolean.
+ */
 export class HelperDefinition extends Expression {
   constructor(
     range: Range,
@@ -6667,6 +6696,11 @@ export class HelperDefinition extends Expression {
   }
 }
 
+/**
+ * There is the `ViewClassDefinition` expression, which is a subclass of
+ * `ClassDefinition`, and there is `ViewDefinition`, which is just a view
+ * function and whether it's isPublic or not.
+ */
 export class ViewDefinition extends Expression {
   constructor(
     range: Range,
@@ -6706,7 +6740,7 @@ export class ViewDefinition extends Expression {
       code += 'public '
     }
 
-    return code + this.value.toCode()
+    return code + this.value.toCodePrefixed(true, true)
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {

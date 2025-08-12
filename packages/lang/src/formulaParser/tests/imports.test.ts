@@ -16,19 +16,19 @@ describe('import parser', () => {
       c(['import Foo as Foo', 'import Foo']),
       c(['import Foo as Bar']),
       c(['import Foo/Bar/Baz as Bar']),
-      c(['import Foo : {bar}']),
-      c(['import Foo as Foo : {bar}']),
-      c(['import Foo : {bar as barr}']),
+      c(['import Foo : { bar }']),
+      c(['import Foo as Foo : { bar }']),
+      c(['import Foo : { bar as barr }']),
       c([
-        'import Foo : {bar as barr,bax,bux as buzz}',
-        'import Foo : {bar as barr, bax, bux as buzz}',
+        'import Foo : { bar as barr,bax,bux as buzz }',
+        'import Foo : { bar as barr, bax, bux as buzz }',
       ]),
       c([
         `\
 import Foo : {
 bar as barr
 }`,
-        'import Foo : {bar as barr}',
+        'import Foo : { bar as barr }',
       ]),
       c([
         `\
@@ -36,7 +36,7 @@ import Foo : {
 bar as barr
 bax
 bux as buzz}`,
-        'import Foo : {bar as barr, bax, bux as buzz}',
+        'import Foo : { bar as barr, bax, bux as buzz }',
       ]),
       c([
         `\
@@ -57,7 +57,7 @@ import Foo : {
       c(['import sheety://user/foo@1.2.3-pre']),
     ).run(([formula, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse import definitions ${formula}`, () => {
-        const expression = testScan(formula, scanImportStatement)
+        const expression = testScan(formula, scanImportStatement).get()
 
         expect(expression!.toCode()).toEqual(expectedCode ?? formula)
         expect(expression!.toLisp()).toEqual(`(${expectedCode ?? formula})`)
@@ -72,7 +72,7 @@ describe('bad imports', () => {
     c(['import Foo: {bar\n', 'Unexpected end of input']),
   ).run(([formula, error], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`bad import definitions ${formula}`, () => {
-      expect(() => testScan(formula, scanImportStatement)).toThrow(error)
+      expect(() => testScan(formula, scanImportStatement).get()).toThrow(error)
     }),
   )
 })
