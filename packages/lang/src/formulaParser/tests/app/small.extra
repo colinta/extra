@@ -1,0 +1,22 @@
+type Point = {x: Int, y: Int}
+
+view Minimal {
+  @pt: Point = {x: 0, y: 0}
+
+  render() =>
+    <Pt pt=@pt />
+
+  fn moveRight() =>
+    @pt.x = @pt.x + 1
+}
+
+fn pointDesc(pt: Point) =>
+  $(pt.x) ++ ', ' ++ $(pt.y)
+
+view Pt(pt: Point) =>
+  <>{pointDesc(pt:)}</>
+
+view Pointer {
+  render(pt: Point) =>
+    <>{pointDesc(pt:)}</>
+}

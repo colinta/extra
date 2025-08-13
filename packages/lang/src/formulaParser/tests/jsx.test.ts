@@ -2,6 +2,7 @@ import {c, cases} from '@extra-lang/cases'
 import {testScan} from '../../formulaParser'
 import {scanJsx} from '../scan/jsx'
 
+// JSX is mostly tested via view.test.ts
 describe('jsx', () => {
   describe('parse', () => {
     cases<[string, string]>(

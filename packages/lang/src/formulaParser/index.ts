@@ -237,6 +237,7 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
     new Application(
       [range0, scanner.input.length],
       scanner.flushComments(),
+      applicationTokens.provides,
       applicationTokens.requires,
       applicationTokens.imports,
       applicationTokens.expressions,

@@ -8,24 +8,6 @@ import {type Type} from './types'
 import {uid} from './uid'
 import {type Value} from './values'
 
-export interface Runtime {
-  getLocale(): Intl.Locale
-}
-
-/**
- * Renderer<T>, where T is the node type.
- *
- * 1. First we create the top-level container via `createContainer`
- * 2. Nodes are created via `renderText` or `renderNode`
- * 3. Nodes are added to the tree via `addNodeTo(parentNode: T, childNode: T)`
- */
-export interface Renderer<T> {
-  createContainer(): T
-  renderText(text: string): T
-  renderNode(name: string, props: ObjectValue, children: number): GetRuntimeResult<T>
-  addNodeTo(parentNode: T, childNode: T): void
-}
-
 export type TypeRuntime = Omit<
   MutableTypeRuntime,
   | 'setLocale'
@@ -80,7 +62,6 @@ export class MutableTypeRuntime {
   private relationships: Map<string, AssignedRelationship[]> = new Map()
   // namespaces is only half-baked so far
   private namespaces: Map<string, Map<string, Type>> = new Map()
-  private locale: Intl.Locale | undefined
 
   constructor(readonly parent?: TypeRuntime) {}
 
@@ -188,10 +169,6 @@ export class MutableTypeRuntime {
     return type ?? this.parent?.getNamespaceType(namespace, name)
   }
 
-  getLocale(): Intl.Locale {
-    return this.locale ?? (this.parent ? this.parent.getLocale() : defaultLocale())
-  }
-
   getRelationships(id: string): AssignedRelationship[] {
     const fromParent = this.parent?.getRelationships(id) ?? []
     const fromSelf = this.relationships.get(id) ?? []
@@ -277,10 +254,6 @@ export class MutableTypeRuntime {
       this.namespaces.set(namespace, types)
     }
   }
-
-  setLocale(value: Intl.Locale) {
-    this.locale = value
-  }
 }
 
 export class MutableValueRuntime extends MutableTypeRuntime {
@@ -343,19 +316,8 @@ export class MutableValueRuntime extends MutableTypeRuntime {
   }
 }
 
-export class ApplicationRuntime<T> extends MutableValueRuntime {
-  constructor(
-    readonly runtime: ValueRuntime,
-    readonly renderer: Renderer<T>,
-  ) {
+export class ApplicationRuntime extends MutableValueRuntime {
+  constructor(readonly runtime: ValueRuntime) {
     super(runtime)
   }
-
-  getRenderer(): Renderer<T> {
-    return this.renderer
-  }
-}
-
-function defaultLocale() {
-  return new Intl.Locale('en-ca')
 }

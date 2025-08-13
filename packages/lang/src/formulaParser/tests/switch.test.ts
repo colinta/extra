@@ -164,6 +164,19 @@ case [first, ..., last]:
         Types.array(Types.string(), {min: 1, max: 2}),
         Values.string('c'),
       ]),
+      c([
+        `\
+  switch (letters) {
+  case [first] or []:
+    [first ?? 'a']
+  case [first, ..., last] or [first, last]:
+    [first, last]
+  }
+`,
+        [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
+        Types.array(Types.string(), {min: 1, max: 2}),
+        Values.string('c'),
+      ]),
     ).run(([formula, values, expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
         `'${formula}' should have type '${expectedType}' and value '${expectedValue}'`,

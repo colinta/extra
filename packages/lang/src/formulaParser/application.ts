@@ -8,13 +8,13 @@ import {Expression} from './expressions'
 import {type Comment, RuntimeError, type GetTypeResult, type GetValueResult} from './types'
 
 export class Application extends Expression {
-  readonly requires: Expressions.RequiresStatement | undefined
   readonly imports: Expressions.ImportStatement[]
 
   constructor(
     range: Expressions.Range,
     comments: Comment[],
-    requires: Expressions.RequiresStatement | undefined,
+    readonly providesStmt: Expressions.ProvidesStatement | undefined,
+    readonly requiresStmt: Expressions.RequiresStatement | undefined,
     imports: Expressions.ImportStatement[],
     readonly expressions: (
       | Expressions.TypeDefinition
@@ -26,7 +26,6 @@ export class Application extends Expression {
   ) {
     super(range, comments)
 
-    this.requires = requires
     this.imports = imports.sort((impA, impB) => {
       const impA_num =
         impA.source.location === 'scheme'
@@ -54,8 +53,12 @@ export class Application extends Expression {
 
   toCode() {
     let code = ''
-    if (this.requires) {
-      code += this.requires.toCode()
+    if (this.providesStmt) {
+      code += this.providesStmt.toCode()
+    }
+
+    if (this.requiresStmt) {
+      code += this.requiresStmt.toCode()
     }
 
     if (this.imports.length) {
@@ -81,7 +84,35 @@ export class Application extends Expression {
     return err(new RuntimeError(this, 'Application does not have a type'))
   }
 
-  eval<T>(runtime: ApplicationRuntime<T>): GetValueResult {
-    return err(new RuntimeError(this, 'Application does not have a value'))
+  eval(runtime: ApplicationRuntime): GetValueResult {
+    if (this.providesStmt) {
+      throw new Error('TODO: provides')
+    }
+
+    if (this.requiresStmt) {
+      throw new Error('TODO: requires')
+    }
+
+    if (this.imports.length) {
+      throw new Error('TODO: imports')
+    }
+
+    const classes: Expressions.ClassDefinition[] = this.expressions.filter(
+      expr => expr instanceof Expressions.ClassDefinition,
+    )
+    const enums: Expressions.EnumDefinition[] = this.expressions.filter(
+      expr => expr instanceof Expressions.EnumDefinition,
+    )
+    const types: (
+      | Expressions.TypeDefinition
+      | Expressions.ClassDefinition
+      | Expressions.EnumDefinition
+    )[] = this.expressions.filter(expr => expr instanceof Expressions.TypeDefinition)
+    types.push(...classes, ...enums)
+
+    const helpers = this.expressions.filter(expr => expr instanceof Expressions.HelperDefinition)
+    const views = this.expressions.filter(expr => expr instanceof Expressions.ViewDefinition)
+    console.log('=========== application.ts at line 105 ===========')
+    console.log({types, helpers, views})
   }
 }

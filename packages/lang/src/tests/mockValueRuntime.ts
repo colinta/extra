@@ -40,7 +40,5 @@ class MockValueRuntime extends MutableValueRuntime {
 
 export function mockValueRuntime(runtimeTypes: {[K in string]: [Types.Type, Values.Value]}) {
   const runtime = new MockValueRuntime(runtimeTypes)
-  runtime.setLocale(new Intl.Locale('en-ca'))
-
   return runtime
 }
