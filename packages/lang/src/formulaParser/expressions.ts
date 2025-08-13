@@ -26,7 +26,6 @@ import {
 import {
   assignRelationshipsToRuntime,
   combineEitherTypeRuntimes,
-  combineOrRelationships,
   invertSymbol,
   type Relationship,
   relationshipFormula,
@@ -4588,8 +4587,6 @@ export abstract class MatchIdentifier extends MatchExpression {
         comparison: {operator: 'instanceof', rhs: lhsType},
       },
     ]
-    // assign.unstableId is not a reliable reference, it can change in
-    // `combineOrRelationships`. This is handled by a scan of `reassignIds`.
     if (formula) {
       relationships.push({
         formula: relationshipFormula.reference(this.nameRef.name, assign.unstableId),
@@ -6214,58 +6211,86 @@ export class CaseExpression extends MatchExpression {
     return this.matches.flatMap(match => match.matchAssignReferences())
   }
 
-  gimmeTrueStuffWith(
+  /**
+   * H'okay, so. Case expressions can have multiple matches:
+   *     switch (subject) {
+   *       case [first] or [_, first] or …
+   *
+   * We combine all these matches using the same logic as we do with 'or'
+   *
+   *      subject is [first] or subject is [_, first]
+   *
+   * Except, unlike 'or' expressions, cases need not have the same assignments
+   * in all branches (missing assignments default to 'null').
+   *
+   * To calculate this, we need to iterate through the matches, keeping track
+   * of the previous match-expression (so that we can calculate its
+   * `assumeFalse` runtime) and previous truthy-runtime (so that we can combine
+   * it with the current match's `assumeTrue` runtime). The return value is the
+   * final `combineEitherTypeRuntimes` (or if there is only one match
+   * expression, this all reduces to just calculating its `assumeTrue` runtime)
+   */
+  assumeTrueWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
-  ): GetRuntimeResult<Relationship[]> {
-    return this.gimmeStuffImpl(
-      match => match.gimmeTrueStuffWith(runtime, formula, subjectType),
-      combineOrRelationships,
-    )
-  }
+  ) {
+    let currentRuntime = runtime
+    let nextRuntime: TypeRuntime | undefined
+    let prevExpr: MatchExpression | undefined
+    for (const matchExpr of this.matches) {
+      if (prevExpr) {
+        const prevFalseRuntimeResult = prevExpr.assumeFalseWith(
+          currentRuntime,
+          formula,
+          subjectType,
+        )
+        if (prevFalseRuntimeResult.isErr()) {
+          return prevFalseRuntimeResult
+        }
 
-  gimmeFalseStuffWith(
-    runtime: TypeRuntime,
-    formula: RelationshipFormula | undefined,
-    subjectType: Types.Type,
-  ): GetRuntimeResult<Relationship[]> {
-    return this.gimmeStuffImpl(
-      match => match.gimmeFalseStuffWith(runtime, formula, subjectType),
-      (lhsStuff, rhsStuff) => lhsStuff.concat(rhsStuff),
-    )
+        currentRuntime = prevFalseRuntimeResult.value
+      }
+
+      const nextRuntimeResult = matchExpr.assumeTrueWith(currentRuntime, formula, subjectType)
+      if (nextRuntimeResult.isErr()) {
+        return nextRuntimeResult
+      }
+
+      if (nextRuntime && prevExpr) {
+        const combinedRuntimeResult = combineEitherTypeRuntimes(
+          currentRuntime,
+          nextRuntime,
+          nextRuntimeResult.value,
+          'case',
+        )
+        nextRuntime = combinedRuntimeResult.get()
+      } else {
+        nextRuntime = nextRuntimeResult.value
+      }
+
+      prevExpr = matchExpr
+    }
+
+    return ok(nextRuntime ?? runtime)
   }
 
   /**
-   * Ho'kay, so, here's what's going on in `gimmeStuffImpl`.
-   *     switch (subject) {
-   *       case .some(value): ...
-   *     }
-   * A single match expression is common, and in that case all this map/reduce
-   * is unncessary, because what will happen boils down to:
-   *     return matchExpr.gimmeTrueStuffWith(runtime, formula, subjectType)
-   *
-   * However, case statements accept _multiple_ matches
-   *     switch (subject) {
-   *       case .some(value), .other(value): ...
-   *     }
-   *
-   * Here, we have to combine the results of all matches using
-   * `combineOrRelationships`. This ends up being identical to the
-   * LogicalOrOperator `gimmeTrueStuff` implementation.
+   * The false condition is much simpler - `assumeFalse` of every match
+   * expression (again, the same logic as `or` expressions).
    */
-  private gimmeStuffImpl(
-    stuffer: (match: MatchExpression) => GetRuntimeResult<Relationship[]>,
-    combiner: (lhsStuff: Relationship[], rhsStuff: Relationship[]) => Relationship[],
+  assumeFalseWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    subjectType: Types.Type,
   ) {
-    return mapAll(this.matches.map(match => stuffer(match))).map(stuff => {
-      const lhsStuff = stuff.at(0)
-      if (!lhsStuff) {
-        return []
+    return this.matches.reduce((runtime, matchExpr): GetRuntimeResult<TypeRuntime> => {
+      if (runtime.isErr()) {
+        return runtime
       }
 
-      return stuff.slice(1).reduce(combiner, lhsStuff)
-    })
+      return matchExpr.assumeFalseWith(runtime.value, formula, subjectType)
+    }, ok(runtime))
   }
 
   toLisp() {
@@ -6786,7 +6811,11 @@ function wrapValues(lhs: string, expressions: Expression[], rhs: string, precede
   return wrapStrings(lhs, codes, rhs)
 }
 
-function getChildType<T extends Expression>(
+/**
+ * Gets the type of 'expr', and on error it decorates the RuntimeError with the
+ * parent expression.
+ */
+export function getChildType<T extends Expression>(
   parent: Expression,
   expr: T,
   runtime: TypeRuntime,

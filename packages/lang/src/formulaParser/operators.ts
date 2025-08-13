@@ -24,6 +24,7 @@ import {
   comparisonOperation,
   expectedNumberMessage,
   expectedType,
+  getChildType,
   Operation,
   type Expression,
   type Range,
@@ -744,7 +745,7 @@ function mapCombineEitherError(
   lhs: Expression,
   rhs: Expression,
   result: Result<TypeRuntime, [string, string]>,
-  where: 'and' | 'or',
+  combineOp: 'and' | 'or',
 ): GetRuntimeResult<TypeRuntime> {
   if (result.isErr()) {
     const missingExpr = result.error[0] === 'missing-lhs' ? lhs : rhs
@@ -753,7 +754,7 @@ function mapCombineEitherError(
     return err(
       new RuntimeError(
         missingExpr,
-        `Invalid expressions in '${where}'. '${hasExpr}' assigns to '${assign}', but '${missingExpr}' does not.`,
+        `Invalid expressions in '${combineOp}'. '${hasExpr}' assigns to '${assign}', but '${missingExpr}' does not.`,
       ),
     )
   }
@@ -773,7 +774,7 @@ class LogicalOrOperator extends BinaryOperator {
         lhs
           .assumeTrue(runtime)
           .map(lhsTrueRuntime =>
-            combineEitherTypeRuntimes(runtime, lhsTrueRuntime, rhsTrueRuntime, true).mapResult(
+            combineEitherTypeRuntimes(runtime, lhsTrueRuntime, rhsTrueRuntime, 'or').mapResult(
               result => mapCombineEitherError(lhs, rhs, result, 'or'),
             ),
           ),
@@ -914,9 +915,7 @@ class LogicalAndOperator extends BinaryOperator {
         lhs
           .assumeFalse(runtime)
           .map(lhsFalseRuntime =>
-            combineEitherTypeRuntimes(runtime, lhsFalseRuntime, rhsFalseRuntime, false).mapResult(
-              result => mapCombineEitherError(lhs, rhs, result, 'and'),
-            ),
+            combineEitherTypeRuntimes(runtime, lhsFalseRuntime, rhsFalseRuntime, 'and'),
           ),
       )
   }
@@ -5228,18 +5227,6 @@ function anyFloaters(
   }
 
   return lhs.is === 'literal-float' || rhs.is === 'literal-float' ? 'float' : undefined
-}
-
-/**
- * Gets the type of 'expr', and on error it decorates the RuntimeError with the
- * parent expression.
- */
-function getChildType<T extends Expression>(
-  parent: Expression,
-  expr: T,
-  runtime: TypeRuntime,
-): ReturnType<T['getType']> {
-  return expr.getType(runtime).mapResult(decorateError(parent)) as ReturnType<T['getType']>
 }
 
 function decorateError(expr: Expression) {

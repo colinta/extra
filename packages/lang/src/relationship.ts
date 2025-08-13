@@ -573,43 +573,51 @@ function collapsedTypeRuntimeAdditions(runtime: TypeRuntime) {
   >
 }
 
+// 'or' conditions require both sides to have the same match assignments
+//     foo is [bar] or foo is [bar, _] 👌
+//     foo is [bar] or foo is [] ❌
 export function combineEitherTypeRuntimes(
   prevRuntime: TypeRuntime,
   lhsRuntime: TypeRuntime,
   rhsRuntime: TypeRuntime,
-  checkNames: boolean,
+  combineOp: 'or',
+): Result<TypeRuntime, ['missing-lhs' | 'missing-rhs', string]>
+// 'and' conditions use combineEitherTypeRuntimes only in the false case - it
+// is possible there to have the 'rhs' assign to a match, but not the lhs. In
+// this case we do not assign it at all.
+//     foo is [bar] and bar 👌 (
+//     -- bar is assigned in the 'true' case, not in the false case (even if)
+//     -- lhs matches
+//     foo is [_, _] and foo is [_, bar] 👌
+//     -- bar is assigned in the 'true' case, not in the false case
+// 'case' condition resolves like 'or', but partial matches *are* allowed - they
+// default to 'null'
+//     switch (foo) {
+//     case [bar] or []:
+//       -- bar could be 'null' here
+//     }
+export function combineEitherTypeRuntimes(
+  prevRuntime: TypeRuntime,
+  lhsRuntime: TypeRuntime,
+  rhsRuntime: TypeRuntime,
+  combineOp: 'and' | 'case',
+): Result<TypeRuntime, never>
+
+export function combineEitherTypeRuntimes(
+  prevRuntime: TypeRuntime,
+  lhsRuntime: TypeRuntime,
+  rhsRuntime: TypeRuntime,
+  combineOp: 'and' | 'or' | 'case',
 ): Result<TypeRuntime, ['missing-lhs' | 'missing-rhs', string]> {
   const lhsAdditions = lhsRuntime.additions()
   const rhsAdditions = collapsedTypeRuntimeAdditions(rhsRuntime)
   const nextRuntime = new MutableTypeRuntime(prevRuntime)
 
-  // for (const [id, lhsType] of lhsAdditions.types) {
-  //   const rhsType = rhsAdditions.types.get(id)
-  //   if (!rhsType) {
-  //     continue
-  //   }
-
-  //   const lhsName = lhsRuntime.refName(id)
-  //   const rhsName = rhsRuntime.refName(id)
-  //   if (!lhsName) {
-  //     throw new Error(`No name for type id ${id} in lhs runtime`)
-  //   }
-  //   if (!rhsName) {
-  //     throw new Error(`No name for type id ${id} in rhs runtime`)
-  //   }
-  //   if (lhsName !== rhsName) {
-  //     throw new Error(`Type names do not match for id ${id}: lhs '${lhsName}' vs rhs '${rhsName}'`)
-  //   }
-
-  //   const type = Types.compatibleWithBothTypes(lhsType, rhsType)
-  //   nextRuntime.addLocalTypeWithId(lhsName, id, type)
-  // }
-
   const names = union(lhsAdditions.names, rhsAdditions.names)
   for (const name of names) {
-    const lhsType = lhsRuntime.getLocalType(name)
-    const rhsType = rhsRuntime.getLocalType(name)
-    if (checkNames) {
+    let lhsType = lhsRuntime.getLocalType(name)
+    let rhsType = rhsRuntime.getLocalType(name)
+    if (combineOp === 'or') {
       if (!lhsAdditions.names.has(name) && !prevRuntime.refId(name)) {
         return err(['missing-lhs', name])
       }
@@ -619,8 +627,14 @@ export function combineEitherTypeRuntimes(
     }
 
     if (!lhsType || !rhsType) {
-      continue
+      if (combineOp === 'and') {
+        continue
+      }
+
+      lhsType ??= Types.NullType
+      rhsType ??= Types.NullType
     }
+
     const type = Types.compatibleWithBothTypes(lhsType, rhsType)
     const lhsId = lhsRuntime.refId(name)
     const rhsId = rhsRuntime.refId(name)
@@ -631,147 +645,19 @@ export function combineEitherTypeRuntimes(
     }
   }
 
-  // for (const [id, lhsRelationships] of lhsAdditions.relationships) {
-  //   const rhsRelationships = rhsAdditions.relationships.get(id)
-  //   if (!rhsRelationships) {
-  //     continue
-  //   }
+  // TODO: combine relationships
+  for (const [id, lhsRelationships] of lhsAdditions.relationships) {
+    const rhsRelationships = rhsAdditions.relationships.get(id)
+    if (!rhsRelationships) {
+      continue
+    }
 
-  //   // filter the relationships on lhs that are compatible with rhs
-  //   const relationships = combineOrRelationships(lhsRelationships, rhsRelationships)
-  //   nextRuntime.addTrustedRelationshipsFormulas(id, relationships.filter(isAssignedRelationship))
-  // }
+    // filter the relationships on lhs that are compatible with rhs
+    const relationships = combineOrRelationships(lhsRelationships, rhsRelationships)
+    nextRuntime.addTrustedRelationshipsFormulas(id, relationships.filter(isAssignedRelationship))
+  }
 
   return ok(nextRuntime)
-}
-
-export function combineAndRelationships(
-  lhsStuff: Relationship[],
-  rhsStuff: Relationship[],
-): Relationship[] {
-  // I don't think I need to sort lhsStuff like I do in combineOrRelationships
-  let lhsSet = [...lhsStuff]
-  let rhsRemaining = rhsStuff
-
-  const combined: Relationship[] = []
-  while (lhsSet.length) {
-    const lhs = lhsSet.shift()!
-    const commonFormulas = [lhs]
-    lhsSet = lhsSet.reduce((remaining, lhs2) => {
-      if (isEqualFormula(lhs.formula, lhs2.formula)) {
-        commonFormulas.push(lhs2)
-      } else {
-        remaining.push(lhs2)
-      }
-      return remaining
-    }, [] as Relationship[])
-
-    const rhsNext: Relationship[] = []
-    for (const rhs of rhsRemaining) {
-      if (isEqualFormula(lhs.formula, rhs.formula)) {
-        commonFormulas.push(rhs)
-      } else {
-        rhsNext.push(rhs)
-      }
-    }
-    rhsRemaining = rhsNext
-
-    // heads up, _combineAndRelationships mangles commonFormulas (shift())
-    const all = _combineAndRelationships(commonFormulas)
-    combined.push(...all)
-  }
-  combined.push(...rhsRemaining)
-
-  return combined
-}
-
-function _combineAndRelationships(relationships: Relationship[]): Relationship[] {
-  if (relationships.length <= 1) {
-    return relationships
-  }
-
-  if (relationships.length > 2) {
-    const first = relationships.shift()!
-    for (const relationship of relationships) {
-      const combinedOne = _combineAndRelationships([first, relationship])
-      if (combinedOne.length === 1) {
-        return _combineAndRelationships([combinedOne[0], ...relationships])
-      }
-    }
-
-    return [first, ..._combineAndRelationships(relationships)]
-  }
-
-  const [lhs, rhs] = relationships
-  if (isMathRelationship(lhs) && isMathRelationship(rhs)) {
-    return combineAndMathRelationships(lhs, rhs)
-  }
-
-  return relationships
-}
-
-function combineAndMathRelationships(
-  lhs: MathRelationship,
-  rhs: MathRelationship,
-): MathRelationship[] {
-  // regardless of the rhs type '==' comparisons are the most precise
-  if (lhs.comparison.operator === '==' && rhs.comparison.operator !== '==') {
-    return [lhs]
-  }
-  if (lhs.comparison.operator !== '==' && rhs.comparison.operator === '==') {
-    return [rhs]
-  }
-  if (lhs.comparison.operator === '==' && rhs.comparison.operator === '==') {
-    return [lhs, rhs]
-  }
-
-  if (!isNumeric(lhs.comparison.rhs) || !isNumeric(rhs.comparison.rhs)) {
-    return [lhs, rhs]
-  }
-
-  const [lhsValue, rhsValue] = [lhs.comparison.rhs, rhs.comparison.rhs]
-  const [lhsNumber, rhsNumber] = [lhsValue.value, rhsValue.value]
-  const isInt = lhs.comparison.rhs.type === 'int' && rhs.comparison.rhs.type === 'int'
-
-  if (lhs.comparison.operator === '<' && rhs.comparison.operator === '<') {
-    return [
-      {
-        formula: lhs.formula,
-        comparison: {
-          operator: '<',
-          rhs: relationshipFormula.number(Math.min(lhsNumber, rhsNumber), isInt),
-        },
-      },
-    ]
-  } else if (lhs.comparison.operator === '<' && rhs.comparison.operator === '<=') {
-    if (lhsNumber <= rhsNumber) {
-      return [lhs]
-    }
-    return [rhs]
-  } else if (lhs.comparison.operator === '<') {
-    return [lhs, rhs]
-  }
-
-  if (lhs.comparison.operator === '>' && rhs.comparison.operator === '>') {
-    return [
-      {
-        formula: lhs.formula,
-        comparison: {
-          operator: '>',
-          rhs: relationshipFormula.number(Math.max(lhsNumber, rhsNumber), isInt),
-        },
-      },
-    ]
-  } else if (lhs.comparison.operator === '>' && rhs.comparison.operator === '>=') {
-    if (lhsNumber >= rhsNumber) {
-      return [lhs]
-    }
-    return [rhs]
-  } else if (lhs.comparison.operator === '>') {
-    return [lhs, rhs]
-  }
-
-  return [lhs, rhs]
 }
 
 /**
@@ -783,7 +669,7 @@ function combineAndMathRelationships(
  * All others are retained in the form of a "one-of" relationship.
  *     x is String or x >= 5 => String | Int(>=5)
  */
-export function combineOrRelationships(
+function combineOrRelationships(
   lhsStuff: Relationship[],
   rhsStuff: Relationship[],
 ): Relationship[] {
@@ -802,7 +688,6 @@ export function combineOrRelationships(
   })
 
   const combined: Relationship[] = []
-  // TODO: refactor out common code in combineAndRelationships
   while (lhsSet.length) {
     const lhs = lhsSet.shift()!
     const commonFormulas = [lhs]

@@ -1,4 +1,3 @@
-import {type GetRuntimeResult} from './formulaParser/types'
 import {
   findEventualRef,
   type AssignedRelationship,
@@ -7,7 +6,7 @@ import {
 } from './relationship'
 import {type Type} from './types'
 import {uid} from './uid'
-import {type Value, type ObjectValue} from './values'
+import {type Value} from './values'
 
 export interface Runtime {
   getLocale(): Intl.Locale
