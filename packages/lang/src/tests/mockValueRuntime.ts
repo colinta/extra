@@ -14,6 +14,13 @@ class MockValueRuntime extends MutableValueRuntime {
     return super.refId(name)
   }
 
+  has(name: string) {
+    if (this.runtimeTypes[name]) {
+      return true
+    }
+    return super.has(name)
+  }
+
   getLocalType(name: string) {
     if (this.runtimeTypes[name] && !super.getLocalType(name)) {
       this.addLocalType(name, this.runtimeTypes[name][0])

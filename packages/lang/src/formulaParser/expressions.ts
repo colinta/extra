@@ -25,6 +25,7 @@ import {
 } from './types'
 import {
   assignRelationshipsToRuntime,
+  combineEitherTypeRuntimes,
   combineOrRelationships,
   invertSymbol,
   type Relationship,
@@ -2008,7 +2009,6 @@ export class LetAssign extends NamedArgument {
 export class LetExpression extends Expression {
   readonly name = 'let'
   readonly bindings: [string, LetAssign | NamedFormulaExpression][]
-  private isSorted: boolean
 
   constructor(
     range: Range,
@@ -2023,45 +2023,29 @@ export class LetExpression extends Expression {
   ) {
     super(range, precedingComments)
 
-    const sorted = dependencySort(
-      bindings.map((arg): [string, LetAssign | NamedFormulaExpression] => {
-        if (arg instanceof NamedFormulaExpression) {
-          return [arg.nameRef.name, arg]
-        }
+    this.bindings = bindings.map(arg => {
+      if (arg instanceof NamedFormulaExpression) {
+        return [arg.nameRef.name, arg]
+      }
 
-        return [arg.alias, arg]
-      }),
-      new Set(),
-      true,
-    )
-    this.isSorted = sorted.isOk()
-    this.bindings =
-      sorted.safeGet() ??
-      bindings.map(arg => {
-        if (arg instanceof NamedFormulaExpression) {
-          return [arg.nameRef.name, arg]
-        }
-
-        return [arg.alias, arg]
-      })
+      return [arg.alias, arg]
+    })
   }
 
-  private sortedBindings() {
-    if (this.isSorted) {
-      return ok(this.bindings)
-    } else {
-      return dependencySort(this.bindings, new Set(), true)
-    }
+  private sortedBindings(ignoreExternal: (name: string) => boolean) {
+    return dependencySort(this.bindings, ignoreExternal)
   }
 
   toLisp() {
-    const bindings = this.bindings.map(([alias, arg]) => arg.toLisp()).join(' ')
-    return `(let ${bindings} ${this.body.toLisp()})`
+    const bindings = this.sortedBindings(() => true).safeGet() ?? this.bindings
+    const code = bindings.map(([_, arg]) => arg.toLisp()).join(' ')
+    return `(let ${code} ${this.body.toLisp()})`
   }
 
   toCode() {
     let code = 'let\n'
-    for (const [alias, arg] of this.bindings) {
+    const bindings = this.sortedBindings(() => true).safeGet() ?? this.bindings
+    for (const [alias, arg] of bindings) {
       let line: string
       let exprCode: string
       if (arg instanceof NamedFormulaExpression) {
@@ -2124,7 +2108,7 @@ export class LetExpression extends Expression {
 
   getType(runtime: TypeRuntime): GetTypeResult {
     let nextRuntime = new MutableTypeRuntime(runtime)
-    return this.sortedBindings()
+    return this.sortedBindings(name => runtime.has(name))
       .map(deps =>
         mapAll(
           deps.map(([name, assignment]) =>
@@ -2170,7 +2154,7 @@ export class LetExpression extends Expression {
 
   eval(runtime: ValueRuntime) {
     let nextRuntime = new MutableValueRuntime(runtime)
-    return this.sortedBindings()
+    return this.sortedBindings(name => runtime.has(name))
       .map(deps =>
         mapAll(
           deps.map(([alias, dep]) =>

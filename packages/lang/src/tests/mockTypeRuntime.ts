@@ -14,6 +14,13 @@ class MockTypeRuntime extends MutableTypeRuntime {
     return super.refId(name)
   }
 
+  has(name: string) {
+    if (this.runtimeTypes[name]) {
+      return true
+    }
+    return super.has(name)
+  }
+
   getTypeById(id: string) {
     const sup = super.getLocalType(id)
     const name = super.refName(id)

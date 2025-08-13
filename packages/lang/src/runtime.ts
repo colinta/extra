@@ -115,6 +115,10 @@ export class MutableTypeRuntime {
     return this.ids.get(name) ?? this.parent?.refId(name)
   }
 
+  has(name: string): boolean {
+    return this.ids.has(name) ?? this.parent?.has(name) ?? false
+  }
+
   refName(id: string): string | undefined {
     return this.names.get(id) ?? this.parent?.refName(id)
   }
@@ -285,6 +289,10 @@ export class MutableValueRuntime extends MutableTypeRuntime {
 
   constructor(readonly parent?: ValueRuntime) {
     super(parent)
+  }
+
+  has(name: string): boolean {
+    return this.values.has(name) ?? this.parent?.has(name) ?? false
   }
 
   resolved(): Set<string> {

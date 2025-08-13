@@ -152,6 +152,7 @@ in
     beforeEach(() => {
       runtimeTypes['input'] = [Types.literal('test'), Values.string('test')]
     })
+
     cases<[string, Types.Type, Values.Value]>(
       c([
         `\

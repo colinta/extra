@@ -33,8 +33,8 @@ function findChain(
 
 export function dependencySort<T extends Expression>(
   expressions: [string, T][],
-  alreadyResolved: Set<string>,
-  ignoreExternal = false,
+  // returns 'true' if the depenency is available via an outer context
+  ignoreExternal: (name: string) => boolean,
 ): GetRuntimeResult<[string, T][]> {
   let expressionDeps: {
     name: string
@@ -45,13 +45,13 @@ export function dependencySort<T extends Expression>(
 
   let nextIter: typeof expressionDeps = []
   const orderedExpressions: [string, T][] = []
-  const resolved = new Set<string>(alreadyResolved)
+  const resolved = new Set<string>()
   while (expressionDeps.length) {
     const circular = new Map<string, Set<string>>()
     for (const {name, expr, deps} of expressionDeps) {
       if (
         [...deps].every(
-          dep => resolved.has(dep) || (ignoreExternal && !locallyResolved.includes(dep)),
+          dep => resolved.has(dep) || (ignoreExternal(dep) && !locallyResolved.includes(dep)),
         )
       ) {
         resolved.add(name)

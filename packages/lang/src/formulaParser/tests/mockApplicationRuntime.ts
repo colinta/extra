@@ -1,12 +1,11 @@
 import * as Types from '../../types'
 import * as Values from '../../values'
-import {ApplicationRuntime, type Renderer} from '../../runtime'
+import {ApplicationRuntime} from '../../runtime'
 import {mockValueRuntime} from '../../tests/mockValueRuntime'
 
-export function mockApplicationRuntime<T>(
-  runtimeTypes: {[K in string]: [Types.Type, Values.Value]},
-  renderer: Renderer<T>,
-) {
+export function mockApplicationRuntime<T>(runtimeTypes: {
+  [K in string]: [Types.Type, Values.Value]
+}) {
   const valueRuntime = mockValueRuntime(runtimeTypes)
-  return new ApplicationRuntime<T>(valueRuntime, renderer)
+  return new ApplicationRuntime(valueRuntime)
 }

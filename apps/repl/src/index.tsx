@@ -300,7 +300,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       }
     }
 
-    const expressionsSorted = dependencySort(varExpressions, new Set())
+    const expressionsSorted = dependencySort(varExpressions, () => false)
     if (expressionsSorted.isErr()) {
       return {
         type: 'error',
