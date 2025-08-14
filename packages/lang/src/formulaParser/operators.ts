@@ -54,7 +54,7 @@ export const BINARY_OP_ALIASES = {
   '≥': '>=',
   '≠': '!=',
 } as const
-export const UNARY_OP_NAMES = ['not', 'typeof'] as const
+export const UNARY_OP_NAMES = ['not'] as const
 export const UNARY_OP_ALIASES = {
   '!': 'not',
 } as const
@@ -1389,12 +1389,10 @@ class AssignmentOperator extends BinaryOperator {
     _runtime: TypeRuntime,
     _lhs: Types.Type,
     _rhs: Types.Type,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
+    _lhsExpr: Expression,
+    _rhsExpr: Expression,
   ): GetTypeResult {
-    return err(
-      new RuntimeError(lhsExpr, 'Still working on assignment ' + lhsExpr + ' = ' + rhsExpr),
-    )
+    return ok(new Types.MessageType())
   }
 
   operatorEval(
@@ -2935,6 +2933,18 @@ class PropertyAccessOperator extends PropertyChainOperator {
 
     return ok(value)
   }
+
+  toCode(prevPrecedence = 0): string {
+    if (prevPrecedence > this.operator.precedence) {
+      return `(${this.toCode(0)})`
+    }
+
+    const [lhsExpr, rhsExpr] = this.args
+    // remove '@' from rhs - it's ignored at compile/runtime, because I know
+    // what you mean and I'm not *always* a fastidious monster.
+    const rhsCode = rhsExpr instanceof Expressions.StateReference ? rhsExpr.name : rhsExpr.toCode()
+    return `${lhsExpr.toCode(prevPrecedence)}${this.symbol}${rhsCode}`
+  }
 }
 
 addBinaryOperator({
@@ -4021,34 +4031,6 @@ addUnaryOperator({
   },
 })
 
-class TypeofOperator extends UnaryOperator {
-  symbol = 'typeof'
-
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
-    return ok(lhs.typeConstructor())
-  }
-
-  operatorEval(_runtime: ValueRuntime, _lhs: Values.Value) {
-    return err(new RuntimeError(this, 'TODO'))
-  }
-}
-
-addUnaryOperator({
-  name: 'type of',
-  symbol: 'typeof',
-  precedence: PRECEDENCE.UNARY['typeof'],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new TypeofOperator(range, precedingComments, followingOperatorComments, operator, args)
-  },
-})
-
 export class IfExpressionInvocation extends FunctionInvocationOperator {
   symbol = 'if'
   argList: Expression
@@ -4915,7 +4897,7 @@ function functionInvocationOperatorType(
     // - PositionalArgument `foo(bar)`
     // - or SpreadFunctionArgument `foo(...bar)`, `bar` must be an Object or Array
     // - or RepeatedFunctionArgument `foo(...name: bar)`, `bar` must be an Array
-    // - or Keyword Argument List `foo(*kwargs)`, `kwargs` must be a Dict
+    // - or Keyword Argument List `foo(**kwargs)`, `kwargs` must be a Dict
     argsList.allArgs.map((providedArg): GetRuntimeResult<_IntermediateArgs[]> => {
       const currentPosition = positionIndex
       // we can use the argument type (from formulaType) to derive the types of a formula
@@ -5260,9 +5242,4 @@ function includeMissingNames(runtime: ValueRuntime, allNames: Set<string>, fromE
     mutableRuntime.addLocalValue(missingName, Values.NullValue)
   }
   return mutableRuntime
-}
-
-type _LogicalAndOperator = LogicalAndOperator
-export namespace TestingTypes {
-  export type LogicalAndOperator = _LogicalAndOperator
 }

@@ -5,7 +5,7 @@ import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
 import {scanArgumentType} from './argument_type'
-import {scanValidReferenceName} from './identifier'
+import {scanValidLocalName} from './identifier'
 
 // "Formula" (declared, actual formula) vs "Formula Type" (type signature of a
 // formula)
@@ -117,7 +117,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       scanner.scanSpaces()
 
       const argNameRange0 = scanner.charIndex
-      let argName = scanValidReferenceName(scanner)
+      let argName = scanValidLocalName(scanner)
       scanner.scanSpaces()
       argName.followingComments.push(...scanner.flushComments())
 
@@ -177,7 +177,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       let argAlias: Expressions.Reference | undefined
       if (!isPositional && is === 'formula' && isArgumentStartChar(scanner)) {
         argAlias = argName
-        argName = scanValidReferenceName(scanner)
+        argName = scanValidLocalName(scanner)
         scanner.scanSpaces()
         argName.followingComments.push(...scanner.flushComments())
         scanner.scanAllWhitespace()

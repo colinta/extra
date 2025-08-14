@@ -1,4 +1,4 @@
-import {err, mapAll, ok, type Result} from '@extra-lang/result'
+import {err, mapAll, mapOr, ok, type Result} from '@extra-lang/result'
 import {intersection} from './formulaParser/set'
 import {splitter} from './graphemes'
 import * as Narrowed from './narrowed'
@@ -173,17 +173,56 @@ export function floatRange(narrowed?: Partial<Narrowed.NarrowedFloat>) {
   return FloatRangeType
 }
 
-// TODO: rename to classType
-export function klass(props: Map<string, Type>, parent?: ClassType) {
-  return new ClassType(props, parent)
+export function metaClass({
+  name,
+  class: classType,
+  props,
+  parent,
+  defaults,
+  moreProps,
+}: {
+  name: string
+  class: ClassInstanceType
+  props?: Map<string, Type>
+  parent?: ClassDefinitionType
+  defaults?: string[]
+  moreProps?: (metaClass: ClassDefinitionType, classType: ClassInstanceType) => Map<string, Type>
+}) {
+  const metaClass = new ClassDefinitionType(
+    name,
+    parent,
+    classType,
+    props ?? new Map(),
+    new Set(defaults),
+  )
+  if (moreProps) {
+    for (const [name, type] of moreProps(metaClass, classType).entries()) {
+      metaClass.staticProps.set(name, type)
+    }
+  }
+  return metaClass
 }
 
-export function namedClass(
-  name: string,
-  props: Map<string, Type>,
-  parent?: ClassType,
-): NamedClassType {
-  return new NamedClassType(name, props, parent)
+export function classType({
+  name,
+  parent,
+  props,
+  formulas,
+  moreFormulas,
+}: {
+  name: string
+  parent?: ClassInstanceType
+  props?: Map<string, Type>
+  formulas?: Map<string, Type>
+  moreFormulas?: (classType: ClassInstanceType) => Map<string, Type>
+}) {
+  const classType = new ClassInstanceType(name, parent, props ?? new Map(), formulas ?? new Map())
+  if (moreFormulas) {
+    for (const [name, type] of moreFormulas(classType).entries()) {
+      classType.formulas.set(name, type)
+    }
+  }
+  return classType
 }
 
 export function enumCase(
@@ -363,16 +402,6 @@ export abstract class Type {
   fromTypeConstructor(): Type {
     return this
   }
-
-  /**
-   * Returns the type constructor for this type (the function to call to create a new
-   * instance).
-   *
-   *     typeof a => a.type.typeConstructor
-   *
-   * This is how Type is represented in the runtime
-   */
-  abstract typeConstructor(): TypeConstructor
 
   /**
    * Only `null` types are optional, e.g. `Int | null`
@@ -640,16 +669,6 @@ export class GenericType extends Type {
     Object.defineProperty(this, '_resolvedResult', {enumerable: false})
   }
 
-  typeConstructor(): TypeConstructor {
-    if (this.resolvedType) {
-      return this.resolvedType.typeConstructor()
-    }
-
-    return new TypeConstructor(this.name, this, this, [
-      positionalArgument({name: 'input', type: this, isRequired: true}),
-    ])
-  }
-
   isGeneric(): this is GenericType {
     return true
   }
@@ -848,7 +867,7 @@ export interface KwargListArgument {
 }
 
 export class FormulaType extends Type {
-  readonly is: 'formula' | 'named-formula' | 'view' = 'formula'
+  readonly is: 'formula' | 'lazy' | 'named-formula' | 'view' | 'class-definition' = 'formula'
   name: string | undefined
   /**
    * The list of arguments, in the order declared in the formula.
@@ -879,12 +898,6 @@ export class FormulaType extends Type {
     Object.defineProperty(this, '_named', {enumerable: false})
     Object.defineProperty(this, '_positional', {enumerable: false})
     Object.defineProperty(this, '_kwargs', {enumerable: false})
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor(FN, this, this, [
-      positionalArgument({name: 'input', type: this, isRequired: true}),
-    ])
   }
 
   hasGeneric() {
@@ -971,7 +984,19 @@ export class FormulaType extends Type {
   }
 }
 
-export class LazyFormulaType extends FormulaType {}
+/**
+ * A formula that takes no arguments and returns a value.
+ *
+ *     fn onlyWhenT(# condition: Boolean, then: Lazy(T))
+ *       if (condition, then: then())
+ */
+export class LazyFormulaType extends FormulaType {
+  readonly is = 'lazy'
+
+  constructor(returnType: Type, genericTypes: GenericType[]) {
+    super(returnType, [], genericTypes)
+  }
+}
 
 export class ViewFormulaType extends FormulaType {
   readonly is = 'view'
@@ -987,12 +1012,6 @@ export class ViewFormulaType extends FormulaType {
 
     this.args = args
     Object.defineProperty(this, '_named', {enumerable: false})
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor(FN, this, this, [
-      positionalArgument({name: 'input', type: this, isRequired: true}),
-    ])
   }
 
   positionalArg(): Argument | undefined {
@@ -1022,7 +1041,7 @@ export class ViewFormulaType extends FormulaType {
 }
 
 export class NamedFormulaType extends FormulaType {
-  readonly is = 'named-formula'
+  readonly is: 'named-formula' | 'class-definition' = 'named-formula'
 
   constructor(
     readonly name: string,
@@ -1064,12 +1083,6 @@ export abstract class OneOfType extends Type {
       return this
     }
     return oneOf(types)
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('oneOf', this, this, [
-      positionalArgument({name: 'input', type: this, isRequired: true}),
-    ])
   }
 
   toTruthyType(): Type {
@@ -1231,7 +1244,7 @@ function scoreType(type: Type): number | undefined {
   if (type instanceof EnumCase) {
     return 2
   }
-  if (type instanceof ClassType) {
+  if (type instanceof ClassInstanceType) {
     return 3
   }
   if (type instanceof SetType) {
@@ -1441,10 +1454,6 @@ export class TypeError extends Error {}
 export const NeverType = new (class NeverType extends Type {
   readonly is = 'never'
 
-  typeConstructor(): TypeConstructor {
-    throw 'Cannot construct Never instances'
-  }
-
   propAccessType(name: string) {
     return undefined
   }
@@ -1461,10 +1470,6 @@ export const NeverType = new (class NeverType extends Type {
  */
 export const AllType = new (class AllType extends Type {
   readonly is = 'all'
-
-  typeConstructor(): TypeConstructor {
-    throw 'Cannot construct All instances'
-  }
 
   propAccessType(name: string) {
     return undefined
@@ -1490,10 +1495,6 @@ export const AllType = new (class AllType extends Type {
 export const AlwaysType = new (class AlwaysType extends Type {
   readonly is = 'always'
 
-  typeConstructor(): TypeConstructor {
-    throw 'Cannot construct Always instances'
-  }
-
   propAccessType(name: string) {
     return undefined
   }
@@ -1508,10 +1509,6 @@ class MetaNullType extends Type {
 
   constructor() {
     super()
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('Null', this, this, [])
   }
 
   isOnlyFalseyType() {
@@ -1539,12 +1536,6 @@ class MetaBooleanType extends Type {
   constructor() {
     super()
     Object.defineProperty(this, 'types', {enumerable: false, writable: true})
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('Boolean', this, this, [
-      positionalArgument({name: 'input', type: AllType, isRequired: true}),
-    ])
   }
 
   isBoolean(): this is MetaBooleanType {
@@ -1581,10 +1572,6 @@ export const ConditionType = new (class ConditionType extends Type {
 
   constructor() {
     super()
-  }
-
-  typeConstructor(): TypeConstructor {
-    throw 'Cannot construct Condition instances'
   }
 
   toCode() {
@@ -1668,12 +1655,6 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
       throw 'This should be a LiteralFloatType'
     }
     super(narrowed)
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('Float', this, optional(this), [
-      positionalArgument({name: 'input', type: oneOf([string(), float()]), isRequired: true}),
-    ])
   }
 
   /**
@@ -1846,12 +1827,6 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
       throw 'This should be a LiteralIntType'
     }
     super(narrowed)
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('Int', this, optional(this), [
-      positionalArgument({name: 'input', type: oneOf([string(), int()]), isRequired: true}),
-    ])
   }
 
   isInt(): this is MetaIntType | LiteralIntType {
@@ -2053,21 +2028,6 @@ export class MetaStringType extends Type {
         ? []
         : rhs.narrowedString.regex
     return new MetaStringType({length: length ?? Narrowed.DEFAULT_NARROWED_LENGTH, regex})
-  }
-
-  typeConstructor(): TypeConstructor {
-    if (
-      this.narrowedString.regex.length ||
-      !Narrowed.isDefaultNarrowedLength(this.narrowedString.length)
-    ) {
-      return new TypeConstructor('String', this, optional(this), [
-        positionalArgument({name: 'input', type: AllType, isRequired: true}),
-      ])
-    }
-
-    return new TypeConstructor('String', this, this, [
-      positionalArgument({name: 'input', type: AllType, isRequired: true}),
-    ])
   }
 
   isString(): this is MetaStringType | LiteralStringType {
@@ -2308,12 +2268,6 @@ class MetaRegexType extends Type {
 
   declare static types: Record<string, ((object: MetaRegexType) => Type) | undefined>
 
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('Regex', this, this, [
-      positionalArgument({name: 'input', type: oneOf([StringType, this]), isRequired: true}),
-    ])
-  }
-
   isRegex() {
     return true
   }
@@ -2411,10 +2365,6 @@ export class MetaFloatRangeType extends RangeType<Narrowed.NarrowedFloat> {
     super(FloatType, narrowed)
   }
 
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('FloatRange', this, this, [])
-  }
-
   propAccessType(_name: string) {
     // return MetaFloatRangeType.types[name]?.(this)
     return undefined
@@ -2451,10 +2401,6 @@ export class MetaIntRangeType extends RangeType<Narrowed.NarrowedInt> {
     super(IntType.narrow(narrowed.min, narrowed.max), narrowed)
   }
 
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('IntRange', this, this, [])
-  }
-
   propAccessType(_name: string) {
     // return RangeType.types[name]?.(this)
     return undefined
@@ -2486,10 +2432,6 @@ class ViewType extends Type {
   readonly is = VIEW
 
   declare static types: Record<string, ((object: ViewType) => Type) | undefined>
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor(VIEW, this, this, [])
-  }
 
   isView(): this is ViewType {
     return true
@@ -2585,12 +2527,6 @@ export abstract class LiteralBooleanType extends LiteralType {
   readonly is = 'literal-boolean'
   abstract readonly value: boolean
 
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor(`${this.value}`, this, optional(this), [
-      positionalArgument({name: 'input', type: AllType, isRequired: true}),
-    ])
-  }
-
   static from(value: boolean) {
     if (value) {
       return LiteralTrueType
@@ -2613,12 +2549,6 @@ export class LiteralFloatType extends LiteralType {
     super()
     this.value = value
     this.narrowed = {min: value, max: value}
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor(`${this.value}`, this, optional(this), [
-      positionalArgument({name: 'input', type: oneOf([string(), int()]), isRequired: true}),
-    ])
   }
 
   narrow(min: number | [number] | undefined, max: number | [number] | undefined) {
@@ -2677,10 +2607,6 @@ export class LiteralIntType extends LiteralFloatType {
     this.narrowed = {min: value, max: value}
   }
 
-  typeConstructor(): TypeConstructor {
-    return IntType.typeConstructor()
-  }
-
   toCode() {
     return JSON.stringify(this.value)
   }
@@ -2705,12 +2631,6 @@ export class LiteralStringType extends LiteralType {
     this.length = graphemes.length
     // TODO: regex could be [RegExp.escape(value)]
     this.narrowedString = {length: {min: graphemes.length, max: graphemes.length}, regex: []}
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor(JSON.stringify(this.value), this, optional(this), [
-      positionalArgument({name: 'input', type: AllType, isRequired: true}),
-    ])
   }
 
   /**
@@ -2739,12 +2659,6 @@ export class LiteralRegexType extends LiteralType {
     this.value = value
   }
 
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor(this.toCode(), this, optional(this), [
-      positionalArgument({name: 'input', type: string(), isRequired: true}),
-    ])
-  }
-
   toCode() {
     return `/${this.value.source}/${this.value.flags}`
   }
@@ -2755,7 +2669,8 @@ export class LiteralRegexType extends LiteralType {
 }
 
 export abstract class ContainerType<T extends ContainerType<T>> extends Type {
-  abstract is: 'array' | 'dict' | 'set'
+  // 'is' value is used in typeConstructor
+  abstract is: 'Array' | 'Dict' | 'Set'
 
   readonly narrowedLength: Narrowed.NarrowedLength
 
@@ -2779,12 +2694,6 @@ export abstract class ContainerType<T extends ContainerType<T>> extends Type {
   }
 
   abstract create(narrowed: Narrowed.NarrowedFloat): T
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor(this.is, this, this, [
-      positionalArgument({name: 'input', type: this, isRequired: true}),
-    ])
-  }
 
   hasGeneric() {
     return this.of.hasGeneric()
@@ -2890,10 +2799,6 @@ export class NamespaceType extends Type {
     super()
   }
 
-  typeConstructor(): TypeConstructor {
-    throw 'Cannot construct Namespace instances'
-  }
-
   propAccessType(_name: string) {
     return undefined
   }
@@ -2924,12 +2829,6 @@ export class ObjectType extends Type {
     }
 
     return new ObjectType(props)
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('object', this, this, [
-      positionalArgument({name: 'input', type: this, isRequired: true}),
-    ])
   }
 
   hasGeneric() {
@@ -3073,7 +2972,7 @@ export class ObjectType extends Type {
 }
 
 export class ArrayType extends ContainerType<ArrayType> {
-  readonly is = 'array'
+  readonly is = 'Array'
 
   declare static types: Record<string, ((array: ArrayType) => Type) | undefined>
 
@@ -3216,7 +3115,7 @@ export class ArrayType extends ContainerType<ArrayType> {
 }
 
 export class DictType extends ContainerType<DictType> {
-  readonly is = 'dict'
+  readonly is = 'Dict'
 
   declare static types: Record<string, ((dict: DictType) => Type) | undefined>
 
@@ -3350,7 +3249,7 @@ export class DictType extends ContainerType<DictType> {
 }
 
 export class SetType extends ContainerType<SetType> {
-  readonly is = 'set'
+  readonly is = 'Set'
 
   declare static types: Record<string, ((array: SetType) => Type) | undefined>
 
@@ -3365,7 +3264,7 @@ export class SetType extends ContainerType<SetType> {
     return new SetType(this.of, narrowedFloatToLength(narrowed))
   }
 
-  fromTypeConstructor() {
+  fromTypeConstructor(): SetType {
     return new SetType(this.of.fromTypeConstructor(), this.narrowedLength)
   }
 
@@ -3409,116 +3308,6 @@ export class SetType extends ContainerType<SetType> {
   }
 }
 
-export class ClassType extends Type {
-  readonly is: 'class' | 'named-class' = 'class'
-  props: Map<string, Type>
-
-  declare static types: Record<string, ((object: ClassType) => Type) | undefined>
-
-  constructor(
-    props: Map<string, Type>,
-    public parent?: ClassType | undefined,
-  ) {
-    super()
-    props = new Map<string, Type>(props)
-
-    while (parent) {
-      for (const [key, value] of parent.props.entries()) {
-        const existing = props.get(key)
-        // if the parent prop is not defined in props, add it.
-        // but also, if the parent prop is defined in props, *but not assignable*,
-        // we assign the parent prop type instead
-        // (this is a compile-time error that should've been caught already)
-        if (!existing || !canBeAssignedTo(existing, value)) {
-          props.set(key, value)
-        }
-      }
-
-      parent = parent.parent
-    }
-
-    this.props = props
-  }
-
-  fromTypeConstructor() {
-    const props = new Map<string, Type>()
-    for (const [prop, type] of this.props.entries()) {
-      props.set(prop, type.fromTypeConstructor())
-    }
-
-    return new ClassType(props)
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('class', this, this, [
-      positionalArgument({name: 'input', type: this, isRequired: true}),
-    ])
-  }
-
-  hasGeneric() {
-    for (const type of this.props.values()) {
-      if (type.hasGeneric()) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  generics() {
-    const generics: Set<GenericType> = new Set()
-    for (const type of this.props.values()) {
-      for (const generic of type.generics()) {
-        generics.add(generic)
-      }
-    }
-
-    return generics
-  }
-
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    const props = new Map<string, Type>()
-    for (const [key, type] of this.props.entries()) {
-      const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)
-
-      if (resolved.isErr()) {
-        return err(resolved.error)
-      }
-      props.set(key, resolved.get())
-    }
-
-    return ok(new ClassType(props))
-  }
-
-  toCode() {
-    const props = [...this.props.entries()]
-    const propDesc = props.map(([name, type]) => `${name}: ${type.toCode()}`).join(', ')
-    return `{${propDesc}}`
-  }
-
-  /**
-   * Returns a copy of the ClassType, replacing the type of one property. This is
-   * used by the type narrowing code to return a more specific type.
-   */
-  replacingProp(prop: string, type: Type): Result<Type, string> {
-    const props = new Map(this.props)
-    props.set(prop, type)
-    return ok(new ClassType(props, this.parent))
-  }
-
-  propAccessType(prop: string): Type | undefined {
-    return ClassType.types[prop]?.(this) ?? this.props.get(prop)
-  }
-
-  /**
-   * Instances of a class are always true – and shouldn't be used as a
-   * conditional
-   */
-  isOnlyTruthyType() {
-    return true
-  }
-}
-
 export class NamedObjectType extends ObjectType {
   readonly is = 'named-object'
 
@@ -3527,28 +3316,6 @@ export class NamedObjectType extends ObjectType {
     props: ObjectProp[],
   ) {
     super(props)
-  }
-}
-
-export class NamedClassType extends ClassType {
-  readonly is = 'named-class'
-
-  constructor(
-    readonly name: string,
-    props: Map<string, Type>,
-    parent: ClassType | undefined,
-  ) {
-    super(props, parent)
-  }
-
-  replacingProp(prop: string, type: Type): Result<Type, string> {
-    const props = new Map(this.props)
-    props.set(prop, type)
-    return ok(new NamedClassType(this.name, props, this.parent))
-  }
-
-  toCode() {
-    return this.name
   }
 }
 
@@ -3580,12 +3347,6 @@ export class EnumType extends Type {
 
   constructor(readonly members: EnumCase[]) {
     super()
-  }
-
-  typeConstructor(): TypeConstructor {
-    return new TypeConstructor('enum', this, this, [
-      positionalArgument({name: 'input', type: this, isRequired: true}),
-    ])
   }
 
   propAccessType(_prop: string): Type | undefined {
@@ -3649,6 +3410,252 @@ export class NamedEnumType extends EnumType {
     code += '}'
 
     return code
+  }
+}
+
+//|
+// TODO: Message Type
+//|
+
+export class MessageType extends Type {
+  is = 'message'
+
+  propAccessType() {
+    return undefined
+  }
+}
+
+//|
+//|  CLASS TYPES
+//|
+
+/**
+ * Define a class
+ *     class Foo {
+ *       default-name = 'Balthazar'
+ *
+ *       @name: String = default-name
+ *     }
+ *
+ * and create an instance of it
+ *     foo = Foo()
+ *     foo.name -- 'Balthazar'
+ *
+ * `foo` has type ClassType('Foo', '@name': String)
+ * But `Foo` itself _also_ has a type, which is the `ClassDefinitionType`.
+ *
+ * `ClassDefinitionType` has a name, an optional parentClass, and `staticProps`,
+ * which are immutable.
+ */
+export class ClassDefinitionType extends Type {
+  readonly is = 'class-definition'
+  readonly formula: NamedFormulaType
+
+  constructor(
+    readonly name: string,
+    readonly parentClass: ClassDefinitionType | undefined,
+    readonly returnClassType: ClassInstanceType,
+    readonly staticProps: Map<string, Type>,
+    readonly hasDefaultValues: Set<string>,
+  ) {
+    super()
+
+    const formulaArgs = Array.from(returnClassType.allProps.entries()).map(([name, type]) =>
+      namedArgument({
+        name,
+        type,
+        isRequired: !hasDefaultValues.has(name),
+      }),
+    )
+
+    this.formula = new NamedFormulaType(
+      name,
+      returnClassType,
+      formulaArgs,
+      // TODO: class generics
+      [],
+    )
+  }
+
+  propAccessType(name: string): Type | undefined {
+    return this.staticProps.get(name)
+  }
+}
+
+export class ViewClassDefinitionType extends ClassDefinitionType {
+  constructor(
+    name: string,
+    readonly parentClass: ViewClassDefinitionType | undefined,
+    readonly returnClassType: ViewClassInstanceType,
+    staticProps: Map<string, Type>,
+    defaultValues: Set<string>,
+  ) {
+    super(name, parentClass, returnClassType, staticProps, defaultValues)
+  }
+}
+
+/**
+ * This is hard to say... Basinger? Also hard to say: an instance of class Foo
+ * will be of type Foo, which is an instance of ClassType. Meanwhile, `Foo`
+ * itself will refer to a ClassDefinitionType, which is a constructor function
+ * (returns an instance of `Foo`) *and* a Namespace (has static properties and
+ * formulas).
+ *
+ * ClassType separates 'state' properties from formulas. If classes also had
+ * properties that never changed (ironically I would want to call these "static"
+ * properties, but that's not what that keyword means) they would be combined
+ * with formulas (as they are with ClassDefinitionType's properties and formulas).
+ */
+export class ClassInstanceType extends Type {
+  readonly is = 'class'
+  allProps: Map<string, Type>
+
+  constructor(
+    readonly name: string,
+    readonly parent: ClassInstanceType | undefined,
+    readonly myProps: Map<string, Type>,
+    readonly formulas: Map<string, Type>,
+  ) {
+    super()
+
+    const allProps = new Map<string, Type>(myProps)
+    if (parent) {
+      for (const [key, type] of parent.allProps.entries()) {
+        const existing = allProps.get(key)
+        if (existing) {
+          throw `Should not be: property '${key}: ${type}' is defined on ${parent.name}, but also defined on ${this.name} (with type ${existing})`
+        }
+        // if the parent prop is not defined in props, add it.
+        // but also, if the parent prop is defined in props, *but not assignable*,
+        // we assign the parent prop type instead
+        // (this is a compile-time error that should've been caught already)
+        if (!existing || !canBeAssignedTo(existing, type)) {
+          allProps.set(key, type)
+        }
+      }
+    }
+
+    this.allProps = allProps
+  }
+
+  fromTypeConstructor(): ClassInstanceType {
+    const props = new Map<string, Type>()
+    for (const [prop, type] of this.myProps.entries()) {
+      props.set(prop, type.fromTypeConstructor())
+    }
+
+    return new ClassInstanceType(
+      this.name,
+      this.parent?.fromTypeConstructor(),
+      props,
+      this.formulas,
+    )
+  }
+
+  hasGeneric() {
+    for (const type of this.allProps.values()) {
+      if (type.hasGeneric()) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  generics() {
+    const generics: Set<GenericType> = new Set()
+    for (const type of this.allProps.values()) {
+      for (const generic of type.generics()) {
+        generics.add(generic)
+      }
+    }
+
+    return generics
+  }
+
+  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<ClassInstanceType, string> {
+    return mapOr(this.parent?.resolve(resolvedGenericsMap)).map(parentClass => {
+      const props = new Map<string, Type>()
+      for (const [key, type] of this.myProps.entries()) {
+        const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)
+
+        if (resolved.isErr()) {
+          return err(resolved.error)
+        }
+        props.set(key, resolved.get())
+      }
+
+      return ok(new ClassInstanceType(this.name, parentClass, props, this.formulas))
+    })
+  }
+
+  toCode() {
+    return this.name
+  }
+
+  /**
+   * Returns a copy of the ClassType, replacing the type of one property. This is
+   * used by the type narrowing code to return a more specific type.
+   */
+  replacingProp(prop: string, type: Type): Result<Type, string> {
+    if (this.myProps.has(prop)) {
+      const props = new Map(this.myProps)
+      props.set(prop, type)
+      return ok(new ClassInstanceType(this.name, this.parent, props, this.formulas))
+    } else if (this.parent) {
+      return this.parent
+        .replacingProp(prop, type)
+        .mapError(() => `'${prop}' is not a property of '${this.name}'`)
+    } else {
+      return err(`'${prop}' is not a property of '${this.name}'`)
+    }
+  }
+
+  propAccessType(prop: string): Type | undefined {
+    return this.allProps.get(prop) ?? this.formulas.get(prop)
+  }
+
+  /**
+   * Instances of a class are always true – and shouldn't be used as a
+   * conditional
+   */
+  isOnlyTruthyType() {
+    return true
+  }
+}
+
+export class ViewClassInstanceType extends ClassInstanceType {
+  constructor(
+    name: string,
+    readonly parent: ViewClassInstanceType | undefined,
+    myProps: Map<string, Type>,
+    formulas: Map<string, Type>,
+  ) {
+    super(name, parent, myProps, formulas)
+  }
+}
+
+//|
+//|  MODULE TYPES
+//|
+
+/**
+ * Holds onto all the types related to a module
+ *
+ * - ClassDefinitionType / ViewClassDefinitionType
+ * - EnumType
+ * - Type definitions (type aliases)
+ * - Helper functions
+ */
+export class ModuleType extends Type {
+  is = 'module'
+
+  constructor(readonly definitions: Map<string, Type>) {
+    super()
+  }
+
+  propAccessType(name: string): Type | undefined {
+    return this.definitions.get(name)
   }
 }
 
@@ -4152,26 +4159,23 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     if (compatible) {
       return compatible
     }
-  } else if (lhs instanceof ClassType && rhs instanceof ClassType) {
+  } else if (lhs instanceof ClassInstanceType && rhs instanceof ClassInstanceType) {
     // compatibleWithBothTypes tries to "preserve" types, ie
     // - if lhs is a parent of rhs (or vice versa), then we can't distinguish
     //   between the two, so return the parent type.
     // - otherwise, even if the two types share a common parent, return oneOf
-    let parent: ClassType | undefined
-    parent = lhs.parent
-    while (parent) {
-      if (parent === rhs) {
-        return parent
+    for (const [type, other] of [
+      [lhs, rhs],
+      [rhs, lhs],
+    ]) {
+      let parent: ClassInstanceType | undefined
+      parent = type.parent
+      while (parent) {
+        if (parent === other) {
+          return parent
+        }
+        parent = parent.parent
       }
-      parent = parent.parent
-    }
-
-    parent = rhs.parent
-    while (parent) {
-      if (parent === lhs) {
-        return parent
-      }
-      parent = parent.parent
     }
 
     // if no common parent was found, fallback to OneOfType(lhs, rhs)
@@ -4562,9 +4566,11 @@ export function canBeAssignedTo(
     }
 
     return true
-  } else if (testType instanceof ClassType && assignTo instanceof ClassType) {
+  } else if (testType instanceof ClassDefinitionType && assignTo instanceof ClassDefinitionType) {
+    return testType === assignTo
+  } else if (testType instanceof ClassInstanceType && assignTo instanceof ClassInstanceType) {
     // quick test if assignTo is a parent type of testType
-    let parent: ClassType | undefined = testType
+    let parent: ClassInstanceType | undefined = testType
     while (parent) {
       if (parent === assignTo) {
         return true
@@ -4572,15 +4578,7 @@ export function canBeAssignedTo(
       parent = parent.parent
     }
 
-    // every prop in testType also in assignTo must be assignable
-    for (const [name, assignType] of assignTo.props.entries()) {
-      const testProp = testType.propAccessType(name) ?? NullType
-      if (!canBeAssignedTo(testProp, assignType, resolvedGenericsMap, reason)) {
-        return why(false, `Incompatible types in object property '${name}'.`)
-      }
-    }
-
-    return true
+    return false
   } else if (testType instanceof FormulaType && assignTo instanceof FormulaType) {
     const errorMessage = canBeAssignedToFormula(testType, assignTo, resolvedGenericsMap)
     return why(errorMessage === undefined, errorMessage ?? '')
@@ -4896,8 +4894,8 @@ function _checkFormulaArguments(
   // similar - these are ...bar: values (Array(Type))
   //     example: foo(...bar: manyCases)
   spreadDictArguments: Map<string, Type[]>,
-  // remaining named args *args (Dict(Type))
-  //     example: foo(*kwargs1, *kwargs2)
+  // remaining named args **args (Dict(Type))
+  //     example: foo(**kwargs1, **kwargs2)
   keywordListArguments: Type[],
   isRequired: (id: string | number) => boolean,
   resolvedGenericsMap: Map<GenericType, GenericType> | undefined,
@@ -5464,11 +5462,6 @@ function addRequirement(
   /*           */
   ObjectType.types = {}
 
-  /*           */
-  /* ClassType */
-  /*           */
-  ClassType.types = {}
-
   /*            */
   /* BooleanType */
   /*            */
@@ -5679,31 +5672,28 @@ function addRequirement(
   /*           */
   /* RegexType */
   /*           */
-  const RegexMatch = namedClass(
-    'RegexMatch',
-    new Map([
-      // int-based group
-      // match.at(0) --> String | null
-      [
+  const RegexMatch = namedObject('RegexMatch', [
+    // int-based group
+    // match.at(0) --> String | null
+    namedProp(
+      'at',
+      namedFormula(
         'at',
-        namedFormula(
-          'at',
-          [positionalArgument({name: 'index', type: IntType, isRequired: true})],
-          optional(StringType),
-        ),
-      ],
-      // named-group
-      // match.at(0) --> String | null
-      [
+        [positionalArgument({name: 'index', type: IntType, isRequired: true})],
+        optional(StringType),
+      ),
+    ),
+    // named-group
+    // match.named('') --> String | null
+    namedProp(
+      'named',
+      namedFormula(
         'named',
-        namedFormula(
-          'named',
-          [positionalArgument({name: 'name', type: StringType, isRequired: true})],
-          optional(StringType),
-        ),
-      ],
-    ]),
-  )
+        [positionalArgument({name: 'name', type: StringType, isRequired: true})],
+        optional(StringType),
+      ),
+    ),
+  ])
 
   MetaRegexType.types = {
     // pattern: String

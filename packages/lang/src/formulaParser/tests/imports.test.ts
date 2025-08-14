@@ -1,6 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
 import {testScan} from '../../formulaParser'
-import {scanImportStatement} from '../scan/application'
+import {scanImportStatement} from '../scan/module'
 
 describe('import parser', () => {
   describe('imports', () => {

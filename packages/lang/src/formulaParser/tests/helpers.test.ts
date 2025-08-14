@@ -1,11 +1,11 @@
 import {c, cases} from '@extra-lang/cases'
 import {testScan} from '../../formulaParser'
-import {scanHelperDefinition} from '../scan/application'
+import {scanHelperDefinition} from '../scan/module'
 
 describe('helper', () => {
   cases<[string, string] | [string, string, string]>(
     c(["fn asdf() =>\n  @test ?? 'null'", "(fn asdf() => (?? @test 'null'))"]),
-    c(["public fn asdf() =>\n  @test ?? 'null'", "(fn public asdf() => (?? @test 'null'))"]),
+    c(["export fn asdf() =>\n  @test ?? 'null'", "(fn export asdf() => (?? @test 'null'))"]),
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse helper definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula

@@ -2,12 +2,28 @@ import {c, cases} from '@extra-lang/cases'
 import * as Types from '../types'
 
 describe('canBeAssignedTo', () => {
-  const human = Types.klass(new Map([['name', Types.string()]]))
-  const student = Types.klass(new Map([['grade', Types.int()]]), human)
-  const college = Types.klass(new Map([['debt', Types.int()]]), student)
-  const worker = Types.klass(new Map([['job', Types.string()]]), human)
-  const animal = Types.klass(new Map([['legs', Types.int()]]))
-  const dog = Types.klass(new Map([['name', Types.string()]]), animal)
+  const human = Types.classType({name: 'Human', props: new Map([['name', Types.string()]])})
+  const student = Types.classType({
+    name: 'Student',
+    props: new Map([['grade', Types.int()]]),
+    parent: human,
+  })
+  const college = Types.classType({
+    name: 'College',
+    props: new Map([['debt', Types.int()]]),
+    parent: student,
+  })
+  const worker = Types.classType({
+    name: 'Worker',
+    props: new Map([['job', Types.string()]]),
+    parent: human,
+  })
+  const animal = Types.classType({name: 'Animal', props: new Map([['legs', Types.int()]])})
+  const dog = Types.classType({
+    name: 'Dog',
+    props: new Map([['name', Types.string()]]),
+    parent: animal,
+  })
 
   const simpleRequiredFormula = Types.formula(
     args({name: '# age', type: Types.int()}),
@@ -70,10 +86,7 @@ describe('canBeAssignedTo', () => {
     c([college, worker, false]),
     c([worker, human, true]),
     c([human, worker, false]),
-    // I may change my mind later, but 'dog' here contains all the properties of human,
-    // so it kinda makes sense that you could assign a human as a dog
-    c([dog, human, true]),
-    // however, human doesn't have a legs count, and so can't be assigned a dog
+    c([dog, human, false]),
     c([human, dog, false]),
     // formulas
     c([

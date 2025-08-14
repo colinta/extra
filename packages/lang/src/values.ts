@@ -85,7 +85,9 @@ export function namedFormula(
   return new NamedFormulaValue(name, fn)
 }
 
-export type JSValue = boolean | number | string | null | {[x: string]: JSValue} | Array<JSValue>
+export function klass(name: string, parent: ClassDefinitionValue) {
+  return new ClassDefinitionValue(name, parent, new Map(), new Map())
+}
 
 export abstract class Value {
   abstract getType(): Types.Type
@@ -562,18 +564,16 @@ export class StringValue extends BasicValue {
     [
       'mapChars',
       value =>
-        namedFormula('mapChars', (args: FormulaArgs) => {
-          return args
-            .at(0, FormulaValue)
-            .map(mapFn => mapFn.fn(new FormulaArgs([[undefined, value]])))
-        }),
+        namedFormula('mapChars', (args: FormulaArgs) =>
+          args.at(0, FormulaValue).map(mapFn => mapFn.fn(new FormulaArgs([[undefined, value]]))),
+        ),
     ],
     [
       'repeat',
       value =>
-        namedFormula('repeat', function repeat(args: FormulaArgs) {
-          return args.at(0, IntValue).map(times => string(value.value.repeat(times.value)))
-        }),
+        namedFormula('repeat', (args: FormulaArgs) =>
+          args.at(0, IntValue).map(times => string(value.value.repeat(times.value))),
+        ),
     ],
   ])
 
@@ -1347,7 +1347,7 @@ export class SetValue extends Value {
 
 /**
  * When arguments are passed to a function there are plenty of shorthands like
- * `...` and `...name:` and `*kwargs`. These are all flattened and combined (in
+ * `...` and `...name:` and `**kwargs`. These are all flattened and combined (in
  * Expressions.ArgumentsList.evalToArguments()) to create a `FormulaArgs` value.
  */
 export class FormulaArgs {
@@ -1672,6 +1672,138 @@ export class FragmentViewValue extends Value {
 
   propValue() {
     return undefined
+  }
+}
+
+/**
+ * The value of a `ClassDefinitionType` is a `ClassDefinitionValue`. This is a
+ * combination of a formula (returns an instance of `ClassInstanceValue`) and
+ * namespace.
+ */
+export class ClassDefinitionValue extends NamedFormulaValue {
+  constructor(
+    name: string,
+    readonly parent: ClassDefinitionValue | undefined,
+    readonly staticProps: Map<string, Value>,
+    readonly staticFormulas: Map<string, NamedFormulaValue>,
+  ) {
+    super(name, (_args: FormulaArgs) => {
+      // should return a ClassValue
+      return ok(string(''))
+    })
+  }
+
+  /**
+   * The type of a class is a ClassDefinitionType, the type of a class instance
+   * is the ClassInstanceType. I think that's how it works.
+   */
+  getType() {
+    return Types.NeverType
+  }
+
+  isEqual(rhs: Value): boolean {
+    return rhs === this
+  }
+
+  isTruthy() {
+    return true
+  }
+
+  toCode() {
+    return this.name
+  }
+
+  printable() {
+    return this.toCode()
+  }
+
+  propValue(propName: string): Value | undefined {
+    return
+  }
+}
+
+export class ViewClassDefinitionValue extends ClassDefinitionValue {
+  constructor(
+    name: string,
+    readonly parent: ViewClassDefinitionValue | undefined,
+    staticProps: Map<string, Value>,
+    staticFormulas: Map<string, NamedFormulaValue>,
+  ) {
+    super(name, parent, staticProps, staticFormulas)
+  }
+}
+
+export class ClassInstanceValue extends Value {
+  constructor(readonly metaClass: ClassDefinitionValue) {
+    super()
+  }
+
+  /**
+   * The type of a class is a ClassDefinitionType, the type of a class instance
+   * is the ClassInstanceType. I think that's how it works.
+   */
+  getType() {
+    return Types.NeverType
+  }
+
+  isEqual(rhs: Value): boolean {
+    return rhs === this
+  }
+
+  isTruthy() {
+    return true
+  }
+
+  toCode() {
+    return `${this.metaClass.name}()`
+  }
+
+  printable() {
+    return this.toCode()
+  }
+
+  propValue(propName: string): Value | undefined {
+    return
+  }
+}
+
+export class ViewClassInstanceValue extends ClassInstanceValue {
+  constructor(readonly metaClass: ViewClassDefinitionValue) {
+    super(metaClass)
+  }
+}
+
+export class ModuleValue extends Value {
+  constructor(readonly definitions: Map<string, Value>) {
+    super()
+  }
+
+  getType() {
+    return new Types.ModuleType(
+      new Map(Array.from(this.definitions).map(([name, value]) => [name, value.getType()])),
+    )
+  }
+
+  isEqual(rhs: Value): boolean {
+    return rhs === this
+  }
+
+  isTruthy() {
+    return true
+  }
+
+  toCode() {
+    return "hello, I'm a module."
+  }
+
+  printable() {
+    return Array.from(this.definitions.values())
+      .map(d => d.printable())
+      .join('\n')
+  }
+
+  propValue(propName: string) {
+    return this.definitions.get(propName)
   }
 }
 

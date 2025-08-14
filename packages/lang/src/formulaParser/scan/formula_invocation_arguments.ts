@@ -10,7 +10,7 @@ import {
 } from '../grammars'
 import {Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
-import {scanValidReferenceName} from './identifier'
+import {scanValidLocalName} from './identifier'
 
 /**
  * Args passed to a function.
@@ -98,7 +98,7 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
         // between the 'name' and ':'. To fix it, we just need to use `scanner.test`
         // instead of isNamedArg, but then we would need to attach the comments somewhere
         // and test it in comments.test.ts
-        argName = scanValidReferenceName(scanner)
+        argName = scanValidLocalName(scanner)
         scanner.scanAllWhitespace()
         scanner.expectString(':', "Expected ':' followed by the argument type")
         scanner.scanAllWhitespace()

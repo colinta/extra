@@ -8,7 +8,7 @@ import {
   ENUM_START,
   ARGS_OPEN,
   FN_KEYWORD,
-  PUBLIC_KEYWORD,
+  EXPORT_KEYWORD,
 } from '../grammars'
 import type {Scanner} from '../scanner'
 import {type ParseNext, ParseError} from '../types'
@@ -30,8 +30,8 @@ export function scanEnum(
   const range0 = scanner.charIndex
   const precedingComments = scanner.flushComments()
 
-  const isPublic = isFnArg ? false : scanner.scanIfWord(PUBLIC_KEYWORD)
-  if (isPublic) {
+  const isExport = isFnArg ? false : scanner.scanIfWord(EXPORT_KEYWORD)
+  if (isExport) {
     scanner.expectWhitespace()
   }
 
@@ -120,6 +120,6 @@ export function scanEnum(
     members,
     formulas,
     generics,
-    isPublic,
+    isExport,
   )
 }

@@ -1,6 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
-import * as Types from '../../types'
 import {type TypeRuntime} from '../../runtime'
+import * as Types from '../../types'
 import * as Values from '../../values'
 import {parse} from '../../formulaParser'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'

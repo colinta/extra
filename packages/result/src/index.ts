@@ -32,18 +32,45 @@ export abstract class ResultClass<OK, ERR> {
       } catch (e) {
         if (errorClass) {
           if (errorClass(e)) {
-            return err(e as ERR)
+            return err(e)
           }
           throw e
         }
         return err(e as ERR)
       }
     }
+
     return err((this as Failure<OK, ERR>).error)
   }
 
   mapResult<TOK, TERR>(fn: (t: Result<OK, ERR>) => Result<TOK, TERR>): Result<TOK, TERR> {
     return fn(this as Failure<OK, ERR>)
+  }
+
+  mapError<TERR>(
+    fn: (t: ERR) => TERR | Result<OK, TERR>,
+    errorClass?: (value: unknown) => value is TERR,
+  ): Result<OK, TERR> {
+    if (this.isErr()) {
+      try {
+        const res = fn(this.error)
+        if (res instanceof Ok || res instanceof Failure) {
+          return res
+        }
+
+        return err(res)
+      } catch (e) {
+        if (errorClass) {
+          if (errorClass(e)) {
+            return err(e)
+          }
+          throw e
+        }
+
+        return err(e as TERR)
+      }
+    }
+    return ok((this as Ok<OK, ERR>).value)
   }
 
   static create<T, Err>(fn: () => T): Result<T, Err> {
@@ -143,7 +170,53 @@ export function attempt<OK, ERR>(
   }
 }
 
+export function mapOr<OK, ERR>(value: Result<OK, ERR> | undefined): Result<OK | undefined, ERR> {
+  return value === undefined ? ok(undefined) : value
+}
+
 export function mapAll<OK, ERR>(items: Result<OK, ERR>[]): Result<OK[], ERR> {
+  const mapped: OK[] = []
+  for (const item of items) {
+    if (item.isOk()) {
+      mapped.push(item.get())
+    } else {
+      return err(item.error)
+    }
+  }
+  return ok(mapped)
+}
+
+export function mapMany<OK1, OK2, ERR>(
+  item1: Result<OK1, ERR>,
+  item2: Result<OK2, ERR>,
+): Result<[OK1, OK2], ERR>
+export function mapMany<OK1, OK2, OK3, ERR>(
+  item1: Result<OK1, ERR>,
+  item2: Result<OK2, ERR>,
+  item3: Result<OK3, ERR>,
+): Result<[OK1, OK2, OK3], ERR>
+export function mapMany<OK1, OK2, OK3, OK4, ERR>(
+  item1: Result<OK1, ERR>,
+  item2: Result<OK2, ERR>,
+  item3: Result<OK3, ERR>,
+  item4: Result<OK4, ERR>,
+): Result<[OK1, OK2, OK3, OK4], ERR>
+export function mapMany<OK1, OK2, OK3, OK4, OK5, ERR>(
+  item1: Result<OK1, ERR>,
+  item2: Result<OK2, ERR>,
+  item3: Result<OK3, ERR>,
+  item4: Result<OK4, ERR>,
+  item5: Result<OK5, ERR>,
+): Result<[OK1, OK2, OK3, OK4, OK5], ERR>
+export function mapMany<OK1, OK2, OK3, OK4, OK5, OK6, ERR>(
+  item1: Result<OK1, ERR>,
+  item2: Result<OK2, ERR>,
+  item3: Result<OK3, ERR>,
+  item4: Result<OK4, ERR>,
+  item5: Result<OK5, ERR>,
+  item6: Result<OK6, ERR>,
+): Result<[OK1, OK2, OK3, OK4, OK5, OK6], ERR>
+export function mapMany<OK, ERR>(...items: Result<OK, ERR>[]): Result<OK[], ERR> {
   const mapped: OK[] = []
   for (const item of items) {
     if (item.isOk()) {

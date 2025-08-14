@@ -3,6 +3,7 @@ import {type Expression} from '../expressions'
 import {type Scanner} from '../scanner'
 import {type ExpressionType, type Comment, ParseError, type ParseNext} from '../types'
 import {
+  ARGS_OPEN,
   FUNCTION_BODY_START,
   GENERIC_CLOSE,
   GENERIC_OPEN,
@@ -12,7 +13,7 @@ import {
 
 import {scanArgumentType} from './argument_type'
 import {scanFormulaArgumentDefinitions} from './formula_arguments'
-import {scanValidReferenceName, scanValidTypeName, scanValidViewName} from './identifier'
+import {scanValidLocalName, scanValidTypeName, scanValidViewName} from './identifier'
 
 export function scanFormula(
   scanner: Scanner,
@@ -54,7 +55,7 @@ export function scanNamedFormula(
 export function scanRenderFormula(scanner: Scanner, parseNext: ParseNext) {
   const value = _scanFormula(scanner, 'class', parseNext, {
     type: 'render',
-    isNamedFn: false,
+    isNamedFn: true,
     bodyExpressionType: 'class',
   }) as Expressions.RenderFormulaExpression
 
@@ -99,7 +100,7 @@ function _scanFormula(
   // not all expressionTypes are supported as scanFormula expression types
   if (bodyExpressionType === undefined) {
     switch (expressionType) {
-      case 'application':
+      case 'module':
       case 'let':
       case 'argument':
       case 'block_argument':
@@ -137,18 +138,20 @@ function _scanFormula(
   }
 
   scanner.expectString(typeExpect, `Expected '${typeExpect}(' to start the formula expression`)
-  if (isNamedFn) {
+  if (isNamedFn && type !== 'render') {
     scanner.expectWhitespace()
   }
 
   let nameRef: Expressions.Reference | undefined
   let precedingNameComments: Comment[] = []
-  if (isArgumentStartChar(scanner)) {
+  if (type === 'render') {
+    nameRef = new Expressions.Reference([scanner.charIndex, scanner.charIndex], [], 'render')
+  } else if (isArgumentStartChar(scanner)) {
     precedingNameComments = scanner.flushComments()
     if (type === 'view') {
       nameRef = scanValidViewName(scanner)
     } else {
-      nameRef = scanValidReferenceName(scanner)
+      nameRef = scanValidLocalName(scanner)
     }
   }
   scanner.whereAmI(`scanFormula name = ${nameRef}`)
@@ -161,24 +164,34 @@ function _scanFormula(
   scanner.scanAllWhitespace()
 
   let generics: string[] = []
-  if (type === 'fn' || type === 'static') {
-    if (scanner.scanIfString(GENERIC_OPEN)) {
+  if (scanner.scanIfString(GENERIC_OPEN)) {
+    if (type === 'fn' || type === 'static') {
       generics = scanGenerics(scanner, parseNext)
+      scanner.scanAllWhitespace()
+    } else {
+      throw new ParseError(scanner, `Unexpected generic in ${type} function`)
     }
-  } else if (scanner.scanIfString(GENERIC_OPEN)) {
-    throw new ParseError(scanner, `Unexpected generic in ${type} function`)
   }
   scanner.whereAmI(`scanFormula generics = [${generics.join(', ')}]`)
 
-  const canInfer = expressionType === 'argument'
-  const argDeclarations = scanFormulaArgumentDefinitions(
-    scanner,
-    isInView ? 'view' : 'fn',
-    parseNext,
-    canInfer,
-  )
-  scanner.scanAllWhitespace()
-  argDeclarations.followingComments.push(...scanner.flushComments())
+  let argDeclarations: Expressions.FormulaLiteralArgumentDeclarations
+  if (type === 'render' && !scanner.is(ARGS_OPEN)) {
+    argDeclarations = new Expressions.FormulaLiteralArgumentDeclarations(
+      [scanner.charIndex, scanner.charIndex],
+      [],
+      [],
+    )
+  } else {
+    const canInfer = expressionType === 'argument'
+    argDeclarations = scanFormulaArgumentDefinitions(
+      scanner,
+      isInView ? 'view' : 'fn',
+      parseNext,
+      canInfer,
+    )
+    scanner.scanAllWhitespace()
+    argDeclarations.followingComments.push(...scanner.flushComments())
+  }
   scanner.whereAmI(`scanFormula argDeclarations = (${argDeclarations})`)
 
   let returnType: Expression
@@ -220,7 +233,7 @@ function _scanFormula(
       precedingComments,
       precedingNameComments,
       precedingReturnTypeComments,
-      nameRef ?? new Expressions.Reference([range0, range0], [], ''),
+      nameRef!,
       argDeclarations,
       returnType,
       body,
@@ -231,23 +244,36 @@ function _scanFormula(
       precedingComments,
       precedingNameComments,
       precedingReturnTypeComments,
-      nameRef ?? new Expressions.Reference([range0, range0], [], ''),
+      nameRef!,
       argDeclarations,
       returnType,
       body,
     )
   } else {
-    if (type === 'static' && nameRef) {
+    if (type === 'static') {
       return new Expressions.StaticFormulaExpression(
         [range0, scanner.charIndex],
         precedingComments,
         precedingNameComments,
         precedingReturnTypeComments,
-        nameRef,
+        nameRef!,
         argDeclarations,
         returnType,
         body,
         generics,
+      )
+    } else if (bodyExpressionType === 'class') {
+      return new Expressions.MemberFormulaExpression(
+        [range0, scanner.charIndex],
+        precedingComments,
+        precedingNameComments,
+        precedingReturnTypeComments,
+        nameRef!,
+        argDeclarations,
+        returnType,
+        body,
+        generics,
+        isOverride,
       )
     } else if (nameRef) {
       return new Expressions.NamedFormulaExpression(
@@ -260,7 +286,6 @@ function _scanFormula(
         returnType,
         body,
         generics,
-        isOverride,
       )
     }
 

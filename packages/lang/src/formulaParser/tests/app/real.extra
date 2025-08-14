@@ -9,9 +9,9 @@ import ./types -- imported as 'types'
 import ./types as T -- imported as T
 
 
-public type Foo = Int
+export type Foo = Int
 
-public type Something = 1 | 2
+export type Something = 1 | 2
 
 type SomethingElse = 3 | 4
 

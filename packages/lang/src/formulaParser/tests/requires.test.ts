@@ -1,6 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
 import {testScan} from '..'
-import {scanRequiresStatement} from '../scan/application'
+import {scanRequiresStatement} from '../scan/module'
 
 describe('requires', () => {
   cases<[string] | [string, string]>(c(['requires A']), c(['requires A, B'])).run(

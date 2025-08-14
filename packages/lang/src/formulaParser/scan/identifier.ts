@@ -73,9 +73,10 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
 }
 
 /**
- * References must be lower-cased, and cannot be a reserved word.
+ * Local references must be lower-cased, cannot be a reserved word, and cannot
+ * be a @state reference.
  */
-export function scanValidReferenceName(scanner: Scanner): Expressions.Reference {
+export function scanValidLocalName(scanner: Scanner): Expressions.Reference {
   const ref = scanValidName(scanner)
   if (!isValidLowercased(ref.name)) {
     throw new ParseError(

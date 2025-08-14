@@ -160,7 +160,7 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
       escaping = 'single'
     } else if (
       quoteSupportsInterpolation &&
-      scanner.test(() => scanner.scanIfString('$') && isRefStartChar(scanner))
+      scanner.test(() => scanner.scanIfString('$') && isRefStartChar(scanner) && !scanner.is('@'))
     ) {
       if (!enableInterpolation) {
         throw new ParseError(scanner, `Interpolation is not enabled in this context`)

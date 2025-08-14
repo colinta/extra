@@ -1,11 +1,11 @@
 import {c, cases} from '@extra-lang/cases'
 import {testScan} from '../../formulaParser'
-import {scanTypeDefinition} from '../scan/application'
+import {scanTypeDefinition} from '../scan/module'
 
-describe('application types', () => {
+describe('module types', () => {
   cases<[string, string] | [string, string, string]>(
     c(['type Age = Int', '(type Age `Int`)']),
-    c(['public type Age = Int(>=0)', '(public type Age `Int(>=0)`)']),
+    c(['export type Age = Int(>=0)', '(export type Age `Int(>=0)`)']),
     c([
       'type Point = { x: Int, y: Int }',
       '(type Point {(x: `Int`) (y: `Int`)})',
@@ -37,9 +37,9 @@ describe('application types', () => {
     ]),
     c(['type Box<T> = {value: T}', '(type Box <T> {(value: T)})']),
     c([
-      'public type Student = User & { grade: Int(>=0) }',
-      '(public type Student (User & {(grade: `Int(>=0)`)}))',
-      'public type Student = User & {grade: Int(>=0)}',
+      'export type Student = User & { grade: Int(>=0) }',
+      '(export type Student (User & {(grade: `Int(>=0)`)}))',
+      'export type Student = User & {grade: Int(>=0)}',
     ]),
     c([
       `\
@@ -104,32 +104,6 @@ enum RemoteData<Tsuccess, Tfail> {
     }
 }`,
     ]),
-    c([
-      `\
-public class User<T> {
-    first-name: String
-    last-name: String
-    data: T
-
-    fn name() =>
-        first-name <> ' ' <> last-name
-    static default() =>
-        User(first-name: '', last-name: '', data: 0)
-}
-`,
-      "((class User) <T> ((first-name: `String`) (last-name: `String`) (data: T)) ((fn name() => (<> (<> first-name ' ') last-name)) (static default() => (fn User ((first-name: '') (last-name: '') (data: 0))))))",
-      `class User<T> {
-  first-name: String
-  last-name: String
-  data: T
-
-  fn name() =>
-    first-name <> ' ' <> last-name
-
-  static default() =>
-    User(first-name: '', last-name: '', data: 0)
-}`,
-    ]),
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse type definition '${formula}'`, () => {
       expectedCode = expectedCode ?? formula
@@ -144,30 +118,65 @@ public class User<T> {
 describe('classes', () => {
   cases<[string, string] | [string, string, string]>(
     c([
-      'class Point { x: Int = 0, y: Int = 0 }',
-      '((class Point) ((x: `Int` 0) (y: `Int` 0)))',
-      `class Point {\n  x: Int = 0\n  y: Int = 0\n}`,
-    ]),
-    c([
-      'class Rect extends Point { w: Int = 0, h: Int = 0 }',
-      '((class Rect) extends Point ((w: `Int` 0) (h: `Int` 0)))',
-      `class Rect extends Point {\n  w: Int = 0\n  h: Int = 0\n}`,
-    ]),
-    c([
       `\
-class User {
-  first-name: String(length: >=1)
-  age: Age = 0
+export class User<T> {
+    @first-name: String
+    @last-name: String
+    @data: T
+
+    fn name() =>
+        @first-name <> ' ' <> @last-name
+    static default() =>
+        User(first-name: '', last-name: '', data: 0)
+}
+`,
+      "((export class User) <T> ((@first-name: `String`) (@last-name: `String`) (@data: T)) ((fn name() => (<> (<> @first-name ' ') @last-name)) (static default() => (fn User ((first-name: '') (last-name: '') (data: 0))))))",
+      `export class User<T> {
+  @first-name: String
+  @last-name: String
+  @data: T
+
+  fn name() =>
+    @first-name <> ' ' <> @last-name
+
+  static default() =>
+    User(first-name: '', last-name: '', data: 0)
 }`,
-      '((class User) ((first-name: `String(length: >=1)`) (age: Age 0)))',
-      `class User {\n  first-name: String(length: >=1)\n  age: Age = 0\n}`,
+    ]),
+    c([
+      'class Point { @x: Int = 0, @y: Int = 0 }',
+      '((class Point) ((@x: `Int` 0) (@y: `Int` 0)))',
+      `class Point {
+  @x: Int = 0
+  @y: Int = 0
+}`,
+    ]),
+    c([
+      'class Rect extends Point { @w: Int = 0, @h: Int = 0 }',
+      '((class Rect) extends Point ((@w: `Int` 0) (@h: `Int` 0)))',
+      `class Rect extends Point {
+  @w: Int = 0
+  @h: Int = 0
+}`,
     ]),
     c([
       `\
 class User {
-  first-name: String = ''
-  last-name: String(length: >=1)?
-  age: Int(>=0) = 0
+  @first-name: String(length: >=1)
+  @age: Age = 0
+}`,
+      '((class User) ((@first-name: `String(length: >=1)`) (@age: Age 0)))',
+      `class User {
+  @first-name: String(length: >=1)
+  @age: Age = 0
+}`,
+    ]),
+    c([
+      `\
+class User {
+  @first-name: String = ''
+  @last-name: String(length: >=1)?
+  @age: Int(>=0) = 0
 
   fn fullname(): String =>
     if (this.first-name and this.last-name) {
@@ -177,7 +186,7 @@ class User {
       this.first-name or this.last-name or '<no name>'
     }
 }`,
-      "((class User) ((first-name: `String` '') (last-name: (`String(length: >=1)` | `null`)) (age: `Int(>=0)` 0)) ((fn fullname() : `String` => (if ((and (. `this` first-name) (. `this` last-name))) { (then: (<> (. `this` first-name) (. `this` last-name))) (else: (or (or (. `this` first-name) (. `this` last-name)) '<no name>')) }))))",
+      "((class User) ((@first-name: `String` '') (@last-name: (`String(length: >=1)` | `null`)) (@age: `Int(>=0)` 0)) ((fn fullname() : `String` => (if ((and (. `this` first-name) (. `this` last-name))) { (then: (<> (. `this` first-name) (. `this` last-name))) (else: (or (or (. `this` first-name) (. `this` last-name)) '<no name>')) }))))",
     ]),
     c([
       `\

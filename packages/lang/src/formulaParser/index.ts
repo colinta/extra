@@ -2,7 +2,7 @@ import {ok, err, attempt} from '@extra-lang/result'
 
 import * as Values from '../values'
 
-import {Application} from './application'
+import {Module} from './module'
 import * as Expressions from './expressions'
 import {Expression} from './expressions'
 import {LOWEST_PRECEDENCE, binaryOperatorNamed, isOperator} from './operators'
@@ -51,7 +51,7 @@ import {
   OBJECT_OPEN,
   OBJECT_WORD_START,
   SINGLE_BLOCK_OPEN,
-  PUBLIC_KEYWORD,
+  EXPORT_KEYWORD,
   CLASS_KEYWORD,
   IMPORT_KEYWORD,
   REQUIRES_KEYWORD,
@@ -61,6 +61,7 @@ import {
   CASE_KEYWORD,
   PROVIDES_KEYWORD,
   ENUM_KEYWORD,
+  SPLAT_OP,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -73,10 +74,9 @@ import {
   scanRequiresStatement,
   scanImportStatement,
   scanHelperDefinition,
-  scanTypeDefinition,
   scanProvidesStatement,
-  scanApplicationType,
-} from './scan/application'
+  scanModuleTypeDefinition,
+} from './scan/module'
 import {scanFormula} from './scan/formula'
 import {scanArray, scanDict, scanObject, scanSet} from './scan/container_type'
 import {scanView} from './scan/view'
@@ -131,11 +131,11 @@ export function parseType(input: string, debug = 0) {
   )
 }
 
-export function parseApplication(input: string, debug = 0): GetParserResult<Application> {
+export function parseModule(input: string, debug = 0): GetParserResult<Module> {
   const scanner = new Scanner(input, {debug})
 
   const range0 = scanner.charIndex
-  const applicationTokens: {
+  const moduleTokens: {
     provides: Expressions.ProvidesStatement | undefined
     requires: Expressions.RequiresStatement | undefined
     imports: Expressions.ImportStatement[]
@@ -165,49 +165,46 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       //
       const requires = scanRequiresStatement(scanner)
 
-      if (applicationTokens.requires) {
-        applicationTokens.requires.envs.push(...requires.envs)
+      if (moduleTokens.requires) {
+        moduleTokens.requires.envs.push(...requires.envs)
       } else {
-        applicationTokens.requires = requires
+        moduleTokens.requires = requires
       }
     } else if (scanner.isWord(PROVIDES_KEYWORD)) {
       //
       //  PROVIDES
       //
-      if (applicationTokens.provides) {
+      if (moduleTokens.provides) {
         return err(
-          new ParseError(
-            scanner,
-            `Provides statement already defined: ${applicationTokens.provides}`,
-          ),
+          new ParseError(scanner, `Provides statement already defined: ${moduleTokens.provides}`),
         )
       }
 
       const provides = scanProvidesStatement(scanner)
-      applicationTokens.provides = provides
+      moduleTokens.provides = provides
     } else if (scanner.isWord(IMPORT_KEYWORD)) {
       //
       //  IMPORT
       //
-      applicationTokens.imports.push(scanImportStatement(scanner))
-    } else if (scanner.test(isPublic(TYPE_KEYWORD))) {
-      const typeExpr = scan(scanner, scanApplicationType)
+      moduleTokens.imports.push(scanImportStatement(scanner))
+    } else if (scanner.test(isExport(TYPE_KEYWORD))) {
+      const typeExpr = scan(scanner, scanModuleTypeDefinition)
       if (typeExpr.isErr()) {
         return err(typeExpr.error)
       }
-      applicationTokens.expressions.push(typeExpr.value as Expressions.TypeDefinition)
-    } else if (scanner.test(isPublic(CLASS_KEYWORD))) {
+      moduleTokens.expressions.push(typeExpr.value as Expressions.TypeDefinition)
+    } else if (scanner.test(isExport(CLASS_KEYWORD))) {
       const classExpr = scan(scanner, scanClass)
       if (classExpr.isErr()) {
         return err(classExpr.error)
       }
-      applicationTokens.expressions.push(classExpr.value as Expressions.ClassDefinition)
-    } else if (scanner.test(isPublic(ENUM_KEYWORD))) {
+      moduleTokens.expressions.push(classExpr.value as Expressions.ClassDefinition)
+    } else if (scanner.test(isExport(ENUM_KEYWORD))) {
       const enumExpr = scan(scanner, scanEnum)
       if (enumExpr.isErr()) {
         return err(enumExpr.error)
       }
-      applicationTokens.expressions.push(enumExpr.value as Expressions.EnumDefinition)
+      moduleTokens.expressions.push(enumExpr.value as Expressions.EnumDefinition)
     } else if (scanner.isWord(FN_KEYWORD)) {
       //
       //  HELPER
@@ -216,7 +213,7 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       if (helper.isErr()) {
         return err(helper.error)
       }
-      applicationTokens.expressions.push(helper.value as Expressions.HelperDefinition)
+      moduleTokens.expressions.push(helper.value as Expressions.HelperDefinition)
     } else if (scanner.isWord(VIEW_KEYWORD)) {
       //
       //  <VIEW>
@@ -225,7 +222,7 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
       if (view.isErr()) {
         return err(view.error)
       }
-      applicationTokens.expressions.push(view.value as Expressions.ViewDefinition)
+      moduleTokens.expressions.push(view.value as Expressions.ViewDefinition)
     } else {
       throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
     }
@@ -234,20 +231,20 @@ export function parseApplication(input: string, debug = 0): GetParserResult<Appl
   }
 
   return ok(
-    new Application(
+    new Module(
       [range0, scanner.input.length],
       scanner.flushComments(),
-      applicationTokens.provides,
-      applicationTokens.requires,
-      applicationTokens.imports,
-      applicationTokens.expressions,
+      moduleTokens.provides,
+      moduleTokens.requires,
+      moduleTokens.imports,
+      moduleTokens.expressions,
     ) as any,
   )
 }
 
-function isPublic(keyword: string) {
+function isExport(keyword: string) {
   return (scanner: Scanner) => {
-    scanner.scanIfWord(PUBLIC_KEYWORD) && scanner.expectWhitespace()
+    scanner.scanIfWord(EXPORT_KEYWORD) && scanner.expectWhitespace()
     return scanner.isWord(keyword)
   }
 }
@@ -474,12 +471,12 @@ function parseInternal(
     )
   }
 
-  // special "allow" list for view_property:
+  // special allow list for view_property:
   // - <View prop=foo.bar …
   // - <View prop=foo?.bar …
   // - <View prop=foo[0] …
   // - <View prop=foo('bar') …
-  function specialViewPropertyAllowList() {
+  function specialAllowList() {
     if (expressionType !== 'view_property') {
       return false
     }
@@ -497,276 +494,250 @@ function parseInternal(
     return false
   }
 
-  function scanExpression(): Expression {
-    scanner.whereAmI('parseInternal:scanExpression ' + expressionType)
-    while (!scanner.isEOF()) {
-      if (!isMatchingExpression) {
-        if (treatNewlineAsComma(expressionType) && scanner.is('\n')) {
-          // we're at a newline... cool
-          // 1. is the next token a '-'? Check for whitespace after.
-          //    whitespace means it's subtraction (keep scanning),
-          //    otherwise it's negation (stop scanning)
-          // 2. is the next token '...'? if we're scanning array/object/set/dict,
-          //    that's a splat operator, we should stop scanning.
-          // 3. check for an 'if' inclusion operator inside of array/object/set/dict.
-          // 4. finally, check for a binary operator.
-          if (
-            scanner.test(() => {
-              scanner.scanAllWhitespace()
-              if (scanner.is(/[-~$][^ \n\t]/)) {
-                scanner.whereAmI('scanning a negative number')
-                return false
-              }
+  // we're at a newline... cool
+  // 1. is the next token a '-'? Check for whitespace after.
+  //    whitespace means it's subtraction (keep scanning),
+  //    otherwise it's negation (stop scanning)
+  // 2. is the next token '...'? if we're scanning array/object/set/dict,
+  //    that's a splat operator, we should stop scanning.
+  // 3. check for an 'if' inclusion operator inside of array/object/set/dict.
+  // 4. finally, check for a binary operator.
+  function continueScanningAfterNewline() {
+    scanner.scanAllWhitespace()
+    if (scanner.is(/[-~$][^ \n\t]/)) {
+      scanner.whereAmI('scanning a negative number')
+      return false
+    }
 
-              if (scanner.is('...') && expressionSupportsSplat(expressionType)) {
-                return false
-              }
+    if (scanner.is(SPLAT_OP) && expressionSupportsSplat(expressionType)) {
+      return false
+    }
 
-              if (scanner.is(INCLUSION_OPERATOR) && expressionSupportsSplat(expressionType)) {
-                scanner.whereAmI('INCLUSION_OPERATOR')
-                return true
-              }
+    if (scanner.is(INCLUSION_OPERATOR) && expressionSupportsSplat(expressionType)) {
+      return true
+    }
 
-              return isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)
-            })
-          ) {
-            scanner.scanAllWhitespace()
-          } else {
-            const comments = scanner.flushComments()
-            const commentExpr = expressionStack.at(-1)
-            if (commentExpr) {
-              commentExpr.followingComments.push(...comments)
-            }
+    return isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)
+  }
 
-            scanner.whereAmI(`done scanning ${expressionType}`)
-            break
+  scanner.whereAmI('parseInternal:scanExpression ' + expressionType)
+  while (!scanner.isEOF()) {
+    if (!isMatchingExpression) {
+      if (treatNewlineAsComma(expressionType) && scanner.is('\n')) {
+        if (scanner.test(continueScanningAfterNewline)) {
+          scanner.scanAllWhitespace()
+        } else {
+          const comments = scanner.flushComments()
+          const commentExpr = expressionStack.at(-1)
+          if (commentExpr) {
+            commentExpr.followingComments.push(...comments)
           }
-        }
 
-        if (expressionType === 'let') {
-          if (
-            scanner.test(() => {
-              scanner.scanAllWhitespace()
-              return scanner.isWord('in')
-            })
-          ) {
-            const comments = scanner.flushComments()
-            const commentExpr = expressionStack.at(-1)
-            if (commentExpr) {
-              commentExpr.followingComments.push(...comments)
-            }
-
-            scanner.whereAmI(`done scanning let`)
-            break
-          }
-        }
-
-        if (
-          (terminatesWithComma(expressionType) && scanner.is(',')) ||
-          (terminatesWithRoundBracket(expressionType) && scanner.is(')')) ||
-          (terminatesWithSquareBracket(expressionType) && scanner.is(']')) ||
-          (terminatesWithCurlyBracket(expressionType) && scanner.is('}')) ||
-          (terminatesWithAngleBracket(expressionType) && scanner.is('>'))
-        ) {
           scanner.whereAmI(`done scanning ${expressionType}`)
           break
         }
       }
 
-      if (isCommentStart(scanner.remainingInput)) {
-        throw 'testing - does this happen?'
-        // scanner.scanComment()
-        // continue
-      }
-
-      if (isMatchingExpression) {
-        scanner.whereAmI(`expressionType ${expressionType}`)
-        if (
-          isOperator(prevOperator, IS_KEYWORD, 2) ||
-          isOperator(prevOperator, NOT_IS_KEYWORD, 2)
-        ) {
-          processExpression(scanMatch(scanner, parseNext))
-        } else if (
-          scanner.is(CASE_KEYWORD) &&
-          (expressionType === 'block_argument' || expressionType === 'argument')
-        ) {
-          processExpression(scanCase(scanner, parseNext))
-        } else if (scanner.isInView && isViewStart(scanner.remainingInput)) {
-          processExpression(scanJsx(scanner, parseNext))
-        } else if (isDiceStart(scanner.remainingInput)) {
-          processExpression(scanDice(scanner))
-        } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
-          processExpression(scanNumber(scanner, 'float'))
-        } else if (scanner.isWord(FN_KEYWORD)) {
-          processExpression(scanFormula(scanner, expressionType, parseNext))
-        } else if (scanner.is(Expressions.PipePlaceholderExpression.Symbol)) {
-          processExpression(scanPipePlaceholder(scanner))
-        } else if (scanner.isWord(LET_KEYWORD)) {
-          processExpression(scanLet(scanner, parseNext, expressionType))
-        } else if (scanner.is(PARENS_OPEN)) {
-          processExpression(scanParensGroup(scanner, parseNext))
-        } else if (scanner.is(ARRAY_OPEN)) {
-          processExpression(scanArray(scanner, parseNext, 'array[]'))
-        } else if (scanner.isWord(ARRAY_WORD_START)) {
-          processExpression(scanArray(scanner, parseNext, 'array-word'))
-        } else if (scanner.is(OBJECT_OPEN)) {
-          processExpression(scanObject(scanner, parseNext, 'object{}'))
-        } else if (scanner.isWord(OBJECT_WORD_START)) {
-          processExpression(scanObject(scanner, parseNext, 'object-word'))
-        } else if (scanner.isWord(SET_WORD_START)) {
-          processExpression(scanSet(scanner, parseNext))
-        } else if (scanner.isWord(DICT_WORD_START)) {
-          processExpression(scanDict(scanner, parseNext))
-        } else if (
-          isUnaryOperatorChar(scanner.char) ||
-          isUnaryOperatorName(scanner.remainingInput)
-        ) {
-          processOperator(scanUnaryOperator(scanner))
-        } else if (isStringStartChar(scanner)) {
-          processExpression(scanString(scanner, true, parseNext))
-        } else if (isTaggedString(scanner)) {
-          processExpression(scanString(scanner, true, parseNext))
-        } else if (scanner.is(REGEX_START)) {
-          processExpression(scanRegex(scanner))
-        } else if (isRefStartChar(scanner)) {
-          processExpression(scanIdentifier(scanner))
-        } else {
-          throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
-        }
-        scanner.whereAmI(`expressionType ${expressionType}`)
-
-        if (isWhitespaceChar(scanner.prevChar) && !scanner.isEOF()) {
-          // very special case for let ... in, where the 'let' ends with whitespace before 'in'
-          if (
-            expressionType === LET_KEYWORD &&
-            scanner.test(() => {
-              scanner.scanAllWhitespace()
-              return scanner.isWord(LET_IN)
-            })
-          ) {
-          }
-        }
-      } else {
-        if (scanner.is(PARENS_OPEN)) {
-          processOperator(binaryOperatorNamed('fn', scanner.flushComments()))
-          processExpression(scanInvocationArgs(scanner, parseNext))
-        } else if (scanner.is(NULL_COALESCING + PARENS_OPEN)) {
-          scanner.expectString(NULL_COALESCING)
-          processOperator(binaryOperatorNamed('?.()', scanner.flushComments()))
-          processExpression(scanInvocationArgs(scanner, parseNext))
-        } else if (scanner.is(ARRAY_OPEN)) {
-          processOperator(binaryOperatorNamed('[]', scanner.flushComments()))
-          processExpression(scanArrayAccess(scanner, parseNext))
-        } else if (scanner.is(NULL_COALESCING + ARRAY_OPEN)) {
-          scanner.expectString(NULL_COALESCING)
-          processOperator(binaryOperatorNamed('?.[]', scanner.flushComments()))
-          processExpression(scanArrayAccess(scanner, parseNext))
-        } else if (isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)) {
-          processOperator(scanBinaryOperator(scanner))
-        } else if (
-          expressionSupportsSplat(expressionType) &&
-          scanner.scanIfWord(INCLUSION_OPERATOR)
-        ) {
-          // if we are inside an array/dict/set/object literal, check for the inclusion
-          // operator `if`
-          processOperator(binaryOperatorNamed(INCLUSION_OPERATOR, scanner.flushComments()))
-        } else if (isBlockStartOperator(scanner)) {
-          // scans for `foo() { arg0, name: arg1, other: arg2, arg3 }`
-          processBlockArguments()
-        } else {
-          const expectComma = treatNewlineAsComma(expressionType)
-          throw new ParseError(
-            scanner,
-            `Expected operator${expectComma ? ' or comma' : ''}, found '${unexpectedToken(
-              scanner,
-            )}'`,
-          )
-        }
-      }
-
-      if (returnSingleExpression()) {
+      if (expressionType === 'let') {
         if (
           scanner.test(() => {
-            scanner.scanSpaces()
-            return specialViewPropertyAllowList()
+            scanner.scanAllWhitespace()
+            return scanner.isWord('in')
           })
         ) {
-          scanner.scanSpaces()
-          // TODO: attach comments?
-          continue
-        }
-
-        scanner.whereAmI(`returnSingleExpression in ${expressionType}`)
-        // TODO: attach comments?
-        break
-      }
-
-      scanner.whereAmI(
-        `treatNewlineAsComma(${expressionType}) ? ${treatNewlineAsComma(expressionType)}. isMatchingExpression ? ${isMatchingExpression}`,
-      )
-
-      // after an expression or operator, scan the remaining line (esp same-line comments)
-      scanner.scanSpaces()
-
-      // attach any remaining comments to the last expression or operator
-      // if isMatchingExpression, attach it to the last operator
-      // else attach to the last expression
-      const comments = scanner.flushComments()
-      if (comments.length) {
-        if (isMatchingExpression) {
-          const operatorExpr = operatorStack.at(-1)?.[1]
-          if (operatorExpr) {
-            operatorExpr.followingOperatorComments.push(...comments)
-
-            scanner.whereAmI(
-              `attaching comments: [${comments.map(({comment}) => comment).join('\\n')}] to ${operatorExpr.name}`,
-            )
-          }
-        } else {
+          const comments = scanner.flushComments()
           const commentExpr = expressionStack.at(-1)
           if (commentExpr) {
             commentExpr.followingComments.push(...comments)
-
-            scanner.whereAmI(
-              `attaching comments: [${comments.map(({comment}) => comment).join('\\n')}] to ${commentExpr}`,
-            )
           }
+
+          scanner.whereAmI(`done scanning let`)
+          break
         }
       }
 
-      // after an operator, or expressions that don't expect comma/newlines, scan all
-      // available whitespace.
-      if (isMatchingExpression || !treatNewlineAsComma(expressionType)) {
-        scanner.scanAllWhitespace()
+      if (
+        (terminatesWithComma(expressionType) && scanner.is(',')) ||
+        (terminatesWithRoundBracket(expressionType) && scanner.is(')')) ||
+        (terminatesWithSquareBracket(expressionType) && scanner.is(']')) ||
+        (terminatesWithCurlyBracket(expressionType) && scanner.is('}')) ||
+        (terminatesWithAngleBracket(expressionType) && scanner.is('>'))
+      ) {
+        scanner.whereAmI(`done scanning ${expressionType}`)
+        break
       }
     }
 
+    if (isCommentStart(scanner.remainingInput)) {
+      throw 'testing - does this happen?'
+      // scanner.scanComment()
+      // continue
+    }
+
     if (isMatchingExpression) {
-      throw new ParseError(scanner, `Unexpected end of input, expected expression after operator`)
+      scanner.whereAmI(`expressionType ${expressionType}`)
+      if (isOperator(prevOperator, IS_KEYWORD, 2) || isOperator(prevOperator, NOT_IS_KEYWORD, 2)) {
+        processExpression(scanMatch(scanner, parseNext))
+      } else if (
+        scanner.is(CASE_KEYWORD) &&
+        (expressionType === 'block_argument' || expressionType === 'argument')
+      ) {
+        processExpression(scanCase(scanner, parseNext))
+      } else if (scanner.isInView && isViewStart(scanner.remainingInput)) {
+        processExpression(scanJsx(scanner, parseNext))
+      } else if (isDiceStart(scanner.remainingInput)) {
+        processExpression(scanDice(scanner))
+      } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
+        processExpression(scanNumber(scanner, 'float'))
+      } else if (scanner.isWord(FN_KEYWORD)) {
+        processExpression(scanFormula(scanner, expressionType, parseNext))
+      } else if (scanner.is(Expressions.PipePlaceholderExpression.Symbol)) {
+        processExpression(scanPipePlaceholder(scanner))
+      } else if (scanner.isWord(LET_KEYWORD)) {
+        processExpression(scanLet(scanner, parseNext, expressionType))
+      } else if (scanner.is(PARENS_OPEN)) {
+        processExpression(scanParensGroup(scanner, parseNext))
+      } else if (scanner.is(ARRAY_OPEN)) {
+        processExpression(scanArray(scanner, parseNext, 'array[]'))
+      } else if (scanner.isWord(ARRAY_WORD_START)) {
+        processExpression(scanArray(scanner, parseNext, 'array-word'))
+      } else if (scanner.is(OBJECT_OPEN)) {
+        processExpression(scanObject(scanner, parseNext, 'object{}'))
+      } else if (scanner.isWord(OBJECT_WORD_START)) {
+        processExpression(scanObject(scanner, parseNext, 'object-word'))
+      } else if (scanner.isWord(SET_WORD_START)) {
+        processExpression(scanSet(scanner, parseNext))
+      } else if (scanner.isWord(DICT_WORD_START)) {
+        processExpression(scanDict(scanner, parseNext))
+      } else if (isUnaryOperatorChar(scanner.char) || isUnaryOperatorName(scanner.remainingInput)) {
+        processOperator(scanUnaryOperator(scanner))
+      } else if (isStringStartChar(scanner)) {
+        processExpression(scanString(scanner, true, parseNext))
+      } else if (isTaggedString(scanner)) {
+        processExpression(scanString(scanner, true, parseNext))
+      } else if (scanner.is(REGEX_START)) {
+        processExpression(scanRegex(scanner))
+      } else if (isRefStartChar(scanner)) {
+        processExpression(scanIdentifier(scanner))
+      } else {
+        throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
+      }
+      scanner.whereAmI(`expressionType ${expressionType}`)
+
+      if (isWhitespaceChar(scanner.prevChar) && !scanner.isEOF()) {
+        // very special case for let ... in, where the 'let' ends with whitespace before 'in'
+        if (
+          expressionType === LET_KEYWORD &&
+          scanner.test(() => {
+            scanner.scanAllWhitespace()
+            return scanner.isWord(LET_IN)
+          })
+        ) {
+        }
+      }
+    } else {
+      if (scanner.is(PARENS_OPEN)) {
+        processOperator(binaryOperatorNamed('fn', scanner.flushComments()))
+        processExpression(scanInvocationArgs(scanner, parseNext))
+      } else if (scanner.is(NULL_COALESCING + PARENS_OPEN)) {
+        scanner.expectString(NULL_COALESCING)
+        processOperator(binaryOperatorNamed('?.()', scanner.flushComments()))
+        processExpression(scanInvocationArgs(scanner, parseNext))
+      } else if (scanner.is(ARRAY_OPEN)) {
+        processOperator(binaryOperatorNamed('[]', scanner.flushComments()))
+        processExpression(scanArrayAccess(scanner, parseNext))
+      } else if (scanner.is(NULL_COALESCING + ARRAY_OPEN)) {
+        scanner.expectString(NULL_COALESCING)
+        processOperator(binaryOperatorNamed('?.[]', scanner.flushComments()))
+        processExpression(scanArrayAccess(scanner, parseNext))
+      } else if (isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)) {
+        processOperator(scanBinaryOperator(scanner))
+      } else if (
+        expressionSupportsSplat(expressionType) &&
+        scanner.scanIfWord(INCLUSION_OPERATOR)
+      ) {
+        // if we are inside an array/dict/set/object literal, check for the inclusion
+        // operator `if`
+        processOperator(binaryOperatorNamed(INCLUSION_OPERATOR, scanner.flushComments()))
+      } else if (isBlockStartOperator(scanner)) {
+        // scans for `foo() { arg0, name: arg1, other: arg2, arg3 }`
+        processBlockArguments()
+      } else {
+        const expectComma = treatNewlineAsComma(expressionType)
+        throw new ParseError(
+          scanner,
+          `Expected operator${expectComma ? ' or comma' : ''}, found '${unexpectedToken(scanner)}'`,
+        )
+      }
     }
 
-    processOperator(LOWEST_OP)
+    if (returnSingleExpression()) {
+      if (
+        scanner.test(() => {
+          scanner.scanSpaces()
+          return specialAllowList()
+        })
+      ) {
+        scanner.scanSpaces()
+        // TODO: attach comments?
+        continue
+      }
 
-    if (!expressionStack.length) {
-      throw new ParseError(scanner, `Unexpected end of input`)
+      scanner.whereAmI(`returnSingleExpression in ${expressionType}`)
+      // TODO: attach comments?
+      break
     }
 
-    expressionStack[0].followingComments.push(...scanner.flushComments())
-    return expressionStack[0]
-  } // end of scanExpression()
+    scanner.whereAmI(
+      `treatNewlineAsComma(${expressionType}) ? ${treatNewlineAsComma(expressionType)}. isMatchingExpression ? ${isMatchingExpression}`,
+    )
 
-  let expression: Expression
-  if (expressionType === 'app_type_definition') {
-    expression = scanTypeDefinition(scanner, parseNext)
-  } else if (expressionType === 'app_view_definition') {
-    expression = scanView(scanner, parseNext)
-  } else if (expressionType === 'app_helper_definition') {
-    expression = scanHelperDefinition(scanner, parseNext)
-  } else if (expressionType === 'argument_type') {
-    expression = scanArgumentType(scanner, expressionType, parseNext)
-  } else {
-    expression = scanExpression()
+    // after an expression or operator, scan the remaining line (esp same-line comments)
+    scanner.scanSpaces()
+
+    // attach any remaining comments to the last expression or operator
+    // if isMatchingExpression, attach it to the last operator
+    // else attach to the last expression
+    const comments = scanner.flushComments()
+    if (comments.length) {
+      if (isMatchingExpression) {
+        const operatorExpr = operatorStack.at(-1)?.[1]
+        if (operatorExpr) {
+          operatorExpr.followingOperatorComments.push(...comments)
+
+          scanner.whereAmI(
+            `attaching comments: [${comments.map(({comment}) => comment).join('\\n')}] to ${operatorExpr.name}`,
+          )
+        }
+      } else {
+        const commentExpr = expressionStack.at(-1)
+        if (commentExpr) {
+          commentExpr.followingComments.push(...comments)
+
+          scanner.whereAmI(
+            `attaching comments: [${comments.map(({comment}) => comment).join('\\n')}] to ${commentExpr}`,
+          )
+        }
+      }
+    }
+
+    // after an operator, or expressions that don't expect comma/newlines, scan all
+    // available whitespace.
+    if (isMatchingExpression || !treatNewlineAsComma(expressionType)) {
+      scanner.scanAllWhitespace()
+    }
   }
 
-  return expression
+  if (isMatchingExpression) {
+    throw new ParseError(scanner, `Unexpected end of input, expected expression after operator`)
+  }
+
+  processOperator(LOWEST_OP)
+
+  if (!expressionStack.length) {
+    throw new ParseError(scanner, `Unexpected end of input`)
+  }
+
+  expressionStack[0].followingComments.push(...scanner.flushComments())
+  return expressionStack[0]
 }

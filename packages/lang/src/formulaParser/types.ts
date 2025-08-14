@@ -110,10 +110,11 @@ export type ExpressionType =
   | 'let' // let ... in
   | 'type' // parses the type within <>
   | 'object' // parses the value within {key: value}
-  | 'application' // all module-level definitions are scanned in this context
+  | 'module' // all module-level definitions are scanned in this context
   | 'enum' // parses enum members, member and static functions, closes w/ }
   | 'case' // parses the argument after 'case [match]:'
   | 'class' // parses properties, member and static functions, closes w/ }
+  | 'default' // parses a single expression in the context of a class default value
   | 'array[]' // parses the values within [1,2,3]
   | 'array-word' // parses the values within array(1,2,3)
   | 'dict-word' // parses the values within dict(1,2,3)
@@ -128,11 +129,8 @@ export type ExpressionType =
   | 'jsx_embed' // inside {} while parsing a <View/>
   | 'view_property' // view property
   | 'argument_type' // argument types, like Int, Array<Int>, String[:], (Int | String)
-  | 'app_type_definition' // type Type = Array<Int> - Object and Class types can have default values
-  | 'app_view_definition' // view SomeView() => <>…</>
-  | 'app_helper_definition' // fn helper(input: A) => …
 
-export type ArgumentType = 'application_type' | 'argument_type'
+export type ArgumentType = 'module_type_definition' | 'argument_type'
 
 export type Options = {
   debug?: number

@@ -1,13 +1,14 @@
-import {err} from '@extra-lang/result'
-import {ApplicationRuntime, MutableTypeRuntime} from '../runtime'
+import {err, mapAll} from '@extra-lang/result'
+import {ModuleRuntime, type TypeRuntime} from '../runtime'
 
 import * as Expressions from './expressions'
-// import * as Types from '../types'
-// import * as Values from '../values'
+import * as Types from '../types'
+import * as Values from '../values'
 import {Expression} from './expressions'
-import {type Comment, RuntimeError, type GetTypeResult, type GetValueResult} from './types'
+import {type Comment, type GetTypeResult, type GetValueResult} from './types'
+import {dependencySort} from './dependencySort'
 
-export class Application extends Expression {
+export class Module extends Expression {
   readonly imports: Expressions.ImportStatement[]
 
   constructor(
@@ -80,11 +81,7 @@ export class Application extends Expression {
     return code
   }
 
-  getType(_mutableRuntime: MutableTypeRuntime): GetTypeResult {
-    return err(new RuntimeError(this, 'Application does not have a type'))
-  }
-
-  eval(runtime: ApplicationRuntime): GetValueResult {
+  getType(runtime: TypeRuntime): GetTypeResult {
     if (this.providesStmt) {
       throw new Error('TODO: provides')
     }
@@ -97,22 +94,56 @@ export class Application extends Expression {
       throw new Error('TODO: imports')
     }
 
-    const classes: Expressions.ClassDefinition[] = this.expressions.filter(
-      expr => expr instanceof Expressions.ClassDefinition,
+    const sorted = dependencySort(
+      this.expressions.map(typeExpr => [typeExpr.name, typeExpr]),
+      _name => false, // TODO: imports would help here
     )
-    const enums: Expressions.EnumDefinition[] = this.expressions.filter(
-      expr => expr instanceof Expressions.EnumDefinition,
-    )
-    const types: (
-      | Expressions.TypeDefinition
-      | Expressions.ClassDefinition
-      | Expressions.EnumDefinition
-    )[] = this.expressions.filter(expr => expr instanceof Expressions.TypeDefinition)
-    types.push(...classes, ...enums)
+    if (sorted.isErr()) {
+      return err(sorted.error)
+    }
 
-    const helpers = this.expressions.filter(expr => expr instanceof Expressions.HelperDefinition)
-    const views = this.expressions.filter(expr => expr instanceof Expressions.ViewDefinition)
-    console.log('=========== application.ts at line 105 ===========')
-    console.log({types, helpers, views})
+    return mapAll(
+      sorted
+        .get()
+        .map(([name, expr]) =>
+          expr.getType(runtime).map(value => [name, value] as [string, Types.Type]),
+        ),
+    ).map(typeTypes => {
+      return new Types.ModuleType(new Map(typeTypes))
+    })
+  }
+
+  eval(runtime: ModuleRuntime): GetValueResult {
+    if (this.providesStmt) {
+      throw new Error('TODO: provides')
+    }
+
+    if (this.requiresStmt) {
+      throw new Error('TODO: requires')
+    }
+
+    if (this.imports.length) {
+      throw new Error('TODO: imports')
+    }
+
+    const sorted = dependencySort(
+      this.expressions.map(typeExpr => [typeExpr.name, typeExpr]),
+      _name => false, // TODO: imports would help here
+    )
+    if (sorted.isErr()) {
+      return err(sorted.error)
+    }
+
+    return mapAll(
+      sorted
+        .get()
+        .map(([name, expr]) =>
+          expr.eval(runtime).map(value => [name, value] as [string, Values.Value]),
+        ),
+    ).map(typeValues => {
+      // TODO: return Module.
+      // return new Types.ModuleType()
+      return typeValues[0][1]
+    })
   }
 }

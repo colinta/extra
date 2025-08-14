@@ -83,6 +83,11 @@ world
     c(['"""this ${.is} a good "test"."""', `(++ 'this ' (. is) ' a good "test".')`]),
     c(['```this ${@is} a `good` "test".```', `(++ 'this ' @is ' a \`good\` "test".')`]),
     c([
+      '```this $@is a `good` "test".```',
+      '\'this $@is a `good` "test".\'',
+      '\'this $@is a `good` "test".\'',
+    ]),
+    c([
       "'this ${.is} a good \\'test\\''",
       `'this \${.is} a good \\'test\\''`,
       `"this \${.is} a good 'test'"`,

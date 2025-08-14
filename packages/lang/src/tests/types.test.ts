@@ -89,18 +89,14 @@ describe('toCode', () => {
     c([Types.set(Types.string(), {min: 1, max: undefined}), 'Set(String, length: >=1)']),
     c([Types.set(Types.oneOf([Types.int(), Types.string()])), 'Set(Int | String)']),
     c([Types.object([Types.namedProp('foo', Types.string())]), '{foo: String}']),
+    c([Types.classType({name: 'Mario', props: new Map([['foo', Types.string()]])}), 'Mario']),
     c([
-      Types.klass(new Map([['bar', Types.int()]]), Types.klass(new Map([['foo', Types.string()]]))),
-      '{bar: Int, foo: String}',
-    ]),
-    c([Types.namedClass('mario', new Map([['foo', Types.string()]])), 'mario']),
-    c([
-      Types.namedClass(
-        'mario',
-        new Map([['bar', Types.int()]]),
-        Types.namedClass('plumber', new Map([['foo', Types.string()]])),
-      ),
-      'mario',
+      Types.classType({
+        name: 'Mario',
+        props: new Map([['bar', Types.int()]]),
+        parent: Types.classType({name: 'Plumber', props: new Map([['foo', Types.string()]])}),
+      }),
+      'Mario',
     ]),
     c([Types.optional(Types.int()), 'Int?']),
     c([Types.optional(Types.nullType()), 'null']),
@@ -169,12 +165,28 @@ describe('toCode', () => {
   )
 
   describe('oneOf is smart', () => {
-    const human = Types.namedClass('human', new Map([['name', Types.string()]]))
-    const student = Types.namedClass('student', new Map([['grade', Types.int()]]), human)
-    const college = Types.namedClass('college', new Map([['debt', Types.int()]]), student)
-    const worker = Types.namedClass('worker', new Map([['job', Types.string()]]), human)
-    const animal = Types.namedClass('animal', new Map([['legs', Types.int()]]))
-    const dog = Types.namedClass('dog', new Map([['name', Types.string()]]), animal)
+    const human = Types.classType({name: 'Human', props: new Map([['name', Types.string()]])})
+    const student = Types.classType({
+      name: 'Student',
+      props: new Map([['grade', Types.int()]]),
+      parent: human,
+    })
+    const college = Types.classType({
+      name: 'College',
+      props: new Map([['debt', Types.int()]]),
+      parent: student,
+    })
+    const worker = Types.classType({
+      name: 'Worker',
+      props: new Map([['job', Types.string()]]),
+      parent: human,
+    })
+    const animal = Types.classType({name: 'Animal', props: new Map([['legs', Types.int()]])})
+    const dog = Types.classType({
+      name: 'Dog',
+      props: new Map([['name', Types.string()]]),
+      parent: animal,
+    })
 
     cases<[Types.Type, Types.Type]>(
       c([Types.oneOf([]), Types.never()]),

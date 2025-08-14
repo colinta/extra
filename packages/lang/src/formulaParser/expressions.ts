@@ -1,9 +1,12 @@
-import {err, mapAll, ok, type Result} from '@extra-lang/result'
+import {err, mapAll, mapMany, ok, type Result} from '@extra-lang/result'
+
+import {dependencySort} from './dependencySort'
+import {difference, union} from './set'
 
 import {
   type TypeRuntime,
   type ValueRuntime,
-  type ApplicationRuntime,
+  type ModuleRuntime,
   MutableTypeRuntime,
   MutableValueRuntime,
 } from '../runtime'
@@ -12,8 +15,6 @@ import * as Types from '../types'
 import {SPLAT_OP, KWARG_OP} from '../types'
 import * as Values from '../values'
 
-import {dependencySort} from './dependencySort'
-import {difference, union} from './set'
 import {
   RuntimeError,
   type Comment,
@@ -35,6 +36,19 @@ import {indent, MAX_INNER_LEN, MAX_LEN, NEWLINE_INDENT, wrapStrings} from './uti
 
 export type Range = [number, number]
 const HIGHEST_PRECEDENCE = 100
+const EXPORT_KEYWORD = 'export'
+
+/**
+ * Modules consist of Statements (ProvidesStatement, RequiresStatement,
+ * ImportStatement) and Definitions (TypeDefinition, ViewDefinition,
+ * EnumDefinition, ClassDefinition, HelperDefinition).
+ *
+ * Definitions have a 'name' and 'isExport' property
+ */
+export interface Definition {
+  get isExport(): boolean
+  get name(): string
+}
 
 /**
  * Each Expression represents a section of code, like a number, reference, or
@@ -1389,6 +1403,8 @@ export class ObjectTypeExpression extends TypeExpression {
 
   toCode() {
     const code = this.values.map(([name, it]) => {
+      // if we want to support `{ fn foo() => Value }`
+      // (currently this is `{ foo: fn() => Value }`)
       // if (it instanceof NamedFormulaTypeExpression) {
       //   return it.toCode()
       // }
@@ -1403,8 +1419,25 @@ export class ObjectTypeExpression extends TypeExpression {
     return wrapStrings('{', code, '}')
   }
 
-  getType(_runtime: TypeRuntime): GetTypeResult {
-    return err(new RuntimeError(this, 'ObjectType has no intrinsic type'))
+  getType(runtime: TypeRuntime) {
+    return err(new RuntimeError(this, 'ObjectTypeExpression cannot be evaluated'))
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return mapAll(
+      this.values.map(([name, expr]) =>
+        expr
+          .getAsTypeExpression(runtime)
+          .map(type => [name, type] as [string | undefined, Types.Type]),
+      ),
+    ).map(
+      types =>
+        new Types.ObjectType(
+          types.map(([name, type]) =>
+            name ? Types.namedProp(name, type) : Types.positionalProp(type),
+          ),
+        ),
+    )
   }
 }
 
@@ -1437,8 +1470,8 @@ export class ArrayTypeExpression extends TypeExpression {
     return Types.ArrayType.desc(this.of.toCode(0), this.narrowed)
   }
 
-  getType(): GetTypeResult {
-    return err(new RuntimeError(this, 'ArrayType has no intrinsic type'))
+  getType(runtime: TypeRuntime) {
+    return err(new RuntimeError(this, 'ArrayTypeExpression cannot be evaluated'))
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
@@ -1480,8 +1513,8 @@ export class DictTypeExpression extends TypeExpression {
     return Types.DictType.desc(this.of.toCode(0), this.narrowedNames, this.narrowedLength)
   }
 
-  getType(): GetTypeResult {
-    return err(new RuntimeError(this, 'DictType has no intrinsic type'))
+  getType(runtime: TypeRuntime) {
+    return err(new RuntimeError(this, 'DictTypeExpression cannot be evaluated'))
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
@@ -1517,8 +1550,8 @@ export class SetTypeExpression extends TypeExpression {
     return Types.SetType.desc(this.of.toCode(0), this.narrowedLength)
   }
 
-  getType(): GetTypeResult {
-    return err(new RuntimeError(this, 'SetType has no intrinsic type'))
+  getType(runtime: TypeRuntime) {
+    return err(new RuntimeError(this, 'SetTypeExpression cannot be evaluated'))
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
@@ -1781,7 +1814,7 @@ export class NamedArgument extends Argument {
  *     -- can be object (the values are "spread" as if they were passed to the function)
  *     -- or array *if* the function accepts spread args `fn(...# args: Array(T))`
  *     -- (or repeated-named args `fn(...args: Array(T))`, `foo(...args: args)`)
- *     -- or dict *if* the function accepts keyword list `fn(*kwargs: Dict(T))`
+ *     -- or dict *if* the function accepts keyword list `fn(**kwargs: Dict(T))`
  */
 export abstract class SpreadArgument extends Argument {
   toLisp() {
@@ -1915,7 +1948,7 @@ export class SpreadSetArgument extends SpreadArgument {
  * A spread argument passed to a function.
  *     foo(...values) -- can be an object, or array if foo accepts spread args
  *     foo(...name: values) -- must be an array, and foo must accept repeated-named-arg 'name'
- *     foo(*kwargs) -- must be a Dict and foo must accept keyword-args-list
+ *     foo(**kwargs) -- must be a Dict and foo must accept keyword-args-list
  */
 export class SpreadFunctionArgument extends SpreadArgument {
   constructor(
@@ -1928,7 +1961,7 @@ export class SpreadFunctionArgument extends SpreadArgument {
     super(range, precedingComments, value)
   }
 
-  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ObjectType> {
+  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ObjectType | Types.ArrayType> {
     return getChildType(this, this.value, runtime).map(type => {
       if (type instanceof Types.ObjectType) {
         return type
@@ -2455,7 +2488,7 @@ export class BooleanTypeExpression extends TypeIdentifier {
   readonly name = 'Boolean'
 
   toCode() {
-    return this.getType().get().intendedType.toCode()
+    return this.safeTypeAssertion().toCode()
   }
 
   safeTypeAssertion(): Types.Type {
@@ -2466,8 +2499,8 @@ export class BooleanTypeExpression extends TypeIdentifier {
     return ok(this.safeTypeAssertion())
   }
 
-  getType(): GetRuntimeResult<Types.TypeConstructor> {
-    return ok(this.safeTypeAssertion().typeConstructor())
+  getType() {
+    return err(new RuntimeError(this, 'FloatTypeExpression cannot be evaluated'))
   }
 
   eval(): GetValueResult {
@@ -2487,7 +2520,7 @@ export class FloatTypeExpression extends TypeIdentifier {
   }
 
   toCode() {
-    return this.getType().get().intendedType.toCode()
+    return this.safeTypeAssertion().toCode()
   }
 
   safeTypeAssertion(): Types.Type {
@@ -2502,8 +2535,8 @@ export class FloatTypeExpression extends TypeIdentifier {
     return ok(this.safeTypeAssertion())
   }
 
-  getType(): GetRuntimeResult<Types.TypeConstructor> {
-    return ok(this.safeTypeAssertion().typeConstructor())
+  getType() {
+    return err(new RuntimeError(this, 'FloatTypeExpression cannot be evaluated'))
   }
 
   eval(): GetValueResult {
@@ -2538,8 +2571,8 @@ export class IntTypeExpression extends TypeIdentifier {
     return ok(this.safeTypeAssertion())
   }
 
-  getType(): GetRuntimeResult<Types.TypeConstructor> {
-    return ok(this.safeTypeAssertion().typeConstructor())
+  getType() {
+    return err(new RuntimeError(this, 'IntTypeExpression cannot be evaluated'))
   }
 
   eval(): GetValueResult {
@@ -2574,8 +2607,8 @@ export class StringTypeExpression extends TypeIdentifier {
     return ok(this.safeTypeAssertion())
   }
 
-  getType(): GetRuntimeResult<Types.TypeConstructor> {
-    return ok(this.safeTypeAssertion().typeConstructor())
+  getType() {
+    return err(new RuntimeError(this, 'StringTypeExpression cannot be evaluated'))
   }
 
   eval(): GetValueResult {
@@ -2598,8 +2631,8 @@ export class ViewTypeExpression extends TypeIdentifier {
     return ok(this.safeTypeAssertion())
   }
 
-  getType(): GetRuntimeResult<Types.TypeConstructor> {
-    return ok(this.safeTypeAssertion().typeConstructor())
+  getType() {
+    return err(new RuntimeError(this, 'ViewTypeExpression cannot be evaluated'))
   }
 
   eval(): GetValueResult {
@@ -2655,15 +2688,19 @@ export class PipePlaceholderExpression extends Expression {
 //|  Class Expressions
 //|
 
-export class ClassPropertyExpression extends Expression {
+export abstract class ClassPropertyExpression extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
     readonly nameRef: Reference, // could be StateReference
-    readonly argType: Expression,
+    readonly argType: Expression | undefined,
     readonly defaultValue: Expression | undefined,
   ) {
     super(range, precedingComments)
+  }
+
+  get name() {
+    return this.nameRef.name
   }
 
   provides() {
@@ -2674,7 +2711,9 @@ export class ClassPropertyExpression extends Expression {
     let code = ''
     code += this.nameRef.toLisp()
 
-    code += ': ' + this.argType.toLisp()
+    if (this.argType) {
+      code += ': ' + this.argType.toLisp()
+    }
 
     if (this.defaultValue) {
       code += ' ' + this.defaultValue.toLisp()
@@ -2686,7 +2725,9 @@ export class ClassPropertyExpression extends Expression {
   toCode() {
     let code = ''
     code += this.nameRef.toCode()
-    code += ': ' + this.argType.toCode()
+    if (this.argType) {
+      code += ': ' + this.argType.toCode()
+    }
 
     if (this.defaultValue) {
       code += ' = ' + this.defaultValue.toCode()
@@ -2694,13 +2735,50 @@ export class ClassPropertyExpression extends Expression {
 
     return code
   }
+}
 
-  getType(): GetTypeResult {
-    return err(new RuntimeError(this, 'ClassPropertyExpression does not have a type'))
+export class ClassStatePropertyExpression extends ClassPropertyExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    nameRef: Reference,
+    readonly argType: Expression,
+    defaultValue: Expression | undefined,
+  ) {
+    super(range, precedingComments, nameRef, argType, defaultValue)
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    return this.argType.getAsTypeExpression(runtime)
   }
 
   eval(): GetValueResult {
-    return err(new RuntimeError(this, 'ClassPropertyExpression cannot be evaluated'))
+    return err(
+      new RuntimeError(this, `Property '${this.nameRef}' cannot be evaluated in a static context`),
+    )
+  }
+}
+
+export class ClassStaticPropertyExpression extends ClassPropertyExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    nameRef: Reference,
+    argType: Expression | undefined,
+    readonly value: Expression,
+  ) {
+    super(range, precedingComments, nameRef, argType, value)
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    if (this.argType) {
+      return this.argType.getAsTypeExpression(runtime)
+    }
+    return this.value.getType(runtime)
+  }
+
+  eval(runtime: ValueRuntime): GetValueResult {
+    return this.value.eval(runtime)
   }
 }
 
@@ -2719,17 +2797,41 @@ export class ClassDefinition extends Expression {
     readonly nameRef: Reference,
     readonly generics: string[],
     readonly extendsExpression: Reference | undefined,
+    readonly argDefinitions: FormulaLiteralArgumentDeclarations | undefined,
     /**
-     * Properties and their type, possibly with default value.
+     * Properties and their type, possibly with a default value.
+     * properties.nameRef could be a StateReference
      */
     readonly properties: ClassPropertyExpression[],
     /**
      * Static *and* member formulas
      */
     readonly formulas: NamedFormulaExpression[],
-    readonly isPublic: boolean,
+    readonly isExport: boolean,
   ) {
     super(range, precedingComments)
+  }
+
+  get name() {
+    return this.nameRef.name
+  }
+
+  staticProperties() {
+    return this.properties.filter(prop => prop instanceof ClassStaticPropertyExpression)
+  }
+
+  stateProperties() {
+    return this.properties.filter(prop => prop instanceof ClassStatePropertyExpression)
+  }
+
+  staticFormulas() {
+    return this.formulas.filter(fn => fn instanceof StaticFormulaExpression)
+  }
+
+  memberFormulas() {
+    return this.formulas.filter(
+      fn => fn instanceof MemberFormulaExpression || fn instanceof ViewFormulaExpression,
+    )
   }
 
   provides(): Set<string> {
@@ -2737,10 +2839,17 @@ export class ClassDefinition extends Expression {
   }
 
   toLisp() {
-    let code = `(class ${this.nameRef.name})`
+    let code = '('
+    if (this.isExport) {
+      code += EXPORT_KEYWORD + ' '
+    }
+    code += `${this.prefix} ${this.nameRef.name})`
     code += this.generics.length > 0 ? ` <${this.generics.join(' ')}>` : ''
     if (this.extendsExpression) {
       code += ` extends ${this.extendsExpression.name}`
+    }
+    if (this.argDefinitions) {
+      code += ' (' + this.argDefinitions.toLisp() + ')'
     }
     if (this.properties.length) {
       code += ' (' + this.properties.map(m => m.toLisp()).join(' ') + ')'
@@ -2752,9 +2861,16 @@ export class ClassDefinition extends Expression {
   }
 
   toCode() {
-    let code = `${this.prefix} ${this.nameRef.name}`
+    let code = ''
+    if (this.isExport) {
+      code += EXPORT_KEYWORD + ' '
+    }
+    code += `${this.prefix} ${this.nameRef.name}`
     if (this.generics.length > 0) {
       code += `<${this.generics.join(', ')}>`
+    }
+    if (this.argDefinitions) {
+      code += '(' + this.argDefinitions.toCode() + ')'
     }
     if (this.extendsExpression) {
       code += ` extends ${this.extendsExpression.name}`
@@ -2762,7 +2878,13 @@ export class ClassDefinition extends Expression {
     code += ' {\n'
     let body = ''
     // TODO: if (this.initializer)
-    for (const prop of this.properties) {
+    for (const prop of this.stateProperties()) {
+      body += prop.toCode() + '\n'
+    }
+    if (this.stateProperties().length && this.staticProperties().length) {
+      body += '\n'
+    }
+    for (const prop of this.staticProperties()) {
       body += prop.toCode() + '\n'
     }
 
@@ -2770,10 +2892,11 @@ export class ClassDefinition extends Expression {
       body += '\n'
     }
 
-    for (const formula of this.formulas) {
+    const formulas = [...this.memberFormulas(), ...this.staticFormulas()]
+    for (const formula of formulas) {
       const formulaCode = formula.toCodePrefixed(true, true)
       body += formulaCode + '\n'
-      if (formula !== this.formulas.at(-1)) {
+      if (formula !== formulas.at(-1)) {
         body += '\n'
       }
     }
@@ -2783,12 +2906,256 @@ export class ClassDefinition extends Expression {
     return code
   }
 
-  getType(runtime: TypeRuntime): GetTypeResult {
-    throw 'TODO - class getType'
+  private dontDependOnSelf<T extends Expression & {get name(): string}>(
+    runtime: TypeRuntime,
+    things: T[],
+  ) {
+    return dependencySort(
+      things.filter(expr => !expr.dependencies().has(this.name)).map(expr => [expr.name, expr]),
+      name => runtime.has(name),
+    )
   }
 
-  eval(): GetValueResult {
-    throw 'TODO - class eval'
+  /**
+   * Follow along in the comments, but high level:
+   * - try to evaulate statics, but some could depend on the class already
+   *   existing, like a static 'create() => Self(...)'.
+   * - then evaluate all stateProps, those could depend on static methods or
+   *   properties, but we should have those in nextRuntime by then
+   *   (if not it's a reasonable error)
+   * - That's enough to create the MetaClassType and ClassType instances
+   * - Build those up with the remaining statics and instance methods
+   * - Errors that occur during this time need to be analyzed for whether they
+   *   access a not-yet defined property or method - defer those for later
+   */
+  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ClassDefinitionType> {
+    // classLocalRuntime allows state properties, member formulas, and static
+    // methods to access statics as if they are local references
+    const classLocalRuntime = new MutableTypeRuntime(runtime)
+
+    // the parentMetaClass (and its instanceClass) is already defined, so at
+    // least we have a starting point
+    const parentMetaClass: GetRuntimeResult<Types.Type | undefined> =
+      this.extendsExpression?.getType(runtime) ?? ok(undefined)
+    return parentMetaClass.map(parentMetaClass => {
+      if (parentMetaClass && !(parentMetaClass instanceof Types.ClassDefinitionType)) {
+        return err(
+          new RuntimeError(
+            this,
+            `Class '${this.nameRef.name}' extends non-class type '${this.extendsExpression!}'`,
+          ),
+        )
+      }
+
+      const parentInstanceClass = parentMetaClass?.returnClassType
+
+      const allStatics: (ClassStaticPropertyExpression | StaticFormulaExpression)[] =
+        this.staticProperties()
+      allStatics.push(...this.staticFormulas())
+
+      // get the static methods and properties that don't refer to 'Self'. These
+      // are dependencySorted, too, because they *could* depend on *each other*
+      const firstStaticDependenciesResult = this.dontDependOnSelf(
+        classLocalRuntime,
+        allStatics,
+      ).map(all => all.map(([_, expr]) => expr))
+      if (firstStaticDependenciesResult.isErr()) {
+        return err(firstStaticDependenciesResult.error)
+      }
+      const firstStaticDependencies = firstStaticDependenciesResult.value
+
+      const someStaticProperties = new Map<string, Types.Type>()
+      for (const expr of firstStaticDependencies) {
+        const typeResult = expr.getType(classLocalRuntime)
+        if (typeResult.isErr()) {
+          return typeResult
+        }
+        classLocalRuntime.addLocalType(expr.name, typeResult.value)
+        someStaticProperties.set(expr.name, typeResult.value)
+      }
+
+      // we have some - maybe not all - statics defined in nextRuntime, that
+      // *should* be enough to define all the state properties
+      const stateProps = new Map<string, Types.Type>()
+      const defaultProps = new Set<string>()
+      for (const expr of this.stateProperties()) {
+        // TODO: I'm pretty sure that overriding properties from a parent class
+        // should not be allowed. At first glance, it seems like narrowing
+        // should be fine, but since instance methods can return Messages, which
+        // result in a mutation, we cannot guarantee that those mutations will
+        // not assign an incompatible value to the child class' redefinition.
+        if (parentInstanceClass?.allProps.has(expr.name)) {
+          return err(
+            new RuntimeError(
+              expr,
+              `Cannot redefine property '${expr.name}' in class '${this.name}', it is already defined in parent class '${parentInstanceClass.name}'`,
+            ),
+          )
+        }
+
+        const typeResult = expr.getType(classLocalRuntime)
+        if (typeResult.isErr()) {
+          return typeResult
+        }
+
+        const type = typeResult.value
+        if (expr.defaultValue) {
+          const defaultTypeResult = expr.getType(classLocalRuntime)
+          if (defaultTypeResult.isErr()) {
+            return defaultTypeResult
+          }
+          const defaultType = defaultTypeResult.value
+          if (!Types.canBeAssignedTo(defaultType, typeResult.value)) {
+            return err(
+              new RuntimeError(
+                expr,
+                `Cannot assign default value type '${defaultType}' to property '${expr}: ${type}' of class '${this.name}'`,
+              ),
+            )
+          }
+          defaultProps.add(expr.name)
+        }
+
+        stateProps.set(expr.name, type)
+      }
+
+      // create these, and then "fix" the missing properties. This is hacky, but
+      // works, for the most part... the stateProps *must* be resolved because
+      // those are passed to the MetaClassType and used as named arguments for
+      // the constructor function.
+      const instanceClass = new Types.ClassInstanceType(
+        this.name,
+        parentInstanceClass,
+        stateProps,
+        new Map(),
+      )
+      const metaClass = new Types.ClassDefinitionType(
+        this.name,
+        parentMetaClass,
+        instanceClass,
+        someStaticProperties,
+        defaultProps,
+      )
+      classLocalRuntime.addLocalType(this.name, metaClass)
+
+      // gather the remaining items: remainingStaticDependencies and
+      // memberFormulas(). Whatever is in remainingStaticDependencies depends
+      // on 'User', and we don't know what methods it might call on a User
+      // instance... so we try to get the type, and if it fails we look at the
+      // error to see if it is related to our class - if so, put the expression
+      // back onto the queue.
+      //
+      // We can dependencySort the remainingStaticDependencies, they might still
+      // refer to an instance method on Self that hasn't been resolved yet, but
+      // more likely is they refer to just the constructor (which *has* been
+      // defined above) or maybe other static properties. Anyway, can't hurt?
+
+      const remainingStaticDependenciesResult = dependencySort(
+        allStatics
+          .filter(expr => !firstStaticDependencies.includes(expr))
+          .map(expr => [expr.name, expr]),
+        name => classLocalRuntime.has(name),
+      ).map(all => all.map(([_, expr]) => expr))
+      if (remainingStaticDependenciesResult.isErr()) {
+        return err(remainingStaticDependenciesResult.error)
+      }
+      const remainingStaticDependencies = remainingStaticDependenciesResult.value
+
+      let remaining = new Set([...remainingStaticDependencies, ...this.memberFormulas()])
+      let next: typeof remaining = new Set()
+      // resolving member formulas usually involves accessing '@' props, which
+      // require 'this' to be assigned.
+      const thisRuntime = new MutableTypeRuntime(classLocalRuntime)
+      thisRuntime.setThisType(instanceClass)
+      while (remaining.size) {
+        const errors: RuntimeError[] = []
+        for (const expr of remaining) {
+          if (expr instanceof MemberFormulaExpression) {
+            const typeResult = expr.getType(thisRuntime)
+            if (typeResult.isErr()) {
+              // TODO: if typeResult is an error due to accessing a
+              // not-yet-resolved property or static, put expr into next
+              // return typeResult
+              next.add(expr)
+              errors.push(typeResult.error)
+              continue
+            }
+            // messy business, we mutate these *in-place* because I seem to
+            // think I know what I'm doing. It would be safer to *replace* the
+            // metaClass in nextRuntime, but YOLO.
+            instanceClass.formulas.set(expr.name, typeResult.value)
+          } else {
+            const typeResult = expr.getType(classLocalRuntime)
+            if (typeResult.isErr()) {
+              // TODO: if typeResult is an error due to accessing a
+              // not-yet-resolved property or static, put expr into next
+              // return typeResult
+              next.add(expr)
+              errors.push(typeResult.error)
+              continue
+            }
+            classLocalRuntime.addLocalType(expr.name, typeResult.value)
+            thisRuntime.addLocalType(expr.name, typeResult.value)
+            // messy business, we mutate these *in-place* because I seem to
+            // think I know what I'm doing. It would be safer to *replace* the
+            // metaClass in nextRuntime, but YOLO.
+            metaClass.staticProps.set(expr.name, typeResult.value)
+          }
+        }
+
+        if (remaining.size === next.size) {
+          return err(
+            new RuntimeError(
+              this,
+              `Could not resolve remaining expressions:\n- ${Array.from(remaining).join('\n- ')}`,
+              errors,
+            ),
+          )
+        }
+        remaining = next
+        next = new Set()
+      }
+
+      return ok(metaClass)
+    })
+  }
+
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ClassDefinitionValue> {
+    const parentClass: GetRuntimeResult<Values.Value | undefined> =
+      this.extendsExpression?.eval(runtime) ?? ok(undefined)
+    return mapMany(
+      parentClass,
+      mapAll(
+        this.staticProperties().map(expr =>
+          expr.eval(runtime).map(value => [expr.nameRef.name, value] as [string, Values.Value]),
+        ),
+      ),
+      mapAll(
+        this.staticFormulas().map(expr =>
+          expr
+            .eval(runtime)
+            .map(value => [expr.nameRef.name, value] as [string, Values.NamedFormulaValue]),
+        ),
+      ),
+    ).map(([parentClass, staticProps, staticFormulas]) => {
+      if (parentClass && !(parentClass instanceof Values.ClassDefinitionValue)) {
+        return err(
+          new RuntimeError(
+            this,
+            `Class '${this.nameRef.name}' extends non-class type '${this.extendsExpression!}'`,
+          ),
+        )
+      }
+
+      return ok(
+        new Values.ClassDefinitionValue(
+          this.nameRef.name,
+          parentClass,
+          new Map(staticProps),
+          new Map(staticFormulas),
+        ),
+      )
+    })
   }
 }
 
@@ -2800,21 +3167,90 @@ export class ViewClassDefinition extends ClassDefinition {
     precedingComments: Comment[],
     lastComments: Comment[],
     nameRef: Reference,
+    argDeclarations: FormulaLiteralArgumentDeclarations | undefined,
     properties: ClassPropertyExpression[],
     formulas: NamedFormulaExpression[],
-    isPublic: boolean,
+    isExport: boolean,
   ) {
     super(
       range,
       precedingComments,
       lastComments,
       nameRef,
+      // generics
       [],
+      // extends
       undefined,
+      argDeclarations,
       properties,
       formulas,
-      isPublic,
+      isExport,
     )
+  }
+
+  getType(runtime: TypeRuntime) {
+    return super.getType(runtime).map(metaClass => {
+      const parentClass = metaClass.parentClass
+      if (parentClass && !(parentClass instanceof Types.ViewClassDefinitionType)) {
+        return err(
+          new RuntimeError(
+            this,
+            `Class '${this.nameRef.name}' extends non-view type '${this.extendsExpression!}'`,
+          ),
+        )
+      }
+
+      let returnClassType: Types.ViewClassInstanceType
+      if (metaClass.returnClassType instanceof Types.ViewClassInstanceType) {
+        returnClassType = metaClass.returnClassType
+      } else {
+        const returnParentClass = metaClass.returnClassType.parent
+        if (returnParentClass && !(returnParentClass instanceof Types.ViewClassInstanceType)) {
+          return err(
+            new RuntimeError(
+              this,
+              `Class '${this.nameRef.name}' extends non-view type '${this.extendsExpression!}'`,
+            ),
+          )
+        }
+
+        returnClassType = new Types.ViewClassInstanceType(
+          metaClass.returnClassType.name,
+          returnParentClass,
+          metaClass.returnClassType.myProps,
+          metaClass.returnClassType.formulas,
+        )
+      }
+
+      return new Types.ViewClassDefinitionType(
+        metaClass.name,
+        parentClass,
+        returnClassType,
+        metaClass.staticProps,
+        metaClass.hasDefaultValues,
+      )
+    })
+  }
+
+  eval(runtime: ValueRuntime) {
+    return super.eval(runtime).map(metaClass => {
+      const parentClass = metaClass.parent
+      if (parentClass && !(parentClass instanceof Values.ViewClassDefinitionValue)) {
+        return err(
+          new RuntimeError(
+            this,
+            `Class '${this.nameRef.name}' extends non-view type '${this.extendsExpression!}'`,
+          ),
+        )
+      }
+
+      return new Values.ViewClassDefinitionValue(
+        metaClass.name,
+        metaClass.parent,
+        metaClass.staticProps,
+        metaClass.staticFormulas,
+      )
+    })
   }
 }
 
@@ -2937,9 +3373,13 @@ export class EnumDefinition extends EnumTypeExpression {
     members: EnumMemberExpression[],
     readonly formulas: NamedFormulaExpression[],
     readonly generics: string[],
-    readonly isPublic: boolean,
+    readonly isExport: boolean,
   ) {
     super(range, precedingComments, members)
+  }
+
+  get name() {
+    return this.nameRef.name
   }
 
   provides(): Set<string> {
@@ -2957,8 +3397,8 @@ export class EnumDefinition extends EnumTypeExpression {
 
   toCode() {
     let code = ''
-    if (this.isPublic) {
-      code += 'public '
+    if (this.isExport) {
+      code += EXPORT_KEYWORD + ' '
     }
     code += `enum ${this.nameRef.name}`
     if (this.generics.length) {
@@ -3245,7 +3685,7 @@ export class FormulaLiteralArgumentDeclarations extends ArgumentDeclarations {
  *     name: Type [= value]
  *     ...# spread: Array(Type)
  *     ...spread: Array(Type)
- *     *kwargs: Dict(Type)
+ *     **kwargs: Dict(Type)
  */
 export class FormulaLiteralArgumentAndTypeDeclaration extends ArgumentExpression {
   constructor(
@@ -3593,14 +4033,16 @@ export class FormulaExpression extends Expression {
       hasNewline = testCode.includes('\n') || testCode.length > MAX_LEN
     }
 
-    const argDefinitionsHasNewline =
-      argDefinitions.includes('\n') || argDefinitions.length > MAX_INNER_LEN
     if (!argDefinitions.length) {
       code += '()'
-    } else if (argDefinitionsHasNewline) {
-      code += `(\n${indent(argDefinitions)}\n)`
     } else {
-      code += `(${argDefinitions})`
+      const argDefinitionsHasNewline =
+        argDefinitions.includes('\n') || argDefinitions.length > MAX_INNER_LEN
+      if (argDefinitionsHasNewline) {
+        code += `(\n${indent(argDefinitions)}\n)`
+      } else {
+        code += `(${argDefinitions})`
+      }
     }
 
     if (!(this.returnType instanceof InferIdentifier)) {
@@ -3974,15 +4416,12 @@ export class FormulaExpression extends Expression {
     return ok(mutableRuntime)
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.FormulaValue> {
     const argDefinitions = this.argDefinitions.args
     // this is the function that is invoked by 'FunctionInvocationOperator'
     const fn = (args: Values.FormulaArgs): Result<Values.Value, string> => {
-      // TODO: use the context from below for closed-over variables
       return this.argumentValues(runtime, argDefinitions, args)
-        .map(nextRuntime => {
-          return this.body.eval(nextRuntime)
-        })
+        .map(nextRuntime => this.body.eval(nextRuntime))
         .mapResult(result => {
           if (result.isErr()) {
             return err(result.error.message)
@@ -4010,6 +4449,47 @@ export class NamedFormulaExpression extends FormulaExpression {
     returnType: Expression,
     body: Expression,
     generics: string[],
+  ) {
+    super(
+      range,
+      precedingComments,
+      precedingNameComments,
+      precedingReturnTypeComments,
+      nameRef,
+      argDefinitions,
+      returnType,
+      body,
+      generics,
+    )
+  }
+
+  get name() {
+    return this.nameRef.name
+  }
+
+  getType(
+    runtime: TypeRuntime,
+    formulaType?: Types.FormulaType | undefined,
+  ): GetRuntimeResult<Types.NamedFormulaType> {
+    return super.getType(runtime, formulaType) as GetRuntimeResult<Types.NamedFormulaType>
+  }
+
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.NamedFormulaValue> {
+    return super.eval(runtime) as GetRuntimeResult<Values.NamedFormulaValue>
+  }
+}
+
+export class MemberFormulaExpression extends NamedFormulaExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    precedingNameComments: Comment[],
+    precedingReturnTypeComments: Comment[],
+    nameRef: Reference,
+    argDefinitions: FormulaLiteralArgumentDeclarations,
+    returnType: Expression,
+    body: Expression,
+    generics: string[],
     public isOverride: boolean,
   ) {
     super(
@@ -4023,14 +4503,6 @@ export class NamedFormulaExpression extends FormulaExpression {
       body,
       generics,
     )
-    this.nameRef = nameRef
-  }
-
-  getType(
-    runtime: TypeRuntime,
-    formulaType?: Types.FormulaType | undefined,
-  ): GetRuntimeResult<Types.NamedFormulaType> {
-    return super.getType(runtime, formulaType) as GetRuntimeResult<Types.NamedFormulaType>
   }
 }
 
@@ -4063,7 +4535,6 @@ export class StaticFormulaExpression extends NamedFormulaExpression {
       returnType,
       body,
       generics,
-      false,
     )
   }
 }
@@ -4327,6 +4798,9 @@ export class FragmentJsxExpression extends JsxExpression {
   }
 }
 
+/**
+ * A view formula on a view class, or a view formula on a pure-function view.
+ */
 export class ViewFormulaExpression extends NamedFormulaExpression {
   prefix = 'view'
 
@@ -4350,35 +4824,17 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
       returnType,
       body,
       [],
-      false,
     )
   }
 
-  /**
-   * Indicates which formula is the view's 'render' formula.
-   */
-  isRender() {
-    return false
-  }
-
-  eval<T>(runtime: ApplicationRuntime<T>): GetValueResult {
+  eval(runtime: ModuleRuntime): GetRuntimeResult<Values.ViewFormulaValue> {
     return super.eval(runtime)
   }
 }
 
 export class RenderFormulaExpression extends ViewFormulaExpression {
-  /**
-   * Marks this as the 'render' formula for a view.
-   */
-  isRender() {
-    return true
-  }
-
-  toCodePrefixed(prefixed: boolean, forceNewline: boolean) {
+  toCodePrefixed(_prefixed: boolean, forceNewline: boolean) {
     let code = super.toCodePrefixed(false, forceNewline)
-    if (prefixed) {
-      code = 'render' + code
-    }
     return code
   }
 }
@@ -6316,7 +6772,7 @@ export class CaseExpression extends MatchExpression {
 }
 
 //|
-//|  Application Expressions
+//|  Module Expressions
 //|
 
 export class ImportSpecific extends Expression {
@@ -6563,19 +7019,23 @@ export class ImportStatement extends Expression {
 }
 
 /**
- * In the 'types' section of an application:
+ * In the 'types' section of a module:
  *     [public] typeName[<generics>] = type
  */
 export class TypeDefinition extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly name: string,
+    readonly nameRef: Reference,
     readonly type: Expression,
     readonly generics: string[],
-    readonly isPublic: boolean,
+    readonly isExport: boolean,
   ) {
     super(range, precedingComments)
+  }
+
+  get name() {
+    return this.nameRef.name
   }
 
   dependencies() {
@@ -6588,8 +7048,8 @@ export class TypeDefinition extends Expression {
 
   toLisp() {
     let code = ''
-    if (this.isPublic) {
-      code += 'public '
+    if (this.isExport) {
+      code += EXPORT_KEYWORD + ' '
     }
 
     code += 'type '
@@ -6605,8 +7065,8 @@ export class TypeDefinition extends Expression {
 
   toCode() {
     let code = ''
-    if (this.isPublic) {
-      code += 'public '
+    if (this.isExport) {
+      code += EXPORT_KEYWORD + ' '
     }
 
     code += 'type '
@@ -6654,16 +7114,20 @@ export class BuiltinCommandIdentifier extends Identifier {
 }
 
 /**
- * A NamedFormulaExpression with an `isPublic` boolean.
+ * A NamedFormulaExpression with an `isExport` boolean.
  */
 export class HelperDefinition extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
     readonly value: NamedFormulaExpression,
-    readonly isPublic: boolean,
+    readonly isExport: boolean,
   ) {
     super(range, precedingComments)
+  }
+
+  get name() {
+    return this.value.nameRef.name
   }
 
   dependencies() {
@@ -6676,8 +7140,8 @@ export class HelperDefinition extends Expression {
 
   toLisp() {
     let code = ''
-    if (this.isPublic) {
-      code += 'public '
+    if (this.isExport) {
+      code += EXPORT_KEYWORD + ' '
     }
 
     code += this.value.toLispPrefixed(false)
@@ -6687,8 +7151,8 @@ export class HelperDefinition extends Expression {
 
   toCode() {
     let code = ''
-    if (this.isPublic) {
-      code += 'public '
+    if (this.isExport) {
+      code += EXPORT_KEYWORD + ' '
     }
 
     code += 'fn '
@@ -6708,14 +7172,14 @@ export class HelperDefinition extends Expression {
 /**
  * There is the `ViewClassDefinition` expression, which is a subclass of
  * `ClassDefinition`, and there is `ViewDefinition`, which is just a view
- * function and whether it's isPublic or not.
+ * function and whether it's isExport or not.
  */
 export class ViewDefinition extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
     readonly value: ViewFormulaExpression,
-    readonly isPublic: boolean,
+    readonly isExport: boolean,
   ) {
     super(range, precedingComments)
   }
@@ -6734,8 +7198,8 @@ export class ViewDefinition extends Expression {
 
   toLisp() {
     let code = ''
-    if (this.isPublic) {
-      code += 'public '
+    if (this.isExport) {
+      code += EXPORT_KEYWORD + ' '
     }
 
     code += `${this.value.toLispPrefixed(false)}`
@@ -6745,8 +7209,8 @@ export class ViewDefinition extends Expression {
 
   toCode() {
     let code = ''
-    if (this.isPublic) {
-      code += 'public '
+    if (this.isExport) {
+      code += EXPORT_KEYWORD + ' '
     }
 
     return code + this.value.toCodePrefixed(true, true)
@@ -6756,7 +7220,7 @@ export class ViewDefinition extends Expression {
     return getChildType(this, this.value, runtime)
   }
 
-  eval<T>(runtime: ApplicationRuntime<T>): GetValueResult {
+  eval(runtime: ModuleRuntime): GetValueResult {
     return this.value.eval(runtime)
   }
 }

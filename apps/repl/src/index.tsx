@@ -194,35 +194,40 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
   const [only, setOnly] = useToggle(false)
   const [skip, setSkip] = useToggle(false)
   const timer = useRef<ReturnType<typeof setTimeout>>()
+  const timeout = useRef(0)
 
   useEffect(() => {
+    setWarning('')
+
     const prevId = timer.current
     timer.current = setTimeout(() => {
-      setWarning('')
-      const {text, type: _type} = calc()
+      const {text} = calc()
 
       setMainText(text)
-      writeFileSync(
-        STATE_FILE,
-        JSON.stringify(
-          {
-            version: 1,
-            desc: saveDesc,
-            only,
-            skip,
-            formula,
-            vars: inputs.map(({name, type, value}) => ({
-              name: name.trim(),
-              type: type.trim(),
-              value: value.trim(),
-            })),
-          },
-          null,
-          2,
-        ),
-        {encoding: 'utf8'},
-      )
-    }, 250)
+    }, timeout.current)
+    timeout.current = 1500
+
+    writeFileSync(
+      STATE_FILE,
+      JSON.stringify(
+        {
+          version: 1,
+          desc: saveDesc,
+          only,
+          skip,
+          formula,
+          vars: inputs.map(({name, type, value}) => ({
+            name: name.trim(),
+            type: type.trim(),
+            value: value.trim(),
+          })),
+        },
+        null,
+        2,
+      ),
+      {encoding: 'utf8'},
+    )
+
     return () => {
       clearTimeout(prevId)
     }
@@ -270,12 +275,21 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
     const valueRuntime = new Runtime.MutableValueRuntime()
 
     let successText = ''
+    const duplicateVars = new Set<string>()
     const varExpressions: [string, Expressions.Expression][] = []
     const typeExpressions: Map<string, Expressions.Expression> = new Map()
-    for (const {name, type, value} of inputs) {
-      if (!(name.trim() && value.trim())) {
+    for (const {name: _name, type, value: _value} of inputs) {
+      const name = _name.trim()
+      const value = _value.trim()
+      if (!(name && value)) {
         continue
       }
+
+      if (duplicateVars.has(name)) {
+        successText += red(`Duplicate variable name: \`${name}\`\n`)
+        continue
+      }
+      duplicateVars.add(name)
 
       const formulaExpr = parse(value)
       if (formulaExpr.isErr()) {
@@ -311,7 +325,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
     for (const [name, formulaExpr] of expressionsSorted.value) {
       const formulaType = formulaExpr.getType(typeRuntime)
       if (formulaType.isErr()) {
-        successText += red(`Error resolving '${name}': ${formulaType.error.toString()}`)
+        successText += red(`Error resolving '${name}': ${formulaType.error.toString()}\n`)
         continue
       }
 
@@ -319,7 +333,9 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       if (typeExpr) {
         const typeResolved = typeExpr.getType(typeRuntime)
         if (typeResolved.isErr()) {
-          successText += red(`Error resolving type of '${name}': ${typeResolved.error.toString()}`)
+          successText += red(
+            `Error resolving type of '${name}': ${typeResolved.error.toString()}\n`,
+          )
           continue
         }
 
@@ -330,7 +346,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
 
       const formulaValue = formulaExpr.eval(valueRuntime)
       if (formulaValue.isErr()) {
-        successText += red(formulaValue.error.toString())
+        successText += red(formulaValue.error.toString()) + '\n'
         continue
       }
 

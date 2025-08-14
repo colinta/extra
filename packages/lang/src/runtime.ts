@@ -14,7 +14,7 @@ export type TypeRuntime = Omit<
   | 'replaceType'
   | 'addLocalType'
   | 'addStateType'
-  | 'addThisType'
+  | 'setThisType'
   | 'addId'
   | 'setPipeType'
   | 'addNamespaceTypes'
@@ -26,13 +26,13 @@ export type ValueRuntime = Omit<
   | 'setLocale'
   | 'addLocalType'
   | 'addStateType'
-  | 'addThisType'
+  | 'setThisType'
   | 'addId'
   | 'setPipeType'
   | 'addNamespaceTypes'
   | 'addLocalValue'
   | 'addStateValue'
-  | 'addThisValue'
+  | 'setThisValue'
   | 'setPipeValue'
 >
 
@@ -130,7 +130,12 @@ export class MutableTypeRuntime {
    *     <row>{@user.name}</row>
    */
   getStateType(name: string): Type | undefined {
-    return this.getLocalType('@' + name)
+    const thisType = this.getLocalType('this')
+    if (!thisType) {
+      return undefined
+    }
+
+    return thisType.propAccessType(name)
   }
 
   /**
@@ -202,8 +207,8 @@ export class MutableTypeRuntime {
     this.addLocalType('@' + name, type)
   }
 
-  addThisType(name: string, type: Type) {
-    this.addLocalType('.' + name, type)
+  setThisType(type: Type) {
+    this.addLocalType('this', type)
   }
 
   setPipeType(type: Type) {
@@ -307,8 +312,8 @@ export class MutableValueRuntime extends MutableTypeRuntime {
     this.addLocalValue('@' + name, value)
   }
 
-  addThisValue(name: string, value: Value) {
-    this.addLocalValue('.' + name, value)
+  setThisValue(value: Value) {
+    this.addLocalValue('this', value)
   }
 
   setPipeValue(value: Value) {
@@ -316,7 +321,7 @@ export class MutableValueRuntime extends MutableTypeRuntime {
   }
 }
 
-export class ApplicationRuntime extends MutableValueRuntime {
+export class ModuleRuntime extends MutableValueRuntime {
   constructor(readonly runtime: ValueRuntime) {
     super(runtime)
   }

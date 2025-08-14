@@ -3,10 +3,18 @@ import * as Types from '../types'
 import {privateOneOf} from './privateOneOf'
 
 describe('compatibleWithBothTypes', () => {
-  const human = Types.namedClass('human', new Map([['foo', Types.string()]]))
-  const animal = Types.klass(new Map([['legs', Types.int()]]))
-  const dog = Types.namedClass('dog', new Map([['name', Types.string()]]), animal)
-  const student = Types.namedClass('student', new Map([['grade', Types.int()]]), human)
+  const human = Types.classType({name: 'Human', props: new Map([['foo', Types.string()]])})
+  const animal = Types.classType({name: 'Animal', props: new Map([['legs', Types.int()]])})
+  const dog = Types.classType({
+    name: 'Dog',
+    props: new Map([['name', Types.string()]]),
+    parent: animal,
+  })
+  const student = Types.classType({
+    name: 'Dtudent',
+    props: new Map([['grade', Types.int()]]),
+    parent: human,
+  })
 
   cases<[Types.Type, Types.Type, Types.Type]>(
     // never

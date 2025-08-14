@@ -963,7 +963,7 @@ describe('match operator', () => {
                 `foo = ${fooValue}, expected = ${expected}`,
                 () => {
                   runtimeTypes['foo'] = [fooType, fooValue]
-                  runtimeTypes['bar'] = [Types.namedClass('Bar', new Map()), valueNull]
+                  runtimeTypes['bar'] = [Types.classType({name: 'Bar'}), valueNull]
                   const expression = parse(formula).get()
                   valueRuntime = mockValueRuntime(runtimeTypes)
                   expect(expression.eval(valueRuntime).get()).toEqual(expected)

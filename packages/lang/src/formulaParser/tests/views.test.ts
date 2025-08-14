@@ -2,7 +2,30 @@ import {c, cases} from '@extra-lang/cases'
 import {testScan} from '../../formulaParser'
 import {scanView} from '../scan/view'
 
-describe('view', () => {
+describe('view classes', () => {
+  cases<[string, string] | [string, string, string]>(
+    c([
+      `view Asdf {
+  render =>
+    <></>
+}`,
+      '((view Asdf) ((view render() => <></>)))',
+      `view Asdf {
+  render() =>
+    <></>
+}`,
+    ]),
+  ).run(([formula, expectedLisp, expectedFormula], {only, skip}) =>
+    (only ? it.only : skip ? it.skip : it)(`should parse view definition '${formula}'`, () => {
+      const expression = testScan(formula, scanView).get()
+
+      expect(expression!.toCode()).toEqual(expectedFormula ?? formula)
+      expect(expression!.toLisp()).toEqual(expectedLisp)
+    }),
+  )
+})
+
+describe('view functions', () => {
   cases<[string, string] | [string, string, string]>(
     c([
       `view Asdf() =>

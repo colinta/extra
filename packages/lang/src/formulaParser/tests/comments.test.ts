@@ -1,7 +1,7 @@
 import {c, cases} from '@extra-lang/cases'
 import {parse, testScan} from '../'
 import * as Expressions from '../expressions'
-import {scanImportStatement} from '../scan/application'
+import {scanImportStatement} from '../scan/module'
 
 describe('comments', () => {
   describe('skipping comments', () => {

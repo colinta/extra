@@ -66,9 +66,9 @@ import {scanString} from './string'
  */
 export function scanArgumentType(
   scanner: Scanner,
-  // argument_type | application_type
-  // only application_type supports enum definitions
-  applicationOrArgument: ArgumentType,
+  // argument_type | module_type_definition
+  // only module_type_definition supports enum definitions
+  moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
 ): Expression {
   scanner.whereAmI('scanArgumentType')
@@ -92,7 +92,7 @@ export function scanArgumentType(
     const arg0 = scanner.charIndex
 
     if (scanner.scanIfString(PARENS_OPEN)) {
-      argType = scanArgumentType(scanner, applicationOrArgument, parseNext)
+      argType = scanArgumentType(scanner, moduleOrArgument, parseNext)
       scanner.scanAllWhitespace()
       scanner.expectString(
         PARENS_CLOSE,
@@ -104,7 +104,7 @@ export function scanArgumentType(
     } else if (isStringStartChar(scanner)) {
       argType = scanString(scanner, false, parseNext)
     } else if (scanner.scanIfString(ENUM_START)) {
-      if (applicationOrArgument === 'application_type') {
+      if (moduleOrArgument === 'module_type_definition') {
         throw new ParseError(
           scanner,
           'Enum shorthand syntax `.type | .type | ...` is only allowed for formula argument types',
@@ -151,7 +151,7 @@ export function scanArgumentType(
 
       break
     } else if (scanner.scanIfString(OBJECT_OPEN)) {
-      argType = scanObjectType(scanner, 'literal', applicationOrArgument, parseNext, arg0)
+      argType = scanObjectType(scanner, moduleOrArgument, parseNext, arg0)
     } else if (scanner.isWord(CLASS_KEYWORD)) {
       throw new ParseError(
         scanner,
@@ -165,7 +165,7 @@ export function scanArgumentType(
     } else if (scanner.isWord(FN_KEYWORD)) {
       scanner.expectString(FN_KEYWORD)
       scanner.scanAllWhitespace()
-      argType = scanFormulaType(scanner, arg0, parseNext, applicationOrArgument)
+      argType = scanFormulaType(scanner, arg0, parseNext, moduleOrArgument)
     } else if (isArgumentStartChar(scanner)) {
       const typeName = scanIdentifier(scanner)
 
@@ -210,11 +210,11 @@ export function scanArgumentType(
           scanner.scanAllWhitespace()
           scanner.expectString(ARGS_CLOSE)
         } else if (typeName.name === ARRAY) {
-          argType = scanArrayType(scanner, applicationOrArgument, parseNext, arg0)
+          argType = scanArrayType(scanner, moduleOrArgument, parseNext, arg0)
         } else if (typeName.name === DICT) {
-          argType = scanDictType(scanner, applicationOrArgument, parseNext, arg0)
+          argType = scanDictType(scanner, moduleOrArgument, parseNext, arg0)
         } else if (typeName.name === SET) {
-          argType = scanSetType(scanner, applicationOrArgument, parseNext, arg0)
+          argType = scanSetType(scanner, moduleOrArgument, parseNext, arg0)
         } else if (typeName.name === OBJECT) {
           throw new ParseError(
             scanner,
@@ -230,7 +230,7 @@ export function scanArgumentType(
         } else if (typeName instanceof Expressions.Reference) {
           const typeArgs: Expressions.Expression[] = []
           for (;;) {
-            const ofType = scanArgumentType(scanner, applicationOrArgument, parseNext)
+            const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
             typeArgs.push(ofType)
 
             const shouldBreak = scanner.scanCommaOrBreak(
@@ -400,7 +400,7 @@ function scanFormulaType(
   scanner: Scanner,
   arg0: number,
   parseNext: ParseNext,
-  applicationOrArgument: ArgumentType,
+  moduleOrArgument: ArgumentType,
 ) {
   let generics: string[]
   if (scanner.scanIfString('<')) {
@@ -413,7 +413,7 @@ function scanFormulaType(
   let returnType: Expression
   if (scanner.scanAhead(':')) {
     scanner.scanAllWhitespace()
-    returnType = scanArgumentType(scanner, applicationOrArgument, parseNext)
+    returnType = scanArgumentType(scanner, moduleOrArgument, parseNext)
   } else {
     returnType = new Expressions.InferIdentifier(
       [scanner.charIndex, scanner.charIndex],
@@ -432,16 +432,13 @@ function scanFormulaType(
 
 function scanObjectType(
   scanner: Scanner,
-  is: 'literal' | 'object',
-  applicationOrArgument: ArgumentType,
+  moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
   range0: number,
 ) {
-  scanner.whereAmI(`scanObjectType (${is})`)
+  scanner.whereAmI(`scanObjectType`)
   scanner.scanAllWhitespace()
-  // if (is === 'literal') {
-  // } else {
-  // }
+
   const values: [string | undefined, Expression][] = []
   for (;;) {
     scanner.whereAmI(`objectArgType: start of loop`)
@@ -480,7 +477,7 @@ function scanObjectType(
       scanner.scanAllWhitespace()
     }
 
-    const objectArgType = scanArgumentType(scanner, applicationOrArgument, parseNext)
+    const objectArgType = scanArgumentType(scanner, moduleOrArgument, parseNext)
 
     scanner.whereAmI(`objectArgType: ${objectArgType.toCode()}`)
     values.push([name, objectArgType])
@@ -513,12 +510,12 @@ function scanObjectType(
 
 function scanArrayType(
   scanner: Scanner,
-  applicationOrArgument: ArgumentType,
+  moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
   range0: number,
 ) {
   scanner.whereAmI(`scanArrayType`)
-  const {ofType, narrowedLength} = scanOfAndLength(scanner, applicationOrArgument, parseNext)
+  const {ofType, narrowedLength} = scanOfAndLength(scanner, moduleOrArgument, parseNext)
   scanner.whereAmI(
     `scanArrayType: (` + ofType.toCode() + `, length: ${lengthDesc(narrowedLength)})`,
   )
@@ -532,12 +529,12 @@ function scanArrayType(
 
 function scanDictType(
   scanner: Scanner,
-  applicationOrArgument: ArgumentType,
+  moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
   range0: number,
 ) {
   scanner.whereAmI(`scanDictType`)
-  const ofType = scanArgumentType(scanner, applicationOrArgument, parseNext)
+  const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
   scanner.scanAllWhitespace()
 
   let narrowedLength: NarrowedLength = DEFAULT_NARROWED_LENGTH
@@ -609,12 +606,12 @@ function scanDictType(
 
 function scanSetType(
   scanner: Scanner,
-  applicationOrArgument: ArgumentType,
+  moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
   range0: number,
 ) {
   scanner.whereAmI(`scanSetType`)
-  const {ofType, narrowedLength} = scanOfAndLength(scanner, applicationOrArgument, parseNext)
+  const {ofType, narrowedLength} = scanOfAndLength(scanner, moduleOrArgument, parseNext)
   scanner.whereAmI(`scanSetType: (` + ofType.toCode() + `, length: ${lengthDesc(narrowedLength)})`)
   return new Expressions.SetTypeExpression(
     [range0, scanner.charIndex],
@@ -624,12 +621,8 @@ function scanSetType(
   )
 }
 
-function scanOfAndLength(
-  scanner: Scanner,
-  applicationOrArgument: ArgumentType,
-  parseNext: ParseNext,
-) {
-  const ofType = scanArgumentType(scanner, applicationOrArgument, parseNext)
+function scanOfAndLength(scanner: Scanner, moduleOrArgument: ArgumentType, parseNext: ParseNext) {
+  const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
   scanner.scanAllWhitespace()
 
   let narrowedLength: NarrowedLength = DEFAULT_NARROWED_LENGTH

@@ -10,7 +10,7 @@ import {type ExpressionType} from './types'
 
 export const REQUIRES_KEYWORD = 'requires'
 export const PROVIDES_KEYWORD = 'provides'
-export const PUBLIC_KEYWORD = 'public'
+export const EXPORT_KEYWORD = 'export'
 export const IMPORT_KEYWORD = 'import'
 export const IS_KEYWORD = 'is'
 export const NOT_IS_KEYWORD = '!is'
@@ -201,7 +201,7 @@ export function isObjectLiteralStart(input: string) {
 }
 
 export function isRegexFlag(char: string) {
-  return /^[gims]/.test(char)
+  return /^[ims]/.test(char)
 }
 
 export function isNamedArg(scanner: Scanner) {
@@ -262,9 +262,10 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
     expressionType === 'object' ||
-    expressionType === 'application' ||
+    expressionType === 'module' ||
     expressionType === 'enum' ||
     expressionType === 'class' ||
+    expressionType === 'default' ||
     expressionType === 'array[]' ||
     expressionType === 'array-word' ||
     expressionType === 'dict-word' ||
@@ -279,6 +280,7 @@ export function terminatesWithComma(expressionType: ExpressionType) {
     expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
+    expressionType === 'default' ||
     expressionType === 'object' ||
     expressionType === 'array[]' ||
     expressionType === 'array-word' ||
@@ -309,7 +311,8 @@ export function terminatesWithCurlyBracket(expressionType: ExpressionType) {
     expressionType === 'object' ||
     expressionType === 'enum' ||
     expressionType === 'case' ||
-    expressionType === 'class'
+    expressionType === 'class' ||
+    expressionType === 'default'
   )
 }
 

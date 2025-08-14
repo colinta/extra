@@ -2,12 +2,8 @@ import {isRegexFlag} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
 import * as Expressions from '../expressions'
-import {scanValidReferenceName} from './identifier'
+import {scanValidLocalName} from './identifier'
 
-/**
- * Called recursively in capture groups, to associate the capture group with the
- * inner regex, which is pretty damn cool.
- */
 export function scanRegex(scanner: Scanner, embedded = false) {
   scanner.whereAmI('scanRegex')
   if (!embedded) {
@@ -28,6 +24,10 @@ export function scanRegex(scanner: Scanner, embedded = false) {
   )
 }
 
+/**
+ * Called recursively in capture groups, to associate the capture group with the
+ * inner regex, which is pretty damn cool.
+ */
 function scanRegexString(
   scanner: Scanner,
   embedded: boolean,
@@ -109,6 +109,10 @@ function scanRegexString(
         }
         scanner.charIndex++
       }
+
+      if (scanner.char === 'g') {
+        throw new ParseError(scanner, `The 'g' flag is not allowed.`)
+      }
       break
     } else if (scanner.scanIfString('(?<')) {
       if (embedded) {
@@ -120,7 +124,7 @@ function scanRegexString(
 
       stringBuffer += '(?<'
       const startIndex = scanner.charIndex
-      const reference = scanValidReferenceName(scanner)
+      const reference = scanValidLocalName(scanner)
       stringBuffer += reference.name
       scanner.expectString('>')
       stringBuffer += '>'

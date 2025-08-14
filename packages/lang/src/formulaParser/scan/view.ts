@@ -1,54 +1,51 @@
 import * as Expressions from '../expressions'
-import {ARGS_OPEN, PUBLIC_KEYWORD, VIEW_KEYWORD} from '../grammars'
+import {ARGS_OPEN, EXPORT_KEYWORD, VIEW_KEYWORD} from '../grammars'
 import type {Scanner} from '../scanner'
 import {type ParseNext} from '../types'
 import {scanValidViewName} from './identifier'
 import {scanClassBody} from './class'
 import {scanViewFormula} from './formula'
+import {scanFormulaArgumentDefinitions} from './formula_arguments'
 
 /**
  * Scans a view type:
  *
  *     view Name {}
- *     public view Name {}
+ *     view Name(prop: Type) {}
+ *     export view Name {}
  *
  * Must have a render function, but this is part of runtime type checking.
- *     override render(…props…) => ...<JSX />
- *
- * State
- *     \@name: Type = 'value'
- *
- * Could have Context and Children
- *     Context: <Type>
- *     Children: <Type>
- *
- * Helpers and Messages
- *     fn message() => @foo = 'bar'
- *     fn addOne(a: String) => a + 1
+ *     render => ...<JSX />
  */
-
 export function scanView(scanner: Scanner, parseNext: ParseNext) {
+  scanner.whereAmI('scanView')
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  const isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
-  scanner.whereAmI('isPublic: ' + isPublic)
-  if (isPublic) {
+  const isExport = scanner.scanIfWord(EXPORT_KEYWORD)
+  scanner.whereAmI('isExport: ' + isExport)
+  if (isExport) {
     scanner.expectWhitespace()
   }
 
   if (scanner.test(isViewFormula)) {
-    const formula = scanViewFormula(scanner, 'application', parseNext)
+    const formula = scanViewFormula(scanner, 'module', parseNext)
     return new Expressions.ViewDefinition(
       [range0, scanner.charIndex],
       precedingComments,
       formula,
-      isPublic,
+      isExport,
     )
   }
   scanner.expectWord(VIEW_KEYWORD)
 
   const nameRef = scanValidViewName(scanner)
   scanner.scanAllWhitespace()
+
+  let argDeclarations: Expressions.FormulaLiteralArgumentDeclarations | undefined
+  if (scanner.scanIfString(ARGS_OPEN)) {
+    argDeclarations = scanFormulaArgumentDefinitions(scanner, 'view', parseNext, false)
+  }
+
   const {properties, formulas} = scanClassBody(scanner, parseNext, 'view')
 
   const lastComments = scanner.flushComments()
@@ -58,9 +55,10 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
     precedingComments,
     lastComments,
     nameRef,
+    argDeclarations,
     properties,
     formulas,
-    isPublic,
+    isExport,
   )
 }
 

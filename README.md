@@ -1620,7 +1620,7 @@ The differences from React JSX:
   There are limitations to this, though: you cannot use most binary operators, only 'access' operators like `.` and `[]`. You can always enclose operations in `()`.
 
   `<Foo prop=1 + 1 />` is invalid.
-  `<Foo prop=(1 + 1) />` is fine.
+  `<Foo prop=(1 + 1) />` is correct.
 
   `{}` is, like everywhere else in Extra, for creating objects.
 

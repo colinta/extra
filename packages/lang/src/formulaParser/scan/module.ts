@@ -1,12 +1,7 @@
 import {type Scanner} from '../scanner'
 import * as Expressions from '../expressions'
 
-import {
-  scanAnyReference,
-  scanValidName,
-  scanValidReferenceName,
-  scanValidTypeName,
-} from './identifier'
+import {scanAnyReference, scanValidName, scanValidTypeName} from './identifier'
 import {type Comment, ParseError, type ParseNext} from '../types'
 import {scanGenerics, scanNamedFormula} from './formula'
 import {
@@ -15,7 +10,7 @@ import {
   IMPORT_KEYWORD,
   IMPORTS_CLOSE,
   IMPORTS_OPEN,
-  PUBLIC_KEYWORD,
+  EXPORT_KEYWORD,
   TYPE_KEYWORD,
 } from '../grammars'
 import {scanClass} from './class'
@@ -166,7 +161,7 @@ export function scanImportStatement(scanner: Scanner) {
         }
 
         const specific0 = scanner.charIndex
-        const nameRef = scanValidReferenceName(scanner)
+        const nameRef = scanValidName(scanner)
         if (scanner.lookAhead('as')) {
           scanner.scanAllWhitespace()
         } else {
@@ -177,7 +172,7 @@ export function scanImportStatement(scanner: Scanner) {
         let specificAlias: Expressions.Reference | undefined
         if (scanner.scanIfWord('as')) {
           scanner.expectWhitespace()
-          specificAlias = scanValidReferenceName(scanner)
+          specificAlias = scanValidName(scanner)
           scanner.scanSpaces()
           specificAlias.followingComments.push(...scanner.flushComments())
         }
@@ -231,20 +226,20 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
     return scanEnum(scanner, parseNext, {isFnArg: false})
   }
 
-  return scanApplicationType(scanner, parseNext)
+  return scanModuleTypeDefinition(scanner, parseNext)
 }
 
-export function scanApplicationType(scanner: Scanner, parseNext: ParseNext) {
+export function scanModuleTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
 
-  let isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
-  if (isPublic) {
+  let isExport = scanner.scanIfWord(EXPORT_KEYWORD)
+  if (isExport) {
     scanner.expectWhitespace()
   }
   scanner.expectWord(TYPE_KEYWORD, 'Types must be preceded by the "type" keyword.')
 
-  const name = scanValidTypeName(scanner).name
+  const nameRef = scanValidTypeName(scanner)
   scanner.scanAllWhitespace()
 
   const generics: string[] = []
@@ -255,27 +250,27 @@ export function scanApplicationType(scanner: Scanner, parseNext: ParseNext) {
 
   scanner.expectString('=')
   scanner.scanAllWhitespace()
-  const type = scanArgumentType(scanner, 'application_type', parseNext)
+  const type = scanArgumentType(scanner, 'module_type_definition', parseNext)
 
   return new Expressions.TypeDefinition(
     [range0, scanner.charIndex],
     precedingComments,
-    name,
+    nameRef,
     type,
     generics,
-    isPublic,
+    isExport,
   )
 }
 
 export function scanHelperDefinition(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  const isPublic = scanner.scanIfWord(PUBLIC_KEYWORD)
-  if (isPublic) {
+  const isExport = scanner.scanIfWord(EXPORT_KEYWORD)
+  if (isExport) {
     scanner.expectWhitespace()
   }
 
-  const value = scanNamedFormula(scanner, parseNext, 'application')
+  const value = scanNamedFormula(scanner, parseNext, 'module')
   if (!value.nameRef.name.match(/^[a-z]/)) {
     throw new ParseError(
       scanner,
@@ -287,12 +282,12 @@ export function scanHelperDefinition(scanner: Scanner, parseNext: ParseNext) {
     [range0, scanner.charIndex],
     precedingComments,
     value,
-    isPublic,
+    isExport,
   )
 }
 
 function skipPublic(scanner: Scanner) {
-  if (scanner.scanIfWord(PUBLIC_KEYWORD)) {
+  if (scanner.scanIfWord(EXPORT_KEYWORD)) {
     scanner.expectWhitespace()
   }
 }
