@@ -320,9 +320,3 @@ export class MutableValueRuntime extends MutableTypeRuntime {
     this.addLocalValue('#', value)
   }
 }
-
-export class ModuleRuntime extends MutableValueRuntime {
-  constructor(readonly runtime: ValueRuntime) {
-    super(runtime)
-  }
-}

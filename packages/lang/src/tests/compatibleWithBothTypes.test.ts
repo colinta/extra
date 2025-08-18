@@ -149,7 +149,6 @@ describe('compatibleWithBothTypes', () => {
       Types.set(Types.string({min: 22}), {min: 22}),
       Types.set(Types.string({min: 11}), {min: 11}),
     ]),
-    // TODO: object/tuple
     c([
       Types.object([Types.namedProp('foo', Types.string())]),
       Types.object([Types.namedProp('foo', Types.string())]),

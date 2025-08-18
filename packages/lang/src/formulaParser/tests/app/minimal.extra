@@ -2,5 +2,5 @@ view Minimal {
   @pt: {x: Int, y: Int} = {x: 0, y: 0}
 
   render() =>
-    <>{$(pt.x) ++ ', ' ++ $(pt.y)}</>
+    <p>{$(pt.x) ++ ', ' ++ $(pt.y)}</p>
 }

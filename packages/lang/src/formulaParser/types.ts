@@ -2,7 +2,7 @@ import {Result} from '@extra-lang/result'
 import {type Type} from '../types'
 import {type Value} from '../values'
 import {type ValueRuntime} from '../runtime'
-import {type Expression, type Operation} from './expressions'
+import {type Expression, type Operation, type RuntimeError} from './expressions'
 
 export type GetRuntimeResult<T> = Result<T, RuntimeError>
 export type GetTypeResult = GetRuntimeResult<Type>
@@ -77,34 +77,6 @@ export class ParseError extends Error {
     // )
   }
 }
-
-export class RuntimeError extends Error {
-  parents: Expression[] = []
-
-  constructor(
-    public expression: Expression,
-    public message: string,
-    public children: RuntimeError[] = [],
-  ) {
-    super()
-    this.parents.push(expression)
-    this.message += `\n${expression.constructor.name}: ` + expression.toCode()
-  }
-
-  pushParent(parent: Expression) {
-    this.parents.push(parent)
-    this.message += `\n${parent.constructor.name}: ` + parent.toCode()
-  }
-
-  toString() {
-    return this.message
-  }
-}
-
-export function isRuntimeError(error: any): error is RuntimeError {
-  return error instanceof RuntimeError
-}
-
 export type ExpressionType =
   | 'expression' // default, but greedy
   | 'let' // let ... in

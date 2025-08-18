@@ -261,7 +261,7 @@ export function scanArgumentType(
       } else if (scanner.scanAhead('.')) {
         // parsing foo.type.Type
         // TODO: currently, only _concrete types_ are supported here.
-        // i.e. if `Type` is generic `Type(a)`, this will fail.
+        // i.e. if `Type` is generic (`Type(a)`) this will fail.
         let childArgType: Expressions.NamespaceAccessExpression | undefined
         do {
           scanner.scanAllWhitespace()

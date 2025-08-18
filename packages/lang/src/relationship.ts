@@ -645,14 +645,12 @@ export function combineEitherTypeRuntimes(
     }
   }
 
-  // TODO: combine relationships
   for (const [id, lhsRelationships] of lhsAdditions.relationships) {
     const rhsRelationships = rhsAdditions.relationships.get(id)
     if (!rhsRelationships) {
       continue
     }
 
-    // filter the relationships on lhs that are compatible with rhs
     const relationships = combineOrRelationships(lhsRelationships, rhsRelationships)
     nextRuntime.addTrustedRelationshipsFormulas(id, relationships.filter(isAssignedRelationship))
   }
@@ -914,7 +912,7 @@ function _combineOrRelationships(relationships: Relationship[]): Relationship | 
       // the types are *the same type*. Or overlap? oh yeah if they overlap,
       // like
       //     foo: Int
-      //     foo is Int(<=10) or foo is Int(<=9)
+      //     foo !is Int(<=10) or foo !is Int(<=9)
       //     --> foo: Int(<=9)
       // TODO: find the overlap of the two types in combineOrRelationships
       return

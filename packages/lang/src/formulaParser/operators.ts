@@ -26,13 +26,13 @@ import {
   expectedType,
   getChildType,
   Operation,
+  RuntimeError,
   type Expression,
   type Range,
 } from './expressions'
 import {stringSort} from './stringSort'
 import {
   type AbstractOperator,
-  RuntimeError,
   type Comment,
   type GetRuntimeResult,
   type GetTypeResult,
@@ -2926,7 +2926,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
       return err(
         new RuntimeError(
           rhsExpr,
-          `'${rhsExpr}' is not a property of '${lhsExpr}'${lhsType ? ` (type: ${lhsType})` : ''}`,
+          `'${rhsExpr}' is not a property of '${lhsExpr}' ${lhsType ? ` (type: ${lhsType})` : ''}`,
         ),
       )
     }
@@ -3421,6 +3421,10 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
     lhFormulaExpression: Expression,
     rhArgsExpression: Expression,
   ) {
+    if (lhFormulaType instanceof Types.ClassDefinitionType) {
+      lhFormulaType = lhFormulaType.konstructor
+    }
+
     if (!(lhFormulaType instanceof Types.FormulaType)) {
       return err(
         new RuntimeError(
@@ -3454,8 +3458,17 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
     lhFormulaExpression: Expression,
     rhArgsExpression: Expression,
   ): GetValueResult {
+    if (lhFormula instanceof Values.ClassDefinitionValue) {
+      lhFormula = lhFormula.konstructor(lhFormula)
+    }
+
     if (!(lhFormula instanceof Values.FormulaValue)) {
-      return err(new RuntimeError(lhFormulaExpression, `Expected a Formula, found '${lhFormula}'`))
+      return err(
+        new RuntimeError(
+          lhFormulaExpression,
+          `Expected a formula, found '${lhFormula}' of type '${lhFormula.getType()}'`,
+        ),
+      )
     }
 
     if (!(rhArgsExpression instanceof Expressions.ArgumentsList)) {

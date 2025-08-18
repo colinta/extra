@@ -2,7 +2,6 @@ import {ok, err, attempt} from '@extra-lang/result'
 
 import * as Values from '../values'
 
-import {Module} from './module'
 import * as Expressions from './expressions'
 import {Expression} from './expressions'
 import {LOWEST_PRECEDENCE, binaryOperatorNamed, isOperator} from './operators'
@@ -131,7 +130,7 @@ export function parseType(input: string, debug = 0) {
   )
 }
 
-export function parseModule(input: string, debug = 0): GetParserResult<Module> {
+export function parseModule(input: string, debug = 0): GetParserResult<Expressions.Module> {
   const scanner = new Scanner(input, {debug})
 
   const range0 = scanner.charIndex
@@ -231,7 +230,7 @@ export function parseModule(input: string, debug = 0): GetParserResult<Module> {
   }
 
   return ok(
-    new Module(
+    new Expressions.Module(
       [range0, scanner.input.length],
       scanner.flushComments(),
       moduleTokens.provides,

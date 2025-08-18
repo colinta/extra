@@ -1,5 +1,5 @@
 import {err, mapAll, ok, type Result} from '@extra-lang/result'
-import {RuntimeError} from './formulaParser/types'
+import {RuntimeError} from './formulaParser/expressions'
 import {splitter} from './graphemes'
 import * as Types from './types'
 
@@ -85,8 +85,38 @@ export function namedFormula(
   return new NamedFormulaValue(name, fn)
 }
 
-export function klass(name: string, parent: ClassDefinitionValue) {
-  return new ClassDefinitionValue(name, parent, new Map(), new Map())
+export function classDefinition({
+  name,
+  constructor,
+  parent,
+  props: staticProps,
+  formulas: staticFormulas,
+}: {
+  name: string
+  constructor: (_: ClassDefinitionValue) => NamedFormulaValue
+  parent?: ClassDefinitionValue
+  props?: Map<string, Value>
+  formulas?: Map<string, NamedFormulaValue>
+}) {
+  return new ClassDefinitionValue(
+    name,
+    constructor,
+    parent,
+    staticProps ?? new Map(),
+    staticFormulas ?? new Map(),
+  )
+}
+
+export function classInstance({
+  class: klass,
+  props,
+  formulas,
+}: {
+  class: ClassDefinitionValue
+  props?: Map<string, Value>
+  formulas?: Map<string, NamedFormulaValue>
+}) {
+  return new ClassInstanceValue(klass, props ?? new Map(), formulas ?? new Map())
 }
 
 export abstract class Value {
@@ -1680,17 +1710,15 @@ export class FragmentViewValue extends Value {
  * combination of a formula (returns an instance of `ClassInstanceValue`) and
  * namespace.
  */
-export class ClassDefinitionValue extends NamedFormulaValue {
+export class ClassDefinitionValue extends Value {
   constructor(
-    name: string,
+    readonly name: string,
+    readonly konstructor: (_: ClassDefinitionValue) => NamedFormulaValue,
     readonly parent: ClassDefinitionValue | undefined,
     readonly staticProps: Map<string, Value>,
     readonly staticFormulas: Map<string, NamedFormulaValue>,
   ) {
-    super(name, (_args: FormulaArgs) => {
-      // should return a ClassValue
-      return ok(string(''))
-    })
+    super()
   }
 
   /**
@@ -1725,17 +1753,30 @@ export class ClassDefinitionValue extends NamedFormulaValue {
 export class ViewClassDefinitionValue extends ClassDefinitionValue {
   constructor(
     name: string,
+    konstructor: (_: ViewClassDefinitionValue) => NamedFormulaValue,
     readonly parent: ViewClassDefinitionValue | undefined,
     staticProps: Map<string, Value>,
     staticFormulas: Map<string, NamedFormulaValue>,
   ) {
-    super(name, parent, staticProps, staticFormulas)
+    super(name, konstructor, parent, staticProps, staticFormulas)
   }
 }
 
 export class ClassInstanceValue extends Value {
-  constructor(readonly metaClass: ClassDefinitionValue) {
+  // TODO: convert NamedFormulaValue to BoundFormulaValue
+  readonly formulas: Map<string, NamedFormulaValue>
+
+  constructor(
+    readonly metaClass: ClassDefinitionValue,
+    readonly props: Map<string, Value>,
+    formulas: Map<string, NamedFormulaValue>,
+  ) {
     super()
+    this.formulas = new Map()
+    for (const [name, formula] of formulas.entries()) {
+      // TODO: change 'formula' to 'new BoundFormulaValue(this, formula)'
+      this.formulas.set(name, formula)
+    }
   }
 
   /**
@@ -1763,13 +1804,18 @@ export class ClassInstanceValue extends Value {
   }
 
   propValue(propName: string): Value | undefined {
-    return
+    return this.props.get(propName) ?? this.formulas.get(propName)
   }
 }
 
 export class ViewClassInstanceValue extends ClassInstanceValue {
-  constructor(readonly metaClass: ViewClassDefinitionValue) {
-    super(metaClass)
+  constructor(
+    readonly metaClass: ViewClassDefinitionValue,
+    readonly render: FormulaValue,
+    props: Map<string, Value>,
+    formulas: Map<string, NamedFormulaValue>,
+  ) {
+    super(metaClass, props, formulas)
   }
 }
 

@@ -1,7 +1,7 @@
 import {err, ok} from '@extra-lang/result'
-import type {Expression} from './expressions'
+import {type Expression, RuntimeError} from './expressions'
 import {difference} from './set'
-import {RuntimeError, type GetRuntimeResult} from './types'
+import {type GetRuntimeResult} from './types'
 
 function findChain(
   needles: Set<string>,

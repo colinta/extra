@@ -3449,7 +3449,7 @@ export class MessageType extends Type {
  */
 export class ClassDefinitionType extends Type {
   readonly is = 'class-definition'
-  readonly formula: NamedFormulaType
+  readonly konstructor: NamedFormulaType
 
   constructor(
     readonly name: string,
@@ -3468,7 +3468,7 @@ export class ClassDefinitionType extends Type {
       }),
     )
 
-    this.formula = new NamedFormulaType(
+    this.konstructor = new NamedFormulaType(
       name,
       returnClassType,
       formulaArgs,
@@ -5009,7 +5009,13 @@ function _checkFormulaArguments(
     if (!argumentType) {
       if (formulaArgument.isRequired) {
         if (formulaArgument.alias) {
-          errors.push(missingNamedArgumentInFormulaError(formulaBeingCalled, formulaArgument.alias))
+          errors.push(
+            missingNamedArgumentInFormulaError(
+              formulaBeingCalled,
+              formulaArgument.alias,
+              formulaArgument.type,
+            ),
+          )
         } else {
           errors.push(outOfArgumentsMessageError(formulaBeingCalled, currentPosition))
         }
@@ -5186,8 +5192,12 @@ function outOfArgumentsMessageError(formulaArgumentType: Type, position: number)
   return errorMessage
 }
 
-function missingNamedArgumentInFormulaError(formulaArgumentType: Type, name: string) {
-  let errorMessage = `Expected argument named '${name}' of type '${formulaArgumentType.toCode()}'`
+function missingNamedArgumentInFormulaError(
+  formulaArgumentType: Type,
+  name: string,
+  argType: Type,
+) {
+  let errorMessage = `Expected argument named '${name}' of type '${argType}' in formula ${formulaArgumentType}`
 
   return errorMessage
 }
