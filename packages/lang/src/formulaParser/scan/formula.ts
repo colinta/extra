@@ -175,7 +175,8 @@ function _scanFormula(
   scanner.whereAmI(`scanFormula generics = [${generics.join(', ')}]`)
 
   let argDeclarations: Expressions.FormulaLiteralArgumentDeclarations
-  if (type === 'render' && !scanner.is(ARGS_OPEN)) {
+  // support fn => 'value' (parentheses are optional when no args)
+  if (!scanner.is(ARGS_OPEN)) {
     argDeclarations = new Expressions.FormulaLiteralArgumentDeclarations(
       [scanner.charIndex, scanner.charIndex],
       [],
