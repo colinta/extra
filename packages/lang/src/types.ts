@@ -5412,9 +5412,15 @@ function addRequirement(
           'reduce',
           [
             positionalArgument({
+              name: 'initial',
+              type: genericT,
+              isRequired: true,
+            }),
+            positionalArgument({
               name: 'apply',
               type: formula(
                 [
+                  positionalArgument({name: 'memo', type: genericT, isRequired: true}),
                   positionalArgument({name: 'input', type: arrayType.of, isRequired: true}),
                   positionalArgument({name: 'index', type: IntType, isRequired: true}),
                 ],
@@ -5423,7 +5429,7 @@ function addRequirement(
               isRequired: true,
             }),
           ],
-          array(genericT),
+          genericT,
           [genericT],
         ),
       ),
