@@ -56,10 +56,10 @@ pretty-darn-good™ programming language!
 
 -- `let` is a special language construct that assigns values to scope.
 let
-  name = "Extra"
-  someNumber = 2 * 1 + 40
   fn format(# name: String, age: Int) =>
-    "Hello, $name!"
+    "Hello, $name! Are you $age years old?"
+  someNumber = 2 * 1 + 40
+  name = "Extra"
 in
   format(name, age: someNumber)
 
@@ -72,9 +72,9 @@ let
   fn is-divisible-by-3(num: Int) =>
     num % 3 == 0 and num < max
 
-  -- curly brackets are required in `if` expressions, but they surround the entire
-  -- expression. This is actually an "external argument" syntax that can be used to
-  -- create your own DSLs
+  -- curly brackets are required in `if` expressions, but they surround the
+  -- entire expression. This is actually a function passing syntax that can be
+  -- used to create your own DSLs.
   evens = if (max == 10) {
   then:
     [2, 4, 6, 8, 10]
@@ -89,12 +89,12 @@ let
     5
     7
 
-    -- alternative way to invoke 'if',
-    -- including the elements using spread operator
-    ... if (max <= 10, then: [9], else: [])
+    -- alternative way to invoke 'if', including the elements
+    -- using spread operator
+    ...if (max <= 10, then: [9], else: [])
 
-    -- even better, the  `onlyif` operator here is only allowed in arrays,
-    -- dicts, and sets. 11 is only included if the condition is true
+    -- even better, the `onlyif` operator is only allowed in arrays,
+    -- dicts, and sets. `11` is only included if the condition is true
     11 onlyif max > 10
   ]
 in
@@ -102,9 +102,8 @@ in
     .filter(is-divisible-by-3)
     .sort(by: fn(a, b) => b <=> a) --> [9, 6, 3]
   -- the pipe operator assigns the left-hand-side to the `#` symbol
-  |> inspect('filter', #)  --> prints "[9, 6, 3]: [Int]" and returns that value
-  -- but if you want to assign # to a name, you can use `=>`
-  |> some-numbers => some-numbers.map(fn(num) => $num).join(',')
+  |> inspect('filter', #)  --> prints "filter = [9, 6, 3]: [Int]" and returns that value
+  |> #.map(fn(num) => $num).join(',')
 
 -- there's a JSX-like syntax built in.
 <div>
@@ -120,6 +119,41 @@ in
   'bold'
   'italic' onlyif @is-italic
 ]>Hello, World!</p>
+```
+Apps are created using the `view` keyword, which is either a class or pure
+function.
+
+```extra
+view Login {
+  @email: String = ''
+  @password: String = ''
+
+  handle-submit =>
+    guard(
+      @email and @password
+    else:
+      null
+    ):
+
+    Request.post(API_URL, {email: @email, password: @password})
+
+  render =>
+    <form on-submit={handle-submit}>
+      <input
+        type="email"
+        placeholder="Email"
+        value={@email}
+        onChange={fn(value) => @email = value}
+      />
+      <input
+        type="password"
+        placeholder="Password"
+        value={@password}
+        onChange={fn(value) => @password = value}
+      />
+      <button type="submit">Log In</button>
+    </form>
+}
 ```
 
 # Now in no particular order, some language features of Extra
@@ -152,224 +186,10 @@ add-two-numbers(
   2
 ) --> 3
 
-import Math: {
+import Math : {
   sqrt
   pow
 } --> import `sqrt` and `pow` functions from the Math package
-```
-
-### Blocks and Lazy types
-
-Arguments can be marked `lazy`, in which case they look like a value at the call-site, but are not evaluated until the parameter is invoked.
-
-Arguments can also be provided *outside* of the function using two syntaxes:
-
-```extra
--- "simple" argument
-foo(): 1  --> same as foo(1), only supports one "outside" argument
-foo() { 1 }  --> same as foo(1), supports any number of arguments, including named
-foo() { 1, else: 2 }
-```
-
-Here is a function definition using `lazy` arguments:
-
-```extra
-fn doSomething<T>(condition: 1 | 2 | 3, one: lazy(T), two: lazy(T), three: lazy(T)) =>
-  switch (condition) {
-  case 1:
-    one()
-  case 2:
-    two()
-  case 3:
-    three()
-  }
-
--- usually you would call the function like this - "vanilla" extra code
-doSomething(1, one: 1, two: 2, three: 3) --> 1
-
--- but the named arguments DSL allows this:
-doSomething(1) {
-  one: 1
-  two: 2
-  three: 3
-} --> 1
-```
-
-## Pattern Matching
-
-*Obviously* Extra supports pattern matching. `switch` is the most canonical way to group a bunch of matchers, but `is` is handy in a pinch. This was hard so you better like it!
-
-```
--- Syntax:
---     [subject] is [matcher]
--- Or
---     switch ([subject]) { case [matcher]: expr}
--- Ex:
-   subject is .some(value)
-   switch (subject) { case .some(value): value }
-
-foo --> matches everything, assigns to 'foo'
-_ --> same but ignore the value
-
-1, 1...2.5 --> matches numbers and ranges
-"foo" --> string literal
-"<" <> tag <> ">"  --> prefixed/suffixed string (assigns middle to 'tag')
-
-/^<(?<tag>.*)>$/   --> matches a regex, assigns 'tag' the named capture group contents
-
-[] --> matches an empty array
-[a, _, b] --> matches an array with exactly least 3 items
-[a, ..., b] --> matches an array with at least 2 items, assigns the first to 'a', and the last to 'b'
-
-.blue --> matches an enum case
-.rgb(r,g,b) --> matches and assigns values
-```
-
-###### Numbers
-```extra
--- number matching works on literals and ranges
-switch (volume) {
-case 0:
-  'muted!?'
-case 1..<2:
-  'turn it up!'
-case 2..<5:
-  "that's enough"
-else:
-  `$volume is too loud`
-}
-```
-
-###### Strings and Regex
-
-Strings can be matched against regexes, and will assign matches to named capture
-groups, or you can match against a prefix and assign the remainder.
-
-```extra
-switch (name) {
-case /(?<first>\w+) (?<last>\w+)/:
-  "Hello, $first $last!"
-case "Bob " <> last:
-  "Did you say Bab? Bab $last!?"
-case _ <> "!":
-  "Your name ends in an exclamation mark, wow, that's so cool 🙄"
-else:
-  "Hello, $name!"
-}
-```
-
-###### Arrays
-```extra
--- match specific lengths, or any length using the spread operator
-switch (friends) {
-case []:
-  "Aww, I'll be your friend"
-case [one-friend]:
-  "$one-friend sounds like a great friend!"
-case [first, last]:
-  "Wow you know $first and $last!?"
-case [first, _, last]:
-  "Wow you know $first and $last!? And someone else, but I forgot their name."
-case [...some, last]:
-  "${some.join(", ")} and $last... that's too many friends."
-}
-```
-
-###### Enums
-```extra
-enum Permission {
-  .sudo
-  .sure-why-not
-  .readonly
-}
-
-switch (permission) {
-case .sudo, .readonly:
-  true
-else:
-  false
-}
-```
-
-###### Objects
-```extra
--- match named or positional arguments, and you can *nest* matchers, which makes
--- this really useful
-fn permission(user: User): Permission =>
-  switch (user) {
-  case {role: .admin}:
-    .sudo
-  case {name: "Colin"}:
-    .sure-why-not
-  case {name: name, role: .staff}:
-    .readonly(name)
-  else:
-    .none
-  }
-```
-
-###### Putting it all together
-```extra
--- input: String | Array(String)
-switch (input) {
-case 'foo' <> bar:
-  bar -- bar: String, input: String (TODO: add 'prefix' info to String type)
-case [onlyOne]:
-  onlyOne  -- onlyOne: String, input: Array(String, length: =1)
-case [...many, last]:
-  many.join(',') <> " and $last"  -- many: Array(String), last: String, input: Array(String, length: >=1)
-else:
-  'not "foo…" or [a, …]'
-}
-```
-
-### Enums / Algebraic data types
-
-```extra
-enum Result<Ok, Err> {
-  .ok(Ok)
-  .err(Err)
-
-  fn to-maybe() =>
-    switch (this) {
-    case .ok(value): value
-    else: null
-    }
-
-  static from-maybe<T>(# value: T?): Result<T, null> =>
-    if (value, then: .ok(value), else: .err(null))
-}
-
-enum Colour {
-  .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
-  .hex(String(length: =6))
-  .name('red' | 'green' | 'blue')
-}
-
-switch (colour) {
-case .rgb(r, g, b):
-  "rgb($r, $g, $b)"
-case .hex(hex):
-  "hex(#$hex)"
-case .name(name):
-  "Colour named '$name'"
-}
-```
-
-There is also a shorthand syntax, only available when defining an enum as an
-argument type (you cannot use generics in that case):
-
-```extra
-fn print(
-  # text: String
-  color:
-    -- initial '|' is optional, but looks nice in multilines
-    | .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
-    | .hex(String(length: =6))
-    | .name('red' | 'green' | 'blue')
-    | null
-) =>
-  if (color) { then: … }
 ```
 
 ## Unambiguous operators
@@ -648,25 +468,223 @@ U+2570 ╰ ╱ ╲ ╳ ╴ ╵ ╶ ╷ ╸ ╹ ╺ ╻ ╼ ╽ ╾ ╿
 ┕━┷━┙ ┖─┸─┚ ┗━┻━┛ ╰─┴─╯
 ```
 
+### Blocks and Lazy types
+
+Arguments can be marked `lazy`, in which case they look like a value at the call-site, but are not evaluated until the parameter is invoked.
+
+Arguments can also be provided *outside* of the function using two syntaxes:
+
+```extra
+-- "simple" argument
+foo(): 1  --> same as foo(1), only supports one "outside" argument
+foo() { 1 }  --> same as foo(1), supports any number of arguments, including named
+foo() { 1, else: 2 }
+```
+
+Here is a function definition using `lazy` arguments:
+
+```extra
+fn doSomething<T>(condition: 1 | 2 | 3, one: lazy(T), two: lazy(T), three: lazy(T)) =>
+  switch (condition) {
+  case 1:
+    one()
+  case 2:
+    two()
+  case 3:
+    three()
+  }
+
+-- usually you would call the function like this - "vanilla" extra code
+doSomething(1, one: 1, two: 2, three: 3) --> 1
+
+-- but the named arguments DSL allows this:
+doSomething(1) {
+  one: 1
+  two: 2
+  three: 3
+} --> 1
+```
+
+## Pattern Matching
+
+*Obviously* Extra supports pattern matching. `switch` is the most canonical way to group a bunch of matchers, but `is` is handy in a pinch. This was hard so you better like it!
+
+```
+-- Syntax:
+--     [subject] is [matcher]
+-- Or
+--     switch ([subject]) { case [matcher]: expr}
+-- Ex:
+   subject is .some(value)
+   switch (subject) { case .some(value): value }
+
+foo --> matches everything, assigns to 'foo'
+_ --> same but ignore the value
+
+1, 1...2.5 --> matches numbers and ranges
+"foo" --> string literal
+"<" <> tag <> ">"  --> prefixed/suffixed string (assigns middle to 'tag')
+
+/^<(?<tag>.*)>$/   --> matches a regex, assigns 'tag' the named capture group contents
+
+[] --> matches an empty array
+[a, _, b] --> matches an array with exactly least 3 items
+[a, ..., b] --> matches an array with at least 2 items, assigns the first to 'a', and the last to 'b'
+
+.blue --> matches an enum case
+.rgb(r,g,b) --> matches and assigns values
+```
+
+###### Numbers
+```extra
+-- number matching works on literals and ranges
+switch (volume) {
+case 0:
+  'muted!?'
+case 1..<2:
+  'turn it up!'
+case 2..<5:
+  "that's enough"
+else:
+  `$volume is too loud`
+}
+```
+
+###### Strings and Regex
+
+Strings can be matched against regexes, and will assign matches to named capture
+groups, or you can match against a prefix and assign the remainder.
+
+```extra
+switch (name) {
+case /(?<first>\w+) (?<last>\w+)/:
+  "Hello, $first $last!"
+case "Bob " <> last:
+  "Did you say Bab? Bab $last!?"
+case _ <> "!":
+  "Your name ends in an exclamation mark, wow, that's so cool 🙄"
+else:
+  "Hello, $name!"
+}
+```
+
+###### Arrays
+```extra
+-- match specific lengths, or any length using the spread operator
+switch (friends) {
+case []:
+  "Aww, I'll be your friend"
+case [one-friend]:
+  "$one-friend sounds like a great friend!"
+case [first, last]:
+  "Wow you know $first and $last!?"
+case [first, _, last]:
+  "Wow you know $first and $last!? And someone else, but I forgot their name."
+case [...some, last]:
+  "${some.join(", ")} and $last... that's too many friends."
+}
+```
+
+###### Enums
+```extra
+enum Permission {
+  .sudo
+  .sure-why-not
+  .readonly
+}
+
+switch (permission) {
+case .sudo, .readonly:
+  true
+else:
+  false
+}
+```
+
+###### Objects
+```extra
+-- match named or positional arguments, and you can *nest* matchers, which makes
+-- this really useful
+fn permission(user: User): Permission =>
+  switch (user) {
+  case {role: .admin}:
+    .sudo
+  case {name: "Colin"}:
+    .sure-why-not
+  case {name: name, role: .staff}:
+    .readonly(name)
+  else:
+    .none
+  }
+```
+
+###### Putting it all together
+```extra
+-- input: String | Array(String)
+switch (input) {
+case 'foo' <> bar:
+  bar -- bar: String, input: String (TODO: add 'prefix' info to String type)
+case [onlyOne]:
+  onlyOne  -- onlyOne: String, input: Array(String, length: =1)
+case [...many, last]:
+  many.join(',') <> " and $last"  -- many: Array(String), last: String, input: Array(String, length: >=1)
+else:
+  'not "foo…" or [a, …]'
+}
+```
+
+### Enums / Algebraic data types
+
+```extra
+enum Result<Ok, Err> {
+  .ok(Ok)
+  .err(Err)
+
+  fn to-maybe() =>
+    switch (this) {
+    case .ok(value): value
+    else: null
+    }
+
+  static from-maybe<T>(# value: T?): Result<T, null> =>
+    if (value, then: .ok(value), else: .err(null))
+}
+
+enum Colour {
+  .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
+  .hex(String(length: =6))
+  .name('red' | 'green' | 'blue')
+}
+
+switch (colour) {
+case .rgb(r, g, b):
+  "rgb($r, $g, $b)"
+case .hex(hex):
+  "hex(#$hex)"
+case .name(name):
+  "Colour named '$name'"
+}
+```
+
+There is also a shorthand syntax, only available when defining an enum as an
+argument type (you cannot use generics in that case):
+
+```extra
+fn print(
+  # text: String
+  color:
+    -- initial '|' is optional, but looks nice in multilines
+    | .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
+    | .hex(String(length: =6))
+    | .name('red' | 'green' | 'blue')
+    | null
+) =>
+  if (color) { then: … }
+```
+
 # More formal language Design
 
 Lots of repetition here. The above is a whirlwind tour, now I'll try to be more precise.
-
-## Let
-
-`let` is how you can assign values to local ~variables~ scope. I'll use this in most examples below so I better define it first.
-
-```extra
-let
-  the-answer = 42
-  fn propose-answer(answer: Int): String => `The answer is $answer`
-in
-  propose-answer(answer: the-answer)
-```
-
-## Variable names
-
-References can have hyphens like in Lisp (`valid-variable-name`), and emojis (`😎-languages = Set("extra")`).
 
 ## Basic Types
 
@@ -1039,6 +1057,22 @@ We've seen many definitions already.
 - `{foo: Int, bar: String}` `{foo: Int?, bar: String?}` objects
 - `Array(Boolean) | Array(Int | String)` one of types mixed with container types
 
+## Let
+
+`let` is how you can assign values to local ~variables~ scope. I'll use this in most examples below so I better define it first.
+
+```extra
+let
+  the-answer = 42
+  fn propose-answer(answer: Int): String => `The answer is $answer`
+in
+  propose-answer(answer: the-answer)
+```
+
+## Variable names
+
+References can have hyphens like in Lisp (`valid-variable-name`), and emojis (`😎-languages = Set("extra")`).
+
 ## Functions
 
 Extra's functions are bonkers. They support _positional_ and _named_ arguments, along with all sorts of variadic arguments, and
@@ -1049,10 +1083,10 @@ Examples:
 
 ```extra
 fn doEeet(# count: Int, # name: String = '', age: Int = 0, reason why: String) => …fn body…
--- #count is required
--- #name is optional (default value provided)
--- age is optional, and is a named argument
--- reason is required. doEeet() must be called with the reason: argument,
+-- '#count' (first positional argument) is required
+-- '#name' (second positional argument) is optional (default value provided)
+-- 'age' is optional, and is a named argument
+-- 'reason' is required,
 -- but the fn body uses the name "why"
 
 doEeet(1, reason: '')                   -- name = '', age = 0
@@ -1087,17 +1121,19 @@ Confusing! Sorry, it is, but I also think it is useful.
 
 ### Inferred types
 
-The return type can always be inferred. Argument types are required when you are defining a function, but if you are calling a function that expects a function, like `map`, `reduce`, `sort`, you can omit the argument types. The trick here is that the receiving function will define the types, so in this case you don't have to.
+The return type of a function can always be inferred (even recursive functions). Argument types are required when you are defining a function, but if you are calling a function that expects a function, like `map`, `reduce`, `sort`, you can omit the types. The trick here is that the receiving function already defined the types, so in this case you don't have to.
 
 ```extra
+-- map already defined its callback, so the argument types can be inferred (even
+-- if 'map' is generic)
 [1, 2, 3].map(fn(num) => num + 1) --> [2, 3, 4]
 ```
 
-In the example above, `num` is a named argument, but `map` expects a function that accepts two positional arguments `# value: T, index: Int`. Since the first named argument is compatible with `# value: Int`, the compiler figures out what to do.
+In the example above, `num` is a named argument, but `map` expects a function that accepts two positional arguments `# value: T, index: Int`. Since the first named argument is compatible with `# value: Int`, and the second argument is ignored, the compiler figures out what to do.
 
 ### Variadic Arguments
 
-There are _three_ brands of variadic arguments.
+There are _three_ brands of variadic arguments. I was fed up with all the Python coders boasting endlessly about args and kwargs, so I invented 'rargs'.
 
 - variadic positional arguments - must be an `Array` type, and there can only be one.
 - keyword argument list - must be a `Dict` type, and there can only be one
@@ -1105,16 +1141,16 @@ There are _three_ brands of variadic arguments.
 
 #### Variadic Positional Arguments
 
-These combine well with refined Array types, for instance, we can implement `add` as a variadic function, but require a minimum number of arguments.
+You can accept any number of positional arguments using an argument defined as `...# name: Type`
 
 ```extra
-fn add(...# numbers: Array(Int, >=2)) =>
+fn add(...# numbers: Array(Int)) =>
   numbers.reduce(0, fn(memo, num) => memo + num)
 
+add() --> 0
+add(1) --> 1
 add(1, 10) --> 11
 add(1, 10, 31) --> 42
-❌ add() -- not enough arguments
-❌ add(1) -- not enough arguments
 
 let
   numbers = [1, 10, 31]
@@ -1124,28 +1160,31 @@ in
 
 #### Keyword Argument List
 
-Any named argument that are not otherwise declared can be put into a "keyword arguments list", `**remaining: Dict(String, T)`.
+Any named arguments that are not otherwise declared can be put into a "keyword arguments list", `**remaining: Dict(String, T)`.
 
 ```extra
 fn list-people(greeting: String = 'Hi,', **people: Dict(String)) =>
-  people.map((name, value) =>
-    `$greeting $name: $value`).join(' - ')
+  people.map((name, honorific) =>
+    `$greeting $honorific: $name`).join(' - ')
 
 
 list-people(greeting: 'Hello,', Jane: 'Doctor', Emily: 'Miss')
 --> "Hello, Doctor Jane - Hello, Miss Emily"
+```
 
+If you have a `Dict` of values that you want to use as the keyword arguments, you can assign it via `**name`. This will always assign to the `kwargs` argument, even if the `Dict` contains keys that are also argument names. You can assign multiple `Dict`-s in this way, they will all go into the same `kwargs`.
 
+```extra
 let
-  people = Dict(Jane: 'Doctor', Emily: 'Miss')
+  people = Dict(Jane: 'Doctor', Emily: 'Miss', greeting: 'example')
 in
   list-people(**people)
-  --> "Hello, Doctor Jane - Hello, Miss Emily"
+  --> "Hi, Doctor Jane - Hi, Miss Emily - example greeting"
 ```
 
 #### Repeated Named Arguments
 
-You can specify the same argument by name, multiple times.
+You can specify the same argument by name, multiple times. `...name: Type`
 
 ```extra
 fn returnIf<T>(# condition: Boolean, ...and: Array(Boolean), then: T): T?
@@ -1155,32 +1194,34 @@ returnIf(a == 1, and: b == 1, and: c == 2, then: 'yay!') --> 'yay!' | null
 
 #### Proposal: Function overrides
 
-*Warning*: I haven't implemented this - and it requires that the *runtime* include *type information* (otherwise it can't disambiguate the arguments), which I don't like... so I'm considering this
+*Warning*: I haven't implemented this - I'm, just considering this.
 
-You can define separate function implementations if you want to have lots of different signatures all wrapped up in one function name. The Extra compiler will verify that the implementations are unambiguous.
+You can define separate function implementations if you want to have lots of different signatures all wrapped up in one function name. The Extra compiler will verify that the implementations are unambiguous. The functions have to be distinguishable by their argument names and arity (number of required positional arguments).
 
 ```extra
 fn add {
+  fn(# a: Int) => a
   fn(# a: Int, # b: Int) => a + b
-  fn(# a: String, # b: String) => a <> b
-  -- if the types are ambiguous, the compiler will complain
-  -- this function cannot be disambiguated w/ the previous one
-  ❌ fn(# a: String, # b?: String) => a <> (b ?? a)
-  -- easily resolved, and you can even invoke a previous implementation:
-  fn(# a: String) => add(a, a)
+  ❌ -- same number of arguments, can't be distinguished
+  ❌ fn(# a: String, # b: String) => a <> b
+  fn (str: String, # b: String) => str <> b
+  -- still distinguishable, because it only accepts one argument, and the name
+  -- is different from `fn(# a: Int)`
+  fn (str: String) => str
 }
 
 add(1, 2) --> 3
-add('a', 'b') --> ab
-add('a') --> aa
+add(str: 'a', 'b') --> ab
+add(str: 'a') --> aa
 add([1]) --> ❌
+add(...[1]) --> 1
 ```
 
 ## `if`
 
-Usually you will invoke `if` with the "block" syntax, `if (condition) { then: value }`. The `else` branch is optional. If it's not provided, it defaults to `null`. `if (condition) { then: value, else: null }`.
+As in all functional programming languages, `if` is an expression that returns the value of the branch that was executed. The `else` branch is optional. If the `else` value is not provided, `null` is returned.
 
-As in all functional programming languages, `if` is an expression that returns the value of the branch that was executed. If the `else` branch is not given, `null` is returned.
+Usually you will invoke `if` with the "block" syntax, `if (condition) { then: value }`, or you can use the function syntax `if (condition, then: value, else: null)`.
 
 ```extra
 if (test1 or test2) {
