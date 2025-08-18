@@ -84,29 +84,44 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
   const properties: Expressions.ClassPropertyExpression[] = []
   let renderFormula: Expressions.ViewFormulaExpression | undefined
   const formulas: Expressions.NamedFormulaExpression[] = []
+  const staticFormulaNames = new Set<string>()
+  const memberFormulaNames = new Set<string>()
   for (;;) {
     if (scanner.test(isFnStart)) {
       const formula = scanNamedFormula(scanner, parseNext, 'class')
+      if (memberFormulaNames.has(formula.name)) {
+        throw new ParseError(scanner, `Found duplicate function named '${formula.name}'.`)
+      }
+      memberFormulaNames.add(formula.name)
       formulas.push(formula)
     } else if (type === 'view' && scanner.test(isViewStart)) {
       const formula = scanViewFormula(scanner, 'class', parseNext, 'class')
+      if (memberFormulaNames.has(formula.name)) {
+        throw new ParseError(scanner, `Found duplicate function named '${formula.name}'.`)
+      }
+      memberFormulaNames.add(formula.name)
       formulas.push(formula)
     } else if (type === 'view' && scanner.test(isRenderStart)) {
       if (renderFormula) {
-        throw new ParseError(
-          scanner,
-          `A view can only have one render function. Already defined '${renderFormula}'`,
-        )
+        throw new ParseError(scanner, `A view can only have one render function.`)
       }
 
       const formula = scanRenderFormula(scanner, parseNext)
+      memberFormulaNames.add(formula.name)
       formulas.push(formula)
       renderFormula = formula
     } else if (type === 'class' && scanner.isWord(STATIC)) {
       const formula = scanStaticFormula(scanner, parseNext, 'class')
+      if (staticFormulaNames.has(formula.name)) {
+        throw new ParseError(scanner, `Found duplicate function named '${formula.name}'.`)
+      }
+      staticFormulaNames.add(formula.name)
       formulas.push(formula)
     } else {
       const property = scanClassProperty(scanner, parseNext)
+      if (properties.some(existing => existing.name === property.name)) {
+        throw new ParseError(scanner, `Found duplicate property '${property}'.`)
+      }
       properties.push(property)
     }
 
@@ -121,6 +136,10 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
     }
 
     scanner.scanAllWhitespace()
+  }
+
+  if (type === 'view' && !renderFormula) {
+    throw new ParseError(scanner, `All views must have a render function.`)
   }
 
   return {properties, formulas}

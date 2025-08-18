@@ -3265,6 +3265,8 @@ export class ClassDefinition extends Expression {
 export class ViewClassDefinition extends ClassDefinition {
   prefix = 'view'
 
+  readonly renderFormula: NamedFormulaExpression
+
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -3289,6 +3291,11 @@ export class ViewClassDefinition extends ClassDefinition {
       formulas,
       isExport,
     )
+    const renderFormula = formulas.find(formula => formula instanceof RenderFormulaExpression)
+    if (!renderFormula) {
+      throw "Expected view function named 'render'"
+    }
+    this.renderFormula = renderFormula
   }
 
   getType(runtime: TypeRuntime) {
