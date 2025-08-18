@@ -12,6 +12,7 @@ import {
   isNumberStart,
   IGNORE_TOKEN,
   isStringStartChar,
+  AS_KEYWORD,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -91,7 +92,7 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
     let assignRef: Expressions.Reference | undefined
     if (scanner.test(isAsKeyword)) {
       scanner.scanSpaces()
-      scanner.expectString('as')
+      scanner.expectString(AS_KEYWORD)
       scanner.scanSpaces()
       assignRef = scanValidLocalName(scanner)
     }
@@ -491,7 +492,7 @@ function isNamedArg(scanner: Scanner) {
 
 function isAsKeyword(scanner: Scanner) {
   scanner.scanSpaces()
-  return scanner.isWord('as')
+  return scanner.isWord(AS_KEYWORD)
 }
 
 function isNumberList(scanner: Scanner) {

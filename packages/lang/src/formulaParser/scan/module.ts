@@ -12,6 +12,8 @@ import {
   IMPORTS_OPEN,
   EXPORT_KEYWORD,
   TYPE_KEYWORD,
+  AS_KEYWORD,
+  IMPORT_ONLY_KEYWORD,
 } from '../grammars'
 import {scanClass} from './class'
 import {scanEnum} from './enum'
@@ -128,7 +130,7 @@ export function scanImportStatement(scanner: Scanner) {
     version,
   )
 
-  if (scanner.lookAhead('as') || scanner.lookAhead(':')) {
+  if (scanner.lookAhead(AS_KEYWORD) || scanner.lookAhead(IMPORT_ONLY_KEYWORD)) {
     scanner.scanAllWhitespace()
   } else {
     scanner.scanSpaces()
@@ -137,64 +139,62 @@ export function scanImportStatement(scanner: Scanner) {
 
   const importSpecifiers: Expressions.ImportSpecific[] = []
   let aliasRef: Expressions.Reference | undefined
-  if (scanner.isWord('as') || scanner.lookAhead(':')) {
-    if (scanner.scanIfWord('as')) {
+  if (scanner.scanIfWord(AS_KEYWORD)) {
+    scanner.scanAllWhitespace()
+    aliasRef = scanValidName(scanner)
+    if (scanner.lookAhead(IMPORT_ONLY_KEYWORD)) {
       scanner.scanAllWhitespace()
-      aliasRef = scanValidName(scanner)
-      if (scanner.lookAhead(':')) {
+    } else {
+      scanner.scanSpaces()
+    }
+    aliasRef.followingComments.push(...scanner.flushComments())
+  }
+
+  if (scanner.scanIfString(IMPORT_ONLY_KEYWORD)) {
+    scanner.scanAllWhitespace()
+    precedingSpecifierComments = scanner.flushComments()
+    scanner.expectString(IMPORTS_OPEN)
+    for (;;) {
+      scanner.scanAllWhitespace()
+
+      if (scanner.isEOF()) {
+        throw new ParseError(scanner, 'Unexpected end of input while parsing imports list')
+      }
+
+      const specific0 = scanner.charIndex
+      const nameRef = scanValidName(scanner)
+      if (scanner.lookAhead(AS_KEYWORD)) {
         scanner.scanAllWhitespace()
       } else {
         scanner.scanSpaces()
       }
-      aliasRef.followingComments.push(...scanner.flushComments())
-    }
+      nameRef.followingComments.push(...scanner.flushComments())
 
-    if (scanner.scanIfString(':')) {
-      scanner.scanAllWhitespace()
-      precedingSpecifierComments = scanner.flushComments()
-      scanner.expectString(IMPORTS_OPEN)
-      for (;;) {
-        scanner.scanAllWhitespace()
+      let specificAlias: Expressions.Reference | undefined
+      if (scanner.scanIfWord(AS_KEYWORD)) {
+        scanner.expectWhitespace()
+        specificAlias = scanValidName(scanner)
+        scanner.scanSpaces()
+        specificAlias.followingComments.push(...scanner.flushComments())
+      }
 
-        if (scanner.isEOF()) {
-          throw new ParseError(scanner, 'Unexpected end of input while parsing imports list')
-        }
+      scanner.whereAmI(`scanImportStatement ${nameRef} as ${specificAlias}`)
+      const importSpecifier = new Expressions.ImportSpecific(
+        [specific0, scanner.charIndex],
+        scanner.flushComments(),
+        nameRef,
+        specificAlias,
+      )
+      importSpecifiers.push(importSpecifier)
 
-        const specific0 = scanner.charIndex
-        const nameRef = scanValidName(scanner)
-        if (scanner.lookAhead('as')) {
-          scanner.scanAllWhitespace()
-        } else {
-          scanner.scanSpaces()
-        }
-        nameRef.followingComments.push(...scanner.flushComments())
+      const shouldBreak = scanner.scanCommaOrBreak(
+        IMPORTS_CLOSE,
+        "Expected ',' separating items in the import list",
+      )
 
-        let specificAlias: Expressions.Reference | undefined
-        if (scanner.scanIfWord('as')) {
-          scanner.expectWhitespace()
-          specificAlias = scanValidName(scanner)
-          scanner.scanSpaces()
-          specificAlias.followingComments.push(...scanner.flushComments())
-        }
-
-        scanner.whereAmI(`scanImportStatement ${nameRef} as ${specificAlias}`)
-        const importSpecifier = new Expressions.ImportSpecific(
-          [specific0, scanner.charIndex],
-          scanner.flushComments(),
-          nameRef,
-          specificAlias,
-        )
-        importSpecifiers.push(importSpecifier)
-
-        const shouldBreak = scanner.scanCommaOrBreak(
-          IMPORTS_CLOSE,
-          "Expected ',' separating items in the import list",
-        )
-
-        if (shouldBreak) {
-          importSpecifier.followingComments.push(...scanner.flushComments())
-          break
-        }
+      if (shouldBreak) {
+        importSpecifier.followingComments.push(...scanner.flushComments())
+        break
       }
     }
   }

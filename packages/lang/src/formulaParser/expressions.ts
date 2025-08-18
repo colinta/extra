@@ -7104,7 +7104,7 @@ export class ImportStatement extends Expression {
     }
 
     if (this.importSpecifiers.length) {
-      code += ' : '
+      code += ' only '
       code += wrapValues('{ ', this.importSpecifiers, ' }')
       code += ''
     }

@@ -16,36 +16,36 @@ describe('import parser', () => {
       c(['import Foo as Foo', 'import Foo']),
       c(['import Foo as Bar']),
       c(['import Foo/Bar/Baz as Bar']),
-      c(['import Foo : { bar }']),
-      c(['import Foo as Foo : { bar }']),
-      c(['import Foo : { bar as barr }']),
+      c(['import Foo only { bar }']),
+      c(['import Foo as Foo only { bar }']),
+      c(['import Foo only { bar as barr }']),
       c([
-        'import Foo : { bar as barr,bax,bux as buzz }',
-        'import Foo : { bar as barr, bax, bux as buzz }',
+        'import Foo only { bar as barr,bax,bux as buzz }',
+        'import Foo only { bar as barr, bax, bux as buzz }',
       ]),
       c([
         `\
-import Foo : {
+import Foo only {
 bar as barr
 }`,
-        'import Foo : { bar as barr }',
+        'import Foo only { bar as barr }',
       ]),
       c([
         `\
-import Foo : {
+import Foo only {
 bar as barr
 bax
 bux as buzz}`,
-        'import Foo : { bar as barr, bax, bux as buzz }',
+        'import Foo only { bar as barr, bax, bux as buzz }',
       ]),
       c([
         `\
-import Foo : {
+import Foo only {
 bar as barr
 bax
 bux as buzz, a-very-long-name-as-well-as-this-one-too-and-this-one-as-well-as-this-one-too-and-this-one-as-well}`,
         `\
-import Foo : {
+import Foo only {
   bar as barr
   bax
   bux as buzz
@@ -68,8 +68,8 @@ import Foo : {
 
 describe('bad imports', () => {
   cases<[string, string]>(
-    c(['import Foo: {bar', "Expected ',' separating items"]),
-    c(['import Foo: {bar\n', 'Unexpected end of input']),
+    c(['import Foo only {bar', "Expected ',' separating items"]),
+    c(['import Foo only {bar\n', 'Unexpected end of input']),
   ).run(([formula, error], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`bad import definitions ${formula}`, () => {
       expect(() => testScan(formula, scanImportStatement).get()).toThrow(error)
