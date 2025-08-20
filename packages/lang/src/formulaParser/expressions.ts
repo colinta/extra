@@ -2786,8 +2786,23 @@ export abstract class ClassPropertyExpression extends Expression {
     return this.nameRef.name
   }
 
+  get stateName() {
+    return '@' + this.name
+  }
+
+  dependencies() {
+    let deps = new Set<string>()
+    if (this.argType) {
+      deps = union(deps, this.argType.dependencies())
+    }
+    if (this.defaultValue) {
+      deps = union(deps, this.defaultValue.dependencies())
+    }
+    return deps
+  }
+
   provides() {
-    return new Set([this.nameRef.name])
+    return new Set([this.stateName])
   }
 
   toLisp() {
@@ -2895,6 +2910,48 @@ export class ClassDefinition extends Expression {
     super(range, precedingComments)
   }
 
+  provides() {
+    return new Set([this.nameRef.name])
+  }
+
+  childrenProvides() {
+    let provides = new Set<string>(this.provides())
+    if (this.extendsExpression) {
+      provides = union(provides, this.extendsExpression.provides())
+    }
+    if (this.argDefinitions) {
+      provides = union(provides, this.argDefinitions.provides())
+    }
+    for (const expr of this.properties) {
+      provides = union(provides, expr.provides())
+    }
+    for (const expr of this.formulas) {
+      provides = union(provides, expr.provides())
+    }
+    return provides
+  }
+
+  dependencies() {
+    let deps = new Set<string>()
+    if (this.extendsExpression) {
+      const exprDeps = this.extendsExpression.dependencies()
+      deps = union(deps, exprDeps)
+    }
+    if (this.argDefinitions) {
+      const exprDeps = this.argDefinitions.dependencies()
+      deps = union(deps, exprDeps)
+    }
+    for (const expr of this.properties) {
+      const exprDeps = expr.dependencies()
+      deps = union(deps, exprDeps)
+    }
+    for (const expr of this.formulas) {
+      const exprDeps = expr.dependencies()
+      deps = union(deps, exprDeps)
+    }
+    return difference(deps, this.childrenProvides())
+  }
+
   get name() {
     return this.nameRef.name
   }
@@ -2915,10 +2972,6 @@ export class ClassDefinition extends Expression {
     return this.formulas.filter(
       fn => fn instanceof MemberFormulaExpression || fn instanceof ViewFormulaExpression,
     )
-  }
-
-  provides(): Set<string> {
-    return new Set([this.nameRef.name])
   }
 
   toLisp() {
@@ -3332,6 +3385,11 @@ export class ViewClassDefinition extends ClassDefinition {
       throw "Expected view function named 'render'"
     }
     this.renderFormula = renderFormula
+  }
+
+  dependencies() {
+    let deps = super.dependencies()
+    return difference(union(deps, this.renderFormula.dependencies()), this.childrenProvides())
   }
 
   getType(runtime: TypeRuntime) {
@@ -3848,10 +3906,6 @@ export class FormulaLiteralArgumentAndTypeDeclaration extends ArgumentExpression
     super(range, precedingComments, nameRef, aliasRef, argType, spreadArg, isPositional)
   }
 
-  provides() {
-    return new Set([this.nameRef.name])
-  }
-
   toLisp() {
     let code = ''
     if (this.spreadArg === 'spread') {
@@ -3942,10 +3996,6 @@ export class FormulaTypeArgumentAndType extends ArgumentExpression {
     readonly isRequired: boolean,
   ) {
     super(range, precedingComments, nameRef, aliasRef, argType, spreadArg, isPositional)
-  }
-
-  provides(): Set<string> {
-    return new Set([this.nameRef.name])
   }
 
   formulaArgumentType(runtime: TypeRuntime): GetRuntimeResult<Types.Argument> {
@@ -4119,8 +4169,19 @@ export class FormulaExpression extends Expression {
     super(range, precedingComments)
   }
 
+  provides(): Set<string> {
+    if (this.nameRef) {
+      return new Set([this.nameRef.name])
+    }
+    return new Set()
+  }
+
   dependencies() {
-    const deps = union(this.returnType.dependencies(), this.body.dependencies())
+    const deps = union(
+      this.returnType.dependencies(),
+      this.body.dependencies(),
+      this.argDefinitions.dependencies(),
+    )
     const provides = union(this.argDefinitions.provides(), new Set(this.generics))
     return difference(deps, provides)
   }
@@ -4691,14 +4752,17 @@ abstract class JsxExpression extends Expression {
   }
 
   dependencies() {
+    const argsDependencies = this.args.reduce(
+      (set, value) => union(set, value.dependencies()),
+      new Set<string>(this.nameRef ? [this.nameRef.name] : []),
+    )
+    if (!this.children) {
+      return argsDependencies
+    }
     return union(
-      this.args.reduce((set, value) => union(set, value.dependencies()), new Set<string>()),
+      argsDependencies,
       this.children.reduce((set, value) => union(set, value.dependencies()), new Set<string>()),
     )
-  }
-
-  provides() {
-    return this.nameRef !== undefined ? new Set([this.nameRef.name]) : new Set<string>()
   }
 
   toLispCode() {
@@ -6963,6 +7027,10 @@ export class ProvidesStatement extends Expression {
     super(range, precedingComments, followingComments)
   }
 
+  dependencies(): Set<string> {
+    return new Set([this.env])
+  }
+
   toLisp() {
     return this.toCode()
   }
@@ -6988,6 +7056,10 @@ export class RequiresStatement extends Expression {
     followingComments: Comment[],
   ) {
     super(range, precedingComments, followingComments)
+  }
+
+  dependencies(): Set<string> {
+    return new Set(this.envs)
   }
 
   toLisp() {
@@ -7402,6 +7474,31 @@ export class Module extends Expression {
               : 3
       return impA_num - impB_num
     })
+  }
+
+  dependencies() {
+    let deps = new Set<string>()
+    if (this.providesStmt) {
+      deps = union(deps, this.providesStmt.dependencies())
+    }
+    if (this.requiresStmt) {
+      deps = union(deps, this.requiresStmt.dependencies())
+    }
+
+    for (const expr of this.imports) {
+      if (expr.dependencies()) {
+        throw `Unexpected error: ${expr.constructor.name} should not have dependencies`
+      }
+      deps = difference(deps, expr.provides())
+    }
+    for (const expr of this.expressions) {
+      if (expr.dependencies()) {
+        throw `Unexpected error: ${expr.constructor.name} should not have dependencies`
+      }
+      deps = difference(deps, expr.dependencies())
+    }
+
+    return deps
   }
 
   toLisp() {
