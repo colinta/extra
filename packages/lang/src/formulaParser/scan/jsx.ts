@@ -223,14 +223,14 @@ export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
       scanner.flushComments(),
       nameRef,
       props,
-      children,
+      scanChildren ? children : undefined,
     )
   } else {
     return new Expressions.FragmentJsxExpression(
       [range0, scanner.charIndex],
       scanner.flushComments(),
       props,
-      children,
+      scanChildren ? children : [],
     )
   }
 }

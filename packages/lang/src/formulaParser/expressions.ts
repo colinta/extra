@@ -4757,7 +4757,7 @@ abstract class JsxExpression extends Expression {
     range: Range,
     precedingComments: Comment[],
     readonly args: NamedArgument[],
-    readonly children: Expression[],
+    readonly children: Expression[] | undefined,
   ) {
     super(range, precedingComments)
   }
@@ -4800,7 +4800,7 @@ abstract class JsxExpression extends Expression {
         .join(' ')
     }
 
-    if (this.children.length) {
+    if (this.children && this.children.length) {
       code += '>'
       const lines: string[] = [code]
 
@@ -4817,6 +4817,15 @@ abstract class JsxExpression extends Expression {
       }
 
       return lines
+    } else if (this.children) {
+      if (this.nameRef) {
+        code += '></'
+        code += this.nameRef
+        code += '>'
+      } else {
+        code += '></>'
+      }
+      return [code]
     } else {
       if (this.nameRef) {
         code += ' />'
@@ -4855,7 +4864,7 @@ abstract class JsxExpression extends Expression {
         .join(' ')
     }
 
-    if (this.children.length) {
+    if (this.children) {
       code += '>'
       const lines: string[] = [code]
 
@@ -4993,7 +5002,7 @@ export class NamedJsxExpression extends JsxExpression {
     precedingComments: Comment[],
     readonly nameRef: Reference,
     args: NamedArgument[],
-    children: Expression[],
+    children: Expression[] | undefined,
   ) {
     super(range, precedingComments, args, children)
   }
