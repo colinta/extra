@@ -103,14 +103,14 @@ export function set(values: Value[]) {
 }
 
 export function formula(fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>) {
-  return new FormulaValue(fn)
+  return new FormulaValue(fn, undefined)
 }
 
 export function namedFormula(
   name: string,
   fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>,
 ) {
-  return new NamedFormulaValue(name, fn)
+  return new NamedFormulaValue(name, fn, undefined)
 }
 
 export function classDefinition({
@@ -623,7 +623,7 @@ export class StringValue extends BasicValue {
       'mapChars',
       value =>
         namedFormula('mapChars', (args: FormulaArgs) =>
-          args.at(0, FormulaValue).map(mapFn => mapFn.fn(new FormulaArgs([[undefined, value]]))),
+          args.at(0, FormulaValue).map(mapFn => mapFn.call(new FormulaArgs([[undefined, value]]))),
         ),
     ],
     [
@@ -1544,7 +1544,13 @@ export class FormulaValue extends Value {
   readonly is: 'formula' | 'named-formula' = 'formula'
   name: string | undefined = undefined
 
-  constructor(readonly fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>) {
+  constructor(
+    readonly fn: (
+      _1: FormulaArgs,
+      _2: ClassInstanceValue | undefined,
+    ) => Result<Value, string | RuntimeError>,
+    readonly boundThis: ClassInstanceValue | undefined,
+  ) {
     super()
   }
 
@@ -1581,11 +1587,15 @@ export class FormulaValue extends Value {
 
   call(formulaArgs: FormulaArgs): Result<Value, string | RuntimeError> {
     try {
-      return this.fn(formulaArgs)
+      return this.fn(formulaArgs, this.boundThis)
     } catch (e) {
       const message = typeof e === 'object' && e && 'message' in e ? e.message : `${e}`
       return err(`Error occurred in function: ${message}`)
     }
+  }
+
+  bound(boundThis: ClassInstanceValue) {
+    return new FormulaValue(this.fn, boundThis)
   }
 }
 
@@ -1594,9 +1604,17 @@ export class NamedFormulaValue extends FormulaValue {
 
   constructor(
     readonly name: string,
-    fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>,
+    fn: (
+      _1: FormulaArgs,
+      _2: ClassInstanceValue | undefined,
+    ) => Result<Value, string | RuntimeError>,
+    boundThis: ClassInstanceValue | undefined,
   ) {
-    super(fn)
+    super(fn, boundThis)
+  }
+
+  bound(boundThis: ClassInstanceValue) {
+    return new NamedFormulaValue(this.name, this.fn, boundThis)
   }
 }
 
@@ -1711,17 +1729,20 @@ export class EnumValue extends Value {
 export class ViewFormulaValue extends NamedFormulaValue {
   constructor(
     name: string,
-    fn: (_1: FormulaArgs, _2: Value | undefined) => Result<Value, string | RuntimeError>,
-    boundThis: Value | undefined,
+    fn: (
+      _1: FormulaArgs,
+      _2: ClassInstanceValue | undefined,
+    ) => Result<Value, string | RuntimeError>,
+    boundThis: ClassInstanceValue | undefined,
     private renderFormula: (
       _1: FormulaArgs,
-      _2: Value | undefined,
+      _2: ClassInstanceValue | undefined,
     ) => Result<Node, string | RuntimeError>,
   ) {
     super(name, fn, boundThis)
   }
 
-  bound(boundThis: Value) {
+  bound(boundThis: ClassInstanceValue) {
     return new ViewFormulaValue(this.name, this.fn, boundThis, this.renderFormula)
   }
 
@@ -1856,19 +1877,17 @@ export class ViewClassDefinitionValue extends ClassDefinitionValue {
 }
 
 export class ClassInstanceValue extends Value {
-  // TODO: convert NamedFormulaValue to BoundFormulaValue
-  readonly formulas: Map<string, NamedFormulaValue>
+  readonly formulas: Map<string, FormulaValue>
 
   constructor(
     readonly metaClass: ClassDefinitionValue,
     readonly props: Map<string, Value>,
-    formulas: Map<string, NamedFormulaValue>,
+    formulas: Map<string, FormulaValue>,
   ) {
     super()
     this.formulas = new Map()
     for (const [name, formula] of formulas) {
-      // TODO: change 'formula' to 'new BoundFormulaValue(this, formula)'
-      this.formulas.set(name, formula)
+      this.formulas.set(name, formula.bound(this))
     }
   }
 
@@ -1902,13 +1921,21 @@ export class ClassInstanceValue extends Value {
 }
 
 export class ViewClassInstanceValue extends ClassInstanceValue {
+  readonly renderFormula: ViewFormulaValue
+
   constructor(
     readonly metaClass: ViewClassDefinitionValue,
-    readonly render: FormulaValue,
+    renderFormula: ViewFormulaValue,
     props: Map<string, Value>,
-    formulas: Map<string, NamedFormulaValue>,
+    formulas: Map<string, FormulaValue>,
   ) {
+    if (formulas.get('render') === renderFormula) {
+      formulas = new Map(formulas)
+      formulas.delete('render')
+    }
+
     super(metaClass, props, formulas)
+    this.renderFormula = renderFormula.bound(this)
   }
 
   render(args: FormulaArgs): Result<Node, string | RuntimeError> {

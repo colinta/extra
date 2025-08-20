@@ -3074,7 +3074,7 @@ export class ClassDefinition extends Expression {
    * - then evaluate all stateProps, those could depend on static methods or
    *   properties, but we should have those in nextRuntime by then
    *   (if not it's a reasonable error)
-   * - That's enough to create the MetaClassType and ClassType instances
+   * - That's enough to create `ClassDefinitionType` and `ClassInstanceType`
    * - Build those up with the remaining statics and instance methods
    * - Errors that occur during this time need to be analyzed for whether they
    *   access a not-yet defined property or method - defer those for later
@@ -4459,7 +4459,7 @@ export class FormulaExpression extends Expression {
     // FormulaValue.call(args)
     const fn = (
       args: Values.FormulaArgs,
-      boundThis: Values.Value | undefined,
+      boundThis: Values.ClassInstanceValue | undefined,
     ): Result<Values.Value, RuntimeError> =>
       argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime =>
         this.body.eval(nextRuntime),
@@ -4652,6 +4652,7 @@ function argumentValues(
   runtime: ValueRuntime,
   argDefinitions: FormulaLiteralArgumentAndTypeDeclaration[],
   invokedArgs: Values.FormulaArgs,
+  boundThis: Values.ClassInstanceValue | undefined,
 ): GetRuntimeResult<MutableValueRuntime> {
   // the type checker in _checkFormulaArguments supports this "shorthand",
   // where passing *only positional arguments* to a function that only *accepts named
@@ -4680,6 +4681,7 @@ function argumentValues(
           ),
       ),
       invokedArgs,
+      boundThis,
     )
   }
 
@@ -4764,6 +4766,10 @@ function argumentValues(
       kwargValues.set(name, value)
     }
     mutableRuntime.addLocalValue(kwargs.nameRef.name, new Values.DictValue(kwargValues))
+  }
+
+  if (boundThis) {
+    mutableRuntime.setThisValue(boundThis)
   }
 
   return ok(mutableRuntime)
@@ -5226,14 +5232,14 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
     const argDefinitions = this.argDefinitions.args
     const fn = (
       args: Values.FormulaArgs,
-      boundThis: Values.Value | undefined,
+      boundThis: Values.ClassInstanceValue | undefined,
     ): Result<Values.Value, RuntimeError> =>
       argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime =>
         this.body.eval(nextRuntime),
       )
     const render = (
       args: Values.FormulaArgs,
-      boundThis: Values.Value | undefined,
+      boundThis: Values.ClassInstanceValue | undefined,
     ): Result<Values.Node, RuntimeError> =>
       argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime =>
         this.body.render(nextRuntime),

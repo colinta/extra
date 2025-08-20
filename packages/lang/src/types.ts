@@ -3443,7 +3443,7 @@ export class MessageType extends Type {
  *     foo = Foo()
  *     foo.name -- 'Balthazar'
  *
- * `foo` has type ClassType('Foo', '@name': String)
+ * `foo` has type `ClassInstanceType('Foo', '@name': String)`
  * But `Foo` itself _also_ has a type, which is the `ClassDefinitionType`.
  *
  * `ClassDefinitionType` has a name, an optional parentClass, and `staticProps`,
@@ -3498,15 +3498,16 @@ export class ViewClassDefinitionType extends ClassDefinitionType {
 
 /**
  * This is hard to say... Basinger? Also hard to say: an instance of class Foo
- * will be of type Foo, which is an instance of ClassType. Meanwhile, `Foo`
- * itself will refer to a ClassDefinitionType, which is a constructor function
- * (returns an instance of `Foo`) *and* a Namespace (has static properties and
- * formulas).
+ * will be of type Foo, which is an instance of `ClassInstanceType`. Meanwhile,
+ * `Foo` itself will refer to a ClassDefinitionType, which is a constructor
+ * function (returns an instance of `Foo`) *and* a Namespace (has static
+ * properties and formulas).
  *
- * ClassType separates 'state' properties from formulas. If classes also had
- * properties that never changed (ironically I would want to call these "static"
- * properties, but that's not what that keyword means) they would be combined
- * with formulas (as they are with ClassDefinitionType's properties and formulas).
+ * `ClassInstanceType` separates 'state' properties from formulas. If classes
+ * also had properties that never changed (ironically I would want to call these
+ * "static" properties, but that's not what that keyword means) they would be
+ * combined with formulas (as they are with ClassDefinitionType's properties and
+ * formulas).
  */
 export class ClassInstanceType extends Type {
   readonly is = 'class'
@@ -3597,10 +3598,12 @@ export class ClassInstanceType extends Type {
   }
 
   /**
-   * Returns a copy of the ClassType, replacing the type of one property. This is
-   * used by the type narrowing code to return a more specific type.
+   * Returns a copy of the `ClassInstanceType`, replacing the type of one
+   * property. This is used by the type narrowing code to return a more specific
+   * type, typically as part of a match expression.
+   *     foo.name is String -- foo is replaced with a type that has name: String
    */
-  replacingProp(prop: string, type: Type): Result<Type, string> {
+  replacingProp(prop: string, type: Type): Result<ClassInstanceType, string> {
     if (this.myProps.has(prop)) {
       const props = new Map(this.myProps)
       props.set(prop, type)
@@ -4360,9 +4363,9 @@ function compatibleWithBothFormulas(lhs: FormulaType, rhs: FormulaType) {
 }
 
 /**
- * Determines if a type can be assigned to another type, for instance if a ClassType
- * overrides a property of another ClassType, the child property must be
- * assignable to the parent class.
+ * Determines if a type can be assigned to another type, for instance if a
+ * `ClassInstanceType` overrides a property of another `ClassInstanceType`, the
+ * child property must be assignable to the parent class.
  *
  * Example: if a parent type defines
  *     foo: Int | String

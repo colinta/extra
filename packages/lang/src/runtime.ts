@@ -4,8 +4,20 @@ import {
   simplifyRelationships,
   isEqualRelationship,
 } from './relationship'
-import {type Type, ViewClassDefinitionType, ViewFormulaType, ViewType} from './types'
-import {type Value, ViewClassDefinitionValue, ViewFormulaValue, NamedViewValue} from './values'
+import {
+  type Type,
+  type ClassInstanceType,
+  ViewClassDefinitionType,
+  ViewFormulaType,
+  ViewType,
+} from './types'
+import {
+  type Value,
+  ViewClassDefinitionValue,
+  ViewFormulaValue,
+  NamedViewValue,
+  ClassInstanceValue,
+} from './values'
 import {uid} from './uid'
 
 export type TypeRuntime = Omit<
@@ -41,9 +53,13 @@ export interface ViewRuntime {
   getViewValue(name: string): NamedViewValue | undefined
 }
 
+const THIS = '@'
+const THIS_PREFIX = '@'
+
 export class MutableTypeRuntime {
   readonly _id = uid()
   public viewRuntime?: ViewRuntime
+  thisType: ClassInstanceType | undefined
 
   get id(): string {
     if (this.parent) {
@@ -141,7 +157,7 @@ export class MutableTypeRuntime {
    *     <row>{@user.name}</row>
    */
   getStateType(name: string): Type | undefined {
-    const thisType = this.getLocalType('this')
+    const thisType = this.getThisType()
     if (!thisType) {
       return undefined
     }
@@ -161,8 +177,8 @@ export class MutableTypeRuntime {
    *         this.firstName ++ this.lastName
    *     }
    */
-  getThisType(): Type | undefined {
-    return this.getLocalType('this')
+  getThisType() {
+    return this.thisType
   }
 
   /**
@@ -226,8 +242,8 @@ export class MutableTypeRuntime {
     this.types.set(id, type)
   }
 
-  setThisType(type: Type) {
-    this.addLocalType('this', type)
+  setThisType(type: ClassInstanceType) {
+    this.thisType = type
   }
 
   setPipeType(type: Type) {
@@ -282,6 +298,7 @@ export class MutableTypeRuntime {
 
 export class MutableValueRuntime extends MutableTypeRuntime {
   values: Map<string, Value> = new Map()
+  thisValue: ClassInstanceValue | undefined
 
   constructor(readonly parent?: ValueRuntime) {
     super(parent)
@@ -307,18 +324,18 @@ export class MutableValueRuntime extends MutableTypeRuntime {
   }
 
   getStateValue(name: string): Value | undefined {
-    const thisValue = this.getLocalValue('this')
+    const thisValue = this.getThisValue()
     if (!thisValue) {
       // During object creation, it is possible to reference properties on 'this'
       // before it is actually constructed.
-      return this.getLocalValue('@' + name)
+      return this.getLocalValue(THIS_PREFIX + name)
     }
 
     return thisValue.propValue(name)
   }
 
-  getThisValue(): Value | undefined {
-    return this.getLocalValue('this')
+  getThisValue() {
+    return this.thisValue
   }
 
   getViewValue(
@@ -345,11 +362,11 @@ export class MutableValueRuntime extends MutableTypeRuntime {
   }
 
   addStateValue(name: string, value: Value) {
-    this.addLocalValue('@' + name, value)
+    this.addLocalValue(THIS_PREFIX + name, value)
   }
 
-  setThisValue(value: Value) {
-    this.addLocalValue('this', value)
+  setThisValue(value: ClassInstanceValue) {
+    this.addLocalValue(THIS, value)
   }
 
   setPipeValue(value: Value) {
