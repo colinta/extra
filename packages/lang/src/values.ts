@@ -1378,6 +1378,45 @@ export class SetValue extends Value {
 }
 
 /**
+ * I dunno, I've gone back and forth on 'Types in Runtime', including a long
+ * stint with a 'TypeConstructor' value (abandoned). So for now this is just a
+ * kind of placeholder. It's returned from `TypeDefinitionExpression`, but it's
+ * not used or expected anywhere. 🤷‍♂️
+ */
+export class TypeValue extends Value {
+  constructor(readonly type: Types.Type) {
+    super()
+  }
+
+  getType() {
+    return this.type
+  }
+
+  isTruthy() {
+    return true
+  }
+
+  isEqual(rhs: Value): boolean {
+    return rhs === this
+  }
+
+  toCode() {
+    return this.type.toCode()
+  }
+
+  printable() {
+    return this.type.toCode()
+  }
+
+  propValue(name: string) {
+    const type = this.type.propAccessType(name)
+    if (type) {
+      return new TypeValue(type)
+    }
+  }
+}
+
+/**
  * When arguments are passed to a function there are plenty of shorthands like
  * `...` and `...name:` and `**kwargs`. These are all flattened and combined (in
  * Expressions.ArgumentsList.evalToArguments()) to create a `FormulaArgs` value.

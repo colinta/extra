@@ -1286,8 +1286,8 @@ export abstract class TypeExpression extends Expression {
     return false
   }
 
-  eval(_runtime: ValueRuntime): GetValueResult {
-    return err(new RuntimeError(this, `${this.constructor.name} cannot be evaluated`))
+  eval(runtime: ValueRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Values.TypeValue(type))
   }
 }
 
@@ -7220,7 +7220,7 @@ export class TypeDefinition extends Expression {
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
-    return getChildType(this, this.type, runtime)
+    return this.type.getAsTypeExpression(runtime)
   }
 
   eval(runtime: ValueRuntime) {
