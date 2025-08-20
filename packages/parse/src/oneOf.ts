@@ -935,6 +935,6 @@ export function oneOf(parsers: Parser<any>[]) {
 
       return err(reason(Parser, `none of the expected types matched`, failures))
     },
-    {type: 'oneOf', of: parsers.map(p => p.expected)},
-  ).named(parsers.map(p => p.name).join(' | '))
+    {type: 'oneOf', of: parsers.map(parser => parser.expected)},
+  ).named(parsers.map(parser => parser.name).join(' | '))
 }

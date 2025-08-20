@@ -1990,7 +1990,7 @@ export function object(parsers: [string, Parser<any>][]) {
     },
     {
       type: 'object',
-      of: parsers.map(([name, p]) => [name, p.expected]),
+      of: parsers.map(([name, parser]) => [name, parser.expected]),
     },
-  ).named(`{${parsers.map(([name, p]) => `${name}: ${p.name}`).join(', ')}}`)
+  ).named(`{${parsers.map(([name, parser]) => `${name}: ${parser.name}`).join(', ')}}`)
 }

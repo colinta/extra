@@ -849,6 +849,6 @@ export function all(parsers: Parser<any>[]) {
 
       return ok(args)
     },
-    {type: 'all', of: parsers.map(p => p.expected)},
-  ).named(parsers.map(p => p.name).join(' | '))
+    {type: 'all', of: parsers.map(parser => parser.expected)},
+  ).named(parsers.map(parser => parser.name).join(' | '))
 }

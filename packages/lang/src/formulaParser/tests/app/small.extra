@@ -1,4 +1,3 @@
--- also tests dependency sorting
 view Small {
   @pt: Point = {x: 1, y: 2}
 

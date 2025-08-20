@@ -7749,6 +7749,7 @@ export class Module extends Expression {
   }
 
   getType(runtime: TypeRuntime): GetRuntimeResult<Types.ModuleType> {
+    const moduleRuntime = new MutableTypeRuntime(runtime)
     if (this.providesStmt) {
       throw new Error('TODO: provides')
     }
@@ -7763,17 +7764,16 @@ export class Module extends Expression {
 
     const sorted = dependencySort(
       this.expressions.map(typeExpr => [typeExpr.name, typeExpr]),
-      _name => false, // TODO: imports would help here
+      name => moduleRuntime.has(name), // TODO: imports would help here
     )
     if (sorted.isErr()) {
       return err(sorted.error)
     }
 
-    const nextRuntime = new MutableTypeRuntime(runtime)
     return mapAll(
       sorted.get().map(([name, expr]) =>
-        expr.getType(nextRuntime).map(type => {
-          nextRuntime.addLocalType(name, type)
+        expr.getType(moduleRuntime).map(type => {
+          moduleRuntime.addLocalType(name, type)
           return [name, type] as [string, Types.Type]
         }),
       ),
@@ -7783,6 +7783,7 @@ export class Module extends Expression {
   }
 
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.ModuleValue> {
+    const moduleRuntime = new MutableValueRuntime(runtime)
     if (this.providesStmt) {
       throw new Error('TODO: provides')
     }
@@ -7797,17 +7798,16 @@ export class Module extends Expression {
 
     const sorted = dependencySort(
       this.expressions.map(typeExpr => [typeExpr.name, typeExpr]),
-      _name => false, // TODO: imports would help here
+      name => moduleRuntime.has(name), // TODO: imports would help here
     )
     if (sorted.isErr()) {
       return err(sorted.error)
     }
 
-    const nextRuntime = new MutableValueRuntime(runtime)
     return mapAll(
       sorted.get().map(([name, expr]) =>
-        expr.eval(nextRuntime).map(value => {
-          nextRuntime.addLocalValue(name, value)
+        expr.eval(moduleRuntime).map(value => {
+          moduleRuntime.addLocalValue(name, value)
           return [name, value] as [string, Values.Value]
         }),
       ),

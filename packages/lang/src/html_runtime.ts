@@ -5,6 +5,10 @@ import {ViewRuntime} from './runtime'
 export class HtmlRuntime implements ViewRuntime {
   constructor() {}
 
+  has(name: string) {
+    return this.getViewType(name) !== undefined
+  }
+
   getViewType(tag: string) {
     switch (tag) {
       case 'p':

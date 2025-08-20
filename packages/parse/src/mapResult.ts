@@ -1057,6 +1057,6 @@ export function mapResult<T>(
 
       return fn(...args)
     },
-    {type: 'tuple', of: parsers.map(p => p.expected)},
-  ).named(`${fn.name}<${parsers.map(p => p.name).join(', ')}>`)
+    {type: 'tuple', of: parsers.map(parser => parser.expected)},
+  ).named(`${fn.name}<${parsers.map(parser => parser.name).join(', ')}>`)
 }

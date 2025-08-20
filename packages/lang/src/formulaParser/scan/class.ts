@@ -182,6 +182,13 @@ function scanClassProperty(scanner: Scanner, parseNext: ParseNext) {
     argType = scanArgumentType(scanner, 'argument_type', parseNext)
   }
 
+  if (scanner.is(ARGS_OPEN)) {
+    throw new ParseError(
+      scanner,
+      `Unexpected argument declaration. Did you mean 'fn ${nameRef.name}('`,
+    )
+  }
+
   if (requiresDefaultValue) {
     scanner.scanAllWhitespace()
     scanner.expectString('=', `static property '${nameRef}' expects a value`)

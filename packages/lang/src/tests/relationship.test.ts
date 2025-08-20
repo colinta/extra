@@ -77,8 +77,8 @@ describe('normalize', () => {
     c(['-(-(1 + x + 2))', 'x + 3']),
   ).run(([code, expected], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`normalize(${code}) should be ${expected}`, () => {
-      const p = parse(code).get()
-      const rel = p.relationshipFormula(typeRuntime)!
+      const expr = parse(code).get()
+      const rel = expr.relationshipFormula(typeRuntime)!
       const expectedRel = sloppyParseFormula(expected)
       expect(rel).toBeTruthy()
       expect(expectedRel).toBeTruthy()

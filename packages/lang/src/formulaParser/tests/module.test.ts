@@ -81,7 +81,6 @@ describe('module', () => {
 
   describe('eval', () => {
     cases<[string, string, any]>(
-      //
       c([
         'static',
         'Static',

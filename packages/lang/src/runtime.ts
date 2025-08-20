@@ -51,6 +51,7 @@ export type ValueRuntime = Omit<
 export interface ViewRuntime {
   getViewType(name: string): ViewType | undefined
   getViewValue(name: string): NamedViewValue | undefined
+  has(name: string): boolean
 }
 
 const THIS = '@'

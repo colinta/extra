@@ -25,9 +25,9 @@ export function cases<T>(...cases: Case<T>[]): CaseRunner<T> {
       ) => void | Promise<void>,
     ) {
       for (const {input, only, skip, description} of cases) {
-        const p = fn(input, {only, skip, description: description()})
-        if (p instanceof Promise) {
-          await p
+        const promise = fn(input, {only, skip, description: description()})
+        if (promise instanceof Promise) {
+          await promise
         }
       }
     },
