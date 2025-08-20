@@ -10,26 +10,26 @@ import {type Value} from './values'
 
 export type TypeRuntime = Omit<
   MutableTypeRuntime,
-  | 'setLocale'
-  | 'replaceType'
-  | 'addLocalType'
-  | 'addStateType'
-  | 'setThisType'
   | 'addId'
+  | 'replaceTypeByName'
+  | 'replaceTypeById'
+  | 'addLocalType'
+  | 'setThisType'
   | 'setPipeType'
   | 'addNamespaceTypes'
-  | 'addRelationship'
+  | 'addRelationshipFormula'
 >
 
 export type ValueRuntime = Omit<
   MutableValueRuntime,
-  | 'setLocale'
-  | 'addLocalType'
-  | 'addStateType'
-  | 'setThisType'
   | 'addId'
+  | 'replaceTypeByName'
+  | 'replaceTypeById'
+  | 'addLocalType'
+  | 'setThisType'
   | 'setPipeType'
   | 'addNamespaceTypes'
+  | 'addRelationshipFormula'
   | 'addLocalValue'
   | 'addStateValue'
   | 'setThisValue'
@@ -96,7 +96,7 @@ export class MutableTypeRuntime {
   }
 
   has(name: string): boolean {
-    return this.ids.has(name) ?? this.parent?.has(name) ?? false
+    return this.ids.has(name) || (this.parent?.has(name) ?? false)
   }
 
   refName(id: string): string | undefined {
@@ -150,8 +150,8 @@ export class MutableTypeRuntime {
    *         this.firstName ++ this.lastName
    *     }
    */
-  getThisType(name: string): Type | undefined {
-    return this.getLocalType('.' + name)
+  getThisType(): Type | undefined {
+    return this.getLocalType('this')
   }
 
   /**
@@ -201,10 +201,6 @@ export class MutableTypeRuntime {
 
   replaceTypeById(id: string, type: Type) {
     this.types.set(id, type)
-  }
-
-  addStateType(name: string, type: Type) {
-    this.addLocalType('@' + name, type)
   }
 
   setThisType(type: Type) {
@@ -268,10 +264,6 @@ export class MutableValueRuntime extends MutableTypeRuntime {
     super(parent)
   }
 
-  has(name: string): boolean {
-    return this.values.has(name) ?? this.parent?.has(name) ?? false
-  }
-
   resolved(): Set<string> {
     const resolved = super.resolved()
     for (const id of this.values.keys()) {
@@ -292,11 +284,18 @@ export class MutableValueRuntime extends MutableTypeRuntime {
   }
 
   getStateValue(name: string): Value | undefined {
-    return this.getLocalValue('@' + name)
+    const thisValue = this.getLocalValue('this')
+    if (!thisValue) {
+      // During object creation, it is possible to reference properties on 'this'
+      // before it is actually constructed.
+      return this.getLocalValue('@' + name)
+    }
+
+    return thisValue.propValue(name)
   }
 
-  getThisValue(name: string): Value | undefined {
-    return this.getLocalValue('.' + name)
+  getThisValue(): Value | undefined {
+    return this.getLocalValue('this')
   }
 
   getPipeValue(): Value | undefined {
