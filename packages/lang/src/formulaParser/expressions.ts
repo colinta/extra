@@ -3305,48 +3305,72 @@ export class ClassDefinition extends Expression {
         thisSharedRuntime.addLocalValue(name, value)
       }
 
-      const konstructor = (klass: Values.ClassDefinitionValue) =>
-        new Values.NamedFormulaValue(this.nameRef.name, args =>
-          argumentValues(thisSharedRuntime, this.argDefinitions?.args ?? [], args).map(runtime => {
-            return mapAll(
-              this.stateProperties().flatMap(expr => {
-                if (!expr.defaultValue) {
-                  return []
-                }
-                return expr.defaultValue.eval(runtime).map(value => ok([expr.name, value] as const))
-              }),
-            ).map(defaultState => {
-              const props = new Map<string, Values.Value>()
-              for (const [name, value] of defaultState) {
-                props.set(name, value)
-              }
+      const konstructor = (classDef: Values.ClassDefinitionValue) =>
+        // this NamedFormulaValue is run in the context of the static class
+        // definition, plus whatever is already in runtime, plus whatever args
+        // were defined in the constructor, plus whatever args were passed to
+        // the formula:
+        //     class User(...) <- constructor (argDefinitions?.args)
+        //     class User {
+        //       foo = '' <- from thisSharedRuntime
+        //       static bar() => … <- from thisSharedRuntime
+        //     }
+        //     User(...) <- formula (args)
+        new Values.NamedFormulaValue(
+          this.nameRef.name,
+          args =>
+            // yeeees the constructor is called in the context of the class
+            // definition (ie static functions are treated as "in scope"), but
+            // I'm not passing classDef as 'this'.
+            argumentValues(thisSharedRuntime, this.argDefinitions?.args ?? [], args, undefined).map(
+              thisRuntime => {
+                const stateProps = this.stateProperties().map(
+                  expr => [expr.stateName, expr] as [string, ClassStatePropertyExpression],
+                )
+                return dependencySort(stateProps, name => thisRuntime.has(name)).map(stateProps =>
+                  mapAll(
+                    stateProps.flatMap(([_stateName, expr]) => {
+                      if (!expr.defaultValue) {
+                        return []
+                      }
+                      return expr.defaultValue.eval(thisRuntime).map(value => {
+                        thisRuntime.addStateValue(expr.name, value)
+                        return [expr.name, value] as const
+                      })
+                    }),
+                  ).map(defaultState => {
+                    const props = new Map<string, Values.Value>()
+                    for (const [name, value] of defaultState) {
+                      props.set(name, value)
+                    }
 
-              for (const stateProp of this.stateProperties()) {
-                const name = stateProp.name
-                if (props.has(name)) {
-                  continue
-                }
-                const value = runtime.getLocalValue(name)
-                if (!value) {
-                  return err(
-                    new RuntimeError(
-                      this,
-                      `Could not get value for property '${name}' in class constructor '${this.name}()'`,
-                    ),
-                  )
-                }
-                props.set(name, value)
-              }
+                    for (const [_stateName, stateProp] of stateProps) {
+                      const name = stateProp.name
+                      if (props.has(name)) {
+                        continue
+                      }
 
-              return ok(
-                Values.classInstance({
-                  class: klass,
-                  props,
-                  formulas: new Map(memberFormulas),
-                }),
-              )
-            })
-          }),
+                      const value = thisRuntime.getLocalValue(name)
+                      if (!value) {
+                        return err(
+                          new RuntimeError(
+                            this,
+                            `Could not get value for property '${name}' in class constructor '${this.name}()'`,
+                          ),
+                        )
+                      }
+                      props.set(name, value)
+                      thisRuntime.addStateValue(name, value)
+                    }
+
+                    return ok(
+                      new Values.ClassInstanceValue(classDef, props, new Map(memberFormulas)),
+                    )
+                  }),
+                )
+              },
+            ),
+          undefined,
         )
 
       return ok(
@@ -3447,6 +3471,45 @@ export class ViewClassDefinition extends ClassDefinition {
     })
   }
 
+  /**
+   * Type checks the arguments
+   * - return value of konstructor should be a ClassInstanceValue,
+   * - with a 'render' property that is a ViewFormulaValue.
+   */
+  guaranteeConstructor(
+    instance: Values.Value,
+  ): GetRuntimeResult<[Values.ClassInstanceValue, Values.ViewFormulaValue]> {
+    if (!(instance instanceof Values.ClassInstanceValue)) {
+      return err(
+        new RuntimeError(
+          this,
+          `Expected ClassInstanceValue, got '${instance}' (${instance.constructor.name})`,
+        ),
+      )
+    }
+
+    const render = instance.formulas.get('render')
+    if (!render) {
+      return err(
+        new RuntimeError(
+          this,
+          `View class '${this.nameRef.name}' does not have a 'render' formula`,
+        ),
+      )
+    }
+
+    if (!(render instanceof Values.ViewFormulaValue)) {
+      return err(
+        new RuntimeError(
+          this,
+          `Impossible! 'render' should've been guaranteed to be ViewFormulaValue at this point`,
+        ),
+      )
+    }
+
+    return ok([instance, render])
+  }
+
   eval(runtime: ValueRuntime) {
     return super.eval(runtime).map(metaClass => {
       const parentClass = metaClass.parent
@@ -3459,9 +3522,41 @@ export class ViewClassDefinition extends ClassDefinition {
         )
       }
 
+      // I shouldn't have to apologize for not bothering to do some sort of
+      // proper OOP design pattern here. But I will: I'm sorry.
+      //
+      // This code takes the instances of  ClassDefinitionValue and
+      // ClassInstanceValue and turns them into ViewClassDefinitionValue and
+      // ViewClassInstanceValue. There's not a *ton* of reason to keep these
+      // separate, but it does indicate good housekeeping on both the code and
+      // user-land side of things.
+      //
+      // I could later decide that any class with a 'render' function should be
+      // "viewable", but I can't go the other way around, so I'm starting with
+      // this.
       return new Values.ViewClassDefinitionValue(
         metaClass.name,
-        metaClass.konstructor,
+        classDef => {
+          const konstructor = metaClass.konstructor(classDef)
+          return new Values.NamedFormulaValue(
+            konstructor.name,
+            (args: Values.FormulaArgs) =>
+              konstructor
+                .call(args)
+                .map(value =>
+                  this.guaranteeConstructor(value).map(
+                    ([instance, render]) =>
+                      new Values.ViewClassInstanceValue(
+                        classDef,
+                        render,
+                        instance.props,
+                        instance.formulas,
+                      ),
+                  ),
+                ),
+            undefined,
+          )
+        },
         metaClass.parent,
         metaClass.staticProps,
         metaClass.staticFormulas,
@@ -4286,131 +4381,6 @@ export class FormulaExpression extends Expression {
     return code
   }
 
-  private argumentToArgumentType(
-    arg: FormulaLiteralArgumentAndTypeDeclaration,
-    type: Types.Type,
-  ): GetRuntimeResult<Types.Argument> {
-    if (arg.spreadArg === 'spread' && arg.isPositional) {
-      if (!(type instanceof Types.ArrayType)) {
-        return err(new RuntimeError(this, 'Spread positional argument must be an array'))
-      }
-      return ok({
-        is: 'spread-positional-argument',
-        spread: 'spread',
-        name: arg.nameRef.name,
-        type,
-        isRequired: false,
-        alias: undefined,
-      })
-    } else if (arg.spreadArg === 'spread') {
-      if (!(type instanceof Types.ArrayType)) {
-        return err(new RuntimeError(this, 'Spread positional argument must be an array'))
-      }
-      return ok({
-        is: 'repeated-named-argument',
-        spread: 'spread',
-        name: arg.nameRef.name,
-        type,
-        isRequired: false,
-        alias: arg.aliasRef.name,
-      })
-    } else if (arg.spreadArg === 'kwargs') {
-      if (!(type instanceof Types.DictType)) {
-        return err(new RuntimeError(this, 'Spread positional argument must be an dict'))
-      }
-      return ok({
-        is: 'kwarg-list-argument',
-        spread: 'kwargs',
-        name: arg.nameRef.name,
-        type,
-        isRequired: false,
-        alias: undefined,
-      })
-    } else if (arg.isPositional) {
-      return ok({
-        is: 'positional-argument',
-        spread: false,
-        name: arg.nameRef.name,
-        type,
-        isRequired: !arg.defaultValue,
-        alias: undefined,
-      })
-    } else {
-      return ok({
-        is: 'named-argument',
-        spread: false,
-        name: arg.nameRef.name,
-        type,
-        isRequired: !arg.defaultValue,
-        alias: arg.aliasRef.name,
-      })
-    }
-  }
-
-  private argumentTypes(
-    runtime: TypeRuntime,
-    formulaType?: Types.FormulaType | undefined,
-  ): GetRuntimeResult<Types.Argument[]> {
-    // for every arg, check the arg type _and_ the default type, and make sure
-    // default type can be assigned to the arg type
-    return mapAll(
-      this.argDefinitions.args.map((arg, position) => {
-        let argType: GetTypeResult
-        if (arg.argType instanceof InferIdentifier) {
-          if (arg.spreadArg) {
-            throw `TODO: inferring type of ${arg.toCode()} in argumentTypes is not done`
-          }
-
-          let inferArgType: Types.Type | undefined
-          if (formulaType) {
-            inferArgType =
-              formulaType.positionalArg(position)?.type ??
-              formulaType.namedArg(arg.aliasRef.name)?.type
-          } else {
-            inferArgType = undefined
-          }
-
-          if (!inferArgType) {
-            // I know some programming languages are able to infer the argument type
-            // based on how it's *used* but that just sounds like a ton of work,
-            // for mediocre results.
-            let message = 'Unable to infer type for argument '
-            if (arg instanceof NamedArgument) {
-              message += `'${arg.aliasRef.name}'`
-            } else if (arg instanceof PositionalArgument) {
-              message += `at position #${position + 1}`
-            }
-            return err(new RuntimeError(this, message))
-          }
-
-          argType = ok(inferArgType)
-        } else {
-          argType = arg.argType.getAsTypeExpression(runtime)
-        }
-
-        return argType.map(type => {
-          if (arg.defaultValue) {
-            const defaultTypeResult = getChildType(this, arg.defaultValue, runtime)
-            if (defaultTypeResult.isErr()) {
-              return err(defaultTypeResult.error)
-            }
-
-            const defaultType = defaultTypeResult.get()
-            if (!Types.canBeAssignedTo(defaultType, type)) {
-              return decorateError(this)(
-                err(
-                  new RuntimeError(arg.defaultValue, Types.cannotAssignToError(defaultType, type)),
-                ),
-              )
-            }
-          }
-
-          return this.argumentToArgumentType(arg, type)
-        })
-      }),
-    )
-  }
-
   getType(
     runtime: TypeRuntime,
     formulaType?: Types.FormulaType | undefined,
@@ -4423,7 +4393,7 @@ export class FormulaExpression extends Expression {
       mutableRuntime.addLocalType(generic, genericType)
     }
 
-    return this.argumentTypes(mutableRuntime, formulaType).map(args => {
+    return argumentTypes(this, mutableRuntime, formulaType).map(args => {
       args.forEach(arg => {
         mutableRuntime.addLocalType(arg.name, arg.type)
       })
@@ -4455,27 +4425,162 @@ export class FormulaExpression extends Expression {
       }
 
       return returnTypeResult.map(returnType => {
-        if (this.nameRef) {
-          return new Types.NamedFormulaType(this.nameRef.name, returnType, args, genericTypes)
-        }
-
-        return new Types.FormulaType(returnType, args, genericTypes)
+        return this.getFormulaTypeWith(returnType, args, genericTypes)
       })
     })
   }
 
+  getFormulaTypeWith(
+    returnType: Types.Type,
+    args: Types.Argument[],
+    genericTypes: Types.GenericType[],
+  ) {
+    return new Types.FormulaType(returnType, args, genericTypes)
+  }
+
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.FormulaValue> {
     const argDefinitions = this.argDefinitions.args
-    // this is the function that is invoked by 'FunctionInvocationOperator'
-    const fn = (args: Values.FormulaArgs): Result<Values.Value, RuntimeError> =>
-      argumentValues(runtime, argDefinitions, args).map(nextRuntime => this.body.eval(nextRuntime))
+    // this is the function that is invoked by 'FunctionInvocationOperator', via
+    // FormulaValue.call(args)
+    const fn = (
+      args: Values.FormulaArgs,
+      boundThis: Values.Value | undefined,
+    ): Result<Values.Value, RuntimeError> =>
+      argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime =>
+        this.body.eval(nextRuntime),
+      )
 
     if (this.nameRef) {
-      return ok(new Values.NamedFormulaValue(this.nameRef.name, fn))
+      return ok(new Values.NamedFormulaValue(this.nameRef.name, fn, undefined))
     } else {
-      return ok(new Values.FormulaValue(fn))
+      return ok(new Values.FormulaValue(fn, undefined))
     }
   }
+}
+
+function argumentToArgumentType(
+  expr: FormulaExpression,
+  arg: FormulaLiteralArgumentAndTypeDeclaration,
+  type: Types.Type,
+): GetRuntimeResult<Types.Argument> {
+  if (arg.spreadArg === 'spread' && arg.isPositional) {
+    if (!(type instanceof Types.ArrayType)) {
+      return err(new RuntimeError(expr, 'Spread positional argument must be an array'))
+    }
+    return ok({
+      is: 'spread-positional-argument',
+      spread: 'spread',
+      name: arg.nameRef.name,
+      type,
+      isRequired: false,
+      alias: undefined,
+    })
+  } else if (arg.spreadArg === 'spread') {
+    if (!(type instanceof Types.ArrayType)) {
+      return err(new RuntimeError(expr, 'Spread positional argument must be an array'))
+    }
+    return ok({
+      is: 'repeated-named-argument',
+      spread: 'spread',
+      name: arg.nameRef.name,
+      type,
+      isRequired: false,
+      alias: arg.aliasRef.name,
+    })
+  } else if (arg.spreadArg === 'kwargs') {
+    if (!(type instanceof Types.DictType)) {
+      return err(new RuntimeError(expr, 'Spread positional argument must be an dict'))
+    }
+    return ok({
+      is: 'kwarg-list-argument',
+      spread: 'kwargs',
+      name: arg.nameRef.name,
+      type,
+      isRequired: false,
+      alias: undefined,
+    })
+  } else if (arg.isPositional) {
+    return ok({
+      is: 'positional-argument',
+      spread: false,
+      name: arg.nameRef.name,
+      type,
+      isRequired: !arg.defaultValue,
+      alias: undefined,
+    })
+  } else {
+    return ok({
+      is: 'named-argument',
+      spread: false,
+      name: arg.nameRef.name,
+      type,
+      isRequired: !arg.defaultValue,
+      alias: arg.aliasRef.name,
+    })
+  }
+}
+
+function argumentTypes(
+  expr: FormulaExpression,
+  runtime: TypeRuntime,
+  formulaType?: Types.FormulaType | undefined,
+): GetRuntimeResult<Types.Argument[]> {
+  // for every arg, check the arg type _and_ the default type, and make sure
+  // default type can be assigned to the arg type
+  return mapAll(
+    expr.argDefinitions.args.map((arg, position) => {
+      let argType: GetTypeResult
+      if (arg.argType instanceof InferIdentifier) {
+        if (arg.spreadArg) {
+          throw `TODO: inferring type of ${arg.toCode()} in argumentTypes is not done`
+        }
+
+        let inferArgType: Types.Type | undefined
+        if (formulaType) {
+          inferArgType =
+            formulaType.positionalArg(position)?.type ??
+            formulaType.namedArg(arg.aliasRef.name)?.type
+        } else {
+          inferArgType = undefined
+        }
+
+        if (!inferArgType) {
+          // I know some programming languages are able to infer the argument type
+          // based on how it's *used* but that just sounds like a ton of work,
+          // for mediocre results.
+          let message = 'Unable to infer type for argument '
+          if (arg instanceof NamedArgument) {
+            message += `'${arg.aliasRef.name}'`
+          } else if (arg instanceof PositionalArgument) {
+            message += `at position #${position + 1}`
+          }
+          return err(new RuntimeError(expr, message))
+        }
+
+        argType = ok(inferArgType)
+      } else {
+        argType = arg.argType.getAsTypeExpression(runtime)
+      }
+
+      return argType.map(type => {
+        if (arg.defaultValue) {
+          const defaultTypeResult = getChildType(expr, arg.defaultValue, runtime)
+          if (defaultTypeResult.isErr()) {
+            return err(defaultTypeResult.error)
+          }
+
+          const defaultType = defaultTypeResult.get()
+          if (!Types.canBeAssignedTo(defaultType, type)) {
+            return decorateError(expr)(
+              err(new RuntimeError(arg.defaultValue, Types.cannotAssignToError(defaultType, type))),
+            )
+          }
+        }
+
+        return argumentToArgumentType(expr, arg, type)
+      })
+    }),
+  )
 }
 
 function organizeArguments(argDefinitions: FormulaLiteralArgumentAndTypeDeclaration[]) {
@@ -4683,6 +4788,14 @@ export class NamedFormulaExpression extends FormulaExpression {
     formulaType?: Types.FormulaType | undefined,
   ): GetRuntimeResult<Types.NamedFormulaType> {
     return super.getType(runtime, formulaType) as GetRuntimeResult<Types.NamedFormulaType>
+  }
+
+  getFormulaTypeWith(
+    returnType: Types.Type,
+    args: Types.Argument[],
+    genericTypes: Types.GenericType[],
+  ) {
+    return new Types.NamedFormulaType(this.nameRef.name, returnType, args, genericTypes)
   }
 
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.NamedFormulaValue> {
@@ -5048,6 +5161,15 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
       body,
       [],
     )
+  }
+
+  getFormulaTypeWith(
+    returnType: Types.Type,
+    args: Types.Argument[],
+    genericTypes: Types.GenericType[],
+  ) {
+    const namedArgs = args.filter(arg => arg.is === 'named-argument')
+    return new Types.ViewFormulaType(this.nameRef.name, returnType, namedArgs, genericTypes)
   }
 
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.ViewFormulaValue> {
