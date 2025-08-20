@@ -3207,7 +3207,8 @@ export class ClassDefinition extends Expression {
         const errors: RuntimeError[] = []
         for (const expr of remaining) {
           let typeResult: GetTypeResult
-          const isMemberProp = expr instanceof MemberFormulaExpression
+          const isMemberProp =
+            expr instanceof MemberFormulaExpression || expr instanceof RenderFormulaExpression
           if (isMemberProp) {
             typeResult = expr.getType(thisRuntime)
           } else {
