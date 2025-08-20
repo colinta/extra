@@ -3217,12 +3217,22 @@ export class ClassDefinition extends Expression {
 
           if (typeResult.isErr()) {
             if (typeResult.error instanceof ReferenceRuntimeError) {
-              // TODO: if typeResult is an error due to accessing a
-              // not-yet-resolved property or static, put expr into next
-              // return typeResult
-              next.add(expr)
-              errors.push(typeResult.error)
-              continue
+              let found = false
+              for (const expr of remaining) {
+                if (typeResult.error.expression.name === expr.name) {
+                  // if typeResult is an error due to accessing a
+                  // not-yet-resolved property or static, put expr into next
+                  // return typeResult
+                  next.add(expr)
+                  errors.push(typeResult.error)
+
+                  found = true
+                  break
+                }
+              }
+              if (found) {
+                continue
+              }
             }
 
             return typeResult
