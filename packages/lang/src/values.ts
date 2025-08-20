@@ -1712,11 +1712,23 @@ export class ViewValue extends Value {
   }
 }
 
-export class FragmentViewValue extends Value {
-  constructor(readonly children: ViewValue[]) {
+/**
+ * Represents a <tag />, <tag>…</tag>
+ */
+export class NamedViewValue extends ViewValue {
+  constructor(readonly name: string) {
     super()
   }
 
+  getType(): Types.Type {
+    return Types.UserViewType
+  }
+}
+
+/**
+ * Represents a fragment <>…</>
+ */
+export class FragmentViewValue extends ViewValue {
   getType(): Types.Type {
     return Types.FragmentViewType
   }

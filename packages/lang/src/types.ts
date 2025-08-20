@@ -998,7 +998,21 @@ export class LazyFormulaType extends FormulaType {
   }
 }
 
-export class ViewFormulaType extends FormulaType {
+export class NamedFormulaType extends FormulaType {
+  readonly is: 'named-formula' | 'class-definition' | 'view' = 'named-formula'
+
+  constructor(
+    readonly name: string,
+    returnType: Type,
+    args: Argument[] = [],
+    genericTypes: GenericType[],
+  ) {
+    super(returnType, args, genericTypes)
+    this.name = name
+  }
+}
+
+export class ViewFormulaType extends NamedFormulaType {
   readonly is = 'view'
 
   /**
@@ -1006,12 +1020,14 @@ export class ViewFormulaType extends FormulaType {
    */
   public args: NamedArgument[]
 
-  constructor(args: NamedArgument[], genericTypes: GenericType[]) {
-    const returnType: Type = UserViewType
-    super(returnType, args, genericTypes)
-
+  constructor(
+    name: string,
+    returnType: Type,
+    args: NamedArgument[] = [],
+    genericTypes: GenericType[],
+  ) {
+    super(name, returnType, args, genericTypes)
     this.args = args
-    Object.defineProperty(this, '_named', {enumerable: false})
   }
 
   positionalArg(): Argument | undefined {
@@ -1037,20 +1053,6 @@ export class ViewFormulaType extends FormulaType {
 
     desc += `(${args}): ${this.returnType.toCode(false)}`
     return embedded ? `(${desc})` : desc
-  }
-}
-
-export class NamedFormulaType extends FormulaType {
-  readonly is: 'named-formula' | 'class-definition' = 'named-formula'
-
-  constructor(
-    readonly name: string,
-    returnType: Type,
-    args: Argument[] = [],
-    genericTypes: GenericType[],
-  ) {
-    super(returnType, args, genericTypes)
-    this.name = name
   }
 }
 
@@ -2428,7 +2430,7 @@ export class MetaIntRangeType extends RangeType<Narrowed.NarrowedInt> {
   }
 }
 
-class ViewType extends Type {
+export class ViewType extends Type {
   readonly is = VIEW
 
   declare static types: Record<string, ((object: ViewType) => Type) | undefined>
