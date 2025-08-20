@@ -80,7 +80,7 @@ export class ParseError extends Error {
 export type ExpressionType =
   | 'expression' // default, but greedy
   | 'let' // let ... in
-  | 'type' // parses the type within <>
+  | 'type' // parses the type within fn<..>()
   | 'object' // parses the value within {key: value}
   | 'module' // all module-level definitions are scanned in this context
   | 'enum' // parses enum members, member and static functions, closes w/ }

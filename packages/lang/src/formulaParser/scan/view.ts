@@ -1,5 +1,5 @@
 import * as Expressions from '../expressions'
-import {ARGS_OPEN, EXPORT_KEYWORD, VIEW_KEYWORD} from '../grammars'
+import {ARGS_OPEN, EXPORT_KEYWORD, FUNCTION_BODY_START, VIEW_KEYWORD} from '../grammars'
 import type {Scanner} from '../scanner'
 import {type ParseNext} from '../types'
 import {scanValidViewName} from './identifier'
@@ -70,5 +70,5 @@ function isViewFormula(scanner: Scanner) {
   scanValidViewName(scanner)
   scanner.scanAllWhitespace()
 
-  return scanner.is(ARGS_OPEN)
+  return scanner.is(ARGS_OPEN) || scanner.is(FUNCTION_BODY_START)
 }

@@ -1,8 +1,9 @@
 import {c, cases} from '@extra-lang/cases'
 import * as Types from '../../types'
-import {type TypeRuntime, type ValueRuntime} from '../../runtime'
-import {parse, parseType} from '../../formulaParser'
 import * as Values from '../../values'
+import {type TypeRuntime, type ValueRuntime} from '../../runtime'
+import {parse, testScan} from '../../formulaParser'
+import {scanArgumentType} from '../scan/argument_type'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
 import {mockValueRuntime} from '../../tests/mockValueRuntime'
 
@@ -15,6 +16,12 @@ beforeEach(() => {
   typeRuntime = mockTypeRuntime(runtimeTypes)
   valueRuntime = mockValueRuntime(runtimeTypes)
 })
+
+function parseType(input: string) {
+  return testScan(input, (scanner, parseNext) =>
+    scanArgumentType(scanner, 'argument_type', parseNext),
+  )
+}
 
 describe('getType', () => {
   describe('LogicalOr', () => {

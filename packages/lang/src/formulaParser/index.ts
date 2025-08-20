@@ -37,7 +37,6 @@ import {
   isTaggedString,
   LET_KEYWORD,
   LET_IN,
-  VIEW_KEYWORD,
   FN_KEYWORD,
   INCLUSION_OPERATOR,
   NULL_COALESCING,
@@ -50,16 +49,9 @@ import {
   OBJECT_OPEN,
   OBJECT_WORD_START,
   SINGLE_BLOCK_OPEN,
-  EXPORT_KEYWORD,
-  CLASS_KEYWORD,
-  IMPORT_KEYWORD,
-  REQUIRES_KEYWORD,
-  TYPE_KEYWORD,
   IS_KEYWORD,
   NOT_IS_KEYWORD,
   CASE_KEYWORD,
-  PROVIDES_KEYWORD,
-  ENUM_KEYWORD,
   SPLAT_OP,
 } from './grammars'
 import {Scanner} from './scanner'
@@ -69,16 +61,9 @@ import {scanRegex} from './scan/regex'
 import {scanIdentifier} from './scan/identifier'
 import {scanString} from './scan/string'
 import {scanDice} from './scan/dice'
-import {
-  scanRequiresStatement,
-  scanImportStatement,
-  scanHelperDefinition,
-  scanProvidesStatement,
-  scanModuleTypeDefinition,
-} from './scan/module'
+import {scanModule} from './scan/module'
 import {scanFormula} from './scan/formula'
 import {scanArray, scanDict, scanObject, scanSet} from './scan/container_type'
-import {scanView} from './scan/view'
 import {scanJsx} from './scan/jsx'
 import {scanPipePlaceholder} from './scan/pipe'
 import {scanParensGroup} from './scan/parens'
@@ -89,8 +74,6 @@ import {scanUnaryOperator} from './scan/unary_operator'
 import {scanLet} from './scan/let'
 import {scanCase, scanMatch} from './scan/match'
 import {scanArgumentType} from './scan/argument_type'
-import {scanClass} from './scan/class'
-import {scanEnum} from './scan/enum'
 
 const LOWEST_OP: Operator = {
   name: 'lowest op',
@@ -125,157 +108,34 @@ export function parse(input: string, debug = 0): GetParserResult<Expression> {
 }
 
 export function parseType(input: string, debug = 0) {
-  return testScan(input, (scanner, parseNext) =>
+  const scanner = new Scanner(input, {debug})
+  return scan(scanner, (scanner, parseNext) =>
     scanArgumentType(scanner, 'argument_type', parseNext),
   )
 }
 
+export function parseJsx(input: string, debug = 0) {
+  const scanner = new Scanner(input, {debug})
+  return scan(scanner, scanJsx)
+}
+
 export function parseModule(input: string, debug = 0): GetParserResult<Expressions.Module> {
   const scanner = new Scanner(input, {debug})
-
-  const range0 = scanner.charIndex
-  const moduleTokens: {
-    provides: Expressions.ProvidesStatement | undefined
-    requires: Expressions.RequiresStatement | undefined
-    imports: Expressions.ImportStatement[]
-    expressions: (
-      | Expressions.TypeDefinition
-      | Expressions.HelperDefinition
-      | Expressions.ViewDefinition
-      | Expressions.ClassDefinition
-      | Expressions.EnumDefinition
-    )[]
-  } = {
-    provides: undefined,
-    requires: undefined,
-    imports: [],
-    expressions: [],
-  }
-
-  scanner.scanAllWhitespace()
-  for (;;) {
-    if (scanner.isEOF()) {
-      break
-    }
-
-    if (scanner.isWord(REQUIRES_KEYWORD)) {
-      //
-      //  REQUIRES
-      //
-      const requires = scanRequiresStatement(scanner)
-
-      if (moduleTokens.requires) {
-        moduleTokens.requires.envs.push(...requires.envs)
-      } else {
-        moduleTokens.requires = requires
-      }
-    } else if (scanner.isWord(PROVIDES_KEYWORD)) {
-      //
-      //  PROVIDES
-      //
-      if (moduleTokens.provides) {
-        return err(
-          new ParseError(scanner, `Provides statement already defined: ${moduleTokens.provides}`),
-        )
-      }
-
-      const provides = scanProvidesStatement(scanner)
-      moduleTokens.provides = provides
-    } else if (scanner.isWord(IMPORT_KEYWORD)) {
-      //
-      //  IMPORT
-      //
-      moduleTokens.imports.push(scanImportStatement(scanner))
-    } else if (scanner.test(isExport(TYPE_KEYWORD))) {
-      const typeExpr = scan(scanner, scanModuleTypeDefinition)
-      if (typeExpr.isErr()) {
-        return err(typeExpr.error)
-      }
-      moduleTokens.expressions.push(typeExpr.value as Expressions.TypeDefinition)
-    } else if (scanner.test(isExport(CLASS_KEYWORD))) {
-      const classExpr = scan(scanner, scanClass)
-      if (classExpr.isErr()) {
-        return err(classExpr.error)
-      }
-      moduleTokens.expressions.push(classExpr.value as Expressions.ClassDefinition)
-    } else if (scanner.test(isExport(ENUM_KEYWORD))) {
-      const enumExpr = scan(scanner, scanEnum)
-      if (enumExpr.isErr()) {
-        return err(enumExpr.error)
-      }
-      moduleTokens.expressions.push(enumExpr.value as Expressions.EnumDefinition)
-    } else if (scanner.isWord(FN_KEYWORD)) {
-      //
-      //  HELPER
-      //
-      const helper = scan(scanner, scanHelperDefinition)
-      if (helper.isErr()) {
-        return err(helper.error)
-      }
-      moduleTokens.expressions.push(helper.value as Expressions.HelperDefinition)
-    } else if (scanner.isWord(VIEW_KEYWORD)) {
-      //
-      //  <VIEW>
-      //
-      const view = scan(scanner, scanView)
-      if (view.isErr()) {
-        return err(view.error)
-      }
-      moduleTokens.expressions.push(view.value as Expressions.ViewDefinition)
-    } else {
-      throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
-    }
-
-    scanner.scanAllWhitespace()
-  }
-
-  return ok(
-    new Expressions.Module(
-      [range0, scanner.input.length],
-      scanner.flushComments(),
-      moduleTokens.provides,
-      moduleTokens.requires,
-      moduleTokens.imports,
-      moduleTokens.expressions,
-    ) as any,
-  )
-}
-
-function isExport(keyword: string) {
-  return (scanner: Scanner) => {
-    scanner.scanIfWord(EXPORT_KEYWORD) && scanner.expectWhitespace()
-    return scanner.isWord(keyword)
-  }
+  return scan(scanner, scanModule) as GetParserResult<Expressions.Module>
 }
 
 /**
- * Only for testing.
- */
-export function parseInternalTest(
-  input: string,
-  expressionType: ExpressionType,
-  options?: Options,
-): GetParserResult<[Expression, Scanner]> {
-  const scanner = new Scanner(input, options)
-  return parseAttempt(scanner, expressionType).map(expression => [expression, scanner])
-}
-
-/**
- * Only for testing.
+ * Only for testing. Oh wait also for some internal 'parse' features.
+ *
+ * Ug: naming.
  */
 export function testScan(
   input: string,
   scanFn: (scanner: Scanner, parseNext: ParseNext) => Expression,
   options?: Options,
 ): GetParserResult<Expression> {
-  return attempt<Expressions.Expression, ParseError>(
-    () => {
-      const scanner = new Scanner(input, options)
-      const parseNext = prepareParseNext(scanner)
-      return scanFn(scanner, parseNext)
-    },
-    e => e instanceof ParseError,
-  )
+  const scanner = new Scanner(input, options)
+  return scan(scanner, scanFn)
 }
 
 /**
@@ -284,23 +144,12 @@ export function testScan(
 function scan(
   scanner: Scanner,
   scanFn: (scanner: Scanner, parseNext: ParseNext) => Expression,
-  options?: Options,
 ): GetParserResult<Expression> {
   return attempt<Expressions.Expression, ParseError>(
     () => {
       const parseNext = prepareParseNext(scanner)
       return scanFn(scanner, parseNext)
     },
-    e => e instanceof ParseError,
-  )
-}
-
-function parseAttempt(
-  scanner: Scanner,
-  expressionType: ExpressionType = 'expression',
-): GetParserResult<Expression> {
-  return attempt<Expressions.Expression, ParseError>(
-    () => parseInternal(scanner, expressionType),
     e => e instanceof ParseError,
   )
 }

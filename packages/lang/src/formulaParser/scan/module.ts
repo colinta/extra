@@ -5,19 +5,118 @@ import {scanAnyReference, scanValidName, scanValidTypeName} from './identifier'
 import {type Comment, ParseError, type ParseNext} from '../types'
 import {scanGenerics, scanNamedFormula} from './formula'
 import {
+  AS_KEYWORD,
   CLASS_KEYWORD,
   ENUM_KEYWORD,
+  EXPORT_KEYWORD,
+  FN_KEYWORD,
   IMPORT_KEYWORD,
+  IMPORT_ONLY_KEYWORD,
   IMPORTS_CLOSE,
   IMPORTS_OPEN,
-  EXPORT_KEYWORD,
+  PROVIDES_KEYWORD,
+  REQUIRES_KEYWORD,
   TYPE_KEYWORD,
-  AS_KEYWORD,
-  IMPORT_ONLY_KEYWORD,
+  VIEW_KEYWORD,
 } from '../grammars'
 import {scanClass} from './class'
 import {scanEnum} from './enum'
 import {scanArgumentType} from './argument_type'
+import {scanView} from './view'
+import {unexpectedToken} from './basics'
+
+export function scanModule(scanner: Scanner, parseNext: ParseNext) {
+  const range0 = scanner.charIndex
+  const moduleTokens: {
+    provides: Expressions.ProvidesStatement | undefined
+    requires: Expressions.RequiresStatement | undefined
+    imports: Expressions.ImportStatement[]
+    expressions: (
+      | Expressions.TypeDefinition
+      | Expressions.HelperDefinition
+      | Expressions.ViewDefinition
+      | Expressions.ClassDefinition
+      | Expressions.EnumDefinition
+    )[]
+  } = {
+    provides: undefined,
+    requires: undefined,
+    imports: [],
+    expressions: [],
+  }
+
+  scanner.scanAllWhitespace()
+  for (;;) {
+    if (scanner.isEOF()) {
+      break
+    }
+
+    if (scanner.isWord(REQUIRES_KEYWORD)) {
+      //
+      //  REQUIRES
+      //
+      const requires = scanRequiresStatement(scanner)
+
+      if (moduleTokens.requires) {
+        moduleTokens.requires.envs.push(...requires.envs)
+      } else {
+        moduleTokens.requires = requires
+      }
+    } else if (scanner.isWord(PROVIDES_KEYWORD)) {
+      //
+      //  PROVIDES
+      //
+      if (moduleTokens.provides) {
+        throw new ParseError(
+          scanner,
+          `Provides statement already defined: ${moduleTokens.provides}`,
+        )
+      }
+
+      const provides = scanProvidesStatement(scanner)
+      moduleTokens.provides = provides
+    } else if (scanner.isWord(IMPORT_KEYWORD)) {
+      //
+      //  IMPORT
+      //
+      moduleTokens.imports.push(scanImportStatement(scanner))
+    } else if (scanner.test(isExport(TYPE_KEYWORD))) {
+      const typeExpr = scanModuleTypeDefinition(scanner, parseNext)
+      moduleTokens.expressions.push(typeExpr as Expressions.TypeDefinition)
+    } else if (scanner.test(isExport(CLASS_KEYWORD))) {
+      const classExpr = scanClass(scanner, parseNext)
+      moduleTokens.expressions.push(classExpr as Expressions.ClassDefinition)
+    } else if (scanner.test(isExport(ENUM_KEYWORD))) {
+      const enumExpr = scanEnum(scanner, parseNext)
+      moduleTokens.expressions.push(enumExpr as Expressions.EnumDefinition)
+    } else if (scanner.isWord(FN_KEYWORD)) {
+      //
+      //  HELPER
+      //
+      const helper = scanHelperDefinition(scanner, parseNext)
+      moduleTokens.expressions.push(helper as Expressions.HelperDefinition)
+    } else if (scanner.isWord(VIEW_KEYWORD)) {
+      //
+      //  <VIEW>
+      //
+      const view = scanView(scanner, parseNext)
+      moduleTokens.expressions.push(view as Expressions.ViewDefinition)
+    } else {
+      throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
+    }
+
+    scanner.scanAllWhitespace()
+  }
+
+  return new Expressions.Module(
+    [range0, scanner.input.length],
+    scanner.flushComments(),
+    moduleTokens.provides,
+    moduleTokens.requires,
+    moduleTokens.imports,
+    moduleTokens.expressions,
+  )
+}
 
 export function scanRequiresStatement(scanner: Scanner) {
   const precedingComments = scanner.flushComments()
@@ -295,7 +394,15 @@ function isClass(scanner: Scanner) {
   skipPublic(scanner)
   return scanner.is(CLASS_KEYWORD)
 }
+
 function isEnum(scanner: Scanner) {
   skipPublic(scanner)
   return scanner.is(ENUM_KEYWORD)
+}
+
+function isExport(keyword: string) {
+  return (scanner: Scanner) => {
+    scanner.scanIfWord(EXPORT_KEYWORD) && scanner.expectWhitespace()
+    return scanner.isWord(keyword)
+  }
 }
