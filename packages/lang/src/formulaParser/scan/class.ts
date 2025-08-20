@@ -90,14 +90,14 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
     if (scanner.test(isFnStart)) {
       const formula = scanNamedFormula(scanner, parseNext, 'class')
       if (memberFormulaNames.has(formula.name)) {
-        throw new ParseError(scanner, `Found duplicate function named '${formula.name}'.`)
+        throw new ParseError(scanner, `Found duplicate property '${formula.name}'.`)
       }
       memberFormulaNames.add(formula.name)
       formulas.push(formula)
     } else if (type === 'view' && scanner.test(isViewStart)) {
       const formula = scanViewFormula(scanner, 'class', parseNext, 'class')
       if (memberFormulaNames.has(formula.name)) {
-        throw new ParseError(scanner, `Found duplicate function named '${formula.name}'.`)
+        throw new ParseError(scanner, `Found duplicate property '${formula.name}'.`)
       }
       memberFormulaNames.add(formula.name)
       formulas.push(formula)
@@ -119,13 +119,13 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
       formulas.push(formula)
     } else {
       const property = scanClassProperty(scanner, parseNext)
-      if (properties.some(existing => existing.name === property.name)) {
+      if (memberFormulaNames.has(property.name)) {
         throw new ParseError(scanner, `Found duplicate property '${property}'.`)
       }
+      memberFormulaNames.add(property.name)
       properties.push(property)
     }
 
-    scanner.whereAmI('<here>')
     const shouldBreak = scanner.scanCommaOrBreak(
       CLASS_CLOSE,
       "Expected ',' separating properties in the class",

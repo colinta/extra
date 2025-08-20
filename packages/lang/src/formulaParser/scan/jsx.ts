@@ -27,6 +27,7 @@ export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
 
     scanner.scanAllWhitespace()
 
+    // scan arguments (<tag... arg=value ...>) or skip if we're already at '>'
     if (scanner.scanIfString('/>')) {
       scanner.whereAmI(`scanJsx:closer <${nameRef.name} />`)
       scanChildren = false

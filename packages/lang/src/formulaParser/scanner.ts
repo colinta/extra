@@ -182,7 +182,7 @@ export class Scanner {
   }
 
   scanIfString(search: string, whereAmI = false) {
-    for (const [offset, char] of [...search].entries()) {
+    for (const [offset, char] of Array.from(search).entries()) {
       if (this.input[this.charIndex + offset] !== char) {
         if (whereAmI) this.whereAmI(`scanIfString '${search}' ? no`)
         return false

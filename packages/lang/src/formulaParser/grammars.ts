@@ -48,7 +48,7 @@ export const PARENS_CLOSE = ')'
 export const GENERIC_OPEN = '<'
 export const GENERIC_CLOSE = '>'
 
-export const OBJECT_WORD_START = 'object'
+export const OBJECT_WORD_START = 'Object'
 export const OBJECT_OPEN = '{'
 export const OBJECT_CLOSE = '}'
 

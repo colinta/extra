@@ -196,7 +196,7 @@ export function metaClass({
     new Set(defaults),
   )
   if (moreProps) {
-    for (const [name, type] of moreProps(metaClass, classType).entries()) {
+    for (const [name, type] of moreProps(metaClass, classType)) {
       metaClass.staticProps.set(name, type)
     }
   }
@@ -218,7 +218,7 @@ export function classType({
 }) {
   const classType = new ClassInstanceType(name, parent, props ?? new Map(), formulas ?? new Map())
   if (moreFormulas) {
-    for (const [name, type] of moreFormulas(classType).entries()) {
+    for (const [name, type] of moreFormulas(classType)) {
       classType.formulas.set(name, type)
     }
   }
@@ -3460,7 +3460,7 @@ export class ClassDefinitionType extends Type {
   ) {
     super()
 
-    const formulaArgs = Array.from(returnClassType.allProps.entries()).map(([name, type]) =>
+    const formulaArgs = Array.from(returnClassType.allProps).map(([name, type]) =>
       namedArgument({
         name,
         type,
@@ -3520,7 +3520,7 @@ export class ClassInstanceType extends Type {
 
     const allProps = new Map<string, Type>(myProps)
     if (parent) {
-      for (const [key, type] of parent.allProps.entries()) {
+      for (const [key, type] of parent.allProps) {
         const existing = allProps.get(key)
         if (existing) {
           throw `Should not be: property '${key}: ${type}' is defined on ${parent.name}, but also defined on ${this.name} (with type ${existing})`
@@ -3536,11 +3536,12 @@ export class ClassInstanceType extends Type {
     }
 
     this.allProps = allProps
+    Object.defineProperty(this, 'allProps', {enumerable: false})
   }
 
   fromTypeConstructor(): ClassInstanceType {
     const props = new Map<string, Type>()
-    for (const [prop, type] of this.myProps.entries()) {
+    for (const [prop, type] of this.myProps) {
       props.set(prop, type.fromTypeConstructor())
     }
 
@@ -3576,7 +3577,7 @@ export class ClassInstanceType extends Type {
   resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<ClassInstanceType, string> {
     return mapOr(this.parent?.resolve(resolvedGenericsMap)).map(parentClass => {
       const props = new Map<string, Type>()
-      for (const [key, type] of this.myProps.entries()) {
+      for (const [key, type] of this.myProps) {
         const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)
 
         if (resolved.isErr()) {
@@ -4247,7 +4248,7 @@ function compatibleWithBothObjects(lhs: ObjectType, rhs: ObjectType): ObjectType
     }
   }
 
-  for (const [name, lhArg] of lhsNamedArguments.entries()) {
+  for (const [name, lhArg] of lhsNamedArguments) {
     const rhArg = rhsNamedArguments.get(name)
     if (!rhArg) {
       return

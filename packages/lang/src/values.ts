@@ -175,8 +175,8 @@ export abstract class Value {
   }
 
   /**
-   * Returns a "human readable" string readable, e.g. numbers get commas and decimal
-   * points added.
+   * Returns a "human readable" string. Roughly speaking it's JSON, but not
+   * formally. `Set` and `Dict` include the constructor name, for example.
    */
   abstract printable(): string
 
@@ -924,7 +924,7 @@ export class ObjectValue extends Value {
       const type = value.getType()
       props.push({is: 'positional', type})
     }
-    for (const [name, value] of this.namedValues.entries()) {
+    for (const [name, value] of this.namedValues) {
       const type = value.getType()
       props.push({is: 'named', name, type})
     }
@@ -955,7 +955,7 @@ export class ObjectValue extends Value {
       }
     }
 
-    for (const [name, lhs] of this.namedValues.entries()) {
+    for (const [name, lhs] of this.namedValues) {
       const rhs = value.namedValues.get(name)
       if (rhs === undefined || !lhs.isEqual(rhs)) {
         return false
@@ -976,7 +976,7 @@ export class ObjectValue extends Value {
 
   toLisp() {
     const tupleEntries = this.tupleValues
-    const namedEntries = Array.from(this.namedValues.entries())
+    const namedEntries = Array.from(this.namedValues)
     const tupleCode = tupleEntries.map(value => value.toLisp()).join(' ')
     const namedCode = namedEntries.map(([name, value]) => `(${name}: ${value.toLisp()})`).join(' ')
     return `{${tupleCode}${tupleCode && namedCode ? ' ' : ''}${namedCode}}`
@@ -984,7 +984,7 @@ export class ObjectValue extends Value {
 
   toCode() {
     const tupleEntries = this.tupleValues
-    const namedEntries = Array.from(this.namedValues.entries())
+    const namedEntries = Array.from(this.namedValues)
     const tupleCode = tupleEntries.map(value => value.toCode()).join(', ')
     const namedCode = namedEntries.map(([name, value]) => `${name}: ${value.toCode()}`).join(', ')
     return `{${tupleCode}${tupleCode && namedCode ? ', ' : ''}${namedCode}}`
@@ -992,7 +992,7 @@ export class ObjectValue extends Value {
 
   printable() {
     const tupleEntries = this.tupleValues
-    const namedEntries = Array.from(this.namedValues.entries())
+    const namedEntries = Array.from(this.namedValues)
     const tupleCode = tupleEntries.map(value => value.printable()).join(', ')
     const namedCode = namedEntries
       .map(([name, value]) => `${name}: ${value.printable()}`)
@@ -1190,7 +1190,7 @@ export class DictValue extends Value {
       return false
     }
 
-    for (const [name, lhValue] of this.values.entries()) {
+    for (const [name, lhValue] of this.values) {
       const rhValue = value.values.get(name)
       if (rhValue === undefined) {
         return false
@@ -1212,36 +1212,37 @@ export class DictValue extends Value {
 
   toLisp() {
     if (this.values.size === 0) {
-      return 'Set()'
+      return 'Dict()'
     }
 
-    const values = [...this.values.entries()]
+    const values = Array.from(this.values)
       .map(([name, value]) => `(${name}: ${value.toLisp()})`)
       .join(' ')
-    return `Set(${values})`
+    return `Dict(${values})`
   }
 
   toCode() {
     if (this.values.size === 0) {
-      return 'Set()'
+      return 'Dict()'
     }
 
-    const values = [...this.values.entries()].map(([name, value]) => `${name}: ${value}`).join(', ')
-    return `Set(${values})`
+    const values = Array.from(this.values)
+      .map(([name, value]) => `${name}: ${value}`)
+      .join(', ')
+    return `Dict(${values})`
   }
 
   printable() {
-    const values = [...this.values.entries()]
+    const values = Array.from(this.values)
       .map(([name, value]) => `${name}: ${value.printable()}`)
       .join(', ')
-    return `Set(${values})`
+    return `Dict(${values})`
   }
 
   viewPrintable() {
-    if (this.values.size === 0) {
-      return ''
-    }
-    return this.printable()
+    return Array.from(this.values)
+      .map(([name, value]) => `${name}: ${value.viewPrintable()}`)
+      .join('\n')
   }
 
   static _props: Map<string, (value: DictValue) => Value> = new Map([])
@@ -1353,10 +1354,11 @@ export class SetValue extends Value {
   }
 
   viewPrintable() {
-    if (this.values.length === 0) {
-      return ''
+    let code = ''
+    for (const val of this.iterate()) {
+      code += val.viewPrintable() + '\n'
     }
-    return this.printable()
+    return code
   }
 
   isTruthy() {
@@ -1602,7 +1604,7 @@ export class EnumValue extends Value {
     if (value.name !== this.name) {
       return false
     }
-    for (const [key, thisValue] of this.args.entries()) {
+    for (const [key, thisValue] of this.args) {
       const otherValue = value.args.get(key)
       if (otherValue === undefined || !thisValue.isEqual(otherValue)) {
         return false
@@ -1773,7 +1775,7 @@ export class ClassInstanceValue extends Value {
   ) {
     super()
     this.formulas = new Map()
-    for (const [name, formula] of formulas.entries()) {
+    for (const [name, formula] of formulas) {
       // TODO: change 'formula' to 'new BoundFormulaValue(this, formula)'
       this.formulas.set(name, formula)
     }

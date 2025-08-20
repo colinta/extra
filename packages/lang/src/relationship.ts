@@ -559,10 +559,10 @@ function collapsedTypeRuntimeAdditions(runtime: TypeRuntime) {
   const relationshipsMap = new Map(parentAdditions.relationships)
 
   const runtimeAdditions = runtime.additions()
-  for (const [id, type] of runtimeAdditions.types.entries()) {
+  for (const [id, type] of runtimeAdditions.types) {
     types.set(id, type)
   }
-  for (const [id, relationships] of runtimeAdditions.relationships.entries()) {
+  for (const [id, relationships] of runtimeAdditions.relationships) {
     const existing = relationshipsMap.get(id) ?? []
     relationshipsMap.set(id, existing.concat(relationships))
   }

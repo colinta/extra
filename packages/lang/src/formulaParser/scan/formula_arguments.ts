@@ -134,7 +134,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
       if (isPositional && spreadPositionalArg !== undefined) {
         throw new ParseError(
           scanner,
-          `Found positional argument '#${argName.name}' after '${SPLAT_OP}#${spreadPositionalArg}'.`,
+          `Found positional argument '# ${argName.name}' after '${SPLAT_OP}# ${spreadPositionalArg}'.`,
           argRange0,
         )
       }

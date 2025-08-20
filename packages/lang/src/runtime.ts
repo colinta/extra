@@ -252,7 +252,7 @@ export class MutableTypeRuntime {
   addNamespaceTypes(namespace: string, types: Map<string, Type>) {
     const existing = this.namespaces.get(namespace)
     if (existing) {
-      for (const [name, type] of types.entries()) {
+      for (const [name, type] of types) {
         existing.set(name, type)
       }
     } else {

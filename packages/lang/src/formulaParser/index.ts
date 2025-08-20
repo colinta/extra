@@ -605,8 +605,10 @@ function parseInternal(
       } else if (scanner.isWord(OBJECT_WORD_START)) {
         processExpression(scanObject(scanner, parseNext, 'object-word'))
       } else if (scanner.isWord(SET_WORD_START)) {
+        // TODO: set(a,b) == #{a,b}
         processExpression(scanSet(scanner, parseNext))
       } else if (scanner.isWord(DICT_WORD_START)) {
+        // TODO: dict(a: b) == #[a: b]
         processExpression(scanDict(scanner, parseNext))
       } else if (isUnaryOperatorChar(scanner.char) || isUnaryOperatorName(scanner.remainingInput)) {
         processOperator(scanUnaryOperator(scanner))

@@ -97,10 +97,13 @@ export function isRuntimeError(error: any): error is RuntimeError {
  * Each Expression represents a section of code, like a number, reference, or
  * compound expressions like Arrays, Objects, etc.
  *
- * Expressions can be stringified (toCode()), or if given a runtime they can
- * determine their Type (getType()) or Value (eval()). Both these functions can
- * result in an error – though it's desirable that if getType() returns a value,
- * eval() should also return a value.
+ * Expressions can be stringified (`toCode()`), or if given a runtime they can
+ * determine their Type (`getType(TypeRuntime)`) or Value (`eval(ValueRuntime)`)
+ * or View (`render(ValueRuntime)`).
+ *
+ * All these functions can result in an error. The contract is that if
+ * `getType()` returns a value (ie type checking is successful), `eval()` will
+ * return a value.
  */
 export abstract class Expression {
   resolvedType: Types.Type | undefined
@@ -187,6 +190,10 @@ export abstract class Expression {
   getAsTypeExpression(_runtime: TypeRuntime): GetTypeResult {
     return err(new RuntimeError(this, `Invalid argument type ${this}`))
   }
+  /**
+   * Returns a Value for the expression. Literals return their literal value,
+   * Operations perform their operation, etc.
+   */
   abstract eval(runtime: ValueRuntime): GetValueResult
 
   /**
@@ -638,6 +645,15 @@ export class Reference extends Identifier {
       return ok(type)
     }
 
+    if (runtime.getStateType(this.name)) {
+      return err(
+        new ReferenceRuntimeError(
+          this,
+          `Cannot get type of variable named '${this.name}', did you mean '@${this.name}'?`,
+        ),
+      )
+    }
+
     return err(new ReferenceRuntimeError(this, `Cannot get type of variable named '${this.name}'`))
   }
 
@@ -656,7 +672,7 @@ export class Reference extends Identifier {
     return err(new ReferenceRuntimeError(this, `Cannot get value of variable named '${this.name}'`))
   }
 
-  replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
+  replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
     let nextRuntime = new MutableTypeRuntime(runtime)
     nextRuntime.replaceTypeByName(this.name, withType)
     return ok(nextRuntime)
@@ -694,10 +710,20 @@ export class StateReference extends Reference {
     return err(new RuntimeError(this, `Cannot get value of state variable '@${this.name}'`))
   }
 
-  replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
-    let nextRuntime = new MutableTypeRuntime(runtime)
-    nextRuntime.addStateType(this.name, withType)
-    return ok(nextRuntime)
+  replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
+    const thisType = runtime.getThisType()
+    if (!thisType) {
+      return err(new RuntimeError(this, `Cannot get value of 'this'`))
+    }
+
+    return thisType
+      .replacingProp(this.name, withType)
+      .mapError(message => new RuntimeError(this, message))
+      .map(type => {
+        let nextRuntime = new MutableTypeRuntime(runtime)
+        nextRuntime.setThisType(type)
+        return nextRuntime
+      })
   }
 }
 
@@ -850,8 +876,8 @@ export class ArrayExpression extends Expression {
   }
 
   // SpreadArgument has to be special cased - it returns an array that should
-  // be flattened
-  eval(runtime: ValueRuntime) {
+  // be flattened. All arguments could be an instance of isInclusionOp()
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ArrayValue> {
     return mapAll(
       this.values.map((valueExpr): GetRuntimeResult<Values.Value[]> => {
         if (valueExpr instanceof SpreadArrayArgument) {
@@ -878,12 +904,13 @@ export class ArrayExpression extends Expression {
               }
             })
           }
+
           return valueExpr.eval(runtime).map(value => [value])
         }
       }),
     )
       .map(values => values.flat())
-      .map(values => Values.array(values))
+      .map(values => new Values.ArrayValue(values))
   }
 }
 
@@ -1319,11 +1346,11 @@ export class NamespaceAccessExpression extends TypeExpression {
     }
   }
 
-  getType(): GetTypeResult {
+  getType() {
     return err(new RuntimeError(this, 'NamespaceAccessExpression has no intrinsic type'))
   }
 
-  eval(): GetValueResult {
+  eval() {
     return err(new RuntimeError(this, 'NamespaceAccessExpression cannot be evaluated'))
   }
 }
@@ -1467,7 +1494,7 @@ export class ObjectTypeExpression extends TypeExpression {
   }
 
   getType(runtime: TypeRuntime) {
-    return err(new RuntimeError(this, 'ObjectTypeExpression cannot be evaluated'))
+    return err(new RuntimeError(this, 'ObjectTypeExpression has no intrinsic type'))
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
@@ -1518,7 +1545,7 @@ export class ArrayTypeExpression extends TypeExpression {
   }
 
   getType(runtime: TypeRuntime) {
-    return err(new RuntimeError(this, 'ArrayTypeExpression cannot be evaluated'))
+    return err(new RuntimeError(this, 'ArrayTypeExpression has no intrinsic type'))
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
@@ -1561,7 +1588,7 @@ export class DictTypeExpression extends TypeExpression {
   }
 
   getType(runtime: TypeRuntime) {
-    return err(new RuntimeError(this, 'DictTypeExpression cannot be evaluated'))
+    return err(new RuntimeError(this, 'DictTypeExpression has no intrinsic type'))
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
@@ -1598,7 +1625,7 @@ export class SetTypeExpression extends TypeExpression {
   }
 
   getType(runtime: TypeRuntime) {
-    return err(new RuntimeError(this, 'SetTypeExpression cannot be evaluated'))
+    return err(new RuntimeError(this, 'SetTypeExpression has no intrinsic type'))
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
@@ -1612,6 +1639,7 @@ export class SetTypeExpression extends TypeExpression {
  * An example will make the most sense:
  *
  *     type TupleType<T, U> = { T, U }
+ *
  *     fn intStringTuple(): TupleType(Int, String) => …
  *                          ^^^^^^^^^^^^^^^^^^^^^^
  *     fn anotherExample(): TupleType(Array(Int), String?) => …
@@ -1688,7 +1716,7 @@ export abstract class ArgumentExpression extends Expression {
   }
 
   provides(): Set<string> {
-    return new Set([this.aliasRef.name])
+    return new Set([this.nameRef.name])
   }
 
   getType(): GetTypeResult {
@@ -1767,7 +1795,7 @@ export abstract class Argument extends Expression {
       return value.tupleValues
         .map(value => [undefined, value] as [string | undefined, Values.Value])
         .concat(
-          [...value.namedValues.entries()].map(
+          Array.from(value.namedValues).map(
             ([alias, value]) => [alias, value] as [string | undefined, Values.Value],
           ),
         )
@@ -2425,12 +2453,20 @@ export class SetConstructorIdentifier extends ReservedWord {
 export class ThisIdentifier extends ReservedWord {
   readonly name = 'this'
 
-  getType(): GetTypeResult {
-    return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
+  getType(runtime: TypeRuntime): GetTypeResult {
+    const thisType = runtime.getThisType()
+    if (!thisType) {
+      return err(new RuntimeError(this, '`this` is not available in this context'))
+    }
+    return ok(thisType)
   }
 
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
+  eval(runtime: ValueRuntime): GetValueResult {
+    const thisType = runtime.getThisValue()
+    if (!thisType) {
+      return err(new RuntimeError(this, '`this` is not available in this context'))
+    }
+    return ok(thisType)
   }
 }
 
@@ -2547,7 +2583,7 @@ export class BooleanTypeExpression extends TypeIdentifier {
   }
 
   getType() {
-    return err(new RuntimeError(this, 'FloatTypeExpression cannot be evaluated'))
+    return err(new RuntimeError(this, 'BooleanTypeExpression has no intrinsic type'))
   }
 
   eval(): GetValueResult {
@@ -2583,7 +2619,7 @@ export class FloatTypeExpression extends TypeIdentifier {
   }
 
   getType() {
-    return err(new RuntimeError(this, 'FloatTypeExpression cannot be evaluated'))
+    return err(new RuntimeError(this, 'FloatTypeExpression has no intrinsic type'))
   }
 
   eval(): GetValueResult {
@@ -2619,7 +2655,7 @@ export class IntTypeExpression extends TypeIdentifier {
   }
 
   getType() {
-    return err(new RuntimeError(this, 'IntTypeExpression cannot be evaluated'))
+    return err(new RuntimeError(this, 'IntTypeExpression has no intrinsic type'))
   }
 
   eval(): GetValueResult {
@@ -2655,7 +2691,7 @@ export class StringTypeExpression extends TypeIdentifier {
   }
 
   getType() {
-    return err(new RuntimeError(this, 'StringTypeExpression cannot be evaluated'))
+    return err(new RuntimeError(this, 'StringTypeExpression has no intrinsic type'))
   }
 
   eval(): GetValueResult {
@@ -2679,7 +2715,7 @@ export class ViewTypeExpression extends TypeIdentifier {
   }
 
   getType() {
-    return err(new RuntimeError(this, 'ViewTypeExpression cannot be evaluated'))
+    return err(new RuntimeError(this, 'ViewTypeExpression has no intrinsic type'))
   }
 
   eval(): GetValueResult {
@@ -3681,7 +3717,7 @@ export class ArgumentsList extends Expression {
   }
 
   getType(): GetTypeResult {
-    return err(new RuntimeError(this, 'ArgumentsList do not have a type'))
+    return err(new RuntimeError(this, 'ArgumentsList has no intrinsic type'))
   }
 
   eval(): GetValueResult {
@@ -6722,7 +6758,7 @@ export class MatchArrayExpression extends MatchExpression {
       const nextRuntimeResult = this.remainingExpr.evalWithSubjectReturningRuntime(
         nextRuntime,
         this,
-        Values.array(remainingValues),
+        new Values.ArrayValue(remainingValues),
       )
       if (nextRuntimeResult.isErr()) {
         return err(nextRuntimeResult.error)
