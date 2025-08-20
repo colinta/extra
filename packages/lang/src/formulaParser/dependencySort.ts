@@ -4,12 +4,12 @@ import {difference} from './set'
 import {type GetRuntimeResult} from './types'
 
 function findChain(
-  needles: Set<string>,
+  needles: string[],
   haystack: string,
   visited: Set<string>,
-  circular: Map<string, Set<string>>,
+  circular: Map<string, string[]>,
 ): Set<string> | undefined {
-  if (needles.size === 0) {
+  if (!needles.length) {
     return
   }
 
@@ -23,7 +23,7 @@ function findChain(
     }
 
     visited.add(needle)
-    const next = circular.get(needle) ?? new Set()
+    const next = circular.get(needle) ?? []
     const found = findChain(next, haystack, visited, circular)
     if (found) {
       return new Set([needle, ...found])
@@ -39,25 +39,27 @@ export function dependencySort<T extends Expression>(
   let expressionDeps: {
     name: string
     expr: T
-    deps: Set<string>
-  }[] = expressions.map(([name, expr]) => ({name, expr, deps: expr.dependencies()}))
-  const locallyResolved = expressionDeps.map(({name}) => name)
+    deps: string[]
+  }[] = expressions.map(([name, expr]) => ({name, expr, deps: Array.from(expr.dependencies())}))
+  // locallyResolved are names that are being provided locally, which *may also*
+  // be provided externally, but in this case the local override "wins" (we
+  // should resolve it and use it locally, rather than use the external)
+  const locallyResolved = new Set(expressionDeps.map(({name}) => name))
 
   let nextIter: typeof expressionDeps = []
   const orderedExpressions: [string, T][] = []
   const resolved = new Set<string>()
   while (expressionDeps.length) {
-    const circular = new Map<string, Set<string>>()
+    const circular = new Map<string, string[]>()
     for (const {name, expr, deps} of expressionDeps) {
-      if (
-        [...deps].every(
-          dep => resolved.has(dep) || (ignoreExternal(dep) && !locallyResolved.includes(dep)),
-        )
-      ) {
+      const unresolvedDeps = deps.filter(
+        dep => !resolved.has(dep) && (!ignoreExternal(dep) || locallyResolved.has(dep)),
+      )
+      if (!unresolvedDeps.length) {
         resolved.add(name)
         orderedExpressions.push([name, expr])
       } else {
-        circular.set(name, deps)
+        circular.set(name, unresolvedDeps)
         nextIter.push({name, expr, deps})
       }
     }
@@ -67,7 +69,7 @@ export function dependencySort<T extends Expression>(
     if (expressionDeps.length === nextIter.length) {
       const firstName = expressionDeps[0].name
       const dependencies = expressionDeps[0].expr.dependencies()
-      const chain = findChain(circular.get(firstName) ?? new Set(), firstName, new Set(), circular)
+      const chain = findChain(circular.get(firstName) ?? [], firstName, new Set(), circular)
       if (chain && chain.size) {
         return err(
           new RuntimeError(
