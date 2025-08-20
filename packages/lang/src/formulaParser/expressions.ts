@@ -7676,7 +7676,7 @@ export class Module extends Expression {
     return code
   }
 
-  getType(runtime: TypeRuntime): GetTypeResult {
+  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ModuleType> {
     if (this.providesStmt) {
       throw new Error('TODO: provides')
     }
@@ -7697,18 +7697,20 @@ export class Module extends Expression {
       return err(sorted.error)
     }
 
+    const nextRuntime = new MutableTypeRuntime(runtime)
     return mapAll(
-      sorted
-        .get()
-        .map(([name, expr]) =>
-          expr.getType(runtime).map(value => [name, value] as [string, Types.Type]),
-        ),
+      sorted.get().map(([name, expr]) =>
+        expr.getType(nextRuntime).map(type => {
+          nextRuntime.addLocalType(name, type)
+          return [name, type] as [string, Types.Type]
+        }),
+      ),
     ).map(typeTypes => {
       return new Types.ModuleType(new Map(typeTypes))
     })
   }
 
-  eval(runtime: ValueRuntime): GetValueResult {
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ModuleValue> {
     if (this.providesStmt) {
       throw new Error('TODO: provides')
     }
@@ -7729,16 +7731,16 @@ export class Module extends Expression {
       return err(sorted.error)
     }
 
+    const nextRuntime = new MutableValueRuntime(runtime)
     return mapAll(
-      sorted
-        .get()
-        .map(([name, expr]) =>
-          expr.eval(runtime).map(value => [name, value] as [string, Values.Value]),
-        ),
+      sorted.get().map(([name, expr]) =>
+        expr.eval(nextRuntime).map(value => {
+          nextRuntime.addLocalValue(name, value)
+          return [name, value] as [string, Values.Value]
+        }),
+      ),
     ).map(values => {
-      // TODO: return Module.
-      // return new Values.ModuleValue(new Map(values))
-      return values[0][1]
+      return new Values.ModuleValue(new Map(values))
     })
   }
 }
