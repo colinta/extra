@@ -408,7 +408,7 @@ Set( --comment1
       --comment8
       |> --comment9
       --comment10
-      # --comment11
+      #pipe --comment11
       --comment12
       + --comment13
       --comment14
@@ -917,7 +917,7 @@ import
       --comment5
       FooBar --comment6
       --comment7
-      : --comment8
+      only --comment8
         --comment9
         { --comment10
           bar --comment11
@@ -1023,7 +1023,7 @@ import
   --comment1
   Foo  --comment2
     --comment3
-    : --comment4
+    only --comment4
       --comment5
       { --comment6
         bar --comment7

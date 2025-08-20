@@ -155,13 +155,13 @@ export class MutableTypeRuntime {
   }
 
   /**
-   * The type of the `#` within a pipe operation `a |> #`
+   * The type of the `#pipe` within a pipe operation `a |> #pipe`
    *
    * @example
-   *     foo |> #
+   *     foo |> #pipe
    */
   getPipeType(): Type | undefined {
-    return this.getLocalType('#')
+    return this.getLocalType('#pipe')
   }
 
   hasNamespace(namespace: string): boolean {
@@ -212,7 +212,7 @@ export class MutableTypeRuntime {
   }
 
   setPipeType(type: Type) {
-    this.addLocalType('#', type)
+    this.addLocalType('#pipe', type)
   }
 
   addRelationshipFormula(assignedRelationship: AssignedRelationship) {
@@ -300,7 +300,7 @@ export class MutableValueRuntime extends MutableTypeRuntime {
   }
 
   getPipeValue(): Value | undefined {
-    return this.getLocalValue('#')
+    return this.getLocalValue('#pipe')
   }
 
   addLocalValue(name: string, value: Value) {
@@ -317,6 +317,6 @@ export class MutableValueRuntime extends MutableTypeRuntime {
   }
 
   setPipeValue(value: Value) {
-    this.addLocalValue('#', value)
+    this.addLocalValue('#pipe', value)
   }
 }

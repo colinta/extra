@@ -44,15 +44,10 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case 'switch':
     case 'case':
     case 'infer':
-    case 'fallback':
     case 'null':
     case 'true':
     case 'false':
     case 'this':
-    case 'object':
-    case 'array':
-    case 'dict':
-    case 'set':
     case 'Boolean':
     case 'Float':
     case 'Int':
@@ -211,9 +206,6 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
       break
     case 'infer':
       identifier = new Expressions.InferIdentifier(range, scanner.flushComments())
-      break
-    case 'fallback':
-      identifier = new Expressions.FallbackIdentifier(range, scanner.flushComments())
       break
     case 'null':
       identifier = new Expressions.NullExpression(range, scanner.flushComments())

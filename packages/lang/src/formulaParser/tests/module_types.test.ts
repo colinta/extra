@@ -125,19 +125,19 @@ export class User<T> {
     @data: T
 
     fn name() =>
-        @first-name <> ' ' <> @last-name
+        @first-name .. ' ' .. @last-name
     static default() =>
         User(first-name: '', last-name: '', data: 0)
 }
 `,
-      "((export class User) <T> ((@first-name: `String`) (@last-name: `String`) (@data: T)) ((fn name() => (<> (<> @first-name ' ') @last-name)) (static default() => (fn User ((first-name: '') (last-name: '') (data: 0))))))",
+      "((export class User) <T> ((@first-name: `String`) (@last-name: `String`) (@data: T)) ((fn name() => (.. (.. @first-name ' ') @last-name)) (static default() => (fn User ((first-name: '') (last-name: '') (data: 0))))))",
       `export class User<T> {
   @first-name: String
   @last-name: String
   @data: T
 
   fn name() =>
-    @first-name <> ' ' <> @last-name
+    @first-name .. ' ' .. @last-name
 
   static default() =>
     User(first-name: '', last-name: '', data: 0)
@@ -181,12 +181,12 @@ class User {
   fn fullname(): String =>
     if (this.first-name and this.last-name) {
     then:
-      this.first-name <> this.last-name
+      this.first-name .. this.last-name
     else:
       this.first-name or this.last-name or '<no name>'
     }
 }`,
-      "((class User) ((@first-name: `String` '') (@last-name: (`String(length: >=1)` | `null`)) (@age: `Int(>=0)` 0)) ((fn fullname() : `String` => (if ((and (. `this` first-name) (. `this` last-name))) { (then: (<> (. `this` first-name) (. `this` last-name))) (else: (or (or (. `this` first-name) (. `this` last-name)) '<no name>')) }))))",
+      "((class User) ((@first-name: `String` '') (@last-name: (`String(length: >=1)` | `null`)) (@age: `Int(>=0)` 0)) ((fn fullname() : `String` => (if ((and (. `this` first-name) (. `this` last-name))) { (then: (.. (. `this` first-name) (. `this` last-name))) (else: (or (or (. `this` first-name) (. `this` last-name)) '<no name>')) }))))",
     ]),
     c([
       `\
@@ -198,12 +198,12 @@ class User {
   fn fullname(): String =>
     if (@first-name and @last-name) {
     then:
-      @first-name <> @last-name
+      @first-name .. @last-name
     else:
       @first-name or @last-name or '<no name>'
     }
 }`,
-      "((class User) ((@first-name: `String` '') (@last-name: (`String(length: >=1)` | `null`)) (@age: `Int(>=0)` 0)) ((fn fullname() : `String` => (if ((and @first-name @last-name)) { (then: (<> @first-name @last-name)) (else: (or (or @first-name @last-name) '<no name>')) }))))",
+      "((class User) ((@first-name: `String` '') (@last-name: (`String(length: >=1)` | `null`)) (@age: `Int(>=0)` 0)) ((fn fullname() : `String` => (if ((and @first-name @last-name)) { (then: (.. @first-name @last-name)) (else: (or (or @first-name @last-name) '<no name>')) }))))",
     ]),
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse class definition '${formula}'`, () => {

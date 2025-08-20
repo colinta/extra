@@ -22,11 +22,11 @@ describe('function parser', () => {
       c(['!a or b', '(or (not a) b)', 'not a or b']),
       c(['not .a or -@b and $c', '(or (not (. a)) (and (- @b) ($ c)))']),
       c(['a <=> b', '(<=> a b)']),
-      c(['a |> $#', '(|> a ($ `#`))']),
+      c(['a |> $#pipe', '(|> a ($ `#pipe`))']),
       c(["[-1, 2, 3] |> join(', ')", "(|> [-1 2 3] (fn join (', ')))"]),
       c([
-        "[-1, 2, 3] |> join(#, ', ') |> foo(#)",
-        "(|> (|> [-1 2 3] (fn join (`#` ', '))) (fn foo (`#`)))",
+        "[-1, 2, 3] |> join(#pipe, ', ') |> foo(#pipe)",
+        "(|> (|> [-1 2 3] (fn join (`#pipe` ', '))) (fn foo (`#pipe`)))",
       ]),
       c(['doeet()', '(fn doeet ())']),
       c(['doeet()[one]', '([] (fn doeet ()) one)']),
@@ -140,7 +140,7 @@ describe('function parser', () => {
 
   describe('invalid', () => {
     cases<[string, string]>(
-      c(['# |> foo()', "Unexpected token '#'"]),
+      c(['#pipe |> foo()', "Unexpected token '#pipe'"]),
       c(['1 + + 1', "Unexpected token '+'"]),
     ).run(([formula, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not parse ${formula}`, () => {

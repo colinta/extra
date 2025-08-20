@@ -29,7 +29,7 @@ import {union} from './formulaParser/set'
  * Operations:
  *     `-foo` - negate
  *     `foo + bar` - addition
- *     `foo <> bar` - string concatenation
+ *     `foo .. bar` - string concatenation
  *     `foo ++ bar` - array concatenation
  *
  * References:
@@ -346,7 +346,7 @@ export const relationshipFormula = {
       return `${this.toString(rel.lhs)} + ${this.toString(rel.rhs)}`
     }
     if (rel.type === 'string-concat') {
-      return `${this.toString(rel.lhs)} <> ${this.toString(rel.rhs)}`
+      return `${this.toString(rel.lhs)} .. ${this.toString(rel.rhs)}`
     }
     if (rel.type === 'array-concat') {
       return `${this.toString(rel.lhs)} ++ ${this.toString(rel.rhs)}`
@@ -2009,18 +2009,18 @@ function _simplifyTruthyRelationships(relationship: TruthyRelationship): Assigne
   }
 
   // TODO: _simplifyTruthyRelationships string-concat
-  // !!(x <> "") => x != ''
-  // !!(x <> "test") => (always true) []
-  // !(x <> "") => x == ''
-  // !(x <> "test") => (always false) []
+  // !!(x .. "") => x != ''
+  // !!(x .. "test") => (always true) []
+  // !(x .. "") => x == ''
+  // !(x .. "test") => (always false) []
   if (isStringConcat(relationship.formula)) {
   }
 
   // TODO: _simplifyTruthyRelationships string-concat
-  // !!(x <> []) => x != []
-  // !!(x <> "test") => (always true) []
-  // !(x <> []) => x == []
-  // !(x <> "test") => (always false) []
+  // !!(x .. []) => x != []
+  // !!(x .. "test") => (always true) []
+  // !(x .. []) => x == []
+  // !(x .. "test") => (always false) []
   if (isArrayConcat(relationship.formula)) {
   }
 

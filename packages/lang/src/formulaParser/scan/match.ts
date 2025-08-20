@@ -13,6 +13,7 @@ import {
   IGNORE_TOKEN,
   isStringStartChar,
   AS_KEYWORD,
+  STRING_CONCAT_OPERATOR,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -51,10 +52,10 @@ import {scanStringLiteral} from './string'
  *   String:
  *     "" -- ❌ empty string - just use ==
  *     "test" -- ❌ string literal - just use ==
- *     "prefix" <> foo -- string starts with "prefix", remainder assigned
- *     foo <> "suffix" -- string ends with "suffix", prefix assigned
- *     "<<" <> foo <> ">>" -- string starts with "<<", ends with ">>", middle assigned
- *     "<<" <> foo <> "--" <> ">>" -- string starts with "<<", ends with ">>", middle assigned
+ *     "prefix" .. foo -- string starts with "prefix", remainder assigned
+ *     foo .. "suffix" -- string ends with "suffix", prefix assigned
+ *     "<<" .. foo .. ">>" -- string starts with "<<", ends with ">>", middle assigned
+ *     "<<" .. foo .. "--" .. ">>" -- string starts with "<<", ends with ">>", middle assigned
  *   Regex:
  *     /foo/ -- regex literal
  *     /foo/i -- regex literal with flags
@@ -324,11 +325,11 @@ function scanMatchString(scanner: Scanner) {
 
     scanner.scanAllWhitespace()
 
-    if (!scanner.is('<>')) {
+    if (!scanner.is(STRING_CONCAT_OPERATOR)) {
       break
     }
 
-    scanner.expectString('<>')
+    scanner.expectString(STRING_CONCAT_OPERATOR)
     scanner.scanAllWhitespace()
   }
 
@@ -474,7 +475,7 @@ function isReferenceThenConcat(scanner: Scanner) {
   }
 
   scanner.scanSpaces()
-  return scanner.is('<>')
+  return scanner.is(STRING_CONCAT_OPERATOR)
 }
 
 function isNamedArg(scanner: Scanner) {

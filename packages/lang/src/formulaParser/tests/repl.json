@@ -320,7 +320,7 @@
       "variables": [
         [
           "foo",
-          "fn(#a: Int, b: String) => b <> $a"
+          "fn(#a: Int, b: String) => b .. $a"
         ],
         [
           "tuple",

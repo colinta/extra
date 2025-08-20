@@ -64,11 +64,11 @@ export const HIGHEST_PRECEDENCE = 100
 
 export const SPREAD_OPERATOR = '...'
 
-export const BINARY_ASSIGN_SYMBOLS = ['&=', '|=', '^=', '::=', '++=', '<>=']
+export const BINARY_ASSIGN_SYMBOLS = ['&=', '|=', '^=', '::=', '++=', '..=']
   .concat(['~~=', '<<=', '>>=', '+=', '-=', '*=', '/=', '//=', '%=', '**='])
   .concat(['and=', 'or='])
 export const BINARY_OP_SYMBOLS = ['=', '|>', '?|>', '??', '^', '|', '&']
-  .concat(['==', '!=', '>', '>=', '<', '<=', '<=>', '::', '++', '<>', '~~'])
+  .concat(['==', '!=', '>', '>=', '<', '<=', '<=>', '::', '++', '..', '~~'])
   .concat(['...', '<..', '..<', '<.<', '<<', '>>', '+', '-', '*', '/', '//'])
   .concat(['%', '**', '.', '?.', '&&', '||', '!?', '?!', '≤', '≥', '≠'])
 
@@ -102,7 +102,7 @@ const PRECEDENCE = {
     '<=>': 12,
     '::': 13,
     '++': 13,
-    '<>': 13,
+    '..': 13,
     '~~': 13,
     '...': 13,
     '<..': 13,
@@ -435,7 +435,7 @@ abstract class BinaryOperator extends OperatorOperation {
 
   /**
    * The RHS type can be affected in many ways by the evaluation of the LHS.
-   * - |>/?|> pipe operators provide the LHS type as the # type
+   * - |>/?|> pipe operators provide the LHS type as the #pipe type
    * - `and / or` use the truthy/falsey type of the lhs in the evaluation of the RHS
    */
   rhsType(
@@ -2132,7 +2132,7 @@ addBinaryOperator({
 })
 
 class StringConcatenationOperator extends BinaryOperator {
-  symbol = '<>'
+  symbol = '..'
 
   relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
     const lhsFormula = this.args[0].relationshipFormula(runtime)
@@ -2182,8 +2182,8 @@ class StringConcatenationOperator extends BinaryOperator {
 
 addBinaryOperator({
   name: 'string-concatenation',
-  symbol: '<>',
-  precedence: PRECEDENCE.BINARY['<>'],
+  symbol: '..',
+  precedence: PRECEDENCE.BINARY['..'],
   associativity: 'left',
   create(
     range: [number, number],

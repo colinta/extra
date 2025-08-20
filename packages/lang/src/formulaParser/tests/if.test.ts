@@ -145,11 +145,11 @@ elseif (b):
   4
 else:
   '4'
-  <>
+  ..
   '5'
 }
 `,
-        "(if (a) { (then: (+ 1 2)) (fn `elseif` (b) { (+ 3 4) }) (else: (<> '4' '5')) })",
+        "(if (a) { (then: (+ 1 2)) (fn `elseif` (b) { (+ 3 4) }) (else: (.. '4' '5')) })",
         `\
 if (a) {
 then:
@@ -157,7 +157,7 @@ then:
 elseif (b):
   3 + 4
 else:
-  '4' <> '5'
+  '4' .. '5'
 }`,
       ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
@@ -225,7 +225,7 @@ else:
         `\
 if (a) {
 then:
-  a <> '!'
+  a .. '!'
 else:
   b
 }
@@ -239,7 +239,7 @@ else:
         `\
 if (a) {
 then:
-  a <> '!'
+  a .. '!'
 else:
   b
 }
@@ -253,7 +253,7 @@ else:
         `\
 if (a) {
 then:
-  a <> a
+  a .. a
 else:
   b
 }

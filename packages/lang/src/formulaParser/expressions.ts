@@ -2322,8 +2322,8 @@ export class IgnorePlaceholder extends ReservedWord {
   readonly name = '_'
 }
 
-export class FallbackIdentifier extends ReservedWord {
-  readonly name = 'fallback'
+export class DefaultArgumentIdentifier extends ReservedWord {
+  readonly name = '#default'
 }
 
 export class InferIdentifier extends ReservedWord {
@@ -2728,7 +2728,7 @@ export class ViewTypeExpression extends TypeIdentifier {
 //|
 
 export class PipePlaceholderExpression extends Expression {
-  static Symbol = '#'
+  static Symbol = '#pipe'
 
   toLisp() {
     return '`' + PipePlaceholderExpression.Symbol + '`'
@@ -6139,22 +6139,22 @@ export class MatchRegexLiteral extends MatchLiteral {
  *     -- matches = []
  *     -- lastRef = undefined
  *
- *     foo is "prefix" <> value
+ *     foo is "prefix" .. value
  *     -- prefix = "prefix"
  *     -- matches = []
  *     -- lastRef = value
  *
- *     foo is value <> "suffix"
+ *     foo is value .. "suffix"
  *     -- prefix = undefined
  *     -- matches = [value, 'suffix']
  *     -- lastRef = undefined
  *
- *     foo is "pre" <> value <> "post"
+ *     foo is "pre" .. value .. "post"
  *     -- prefix = "pre"
  *     -- matches = [value, 'post']
  *     -- lastRef = undefined
  *
- *     foo is "pre" <> value <> "post" <> remainder
+ *     foo is "pre" .. value .. "post" .. remainder
  *     -- prefix = "pre"
  *     -- matches = [value, 'post']
  *     -- lastRef = remainder
@@ -6426,13 +6426,13 @@ export class MatchStringExpression extends MatchExpression {
   toLisp() {
     const args = this.all().map(arg => arg.toLisp())
 
-    return `(${args.join(' <> ')})`
+    return `(${args.join(' .. ')})`
   }
 
   toCode() {
     const args = this.all().map(arg => arg.toCode())
 
-    return args.join(' <> ')
+    return args.join(' .. ')
   }
 }
 

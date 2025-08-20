@@ -17,17 +17,17 @@ beforeEach(() => {
 })
 
 describe('getType', () => {
-  describe('string concatenation operator <>', () => {
+  describe('string concatenation operator ..', () => {
     beforeEach(() => {
       runtimeTypes['str'] = [Types.string(), Values.string('test')]
       runtimeTypes['str4'] = [Types.string({min: 4}), Values.string('test')]
     })
     cases<[string, Types.Type]>(
-      c(['"test" <> "test"', Types.literal('testtest')]),
-      c(['str <> str', Types.string()]),
-      c(['str <> str4', Types.string({min: 4})]),
-      c(['str <> "test"', Types.string({min: 4})]),
-      c(['str4 <> "test"', Types.string({min: 8})]),
+      c(['"test" .. "test"', Types.literal('testtest')]),
+      c(['str .. str', Types.string()]),
+      c(['str .. str4', Types.string({min: 4})]),
+      c(['str .. "test"', Types.string({min: 4})]),
+      c(['str4 .. "test"', Types.string({min: 8})]),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`${formula} => ${expected}`, () => {
         const expression = parse(formula).get()
@@ -159,7 +159,7 @@ describe('eval', () => {
       'lhs ++ rhs',
       Values.array([Values.float(2), Values.int(1), Values.int(2), Values.int(3)]),
     ]),
-    c([Values.string('asdf'), Values.string('jkl'), 'lhs <> rhs', Values.string('asdfjkl')]),
+    c([Values.string('asdf'), Values.string('jkl'), 'lhs .. rhs', Values.string('asdfjkl')]),
   ).run(([lhs, rhs, formula, expected], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
       `should eval ${formula} = ${expected} (lhs = ${lhs}, rhs = ${rhs})`,

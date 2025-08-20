@@ -124,7 +124,7 @@ describe('inclusion operator', () => {
   1
   2
   3
-  ...a |> # onlyif b
+  ...a |> #pipe onlyif b
 ]
 `,
         [

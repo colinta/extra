@@ -212,13 +212,13 @@ describe('getType', () => {
   })
 
   describe('pipe operator', () => {
-    it('"test" |> # <> "test" => String', () => {
-      const expression = parse('"test" |> # <> "test"').get()
+    it('"test" |> #pipe .. "test" => String', () => {
+      const expression = parse('"test" |> #pipe .. "test"').get()
       expect(expression.getType(typeRuntime).get()).toEqual(Types.literal('testtest'))
     })
 
-    it('1 |> # + 1 |> # * 2 => int', () => {
-      const expression = parse('1 |> # + 1 |> # * 2').get()
+    it('1 |> #pipe + 1 |> #pipe * 2 => int', () => {
+      const expression = parse('1 |> #pipe + 1 |> #pipe * 2').get()
       expect(expression.getType(typeRuntime).get()).toEqual(Types.literal(4))
     })
   })
@@ -423,8 +423,8 @@ describe('eval', () => {
     c([Values.float(1.5), Values.float(2.25), 'lhs - rhs', Values.float(-0.75)]),
     c([Values.float(2), Values.int(1), 'lhs - rhs', Values.float(1)]),
 
-    c([Values.int(3), Values.int(2), 'lhs |> # + rhs', Values.int(5)]),
-    c([Values.nullValue(), Values.int(2), 'lhs ?|> # + rhs', Values.nullValue()]),
+    c([Values.int(3), Values.int(2), 'lhs |> #pipe + rhs', Values.int(5)]),
+    c([Values.nullValue(), Values.int(2), 'lhs ?|> #pipe + rhs', Values.nullValue()]),
 
     c([Values.int(10), Values.int(20), 'lhs * rhs', Values.int(200)]),
     c([Values.float(1.5), Values.float(2), 'lhs * rhs', Values.float(3)]),

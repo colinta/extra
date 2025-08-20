@@ -170,7 +170,7 @@ let
   a = '1'
   b = '2'
 in
-  a <> b
+  a .. b
 `,
         Types.literal('12'),
         Values.string('12'),
@@ -181,7 +181,7 @@ let
   a = '1'
   b = a
 in
-  a <> b
+  a .. b
 `,
         Types.literal('11'),
         Values.string('11'),
@@ -192,7 +192,7 @@ let
   b = a
   a = '1'
 in
-  a <> b
+  a .. b
 `,
         Types.literal('11'),
         Values.string('11'),
@@ -213,7 +213,7 @@ in
       c([
         `\
 let
-  a = input <> '!'
+  a = input .. '!'
 in
   a
 `,

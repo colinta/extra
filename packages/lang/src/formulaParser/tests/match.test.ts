@@ -62,9 +62,9 @@ describe('match operator', () => {
       c(['foo is .some(...)']),
       c(['foo is .some(name: value, ...)']),
       c(["foo is 'a' | 'b' | 'c'", "(is foo ('a' | 'b' | 'c'))"]),
-      c(["foo is 'test' <> value"]),
-      c(["foo is value <> 'test'"]),
-      c(["foo is value1 <> 'test' <> value2 <> 'test'"]),
+      c(["foo is 'test' .. value"]),
+      c(["foo is value .. 'test'"]),
+      c(["foo is value1 .. 'test' .. value2 .. 'test'"]),
       c(['foo is []']),
       c(['foo is [_, ...]']),
       c(['foo is [value, ...]']),
@@ -1023,18 +1023,18 @@ describe('match operator', () => {
 
   describe('invalid parse', () => {
     cases<[string, string]>(
-      c([`foo is "$foo" <> value`, 'Interpolation is not enabled in this context']),
+      c([`foo is "$foo" .. value`, 'Interpolation is not enabled in this context']),
       c([
-        `foo is value1 <> value2 <> "test"`,
+        `foo is value1 .. value2 .. "test"`,
         'In a match expression, after every reference you must concatenate a string',
       ]),
-      c([`foo is value1 <> "" <> value2 <> "test"`, 'Empty string is invalid in match expression']),
+      c([`foo is value1 .. "" .. value2 .. "test"`, 'Empty string is invalid in match expression']),
       c([
-        `foo is value1 <> "test" <> "test"`,
+        `foo is value1 .. "test" .. "test"`,
         'In a match expression, after every string you must concatenate a reference',
       ]),
       c(['foo is .some(value, value)', "Too many variables named 'value'"]),
-      c(['foo is value <> "test" <> value', "Too many variables named 'value'"]),
+      c(['foo is value .. "test" .. value', "Too many variables named 'value'"]),
       c(['foo is [value, ...value]', "Too many variables named 'value'"]),
     ).run(([formula, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not parse ${formula}`, () => {

@@ -21,8 +21,8 @@ beforeEach(() => {
 describe('|> / ?|>', () => {
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
-      c(['1 |> # + 1 |> # * 2', '(|> (|> 1 (+ `#` 1)) (* `#` 2))']),
-      c(['1 ?|> # + 1', '(?|> 1 (+ `#` 1))']),
+      c(['1 |> #pipe + 1 |> #pipe * 2', '(|> (|> 1 (+ `#pipe` 1)) (* `#pipe` 2))']),
+      c(['1 ?|> #pipe + 1', '(?|> 1 (+ `#pipe` 1))']),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse '${formula}'`, () => {
         expectedCode ??= formula
@@ -36,12 +36,18 @@ describe('|> / ?|>', () => {
 
   describe('getType / eval', () => {
     cases<[string, ['a', number | null], ['b', number], Types.Type, Values.Value]>(
-      c([`a |> #`, ['a', null], ['b', 0], Types.optional(Types.int()), Values.nullValue()]),
-      c([`a |> #`, ['a', 1], ['b', 0], Types.optional(Types.int()), Values.int(1)]),
-      c([`b |> #`, ['a', null], ['b', 10], Types.int(), Values.int(10)]),
-      c([`b |> # + 1`, ['a', null], ['b', 10], Types.int(), Values.int(11)]),
-      c([`a ?|> # + 1`, ['a', null], ['b', 0], Types.optional(Types.int()), Values.nullValue()]),
-      c([`a ?|> # + 1`, ['a', 1], ['b', 0], Types.optional(Types.int()), Values.int(2)]),
+      c([`a |> #pipe`, ['a', null], ['b', 0], Types.optional(Types.int()), Values.nullValue()]),
+      c([`a |> #pipe`, ['a', 1], ['b', 0], Types.optional(Types.int()), Values.int(1)]),
+      c([`b |> #pipe`, ['a', null], ['b', 10], Types.int(), Values.int(10)]),
+      c([`b |> #pipe + 1`, ['a', null], ['b', 10], Types.int(), Values.int(11)]),
+      c([
+        `a ?|> #pipe + 1`,
+        ['a', null],
+        ['b', 0],
+        Types.optional(Types.int()),
+        Values.nullValue(),
+      ]),
+      c([`a ?|> #pipe + 1`, ['a', 1], ['b', 0], Types.optional(Types.int()), Values.int(2)]),
     ).run(([formula, [_a, valueA], [_b, valueB], expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
         `'${formula}' should have type '${expectedType}' and value '${expectedValue}' (a = '${valueA}', b = ${valueB})`,
@@ -65,11 +71,11 @@ describe('|> / ?|>', () => {
   describe('invalid', () => {
     cases<[string, Types.Type, string]>(
       c([
-        `a |> # + 1`,
+        `a |> #pipe + 1`,
         Types.optional(Types.int()),
-        "Expected Int or Float, found '#' of type 'null'",
+        "Expected Int or Float, found '#pipe' of type 'null'",
       ]),
-      c([`a ?|> #`, Types.int(), "Left hand side of '?|>' operator must be a nullable-type."]),
+      c([`a ?|> #pipe`, Types.int(), "Left hand side of '?|>' operator must be a nullable-type."]),
     ).run(([formula, aType, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not get type of ${formula}`, () => {
         runtimeTypes['a'] = [aType, Values.string('')]
