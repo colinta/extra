@@ -1,12 +1,13 @@
 import {Result} from '@extra-lang/result'
 import {type Type} from '../types'
-import {type Value} from '../values'
+import {type Value, type Node} from '../values'
 import {type ValueRuntime} from '../runtime'
 import {type Expression, type Operation, type RuntimeError} from './expressions'
 
 export type GetRuntimeResult<T> = Result<T, RuntimeError>
 export type GetTypeResult = GetRuntimeResult<Type>
 export type GetValueResult = GetRuntimeResult<Value>
+export type GetNodeResult = GetRuntimeResult<Node>
 export type GetValueRuntimeResult = GetRuntimeResult<[Value, ValueRuntime]>
 
 export type Associativity = 'left' | 'right'

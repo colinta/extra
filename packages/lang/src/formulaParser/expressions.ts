@@ -13,12 +13,14 @@ import * as Narrowed from '../narrowed'
 import * as Types from '../types'
 import {SPLAT_OP, KWARG_OP} from '../types'
 import * as Values from '../values'
+import * as Nodes from '../nodes'
 
 import {
   type Comment,
   type Operator,
   type GetTypeResult,
   type GetValueResult,
+  type GetNodeResult,
   type GetValueRuntimeResult,
   type GetRuntimeResult,
 } from './types'
@@ -195,6 +197,13 @@ export abstract class Expression {
    * Operations perform their operation, etc.
    */
   abstract eval(runtime: ValueRuntime): GetValueResult
+  /**
+   * Renders the expression, returning a runtime "Node" that can respond to
+   * messages via `send`.
+   */
+  render(runtime: ValueRuntime): GetNodeResult {
+    return this.eval(runtime).map(value => new Nodes.ValueNode(this, value))
+  }
 
   /**
    * MatchExpressions return a modified runtime, effectively passing assignments
@@ -911,6 +920,12 @@ export class ArrayExpression extends Expression {
     )
       .map(values => values.flat())
       .map(values => new Values.ArrayValue(values))
+  }
+
+  render(runtime: ValueRuntime): GetNodeResult {
+    return mapAll(this.values.map(value => value.render(runtime))).map(
+      nodes => new Nodes.ArrayValueNode(this, nodes),
+    )
   }
 }
 
@@ -5028,84 +5043,119 @@ abstract class JsxExpression extends Expression {
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
-    let type: Types.Type
-    if (this.nameRef) {
-      const refType = runtime.getLocalType(this.nameRef.name)
+    return mapAll(this.children?.map(child => child.getType(runtime)) ?? []).map(_children => {
+      // const children = this.children ? _children : undefined
+      if (this.nameRef) {
+        const refType = runtime.getViewType(this.nameRef.name)
+        // TODO: validate this.args (NamedArgument[])
+        // TODO: validate children (Type[])
 
-      if (!refType) {
-        return err(new RuntimeError(this, `No View named '${this.nameRef}'`))
+        if (!refType) {
+          return err(new RuntimeError(this, `No View named '${this.nameRef}'`))
+        }
+
+        // this returns:
+        // - Types.ViewType (which is OK)
+        // - or Types.ViewFormulaType / Types.ViewClassDefinitionType, which is
+        //   not really the type we want from `<ViewName />`
+        return ok(refType)
       }
 
-      type = refType
-    } else {
-      type = Types.FragmentViewType
-    }
-    throw `TODO - what to do with ${type}`
+      if (this.args.length) {
+        return err(new RuntimeError(this, `Fragments cannot receive props.`))
+      }
+
+      return ok(Types.FragmentViewType)
+    })
   }
 
-  eval(runtime: ValueRuntime) {
-    const childrenResult = mapAll(this.children.map(child => child.eval(runtime))).map(children =>
-      children
-        .flatMap(child => {
-          if (child instanceof Values.FragmentViewValue) {
-            return child.children
-          }
+  eval() {
+    // cannot return a Values.NodeValue, because nodes.ts depends on values.ts
+    return err(new RuntimeError(this, `JsxExpression cannot be eval'd (try 'render' instead)`))
+  }
 
-          return [child]
-        })
-        .filter(child => {
-          return !child.isNull()
-        }),
-    )
+  render(runtime: ValueRuntime): GetNodeResult {
+    return mapAll(this.children?.map(child => child.render(runtime)) ?? []).map(childrenNodes => {
+      const children = this.children ? new Nodes.Children(this, childrenNodes) : undefined
 
-    if (childrenResult.isErr()) {
-      return err(childrenResult.error)
-    }
+      if (this.nameRef) {
+        const refValue = runtime.getViewValue(this.nameRef.name)
+        if (!refValue) {
+          return err(new RuntimeError(this, `No View named '${this.nameRef}'`))
+        }
 
-    const children = Values.array(childrenResult.value)
-    if (this.nameRef) {
-      const refValue = runtime.getLocalValue(this.nameRef.name)
-
-      if (!refValue) {
-        return err(new RuntimeError(this, `No View named '${this.nameRef}'`))
-      }
-
-      if (!(refValue instanceof Values.FormulaValue)) {
-        return err(
-          new RuntimeError(
-            this,
-            `Expected View named '${this.nameRef}', found '${refValue.constructor.name}'`,
-          ),
+        return mapAll(
+          this.args.map(namedArg => {
+            const name = namedArg.alias
+            return namedArg.value.render(runtime).map(value => [name, value] as const)
+          }),
         )
+          .map(args => new Map(args))
+          .map(args => {
+            const valueArgs = Array.from(args).map(([name, node]): [string, Values.Value] => [
+              name,
+              node.value,
+            ])
+            if (children) {
+              valueArgs.push(['children', children.value])
+            }
+
+            if (refValue instanceof Values.ViewFormulaValue) {
+              return refValue
+                .render(new Values.FormulaArgs(valueArgs))
+                .map(
+                  firstRender =>
+                    new Nodes.ViewFormulaNode(this, refValue, args, children, firstRender),
+                )
+            }
+
+            if (refValue instanceof Values.ViewClassDefinitionValue) {
+              return refValue
+                .konstructor(refValue)
+                .call(new Values.FormulaArgs(valueArgs))
+                .map(instance => {
+                  if (!(instance instanceof Values.ViewClassInstanceValue)) {
+                    return err(
+                      new RuntimeError(
+                        this,
+                        `Unexpected return value '${instance}' (${instance.constructor.name})`,
+                      ),
+                    )
+                  }
+
+                  return instance.render(new Values.FormulaArgs([])).map(firstRender => {
+                    // to recap:
+                    // - we rendered all children
+                    // - fetched the view from runtime
+                    // - rendered the props (args)
+                    // - inserted 'children' into props
+                    // - TODO: merge insert context
+                    // - since we have a ViewClassDefinitionValue, we
+                    //   instantiated the view (konstructor.call), using args,
+                    //   converted back in Values
+                    // - we rendered the View to get a firstRender
+                    //   (ViewFormulaValue has a 'render' function for this)
+                    return new Nodes.ViewInstanceNode(this, instance, args, children, firstRender)
+                  })
+                })
+            }
+
+            return new Nodes.NamedNode(this, refValue, args, children)
+          })
       }
 
-      return mapAll(
-        this.args.map(namedArg => {
-          const name = namedArg.alias
-          return namedArg.value.eval(runtime).map(value => [name, value] as [string, Values.Value])
-        }),
-      )
-        .map(args => new Values.FormulaArgs([...args, ['children', children]]))
-        .map(args => {
-          const result = refValue.call(args)
-          if (result.isOk()) {
-            return ok(result)
-          }
-
-          if (result.error instanceof RuntimeError) {
-            return err(result.error)
-          }
-
-          return err(new RuntimeError(this, result.error))
-        })
-    } else {
       if (this.args.length) {
         return err(new RuntimeError(this, `Fragment Views should not have args`))
       }
 
-      // FragmentView
-      return ok(children)
-    }
+      if (!children) {
+        return err(
+          new RuntimeError(this, `Fragment Views should never be self-closing (found '</>')`),
+        )
+      }
+
+      return ok(new Nodes.FragmentNode(this, children))
+    })
   }
 }
 
@@ -5173,7 +5223,23 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
   }
 
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.ViewFormulaValue> {
-    return super.eval(runtime)
+    const argDefinitions = this.argDefinitions.args
+    const fn = (
+      args: Values.FormulaArgs,
+      boundThis: Values.Value | undefined,
+    ): Result<Values.Value, RuntimeError> =>
+      argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime =>
+        this.body.eval(nextRuntime),
+      )
+    const render = (
+      args: Values.FormulaArgs,
+      boundThis: Values.Value | undefined,
+    ): Result<Values.Node, RuntimeError> =>
+      argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime =>
+        this.body.render(nextRuntime),
+      )
+
+    return ok(new Values.ViewFormulaValue(this.nameRef.name, fn, undefined, render))
   }
 }
 

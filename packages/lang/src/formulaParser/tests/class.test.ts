@@ -60,7 +60,7 @@ class User {
     User(name: user.name, age: user.age + age)
   @name: String = ''
         @age:Int = 0
-  fn age(# age: String) =>
+  fn set-age(# age: String) =>
     @age = age
 }
 `,
@@ -76,7 +76,7 @@ class User {
   fn rename(# name: String) =>
     @name = name
 
-  fn age(# age: String) =>
+  fn set-age(# age: String) =>
     @age = age
 
   static create(name: String) =>

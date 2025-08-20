@@ -3,6 +3,34 @@ import {RuntimeError} from './formulaParser/expressions'
 import {splitter} from './graphemes'
 import * as Types from './types'
 
+// I hate having the Node class here, and the NodeExpression interface for that
+// matter.
+
+/**
+ * expressions.ts depends on Node, so references to Expression need to happen
+ * via an inteface
+ */
+export interface NodeExpression {
+  range: [number, number]
+}
+
+export interface DOM<T> {
+  createElement(tag: string): T
+  applyAttribute(element: T, name: string, value: Value): void
+  createTextNode(text: string): T
+  appendElement(container: T, child: T): T
+  removeElement(container: T, child: T): T
+}
+
+export abstract class Node {
+  constructor(readonly expression: NodeExpression) {
+    Object.defineProperty(this, 'expression', {enumerable: false})
+  }
+
+  abstract get value(): Value
+  abstract renderInto<T>(dom: DOM<T>, el: T): T
+}
+
 export function nullValue(): typeof NullValue {
   return NullValue
 }
@@ -1126,10 +1154,11 @@ export class ArrayValue extends Value {
   }
 
   viewPrintable() {
-    if (this.values.length === 0) {
-      return ''
+    let code = ''
+    for (const val of this.iterate()) {
+      code += val.viewPrintable() + '\n'
     }
-    return this.printable()
+    return code
   }
 
   isTruthy() {
@@ -1679,14 +1708,37 @@ export class EnumValue extends Value {
   }
 }
 
-export class ViewFormulaValue extends NamedFormulaValue {}
-export class FragmentFormulaValue extends FormulaValue {}
-
-export class ViewValue extends Value {
-  getType(): Types.Type {
-    return Types.UserViewType
+export class ViewFormulaValue extends NamedFormulaValue {
+  constructor(
+    name: string,
+    fn: (_1: FormulaArgs, _2: Value | undefined) => Result<Value, string | RuntimeError>,
+    boundThis: Value | undefined,
+    private renderFormula: (
+      _1: FormulaArgs,
+      _2: Value | undefined,
+    ) => Result<Node, string | RuntimeError>,
+  ) {
+    super(name, fn, boundThis)
   }
 
+  bound(boundThis: Value) {
+    return new ViewFormulaValue(this.name, this.fn, boundThis, this.renderFormula)
+  }
+
+  render(args: FormulaArgs): Result<Node, string | RuntimeError> {
+    try {
+      return this.renderFormula(args, this.boundThis)
+    } catch (e) {
+      const message = typeof e === 'object' && e && 'message' in e ? e.message : `${e}`
+      return err(`Error occurred in function: ${message}`)
+    }
+  }
+}
+
+/**
+ * Represents a <tag />, <tag>…</tag>
+ */
+export abstract class ViewValue extends Value {
   isEqual(value: Value): boolean {
     return value === this
   }
@@ -1857,6 +1909,10 @@ export class ViewClassInstanceValue extends ClassInstanceValue {
     formulas: Map<string, NamedFormulaValue>,
   ) {
     super(metaClass, props, formulas)
+  }
+
+  render(args: FormulaArgs): Result<Node, string | RuntimeError> {
+    return this.renderFormula.render(args)
   }
 }
 

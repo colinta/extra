@@ -4,9 +4,9 @@ import {
   simplifyRelationships,
   isEqualRelationship,
 } from './relationship'
-import {type Type} from './types'
+import {type Type, ViewClassDefinitionType, ViewFormulaType, ViewType} from './types'
+import {type Value, ViewClassDefinitionValue, ViewFormulaValue, NamedViewValue} from './values'
 import {uid} from './uid'
-import {type Value} from './values'
 
 export type TypeRuntime = Omit<
   MutableTypeRuntime,
@@ -36,8 +36,15 @@ export type ValueRuntime = Omit<
   | 'setPipeValue'
 >
 
+export interface ViewRuntime {
+  getViewType(name: string): ViewType | undefined
+  getViewValue(name: string): NamedViewValue | undefined
+}
+
 export class MutableTypeRuntime {
   readonly _id = uid()
+  public viewRuntime?: ViewRuntime
+
   get id(): string {
     if (this.parent) {
       return `${this.parent.id}-${this._id}`
@@ -63,7 +70,11 @@ export class MutableTypeRuntime {
   // namespaces is only half-baked so far
   private namespaces: Map<string, Map<string, Type>> = new Map()
 
-  constructor(readonly parent?: TypeRuntime) {}
+  constructor(readonly parent?: TypeRuntime) {
+    if (parent) {
+      this.viewRuntime = parent.viewRuntime
+    }
+  }
 
   resolved(): Set<string> {
     const resolved = new Set<string>([...(this.parent?.resolved() ?? [])])
@@ -96,7 +107,7 @@ export class MutableTypeRuntime {
   }
 
   has(name: string): boolean {
-    return this.ids.has(name) || (this.parent?.has(name) ?? false)
+    return this.ids.has(name) || this.viewRuntime?.has(name) || (this.parent?.has(name) ?? false)
   }
 
   refName(id: string): string | undefined {
@@ -162,6 +173,18 @@ export class MutableTypeRuntime {
    */
   getPipeType(): Type | undefined {
     return this.getLocalType('#pipe')
+  }
+
+  getViewType(name: string): ViewType | ViewClassDefinitionType | ViewFormulaType | undefined {
+    const view = this.viewRuntime?.getViewType(name)
+    if (view) {
+      return view
+    }
+
+    const local = this.getLocalType(name)
+    if (local instanceof ViewClassDefinitionType || local instanceof ViewFormulaType) {
+      return local
+    }
   }
 
   hasNamespace(namespace: string): boolean {
@@ -296,6 +319,20 @@ export class MutableValueRuntime extends MutableTypeRuntime {
 
   getThisValue(): Value | undefined {
     return this.getLocalValue('this')
+  }
+
+  getViewValue(
+    name: string,
+  ): NamedViewValue | ViewClassDefinitionValue | ViewFormulaValue | undefined {
+    const view = this.viewRuntime?.getViewValue(name)
+    if (view) {
+      return view
+    }
+
+    const local = this.getLocalValue(name)
+    if (local instanceof ViewClassDefinitionValue || local instanceof ViewFormulaValue) {
+      return local
+    }
   }
 
   getPipeValue(): Value | undefined {

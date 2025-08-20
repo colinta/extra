@@ -1,26 +1,20 @@
 import Http -- imported as 'Http'
 import /components/Bar  -- imported as 'Bar'
 import Lib/A as AComps
-import Lib/B : {b}
-import Lib/C : {
+import Lib/B only { b }
+import Lib/C only {
   b as C_b
 }
 import ./types -- imported as 'types'
-import ./types as T -- imported as T
+import ./helpers as Helpers -- imported as Helpers
 
 
-export type Foo = Int
+enum AsyncLoad<T> {
+  .loaded
+  .loading
+  .success(data: T)
+}
 
-export type Something = 1 | 2
-
-type SomethingElse = 3 | 4
-
-type Last = Int
-
-type AsyncLoad<T> = enum
-  | Loaded
-  | Loading
-  | Success(data: T)
 
 type Point = {x: Int, y: Int}
 
@@ -35,10 +29,3 @@ default view Real {
   fn updateUser(a: User) =>
     @user = a
 }
-
-
-fn map1<T>(a: T): T =>
-  a
-
-fn map2<T>(a: T): T =>
-  a

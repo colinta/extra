@@ -1,0 +1,4 @@
+view Static {
+  render() =>
+    <p>You are here.</p>
+}
