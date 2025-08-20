@@ -470,10 +470,6 @@ export abstract class Type {
     return false
   }
 
-  isView(): this is ViewType {
-    return false
-  }
-
   isLiteral(type: 'boolean'): this is LiteralBooleanType
   isLiteral(type: 'float'): this is LiteralFloatType
   isLiteral(type: 'int'): this is LiteralIntType
@@ -2433,12 +2429,6 @@ export class MetaIntRangeType extends RangeType<Narrowed.NarrowedInt> {
 export class ViewType extends Type {
   readonly is = VIEW
 
-  declare static types: Record<string, ((object: ViewType) => Type) | undefined>
-
-  isView(): this is ViewType {
-    return true
-  }
-
   /**
    * Instances of a View are always true – and shouldn't be used as a conditional
    */
@@ -2447,7 +2437,7 @@ export class ViewType extends Type {
   }
 
   propAccessType(name: string) {
-    return ViewType.types[name]?.(this)
+    return undefined
   }
 }
 
@@ -2767,9 +2757,6 @@ export abstract class ContainerType<T extends ContainerType<T>> extends Type {
   }
 }
 
-export const AnyViewType = new (class AnyViewType extends ViewType {})()
-export const UserViewType = new (class UserViewType extends ViewType {})()
-export const FragmentViewType = new (class FragmentViewType extends ViewType {})()
 export const NullType = new MetaNullType()
 export const BooleanType = new MetaBooleanType()
 export const FloatType = new MetaFloatType()
@@ -2778,6 +2765,8 @@ export const StringType = new MetaStringType()
 export const RegexType = new MetaRegexType()
 export const FloatRangeType = new MetaFloatRangeType()
 export const IntRangeType = new MetaIntRangeType()
+export const UserViewType = new (class UserViewType extends ViewType {})()
+export const FragmentViewType = new (class FragmentViewType extends ViewType {})()
 
 export const LiteralTrueType = new (class LiteralTrueType extends LiteralBooleanType {
   readonly value: boolean = true
