@@ -17,7 +17,7 @@ import {
 } from '@teaui/react'
 
 import {Runtime, parse, Expressions, dependencySort} from '@extra-lang/lang'
-import {attempt, ok, err, type Result} from '@extra-lang/result'
+import {attempt} from '@extra-lang/result'
 import {
   decide,
   field,
@@ -32,8 +32,6 @@ import {
 } from '@extra-lang/parse'
 import {Socky} from './socky'
 import {parseType} from '@extra-lang/lang/src/formulaParser'
-
-false ? ({attempt, ok, err} as unknown as Result<any, any>) : null
 
 const STATE_FILE = (() => {
   // start at process.cwd() and work up until repl exists, use that as "projectRoot"

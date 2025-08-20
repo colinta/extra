@@ -101,9 +101,9 @@ in
   [...evens, ...odds]
     .filter(is-divisible-by-3)
     .sort(by: fn(a, b) => b <=> a) --> [9, 6, 3]
-  -- the pipe operator assigns the left-hand-side to the `#` symbol
-  |> inspect('filter', #)  --> prints "filter = [9, 6, 3]: [Int]" and returns that value
-  |> #.map(fn(num) => $num).join(',')
+  -- the pipe operator assigns the left-hand-side to the `#pipe` symbol
+  |> inspect('filter', #pipe)  --> prints "filter = [9, 6, 3]: [Int]" and returns that value
+  |> #pipe.map(fn(num) => $num).join(',')
 
 -- there's a JSX-like syntax built in.
 <div>
@@ -196,7 +196,7 @@ import Math : {
 
 Minor thing: `+` is a mathematical operator that adds two numbers. Did you know that `a + b == b + a`? Except in Java and Javascript and Swift and many other languages. 🙄
 
-`++` is a computer science-y looking operator that concatenates two arrays. `<>` does the same for strings.
+`++` is a computer science-y looking operator that concatenates two arrays. `..` does the same for strings.
 
 Having distinct concatenation operators is either really nice for indicating intentionality, or an unnecessary distinction. I hate to side w/ PHP on this one, but I treat 'em differently. Or hey maybe I'm hitching my ride to PHP's weird and shocking resurgence!? Who knows!?
 
@@ -213,7 +213,7 @@ Extra's "coerce to String" function is a unary operator `$`, and it's also the s
 -- and String coercion:
 
 "How many: $n"
-"How many: " <> $n
+"How many: " .. $n
 
 -- because it's an _operator_, you can do things like
 [1, 2].join($(n + 1))
@@ -274,14 +274,14 @@ Array(length: =10, String(=8)) -- if you prefer, these arguments can be rearrang
 
 For situations where you are calling a function that offers a default value. Imagine a scenario where in _some_ cases you want to specify the argument, and in other cases you want to use the default.
 
-I've chosen the name `fallback` for this value. `default` is the obvious choice, but I found myself wanting to use that name in argument lists, and so decided to make it something a little more esoteric/special.
+I've chosen the name `#default` for this value. The `#` prefix is reserved for Extra and maybe also macros?
 
 ### Case 1
 
 You only want to specify 1st and 3rd positional arguments.
 
 ```extra
-foo(1, fallback, 3)
+foo(1, #default, 3)
 ```
 
 This calls the function `foo` with the first and third arguments specified, but the second argument will _defer to the default value_. So simple, so handy. What _is_ the default value in this case? I dunno! Should I know? Do I look up the API for that? What if it changes?
@@ -294,7 +294,7 @@ If `b` is specified, use it, otherwise use the default.
 let
   fn bar(# a: Int, # b: Int = 10) => a + b
   fn foo(# a: Int, # b: Int | null) =>
-    bar(a, b ?? fallback)
+    bar(a, b ?? #default)
 in
 [
   foo(1),    --> 11, default value of 10 is used
@@ -321,22 +321,22 @@ It really shakes my pepper that this doesn't exist in more languages! How is thi
 
 I'm a big fan of pipes from Elm and Elixir. In these languages, the value entering the pipe is automatically inserted into the receiving function. I think that having a sigil represent where you want the value to go gives them even more flexibility. Slow approving nod to Hack for this idea.
 
-I picked the `#` character, because it's also used in functions as a "positional argument" indicator. JS's proposal currently favors `^^` I think? 🤢 Why can't JS do anything right... and why don't they just _ask me_, since I seem to know all the answers.
+I picked `#pipe` for the name, the `#` sigil indicates "interal use", and is used for macros like `#default` and `#line`. JS's proposal currently favors `^^` I think? 🤢 Why can't JS do anything right... and why don't they just _ask me_, since I seem to know all the answers.
 
 ```extra
-'abc' |> # <> #
-  --> 'abc' <> 'abc'
+'abc' |> #pipe .. #pipe
+  --> 'abc' .. 'abc'
   --> 'abcabc'
 
 -- extract two elements from an object, place them in an array
-{a: 'a', b: 'b', c: 'c'} |> [#.a, #.b]
+{a: 'a', b: 'b', c: 'c'} |> [#pipe.a, #pipe.b]
 ```
 
 Also available is the "null coalescing pipe". If the value is `null`, it skips the pipe and returns `null`. Otherwise, invokes the pipe with the non-null value. Elm would call this `Maybe.map`. Haskell would call this - ok I had to look this up and I got confused so I don't know what Haskell would call this. `>>=` or maybe `<*$>`.
 
 ```
 let
-  fn example(# foo: String?) => foo ?|> # <> "!"
+  fn example(# foo: String?) => foo ?|> #pipe .. "!"
 in
   [
     example('bang') --> 'bang!'
@@ -344,28 +344,7 @@ in
   ]
 ```
 
-You can place a bare "match" operator on the right hand side of the pipe operator and it will be invoked with the `#` value. This is a handy way to "name" the `#` value.
-
-```extra
-sum(numbers)
-  |> sum =>
-    if (sum > 10, then: 'big sum', else: 'small sum')
-❌  |> a <> b => … you cannot use generic matchers here
-
-name
-  |> #.split(/\s+/)
-  |> names =>
-    names.map(fn(name) => name.capitalize())
-  |> #.join(' ')
-
--- of course it's also just very easy to pipe into a `switch` statement
-httpResponse |> switch(#) {
-  case .ok(success):
-    success.message
-  case .err(error):
-    error.message
-  } --> String
-```
+I toyed with the idea of being able to name the pipe value... I decided against it. In most cases, I prefer having just one way to do things.
 
 ## Algebraic data types _of course_
 
@@ -523,7 +502,7 @@ _ --> same but ignore the value
 
 1, 1...2.5 --> matches numbers and ranges
 "foo" --> string literal
-"<" <> tag <> ">"  --> prefixed/suffixed string (assigns middle to 'tag')
+"<" .. tag .. ">"  --> prefixed/suffixed string (assigns middle to 'tag')
 
 /^<(?<tag>.*)>$/   --> matches a regex, assigns 'tag' the named capture group contents
 
@@ -559,9 +538,9 @@ groups, or you can match against a prefix and assign the remainder.
 switch (name) {
 case /(?<first>\w+) (?<last>\w+)/:
   "Hello, $first $last!"
-case "Bob " <> last:
+case "Bob " .. last:
   "Did you say Bab? Bab $last!?"
-case _ <> "!":
+case _ .. "!":
   "Your name ends in an exclamation mark, wow, that's so cool 🙄"
 else:
   "Hello, $name!"
@@ -622,12 +601,12 @@ fn permission(user: User): Permission =>
 ```extra
 -- input: String | Array(String)
 switch (input) {
-case 'foo' <> bar:
+case 'foo' .. bar:
   bar -- bar: String, input: String (TODO: add 'prefix' info to String type)
 case [onlyOne]:
   onlyOne  -- onlyOne: String, input: Array(String, length: =1)
 case [...many, last]:
-  many.join(',') <> " and $last"  -- many: Array(String), last: String, input: Array(String, length: >=1)
+  many.join(',') .. " and $last"  -- many: Array(String), last: String, input: Array(String, length: >=1)
 else:
   'not "foo…" or [a, …]'
 }
@@ -1203,8 +1182,8 @@ fn add {
   fn(# a: Int) => a
   fn(# a: Int, # b: Int) => a + b
   ❌ -- same number of arguments, can't be distinguished
-  ❌ fn(# a: String, # b: String) => a <> b
-  fn (str: String, # b: String) => str <> b
+  ❌ fn(# a: String, # b: String) => a .. b
+  fn (str: String, # b: String) => str .. b
   -- still distinguishable, because it only accepts one argument, and the name
   -- is different from `fn(# a: Int)`
   fn (str: String) => str
@@ -1308,9 +1287,9 @@ fn(# name: String?, hobbies: Array(String)): String =>
     guard(
       hobbies.length > 0
     else:
-      name <> ' is not very interesting'
+      name .. ' is not very interesting'
     ):
-      name <> ': ' <> hobbies.join(', ')
+      name .. ': ' .. hobbies.join(', ')
 ```
 
 Like `if`, you could imagine that this was implemented after the fact as an Extra function. The signature would be:
@@ -1423,15 +1402,15 @@ user.format?.(address)  -- null safe function invocation
 I've never liked `+` as String/Array concatenation. `+` should be communative, because maths.
 
 ```extra
-"aaa" <> "BBB" --> "aaaBBB"
+"aaa" .. "BBB" --> "aaaBBB"
 
-$12345 <> 'dollars'  --> "12345 dollars"
+$12345 .. 'dollars'  --> "12345 dollars"
 `${12345} dollars`  --> "12345 dollars"
 ```
 
 ### Array Concatenation
 
-Sure I could've implemented the `<>` operator in a way that supported Strings
+Sure I could've implemented the `..` operator in a way that supported Strings
 _and Arrays_, why not have two operators so that the *intention* was that much
 clearer? So that's what I did. `++` for Arrays.
 
@@ -1530,7 +1509,7 @@ in
   -- a ~~ b --> same
 ```
 
-If you really had your heart set on concatenating two tuples... I don't have an easy shorthand for this. I didn't want `...` and `~~` to behave differently, and I didn't want to override the `<>` or `++` operators. The one thing that's very easy is to just _insert_ the values into the new tuple explicitly.
+If you really had your heart set on concatenating two tuples... I don't have an easy shorthand for this. I didn't want `...` and `~~` to behave differently, and I didn't want to override the `..` or `++` operators. The one thing that's very easy is to just _insert_ the values into the new tuple explicitly.
 
 ```extra
 let
@@ -1556,7 +1535,7 @@ what I mean:
 #### String
 
 1. String interpolation: `"${name} is $age years old"`
-2. String concatenation: `name <> ' is ' <> $age <> ' years old'`
+2. String concatenation: `name .. ' is ' .. $age .. ' years old'`
 
 #### Array
 
@@ -1625,21 +1604,21 @@ Everyone's favourite! Well it's _my_ favourite, and if you haven't used it today
 ```extra
 [1,2,3].filter(fn(i) => i < 3).join(',')
   |>
-    if (#.length) {
+    if (#pipe.length) {
     then:
-      $# <> ','
+      $#pipe .. ','
     else
       ''
     }
   |>
-    `[$#]`  --> `"[1,2,3,]"`
+    `[$#pipe]`  --> `"[1,2,3,]"`
 ```
 
 There's also a null-safe version:
 
 ```extra
 -- name is String | null
-name ?|> # <> ':' --> the pipe `#` is guaranteed to be a `String`, otherwise the expression is skipped and `null` is returned.
+name ?|> #pipe .. ':' --> the pipe `#pipe` is guaranteed to be a `String`, otherwise the expression is skipped and `null` is returned.
 ```
 
 [^1]: JSX

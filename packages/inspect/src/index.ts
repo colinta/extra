@@ -126,7 +126,7 @@ export function inspect(value: any, wrap = true, depth = 0, found = new Set<any>
   }
 
   if (value instanceof Map) {
-    return `new Map(${inspect(Array.from(value.entries()), wrap, depth, nextFound)})`
+    return `new Map(${inspect(Array.from(value), wrap, depth, nextFound)})`
   }
 
   const tab = '  '.repeat(depth)
