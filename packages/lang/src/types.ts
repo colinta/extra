@@ -3066,6 +3066,10 @@ export class ArrayType extends ContainerType<ArrayType> {
       return
     }
 
+    if (propName < 0) {
+      return this.literalAccessType(-1 - propName)
+    }
+
     // if N >= max(array.length)
     // (length: <N) [N+]
     if (this.narrowedLength.max !== undefined && this.narrowedLength.max <= propName) {

@@ -2650,7 +2650,7 @@ function verifyRelationshipIsEq(
     }
   }
 
-  throw `TODO: verifyRelationshipIsEq(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
+  throw `TODO: verifyRelationshipIsEq(rhs: ${toS(target)}, formula: ${toS(relationship)})`
 }
 
 function verifyRelationshipIsGte(
@@ -2737,7 +2737,8 @@ function verifyRelationshipIsGte(
     }
   }
 
-  throw `TODO: verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
+  // TODO: verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship)})
+  return false
 }
 
 /**
@@ -2997,7 +2998,7 @@ function verifyRelationshipIsLte(
         !isNumeric(relationship.comparison.rhs.rhs)
       ) {
         // swap order and defer to below (non-numeric is on lhs)
-        return verifyRelationshipIsGte(
+        return verifyRelationshipIsLte(
           {
             formula: relationship.formula,
             comparison: {
@@ -3028,7 +3029,8 @@ function verifyRelationshipIsLte(
     }
   }
 
-  throw `TODO: verifyRelationshipIsGte(rhs: ${toS(target)}, formula: ${toS(relationship.formula)} ${relationship.comparison.operator} ${toS(relationship.formula)})`
+  // TODO: verifyRelationshipIsLte(rhs: ${toS(target)}, formula: ${toS(relationship)})
+  return false
 }
 
 export function isEqualFormula(lhs: RelationshipFormula, rhs: RelationshipFormula): boolean {

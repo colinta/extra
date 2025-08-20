@@ -3162,6 +3162,13 @@ class ArrayAccessOperator extends PropertyChainOperator {
           getTypeById,
           getRelationships,
         )
+        const rhsIsGtNegativeLength = verifyRelationship(
+          rhsRel,
+          '>=',
+          relationshipFormula.negate(lhsLength),
+          getTypeById,
+          getRelationships,
+        )
         const rhsIsLtLength = verifyRelationship(
           rhsRel,
           '<',
@@ -3169,7 +3176,7 @@ class ArrayAccessOperator extends PropertyChainOperator {
           getTypeById,
           getRelationships,
         )
-        if (rhsIsGtZero && rhsIsLtLength) {
+        if ((rhsIsGtZero || rhsIsGtNegativeLength) && rhsIsLtLength) {
           return true
         }
       }

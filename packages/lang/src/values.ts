@@ -1093,7 +1093,7 @@ export class ArrayValue extends Value {
       return
     }
 
-    return this.values[index]
+    return this.values.at(index)
   }
 
   isEqual(value: Value): boolean {
