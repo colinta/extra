@@ -5,7 +5,6 @@ import {
   isBinaryOperator,
   BINARY_OP_ALIASES,
   BINARY_OP_NAMES,
-  BINARY_ASSIGN_SYMBOLS,
 } from '../operators'
 import {scanBinaryOperatorSymbol} from '../grammars'
 
@@ -22,11 +21,6 @@ export function scanBinaryOperator(scanner: Scanner): Operator {
 
   if (currentToken in BINARY_OP_ALIASES) {
     currentToken = BINARY_OP_ALIASES[currentToken as keyof typeof BINARY_OP_ALIASES]
-  } else if (BINARY_ASSIGN_SYMBOLS.includes(currentToken)) {
-    throw new ParseError(
-      scanner,
-      `TODO: I have not yet implemented the binary assign operators ('${currentToken}')`,
-    )
   }
 
   if (!isBinaryOperator(currentToken)) {

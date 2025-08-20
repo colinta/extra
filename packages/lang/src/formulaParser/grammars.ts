@@ -29,10 +29,6 @@ export const TYPE_KEYWORD = 'type'
 export const SPLAT_OP = '...'
 export const KWARG_OP = '**'
 
-export const STRING_CONCAT_OPERATOR = '..'
-export const INCLUSION_OPERATOR = 'onlyif'
-export const NULL_COALESCING = '?.'
-
 export const ARGS_OPEN = '('
 export const ARGS_CLOSE = ')'
 

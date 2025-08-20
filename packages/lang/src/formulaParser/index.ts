@@ -4,7 +4,13 @@ import * as Values from '../values'
 
 import * as Expressions from './expressions'
 import {Expression} from './expressions'
-import {LOWEST_PRECEDENCE, binaryOperatorNamed, isOperator} from './operators'
+import {
+  INCLUSION_OPERATOR,
+  LOWEST_PRECEDENCE,
+  NULL_COALESCING_OPERATOR,
+  binaryOperatorNamed,
+  isOperator,
+} from './operators'
 import {
   ParseError,
   type ParseNext,
@@ -38,8 +44,6 @@ import {
   LET_KEYWORD,
   LET_IN,
   FN_KEYWORD,
-  INCLUSION_OPERATOR,
-  NULL_COALESCING,
   PARENS_OPEN,
   ARRAY_OPEN,
   ARRAY_WORD_START,
@@ -489,15 +493,15 @@ function parseInternal(
       if (scanner.is(PARENS_OPEN)) {
         processOperator(binaryOperatorNamed('fn', scanner.flushComments()))
         processExpression(scanInvocationArgs(scanner, parseNext))
-      } else if (scanner.is(NULL_COALESCING + PARENS_OPEN)) {
-        scanner.expectString(NULL_COALESCING)
+      } else if (scanner.is(NULL_COALESCING_OPERATOR + PARENS_OPEN)) {
+        scanner.expectString(NULL_COALESCING_OPERATOR)
         processOperator(binaryOperatorNamed('?.()', scanner.flushComments()))
         processExpression(scanInvocationArgs(scanner, parseNext))
       } else if (scanner.is(ARRAY_OPEN)) {
         processOperator(binaryOperatorNamed('[]', scanner.flushComments()))
         processExpression(scanArrayAccess(scanner, parseNext))
-      } else if (scanner.is(NULL_COALESCING + ARRAY_OPEN)) {
-        scanner.expectString(NULL_COALESCING)
+      } else if (scanner.is(NULL_COALESCING_OPERATOR + ARRAY_OPEN)) {
+        scanner.expectString(NULL_COALESCING_OPERATOR)
         processOperator(binaryOperatorNamed('?.[]', scanner.flushComments()))
         processExpression(scanArrayAccess(scanner, parseNext))
       } else if (isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)) {

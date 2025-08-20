@@ -63,16 +63,73 @@ export const LOWEST_PRECEDENCE = -1
 export const HIGHEST_PRECEDENCE = 100
 
 export const SPREAD_OPERATOR = '...'
+export const STRING_CONCAT_OPERATOR = '..'
+export const INCLUSION_OPERATOR = 'onlyif'
+export const NULL_COALESCING_OPERATOR = '?.'
 
-export const BINARY_ASSIGN_SYMBOLS = ['&=', '|=', '^=', '::=', '++=', '..=']
-  .concat(['~~=', '<<=', '>>=', '+=', '-=', '*=', '/=', '//=', '%=', '**='])
-  .concat(['and=', 'or='])
-export const BINARY_OP_SYMBOLS = ['=', '|>', '?|>', '??', '^', '|', '&']
-  .concat(['==', '!=', '>', '>=', '<', '<=', '<=>', '::', '++', '..', '~~'])
-  .concat(['...', '<..', '..<', '<.<', '<<', '>>', '+', '-', '*', '/', '//'])
-  .concat(['%', '**', '.', '?.', '&&', '||', '!?', '?!', '≤', '≥', '≠'])
+export const BINARY_ASSIGN_OPERATORS = [
+  {name: 'logical-and-assign', symbol: '&=', binarySymbol: '&'},
+  {name: 'logical-or-assign', symbol: '|=', binarySymbol: '|'},
+  {name: 'logical-xor-assign', symbol: '^=', binarySymbol: '^'},
+  {name: 'array-concat-assign', symbol: '++=', binarySymbol: '++'},
+  {name: 'string-concat-assign', symbol: '..=', binarySymbol: '..'},
+  {name: 'object-merge-assign', symbol: '~~=', binarySymbol: '~~'},
+  {name: 'left-shift-assign', symbol: '<<=', binarySymbol: '<<'},
+  {name: 'right-shift-assign', symbol: '>>=', binarySymbol: '>>'},
+  {name: 'addition-assign', symbol: '+=', binarySymbol: '+'},
+  {name: 'subtraction-assign', symbol: '-=', binarySymbol: '-'},
+  {name: 'multiplication-assign', symbol: '*=', binarySymbol: '*'},
+  {name: 'division-assign', symbol: '/=', binarySymbol: '/'},
+  {name: 'floor-division-assign', symbol: '//=', binarySymbol: '//'},
+  {name: 'modulo-assign', symbol: '%=', binarySymbol: '%'},
+  {name: 'exponentiation-assign', symbol: '**=', binarySymbol: '**'},
+] as const
 
-export const UNARY_OP_SYMBOLS = ['=', '>', '>=', '<', '<=', '-', '~', '$', '.', '!']
+export const BINARY_ASSIGN_SYMBOLS = BINARY_ASSIGN_OPERATORS.map(({symbol}) => symbol)
+export const BINARY_OP_SYMBOLS = [
+  '=',
+  '|>',
+  '?|>',
+  '??',
+  '^',
+  '|',
+  '&',
+  '==',
+  '!=',
+  '>',
+  '>=',
+  '<',
+  '<=',
+  '<=>',
+  '::',
+  '++',
+  '..',
+  '~~',
+  '...',
+  '<..',
+  '..<',
+  '<.<',
+  '<<',
+  '>>',
+  '+',
+  '-',
+  '*',
+  '/',
+  '//',
+  '%',
+  '**',
+  '.',
+  '?.',
+  '&&',
+  '||',
+  '!?',
+  '?!',
+  '≤',
+  '≥',
+  '≠',
+] as const
+
+export const UNARY_OP_SYMBOLS = ['=', '>', '>=', '<', '<=', '-', '~', '$', '.', '!'] as const
 
 const PRECEDENCE = {
   BINARY: {
@@ -172,6 +229,9 @@ export function binaryOperatorNamed(
   followingOperatorComments: Comment[] = [],
 ): Operator {
   const op = BINARY_OPERATORS.get(symbol)!
+  if (!op) {
+    return op
+  }
   return {...op, precedingComments, followingOperatorComments}
 }
 
@@ -4043,6 +4103,100 @@ addUnaryOperator({
     )
   },
 })
+
+class BinaryAssignmentOperator extends BinaryOperator {
+  readonly symbol: string
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    super(range, precedingComments, followingOperatorComments, operator, args)
+    this.symbol = operator.symbol
+  }
+
+  operatorType(
+    _runtime: TypeRuntime,
+    _lhs: Types.Type,
+    _rhs: Types.Type,
+    _lhsExpr: Expression,
+    _rhsExpr: Expression,
+  ): GetTypeResult {
+    return ok(new Types.MessageType())
+  }
+
+  operatorEval(
+    _runtime: ValueRuntime,
+    _lhs: Values.Value,
+    _rhs: () => GetValueResult,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+  ): GetRuntimeResult<Values.BooleanValue> {
+    return err(
+      new RuntimeError(lhsExpr, 'Still working on assignment ' + lhsExpr + ' = ' + rhsExpr),
+    )
+  }
+
+  toCode(prevPrecedence = LOWEST_PRECEDENCE): string {
+    if (prevPrecedence > this.operator.precedence) {
+      return `(${this.toCode(LOWEST_PRECEDENCE)})`
+    }
+
+    const lhs = this.args[0]
+    const rhs = (this.args[1] as BinaryOperator).args[1]
+    return this.formatCode([
+      lhs.toCode(this.operator.precedence),
+      rhs.toCode(this.operator.precedence),
+    ])
+  }
+}
+
+function addBinaryAssignmentOperator({
+  name,
+  symbol,
+  binaryOp,
+}: {
+  name: string
+  symbol: string
+  binaryOp: Operator
+}) {
+  addBinaryOperator({
+    name: name,
+    symbol: symbol,
+    precedence: -1,
+    associativity: 'left',
+    create(
+      range: [number, number],
+      precedingComments: Comment[],
+      followingOperatorComments: Comment[],
+      operator: Operator,
+      args: Expression[],
+    ) {
+      const binaryOpArgs = binaryOp.create(range, [], [], binaryOp, [args[0], args[1]])
+      return new BinaryAssignmentOperator(
+        range,
+        precedingComments,
+        followingOperatorComments,
+        operator,
+        [args[0], binaryOpArgs],
+      )
+    },
+  })
+}
+
+for (const {name, symbol, binarySymbol} of BINARY_ASSIGN_OPERATORS) {
+  const binaryOp = binaryOperatorNamed(binarySymbol)
+  if (!binaryOp) {
+    throw new Error(
+      `Binary operator '${binarySymbol}' not found for assignment operator '${symbol}'`,
+    )
+  }
+
+  addBinaryAssignmentOperator({name, symbol, binaryOp})
+}
 
 export class IfExpressionInvocation extends FunctionInvocationOperator {
   symbol = 'if'

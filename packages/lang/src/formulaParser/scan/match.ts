@@ -13,8 +13,8 @@ import {
   IGNORE_TOKEN,
   isStringStartChar,
   AS_KEYWORD,
-  STRING_CONCAT_OPERATOR,
 } from '../grammars'
+import {STRING_CONCAT_OPERATOR} from '../operators'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 import {scanArgumentType} from './argument_type'
