@@ -15,9 +15,8 @@ export interface NodeExpression {
 }
 
 export interface DOM<T> {
-  createElement(tag: string): T
-  applyAttribute(element: T, name: string, value: Value): void
-  createTextNode(text: string): T
+  createElement(tag: NamedViewValue, args: Map<string, Value>): T
+  createTextNode(text: Value): T
   appendElement(container: T, child: T): T
   removeElement(container: T, child: T): T
 }
@@ -1963,7 +1962,7 @@ export class ModuleValue extends Value {
   }
 
   toCode() {
-    return "hello, I'm a module."
+    return "Hello, I'm a Module. Don't output me."
   }
 
   printable() {

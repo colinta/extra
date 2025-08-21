@@ -33,7 +33,7 @@ export class ValueNode extends Node {
   }
 
   renderInto<T>(dom: Values.DOM<T>, el: T) {
-    return dom.createTextNode(this.value.viewPrintable())
+    return dom.createTextNode(this.value)
   }
 }
 
@@ -58,10 +58,8 @@ export class NamedNode extends Node {
   }
 
   renderInto<T>(dom: Values.DOM<T>, el: T) {
-    const element = dom.createElement(this.tag.name)
-    for (const [name, node] of this.args) {
-      dom.applyAttribute(element, name, node.value)
-    }
+    const args = new Map(Array.from(this.args).map(([name, node]) => [name, node.value] as const))
+    const element = dom.createElement(this.tag, args)
     if (this.children) {
       this.children.renderInto(dom, element)
     }

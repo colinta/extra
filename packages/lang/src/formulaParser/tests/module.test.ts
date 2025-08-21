@@ -23,6 +23,7 @@ interface TextNode {
 interface ElementNode {
   is: 'element'
   tag: string
+  value: Values.Value
   children: Element[]
   attrs: Map<string, Values.Value>
 }
@@ -35,16 +36,11 @@ beforeEach(() => {
   valueRuntime = mockValueRuntime(runtimeTypes)
 
   dom = {
-    createElement(tag: string) {
-      return {is: 'element', tag, attrs: new Map(), children: []}
+    createElement(value: Values.NamedViewValue, attrs: Map<string, Values.Value>) {
+      return {is: 'element', tag: value.name, value, attrs, children: []}
     },
-    applyAttribute(element: Element, name: string, value: Values.Value) {
-      if (element.is === 'element') {
-        element.attrs.set(name, value)
-      }
-    },
-    createTextNode(text: string) {
-      return {is: 'text', text}
+    createTextNode(value: Values.Value) {
+      return {is: 'text', text: value.viewPrintable()}
     },
     appendElement(container: Element, child: Element) {
       if (container.is === 'element') {
@@ -79,13 +75,14 @@ describe('module', () => {
     )
   })
 
-  describe('eval', () => {
+  describe('eval / firstRender', () => {
     cases<[string, string, any]>(
       c([
         'static',
         'Static',
         {
           is: 'element',
+          value: expect.anything(),
           tag: 'p',
           attrs: new Map([]),
           children: [{is: 'text', text: 'You are here.'}],
@@ -96,6 +93,7 @@ describe('module', () => {
         'Static',
         {
           is: 'element',
+          value: expect.anything(),
           tag: 'p',
           attrs: new Map([]),
           children: [{is: 'text', text: 'You are here.'}],
@@ -106,6 +104,7 @@ describe('module', () => {
         'Minimal',
         {
           is: 'element',
+          value: expect.anything(),
           tag: 'p',
           attrs: new Map(),
           children: [
@@ -128,6 +127,9 @@ describe('module', () => {
         'small',
         'Small',
         {
+          is: 'element',
+          value: expect.anything(),
+          tag: 'body',
           attrs: new Map(),
           children: [
             {
@@ -158,8 +160,7 @@ describe('module', () => {
         const view = parseJsx(`<${name} />`).get()
         // const type = view.getType(typeRuntime).get()
         const node = view.render(valueRuntime).get()
-
-        const el: Element = dom.createElement('body')
+        const el: Element = dom.createElement(new Values.NamedViewValue('body'), new Map())
         const result = node.renderInto(dom, el)
         expect(result).toEqual(expectedResult)
       }),

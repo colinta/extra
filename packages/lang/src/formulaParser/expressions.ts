@@ -5085,6 +5085,20 @@ abstract class JsxExpression extends Expression {
     return err(new RuntimeError(this, `JsxExpression cannot be eval'd (try 'render' instead)`))
   }
 
+  renderFragment(children: Nodes.Children | undefined): GetNodeResult {
+    if (this.args.length) {
+      return err(new RuntimeError(this, `Fragment Views should not have args`))
+    }
+
+    if (!children) {
+      return err(
+        new RuntimeError(this, `Fragment Views should never be self-closing (found '</>')`),
+      )
+    }
+
+    return ok(new Nodes.FragmentNode(this, children))
+  }
+
   render(runtime: ValueRuntime): GetNodeResult {
     return mapAll(this.children?.map(child => child.render(runtime)) ?? []).map(childrenNodes => {
       const children = this.children ? new Nodes.Children(this, childrenNodes) : undefined
@@ -5095,78 +5109,108 @@ abstract class JsxExpression extends Expression {
           return err(new RuntimeError(this, `No View named '${this.nameRef}'`))
         }
 
-        return mapAll(
-          this.args.map(namedArg => {
-            const name = namedArg.alias
-            return namedArg.value.render(runtime).map(value => [name, value] as const)
-          }),
-        )
-          .map(args => new Map(args))
-          .map(args => {
-            const valueArgs = Array.from(args).map(([name, node]): [string, Values.Value] => [
-              name,
-              node.value,
-            ])
-            if (children) {
-              valueArgs.push(['children', children.value])
-            }
-
-            if (refValue instanceof Values.ViewFormulaValue) {
-              return refValue
-                .render(new Values.FormulaArgs(valueArgs))
-                .map(
-                  firstRender =>
-                    new Nodes.ViewFormulaNode(this, refValue, args, children, firstRender),
-                )
-            }
-
-            if (refValue instanceof Values.ViewClassDefinitionValue) {
-              return refValue
-                .konstructor(refValue)
-                .call(new Values.FormulaArgs(valueArgs))
-                .map(instance => {
-                  if (!(instance instanceof Values.ViewClassInstanceValue)) {
-                    return err(
-                      new RuntimeError(
-                        this,
-                        `Unexpected return value '${instance}' (${instance.constructor.name})`,
-                      ),
-                    )
-                  }
-
-                  return instance.render(new Values.FormulaArgs([])).map(firstRender => {
-                    // to recap:
-                    // - we rendered all children
-                    // - fetched the view from runtime
-                    // - rendered the props (args)
-                    // - inserted 'children' into props
-                    // - TODO: merge insert context
-                    // - since we have a ViewClassDefinitionValue, we
-                    //   instantiated the view (konstructor.call), using args,
-                    //   converted back in Values
-                    // - we rendered the View to get a firstRender
-                    //   (ViewFormulaValue has a 'render' function for this)
-                    return new Nodes.ViewInstanceNode(this, instance, args, children, firstRender)
-                  })
-                })
-            }
-
-            return new Nodes.NamedNode(this, refValue, args, children)
-          })
+        return this.renderValue(runtime, refValue, children)
       }
 
-      if (this.args.length) {
-        return err(new RuntimeError(this, `Fragment Views should not have args`))
-      }
-
-      if (!children) {
-        return err(
-          new RuntimeError(this, `Fragment Views should never be self-closing (found '</>')`),
-        )
-      }
-
-      return ok(new Nodes.FragmentNode(this, children))
+      return this.renderFragment(children)
     })
+  }
+
+  renderValue(
+    runtime: ValueRuntime,
+    refValue: Values.NamedViewValue | Values.ViewFormulaValue | Values.ViewClassDefinitionValue,
+    children: Nodes.Children | undefined,
+  ) {
+    return mapAll(
+      this.args.map(namedArg => {
+        const name = namedArg.alias
+        return namedArg.value.render(runtime).map(value => [name, value] as const)
+      }),
+    )
+      .map(args => new Map(args))
+      .map(args => {
+        const valueArgs = Array.from(args).map(([name, node]): [string, Values.Value] => [
+          name,
+          node.value,
+        ])
+        if (children) {
+          valueArgs.push(['children', children.value])
+        }
+
+        if (refValue instanceof Values.ViewFormulaValue) {
+          return this.renderViewFormula(runtime, refValue, children, args, valueArgs)
+        }
+
+        if (refValue instanceof Values.ViewClassDefinitionValue) {
+          return this.renderViewInstance(runtime, refValue, children, args, valueArgs)
+        }
+
+        return new Nodes.NamedNode(this, refValue, args, children)
+      })
+  }
+
+  renderViewFormula(
+    _runtime: ValueRuntime,
+    refValue: Values.ViewFormulaValue,
+    children: Nodes.Children | undefined,
+    args: Map<string, Values.Node>,
+    valueArgs: [string, Values.Value][],
+  ) {
+    // to recap:
+    // # render(runtime)
+    // - we rendered all children
+    // - fetched the view from runtime (render(runtime))
+    // # renderValue(runtime, refValue, children)
+    // - rendered the props (args)
+    // - inserted 'children' into props (renderValue(runtime, refValue, children))
+    // - TODO: merge/insert context
+    // # renderViewFormula(runtime, refValue, children, ...)
+    // - since we have a ViewFormulaValue, we rendered the view (firstRender)
+    // - create a ViewFormulaNode
+    return refValue
+      .render(new Values.FormulaArgs(valueArgs))
+      .map(firstRender => new Nodes.ViewFormulaNode(this, refValue, args, children, firstRender))
+  }
+
+  renderViewInstance(
+    _runtime: ValueRuntime,
+    refValue: Values.ViewClassDefinitionValue,
+    children: Nodes.Children | undefined,
+    args: Map<string, Values.Node>,
+    valueArgs: [string, Values.Value][],
+  ) {
+    return refValue
+      .konstructor(refValue)
+      .call(new Values.FormulaArgs(valueArgs))
+      .map(instance => {
+        if (!(instance instanceof Values.ViewClassInstanceValue)) {
+          return err(
+            new RuntimeError(
+              this,
+              `Unexpected return value '${instance}' (${instance.constructor.name})`,
+            ),
+          )
+        }
+
+        return instance.render(new Values.FormulaArgs([])).map(
+          firstRender =>
+            // to recap:
+            // # render(runtime)
+            // - we rendered all children
+            // - fetched the view from runtime (render(runtime))
+            // # renderValue(runtime, refValue, children)
+            // - rendered the props (args)
+            // - inserted 'children' into props (renderValue(runtime, refValue, children))
+            // - TODO: merge/insert context
+            // # renderViewInstance(runtime, refValue, children, ...)
+            // - since we have a ViewClassDefinitionValue, we
+            //   instantiated the view (konstructor.call)
+            // - we rendered the view to get a firstRender
+            //   (ViewClassInstanceValue has a render formula)
+            // - create a ViewInstanceNode
+            new Nodes.ViewInstanceNode(this, instance, args, children, firstRender),
+        )
+      })
   }
 }
 
