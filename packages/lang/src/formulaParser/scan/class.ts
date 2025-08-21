@@ -155,30 +155,19 @@ function scanClassProperty(scanner: Scanner, parseNext: ParseNext) {
   // ("because I can" is the answer, and not entirely unreasonable, I know)
   scanner.scanAllWhitespace()
 
-  let shouldScanType: boolean
   let requiresDefaultValue: boolean
   const isStaticProp = !(nameRef instanceof Expressions.StateReference)
 
   if (isStaticProp) {
-    shouldScanType = scanner.scanIfString(':')
     scanner.scanAllWhitespace()
     requiresDefaultValue = true
   } else {
-    // @state properties require a type - static properties do not at first I
-    // was tempted to make the argument_type optional, but Extra is so
-    // restrictive in its inferred types, this would be next to useless. So
-    // let's just require the type instead and avoid any confusion.
-    scanner.expectString(
-      ':',
-      `Class properties must declare their type. Missing type on property '${nameRef}'`,
-    )
-    shouldScanType = true
     requiresDefaultValue = false
   }
 
   let argType: Expressions.Expression | undefined
   let defaultValue: Expression | undefined
-  if (shouldScanType) {
+  if (scanner.scanIfString(':')) {
     argType = scanArgumentType(scanner, 'argument_type', parseNext)
   }
 
@@ -200,6 +189,13 @@ function scanClassProperty(scanner: Scanner, parseNext: ParseNext) {
     ;(argType ?? nameRef).followingComments.push(...scanner.flushComments())
     scanner.scanAllWhitespace()
     defaultValue = parseNext('default')
+  }
+
+  if (!requiresDefaultValue && !argType) {
+    throw new ParseError(
+      scanner,
+      `Class property '${nameRef.name}' must have a type or a default value.`,
+    )
   }
 
   const followingComments = scanner.flushComments()
@@ -224,7 +220,7 @@ function scanClassProperty(scanner: Scanner, parseNext: ParseNext) {
     [range1, scanner.charIndex],
     precedingComments,
     nameRef,
-    argType!,
+    argType,
     defaultValue,
   )
 }

@@ -588,6 +588,17 @@ export abstract class Type {
   safePropAccessType(name: string) {
     return this.propAccessType(name)
   }
+
+  /**
+   * If the type is used in a class property and isn't specified, this is the
+   * inferred type based on the argument.
+   *
+   *     @ages = [1,2,3]
+   *     --> @ages: Array(Int)
+   */
+  defaultInferredClassProp(): Type {
+    return this
+  }
 }
 
 /**
@@ -978,6 +989,10 @@ export class FormulaType extends Type {
   propAccessType(name: string) {
     return undefined
   }
+
+  defaultInferredClassProp() {
+    return new FormulaType(this.returnType.defaultInferredClassProp(), this.args, this.genericTypes)
+  }
 }
 
 /**
@@ -992,6 +1007,10 @@ export class LazyFormulaType extends FormulaType {
   constructor(returnType: Type, genericTypes: GenericType[]) {
     super(returnType, [], genericTypes)
   }
+
+  defaultInferredClassProp() {
+    return new LazyFormulaType(this.returnType.defaultInferredClassProp(), this.genericTypes)
+  }
 }
 
 export class NamedFormulaType extends FormulaType {
@@ -1005,6 +1024,15 @@ export class NamedFormulaType extends FormulaType {
   ) {
     super(returnType, args, genericTypes)
     this.name = name
+  }
+
+  defaultInferredClassProp() {
+    return new NamedFormulaType(
+      this.name,
+      this.returnType.defaultInferredClassProp(),
+      this.args,
+      this.genericTypes,
+    )
   }
 }
 
@@ -1049,6 +1077,15 @@ export class ViewFormulaType extends NamedFormulaType {
 
     desc += `(${args}): ${this.returnType.toCode(false)}`
     return embedded ? `(${desc})` : desc
+  }
+
+  defaultInferredClassProp() {
+    return new ViewFormulaType(
+      this.name,
+      this.returnType.defaultInferredClassProp(),
+      this.args,
+      this.genericTypes,
+    )
   }
 }
 
@@ -1389,13 +1426,17 @@ class __OneOfType extends OneOfType {
     }
     super(types)
   }
+
+  defaultInferredClassProp() {
+    return new __OneOfType(this.of.map(type => type.defaultInferredClassProp()))
+  }
 }
 Object.defineProperty(__OneOfType, 'name', {value: 'OneOfType'})
 
 export class OptionalType extends OneOfType {
   readonly is = 'optional'
 
-  private constructor(type: Type) {
+  private constructor(readonly type: Type) {
     const types = [type, NullType]
     super(types)
   }
@@ -1426,6 +1467,10 @@ export class OptionalType extends OneOfType {
   toCode() {
     const type = this.of[0].toCode(true)
     return `${type}?`
+  }
+
+  defaultInferredClassProp() {
+    return new OptionalType(this.type.defaultInferredClassProp())
   }
 }
 
@@ -1802,6 +1847,10 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
   propAccessType(name: string) {
     return MetaFloatType.types[name]?.(this)
   }
+
+  defaultInferredClassProp() {
+    return FloatType
+  }
 }
 
 /**
@@ -1979,6 +2028,10 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
 
   propAccessType(name: string) {
     return MetaIntType.types[name]?.(this)
+  }
+
+  defaultInferredClassProp() {
+    return IntType
   }
 }
 
@@ -2259,6 +2312,10 @@ export class MetaStringType extends Type {
 
     return MetaStringType.types[name]?.(this)
   }
+
+  defaultInferredClassProp() {
+    return StringType
+  }
 }
 
 class MetaRegexType extends Type {
@@ -2279,6 +2336,10 @@ class MetaRegexType extends Type {
 
   propAccessType(name: string) {
     return MetaRegexType.types[name]?.(this)
+  }
+
+  defaultInferredClassProp() {
+    return RegexType
   }
 }
 
@@ -2388,6 +2449,10 @@ export class MetaFloatRangeType extends RangeType<Narrowed.NarrowedFloat> {
   isIntRange(): this is MetaIntRangeType {
     return false
   }
+
+  defaultInferredClassProp() {
+    return FloatRangeType
+  }
 }
 
 export class MetaIntRangeType extends RangeType<Narrowed.NarrowedInt> {
@@ -2423,6 +2488,10 @@ export class MetaIntRangeType extends RangeType<Narrowed.NarrowedInt> {
 
   isIntRange(): this is MetaIntRangeType {
     return true
+  }
+
+  defaultInferredClassProp() {
+    return IntRangeType
   }
 }
 
@@ -2530,6 +2599,10 @@ export abstract class LiteralBooleanType extends LiteralType {
   propAccessType(name: string): Type | undefined {
     return BooleanType.propAccessType(name)
   }
+
+  defaultInferredClassProp() {
+    return BooleanType
+  }
 }
 
 export class LiteralFloatType extends LiteralType {
@@ -2585,6 +2658,10 @@ export class LiteralFloatType extends LiteralType {
   propAccessType(name: string): Type | undefined {
     return FloatType.propAccessType(name)
   }
+
+  defaultInferredClassProp(): Type {
+    return FloatType
+  }
 }
 
 export class LiteralIntType extends LiteralFloatType {
@@ -2605,6 +2682,10 @@ export class LiteralIntType extends LiteralFloatType {
 
   propAccessType(name: string): Type | undefined {
     return IntType.propAccessType(name)
+  }
+
+  defaultInferredClassProp(): Type {
+    return IntType
   }
 }
 
@@ -2640,6 +2721,10 @@ export class LiteralStringType extends LiteralType {
 
     return StringType.propAccessType(name)
   }
+
+  defaultInferredClassProp() {
+    return StringType
+  }
 }
 
 export class LiteralRegexType extends LiteralType {
@@ -2657,6 +2742,10 @@ export class LiteralRegexType extends LiteralType {
 
   propAccessType(name: string): Type | undefined {
     return RegexType.propAccessType(name)
+  }
+
+  defaultInferredClassProp() {
+    return RegexType
   }
 }
 
@@ -2792,6 +2881,359 @@ export class NamespaceType extends Type {
 
   propAccessType(_name: string) {
     return undefined
+  }
+}
+
+export class ArrayType extends ContainerType<ArrayType> {
+  readonly is = 'Array'
+
+  declare static types: Record<string, ((array: ArrayType) => Type) | undefined>
+
+  constructor(
+    of: Type,
+    narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
+  ) {
+    // hmm if narrowedLength.max === 0, 'of' could be 'always' type... just a
+    // thought.
+    super(of, narrowedLength)
+  }
+
+  create(narrowed: Narrowed.NarrowedFloat): ArrayType {
+    return new ArrayType(this.of, narrowedFloatToLength(narrowed))
+  }
+
+  fromTypeConstructor() {
+    return new ArrayType(this.of.fromTypeConstructor(), this.narrowedLength)
+  }
+
+  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
+    return maybeResolve(
+      this.of,
+      this,
+      type => new ArrayType(type, this.narrowedLength),
+      resolvedGenericsMap,
+    )
+  }
+
+  static desc(typeDesc: string, narrowedLength: Narrowed.NarrowedLength) {
+    const length = Narrowed.lengthDesc(narrowedLength)
+    if (length) {
+      return `Array(${typeDesc}, length: ${length})`
+    }
+    return `Array(${typeDesc})`
+  }
+
+  toCode() {
+    return ArrayType.desc(this.of.toCode(false), this.narrowedLength)
+  }
+
+  narrowLengthSafe(minLength: number, maxLength: number | undefined) {
+    return new ArrayType(this.of, {min: minLength, max: maxLength})
+  }
+
+  compatibleWithBothNarrowed(rhs: ArrayType) {
+    const length = Narrowed.compatibleWithBothLengths(this.narrowedLength, rhs.narrowedLength)
+    if (!length) {
+      return _privateOneOf([this, rhs])
+    }
+
+    return new ArrayType(this.of, length)
+  }
+
+  /**
+   * ArrayType.arrayAccessType
+   *     a = [...]
+   *     index: ?
+   *     a[index] => ?
+   */
+  arrayAccessType(rhs: Type) {
+    if (!rhs.isInt()) {
+      return
+    }
+
+    if (rhs instanceof LiteralIntType) {
+      return this.literalAccessType(rhs.value)
+    }
+
+    if (
+      rhs instanceof MetaIntType &&
+      rhs.narrowed.min !== undefined &&
+      rhs.narrowed.min >= 0 &&
+      rhs.narrowed.max !== undefined &&
+      this.narrowedLength.max !== undefined &&
+      rhs.narrowed.max <= this.narrowedLength.max
+    ) {
+      return this.of
+    }
+
+    return optional(this.of)
+  }
+
+  /**
+   * ArrayType.literalAccessType
+   */
+  literalAccessType(propName: Key): Type | undefined {
+    if (typeof propName !== 'number') {
+      return
+    }
+
+    if (propName < 0) {
+      return this.literalAccessType(-1 - propName)
+    }
+
+    // if N >= max(array.length)
+    // (length: <N) [N+]
+    if (this.narrowedLength.max !== undefined && this.narrowedLength.max <= propName) {
+      return NullType
+    }
+
+    // if N < min(array.length)
+    // (length: <N) [0..N]
+    if (this.narrowedLength.min > propName) {
+      return this.of
+    }
+
+    return optional(this.of)
+  }
+
+  /**
+   * If propName is length and type is MetaIntType (with narrowedLength), return a
+   * new ArrayType with that length.
+   */
+  replacingProp(propName: string, type: Type): Result<Type, string> {
+    if (propName === 'length') {
+      if (type instanceof OneOfType) {
+        return mapAll(type.of.map(ofType => this.replacingProp(propName, ofType))).map(oneOf)
+      }
+
+      if (type === NeverType) {
+        return ok(NeverType)
+      }
+
+      if (type instanceof LiteralIntType) {
+        return ok(this.narrowLength(Math.max(type.value, 0), type.value))
+      }
+
+      if (type instanceof MetaIntType) {
+        return ok(this.narrowLength(Math.max(type.narrowed.min ?? 0, 0), type.narrowed.max))
+      }
+
+      return err(
+        `Type ${type.toCode()} is not a valid length type for array. Expected Range or Int`,
+      )
+    }
+
+    return super.replacingProp(propName, type)
+  }
+
+  propAccessType(name: string) {
+    return ArrayType.types[name]?.(this)
+  }
+
+  defaultInferredClassProp() {
+    return new ArrayType(this.of.defaultInferredClassProp())
+  }
+}
+
+export class DictType extends ContainerType<DictType> {
+  readonly is = 'Dict'
+
+  declare static types: Record<string, ((dict: DictType) => Type) | undefined>
+
+  constructor(
+    of: Type,
+    narrowed: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
+    readonly narrowedNames: Set<Key> = new Set(),
+  ) {
+    if (
+      narrowed.min < narrowedNames.size ||
+      (narrowed.max !== undefined && narrowed.max < narrowedNames.size)
+    ) {
+      narrowed = {
+        min: Math.max(narrowed.min, narrowedNames.size),
+        max: narrowed.max === undefined ? undefined : Math.max(narrowed.max, narrowedNames.size),
+      }
+    }
+    super(of, narrowed)
+  }
+
+  create(narrowed: Narrowed.NarrowedFloat): DictType {
+    if (this.narrowedNames.size) {
+      throw new Error(`TODO: DictType.create, keys = ${this.narrowedNames}`)
+    }
+    return new DictType(this.of, narrowedFloatToLength(narrowed))
+  }
+
+  fromTypeConstructor() {
+    return new DictType(this.of.fromTypeConstructor(), this.narrowedLength, this.narrowedNames)
+  }
+
+  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
+    return maybeResolve(
+      this.of,
+      this,
+      type => new DictType(type, this.narrowedLength, this.narrowedNames),
+      resolvedGenericsMap,
+    )
+  }
+
+  static desc(typeDesc: string, narrowedNames: Set<Key>, narrowedLength: Narrowed.NarrowedLength) {
+    let namesDesc: string
+    if (narrowedNames.size === 0) {
+      namesDesc = ''
+    } else {
+      namesDesc = `keys: [${[...narrowedNames].map(name => ':' + name).join(', ')}]`
+    }
+
+    let lengthDesc = Narrowed.lengthDesc(narrowedLength)
+    if (lengthDesc === `>=${narrowedNames.size}`) {
+      // fun little optimization - if the minimum size is the same as the number of
+      // specified keys, there's no reason to specify the size
+      lengthDesc = ''
+    } else if (lengthDesc) {
+      lengthDesc = 'length: ' + lengthDesc
+    }
+
+    if (namesDesc && lengthDesc) {
+      return `Dict(${typeDesc}, ${namesDesc}, ${lengthDesc})`
+    }
+
+    if (namesDesc) {
+      return `Dict(${typeDesc}, ${namesDesc})`
+    }
+
+    if (lengthDesc) {
+      return `Dict(${typeDesc}, ${lengthDesc})`
+    }
+
+    return `Dict(${typeDesc})`
+  }
+
+  toCode() {
+    const typeDesc = this.of.toCode(false)
+    return DictType.desc(typeDesc, this.narrowedNames, this.narrowedLength)
+  }
+
+  narrowLengthSafe(minLength: number, maxLength: number | undefined) {
+    return new DictType(this.of, {min: minLength, max: maxLength}, this.narrowedNames)
+  }
+
+  narrowName(name: Key) {
+    if (this.narrowedNames.has(name)) {
+      return this
+    }
+    const names = new Set(this.narrowedNames)
+    names.add(name)
+    return new DictType(this.of, this.narrowedLength, names)
+  }
+
+  compatibleWithBothNarrowed(rhs: DictType) {
+    const length = Narrowed.compatibleWithBothLengths(this.narrowedLength, rhs.narrowedLength)
+    if (!length) {
+      return _privateOneOf([this, rhs])
+    }
+
+    const names = intersection(this.narrowedNames, rhs.narrowedNames)
+    return new DictType(this.of, length, names)
+  }
+
+  /**
+   * DictType.arrayAccessType
+   */
+  arrayAccessType(_rhs: Type) {
+    return optional(this.of)
+  }
+
+  /**
+   * DictType.literalAccessType
+   */
+  literalAccessType(name: Key) {
+    // if lhs is in narrowedNames, it is `this.of`
+    const hasName = this.narrowedNames.has(name)
+    if (hasName) {
+      return this.of
+    }
+
+    // if it isn't in narrowedNames, it _could_ exist, unless the number of items
+    // in dict equals the size of narrowedNames (ie we just did an exhaustive check)
+    const allProps = this.narrowedNames.size === this.narrowedLength.max
+    if (allProps) {
+      return NullType
+    }
+
+    return optional(this.of)
+  }
+
+  propAccessType(name: string) {
+    return DictType.types[name]?.(this) ?? this.of
+  }
+
+  defaultInferredClassProp() {
+    return new DictType(this.of.defaultInferredClassProp())
+  }
+}
+
+export class SetType extends ContainerType<SetType> {
+  readonly is = 'Set'
+
+  declare static types: Record<string, ((array: SetType) => Type) | undefined>
+
+  constructor(
+    of: Type,
+    narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
+  ) {
+    super(of, narrowedLength)
+  }
+
+  create(narrowed: Narrowed.NarrowedFloat): SetType {
+    return new SetType(this.of, narrowedFloatToLength(narrowed))
+  }
+
+  fromTypeConstructor(): SetType {
+    return new SetType(this.of.fromTypeConstructor(), this.narrowedLength)
+  }
+
+  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
+    return maybeResolve(
+      this.of,
+      this,
+      type => new ArrayType(type, this.narrowedLength),
+      resolvedGenericsMap,
+    )
+  }
+
+  static desc(typeDesc: string, narrowedLength: Narrowed.NarrowedLength) {
+    const length = Narrowed.lengthDesc(narrowedLength)
+    if (length) {
+      return `Set(${typeDesc}, length: ${length})`
+    }
+
+    return `Set(${typeDesc})`
+  }
+
+  toCode() {
+    return SetType.desc(this.of.toCode(false), this.narrowedLength)
+  }
+
+  narrowLengthSafe(minLength: number, maxLength: number | undefined) {
+    return new SetType(this.of, {min: minLength, max: maxLength})
+  }
+
+  compatibleWithBothNarrowed(rhs: SetType) {
+    const length = Narrowed.compatibleWithBothLengths(this.narrowedLength, rhs.narrowedLength)
+    if (!length) {
+      return _privateOneOf([this, rhs])
+    }
+
+    return new SetType(this.of, length)
+  }
+
+  propAccessType(name: string) {
+    return SetType.types[name]?.(this)
+  }
+
+  defaultInferredClassProp() {
+    return new SetType(this.of.defaultInferredClassProp())
   }
 }
 
@@ -2960,346 +3402,13 @@ export class ObjectType extends Type {
   isOnlyTruthyType() {
     return true
   }
-}
 
-export class ArrayType extends ContainerType<ArrayType> {
-  readonly is = 'Array'
-
-  declare static types: Record<string, ((array: ArrayType) => Type) | undefined>
-
-  constructor(
-    of: Type,
-    narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
-  ) {
-    // hmm if narrowedLength.max === 0, 'of' could be 'always' type... just a
-    // thought.
-    super(of, narrowedLength)
-  }
-
-  create(narrowed: Narrowed.NarrowedFloat): ArrayType {
-    return new ArrayType(this.of, narrowedFloatToLength(narrowed))
-  }
-
-  fromTypeConstructor() {
-    return new ArrayType(this.of.fromTypeConstructor(), this.narrowedLength)
-  }
-
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    return maybeResolve(
-      this.of,
-      this,
-      type => new ArrayType(type, this.narrowedLength),
-      resolvedGenericsMap,
+  defaultInferredClassProp() {
+    return new ObjectType(
+      this.props.map(
+        ({is, name, type}) => ({is, name, type: type.defaultInferredClassProp()}) as ObjectProp,
+      ),
     )
-  }
-
-  static desc(typeDesc: string, narrowedLength: Narrowed.NarrowedLength) {
-    const length = Narrowed.lengthDesc(narrowedLength)
-    if (length) {
-      return `Array(${typeDesc}, length: ${length})`
-    }
-    return `Array(${typeDesc})`
-  }
-
-  toCode() {
-    return ArrayType.desc(this.of.toCode(false), this.narrowedLength)
-  }
-
-  narrowLengthSafe(minLength: number, maxLength: number | undefined) {
-    return new ArrayType(this.of, {min: minLength, max: maxLength})
-  }
-
-  compatibleWithBothNarrowed(rhs: ArrayType) {
-    const length = Narrowed.compatibleWithBothLengths(this.narrowedLength, rhs.narrowedLength)
-    if (!length) {
-      return _privateOneOf([this, rhs])
-    }
-
-    return new ArrayType(this.of, length)
-  }
-
-  /**
-   * ArrayType.arrayAccessType
-   *     a = [...]
-   *     index: ?
-   *     a[index] => ?
-   */
-  arrayAccessType(rhs: Type) {
-    if (!rhs.isInt()) {
-      return
-    }
-
-    if (rhs instanceof LiteralIntType) {
-      return this.literalAccessType(rhs.value)
-    }
-
-    if (
-      rhs instanceof MetaIntType &&
-      rhs.narrowed.min !== undefined &&
-      rhs.narrowed.min >= 0 &&
-      rhs.narrowed.max !== undefined &&
-      this.narrowedLength.max !== undefined &&
-      rhs.narrowed.max <= this.narrowedLength.max
-    ) {
-      return this.of
-    }
-
-    return optional(this.of)
-  }
-
-  /**
-   * ArrayType.literalAccessType
-   */
-  literalAccessType(propName: Key): Type | undefined {
-    if (typeof propName !== 'number') {
-      return
-    }
-
-    if (propName < 0) {
-      return this.literalAccessType(-1 - propName)
-    }
-
-    // if N >= max(array.length)
-    // (length: <N) [N+]
-    if (this.narrowedLength.max !== undefined && this.narrowedLength.max <= propName) {
-      return NullType
-    }
-
-    // if N < min(array.length)
-    // (length: <N) [0..N]
-    if (this.narrowedLength.min > propName) {
-      return this.of
-    }
-
-    return optional(this.of)
-  }
-
-  /**
-   * If propName is length and type is MetaIntType (with narrowedLength), return a
-   * new ArrayType with that length.
-   */
-  replacingProp(propName: string, type: Type): Result<Type, string> {
-    if (propName === 'length') {
-      if (type instanceof OneOfType) {
-        return mapAll(type.of.map(ofType => this.replacingProp(propName, ofType))).map(oneOf)
-      }
-
-      if (type === NeverType) {
-        return ok(NeverType)
-      }
-
-      if (type instanceof LiteralIntType) {
-        return ok(this.narrowLength(Math.max(type.value, 0), type.value))
-      }
-
-      if (type instanceof MetaIntType) {
-        return ok(this.narrowLength(Math.max(type.narrowed.min ?? 0, 0), type.narrowed.max))
-      }
-
-      return err(
-        `Type ${type.toCode()} is not a valid length type for array. Expected Range or Int`,
-      )
-    }
-
-    return super.replacingProp(propName, type)
-  }
-
-  propAccessType(name: string) {
-    return ArrayType.types[name]?.(this)
-  }
-}
-
-export class DictType extends ContainerType<DictType> {
-  readonly is = 'Dict'
-
-  declare static types: Record<string, ((dict: DictType) => Type) | undefined>
-
-  constructor(
-    of: Type,
-    narrowed: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
-    readonly narrowedNames: Set<Key> = new Set(),
-  ) {
-    if (
-      narrowed.min < narrowedNames.size ||
-      (narrowed.max !== undefined && narrowed.max < narrowedNames.size)
-    ) {
-      narrowed = {
-        min: Math.max(narrowed.min, narrowedNames.size),
-        max: narrowed.max === undefined ? undefined : Math.max(narrowed.max, narrowedNames.size),
-      }
-    }
-    super(of, narrowed)
-  }
-
-  create(narrowed: Narrowed.NarrowedFloat): DictType {
-    if (this.narrowedNames.size) {
-      throw new Error(`TODO: DictType.create, keys = ${this.narrowedNames}`)
-    }
-    return new DictType(this.of, narrowedFloatToLength(narrowed))
-  }
-
-  fromTypeConstructor() {
-    return new DictType(this.of.fromTypeConstructor(), this.narrowedLength, this.narrowedNames)
-  }
-
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    return maybeResolve(
-      this.of,
-      this,
-      type => new DictType(type, this.narrowedLength, this.narrowedNames),
-      resolvedGenericsMap,
-    )
-  }
-
-  static desc(typeDesc: string, narrowedNames: Set<Key>, narrowedLength: Narrowed.NarrowedLength) {
-    let namesDesc: string
-    if (narrowedNames.size === 0) {
-      namesDesc = ''
-    } else {
-      namesDesc = `keys: [${[...narrowedNames].map(name => ':' + name).join(', ')}]`
-    }
-
-    let lengthDesc = Narrowed.lengthDesc(narrowedLength)
-    if (lengthDesc === `>=${narrowedNames.size}`) {
-      // fun little optimization - if the minimum size is the same as the number of
-      // specified keys, there's no reason to specify the size
-      lengthDesc = ''
-    } else if (lengthDesc) {
-      lengthDesc = 'length: ' + lengthDesc
-    }
-
-    if (namesDesc && lengthDesc) {
-      return `Dict(${typeDesc}, ${namesDesc}, ${lengthDesc})`
-    }
-
-    if (namesDesc) {
-      return `Dict(${typeDesc}, ${namesDesc})`
-    }
-
-    if (lengthDesc) {
-      return `Dict(${typeDesc}, ${lengthDesc})`
-    }
-
-    return `Dict(${typeDesc})`
-  }
-
-  toCode() {
-    const typeDesc = this.of.toCode(false)
-    return DictType.desc(typeDesc, this.narrowedNames, this.narrowedLength)
-  }
-
-  narrowLengthSafe(minLength: number, maxLength: number | undefined) {
-    return new DictType(this.of, {min: minLength, max: maxLength}, this.narrowedNames)
-  }
-
-  narrowName(name: Key) {
-    if (this.narrowedNames.has(name)) {
-      return this
-    }
-    const names = new Set(this.narrowedNames)
-    names.add(name)
-    return new DictType(this.of, this.narrowedLength, names)
-  }
-
-  compatibleWithBothNarrowed(rhs: DictType) {
-    const length = Narrowed.compatibleWithBothLengths(this.narrowedLength, rhs.narrowedLength)
-    if (!length) {
-      return _privateOneOf([this, rhs])
-    }
-
-    const names = intersection(this.narrowedNames, rhs.narrowedNames)
-    return new DictType(this.of, length, names)
-  }
-
-  /**
-   * DictType.arrayAccessType
-   */
-  arrayAccessType(_rhs: Type) {
-    return optional(this.of)
-  }
-
-  /**
-   * DictType.literalAccessType
-   */
-  literalAccessType(name: Key) {
-    // if lhs is in narrowedNames, it is `this.of`
-    const hasName = this.narrowedNames.has(name)
-    if (hasName) {
-      return this.of
-    }
-
-    // if it isn't in narrowedNames, it _could_ exist, unless the number of items
-    // in dict equals the size of narrowedNames (ie we just did an exhaustive check)
-    const allProps = this.narrowedNames.size === this.narrowedLength.max
-    if (allProps) {
-      return NullType
-    }
-
-    return optional(this.of)
-  }
-
-  propAccessType(name: string) {
-    return DictType.types[name]?.(this) ?? this.of
-  }
-}
-
-export class SetType extends ContainerType<SetType> {
-  readonly is = 'Set'
-
-  declare static types: Record<string, ((array: SetType) => Type) | undefined>
-
-  constructor(
-    of: Type,
-    narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
-  ) {
-    super(of, narrowedLength)
-  }
-
-  create(narrowed: Narrowed.NarrowedFloat): SetType {
-    return new SetType(this.of, narrowedFloatToLength(narrowed))
-  }
-
-  fromTypeConstructor(): SetType {
-    return new SetType(this.of.fromTypeConstructor(), this.narrowedLength)
-  }
-
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    return maybeResolve(
-      this.of,
-      this,
-      type => new ArrayType(type, this.narrowedLength),
-      resolvedGenericsMap,
-    )
-  }
-
-  static desc(typeDesc: string, narrowedLength: Narrowed.NarrowedLength) {
-    const length = Narrowed.lengthDesc(narrowedLength)
-    if (length) {
-      return `Set(${typeDesc}, length: ${length})`
-    }
-
-    return `Set(${typeDesc})`
-  }
-
-  toCode() {
-    return SetType.desc(this.of.toCode(false), this.narrowedLength)
-  }
-
-  narrowLengthSafe(minLength: number, maxLength: number | undefined) {
-    return new SetType(this.of, {min: minLength, max: maxLength})
-  }
-
-  compatibleWithBothNarrowed(rhs: SetType) {
-    const length = Narrowed.compatibleWithBothLengths(this.narrowedLength, rhs.narrowedLength)
-    if (!length) {
-      return _privateOneOf([this, rhs])
-    }
-
-    return new SetType(this.of, length)
-  }
-
-  propAccessType(name: string) {
-    return SetType.types[name]?.(this)
   }
 }
 
@@ -3311,6 +3420,15 @@ export class NamedObjectType extends ObjectType {
     props: ObjectProp[],
   ) {
     super(props)
+  }
+
+  defaultInferredClassProp() {
+    return new NamedObjectType(
+      this.name,
+      this.props.map(
+        ({is, name, type}) => ({is, name, type: type.defaultInferredClassProp()}) as ObjectProp,
+      ),
+    )
   }
 }
 

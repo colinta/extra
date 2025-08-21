@@ -2855,14 +2855,19 @@ export class ClassStatePropertyExpression extends ClassPropertyExpression {
     range: Range,
     precedingComments: Comment[],
     nameRef: Reference,
-    readonly argType: Expression,
+    readonly argType: Expression | undefined,
     defaultValue: Expression | undefined,
   ) {
     super(range, precedingComments, nameRef, argType, defaultValue)
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
-    return this.argType.getAsTypeExpression(runtime)
+    if (this.argType) {
+      return this.argType.getAsTypeExpression(runtime)
+    }
+    return this.defaultValue!.getAsTypeExpression(runtime).map(type => {
+      return type.defaultInferredClassProp()
+    })
   }
 
   eval(): GetValueResult {

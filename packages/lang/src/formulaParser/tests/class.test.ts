@@ -49,6 +49,13 @@ class User(name: String) {
       c([
         `\
 class User {
+  @name = ''
+}
+`,
+      ]),
+      c([
+        `\
+class User {
   static create(name: String) =>
     User(name:)
   default = User(name: default-name)
@@ -100,6 +107,23 @@ class User {
 
   describe('getType', () => {
     cases<[string, Types.Type] | [string, Types.Type, [string, Types.Type][]]>(
+      c([
+        `\
+class User { -- inferred @name
+  @name = 'name'
+}`,
+        Types.metaClass({
+          name: 'User',
+          class: Types.classType({
+            name: 'User',
+            props: new Map([['name', Types.string()]]),
+            formulas: new Map(),
+          }),
+          defaults: ['name'],
+          props: new Map(),
+        }),
+        [],
+      ]),
       c([
         `\
 class User { -- explicit name
@@ -348,27 +372,6 @@ class User(howdy: String) { -- howdy: string
   })
 
   describe('invalid', () => {
-    cases<[string, string]>(
-      c([
-        `\
-class User {
-  @name = ''
-}`,
-        "Missing type on property '@name'",
-      ]),
-    ).run(([classDefinition, message], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(
-        `should not get type of ${desc(classDefinition)}`,
-        () => {
-          expect(() => {
-            const moduleDef = parseModule(classDefinition).get()
-            const classDef = moduleDef.expressions[0]
-            classDef.getType(typeRuntime)
-          }).toThrow(message)
-        },
-      ),
-    )
-
     cases<[string, string, string]>(
       c([
         `\
