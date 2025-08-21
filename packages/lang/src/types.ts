@@ -1610,6 +1610,9 @@ class MetaBooleanType extends Type {
   }
 }
 
+/**
+ * A placeholder for `if` and `switch` arguments.
+ */
 export const ConditionType = new (class ConditionType extends Type {
   readonly is = 'condition'
 

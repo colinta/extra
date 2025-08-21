@@ -2477,11 +2477,11 @@ export class ThisIdentifier extends ReservedWord {
   }
 
   eval(runtime: ValueRuntime): GetValueResult {
-    const thisType = runtime.getThisValue()
-    if (!thisType) {
+    const thisValue = runtime.getThisValue()
+    if (!thisValue) {
       return err(new RuntimeError(this, '`this` is not available in this context'))
     }
-    return ok(thisType)
+    return ok(thisValue)
   }
 }
 
