@@ -1442,54 +1442,6 @@ addBinaryOperator({
   },
 })
 
-class AssignmentOperator extends BinaryOperator {
-  symbol = '='
-
-  operatorType(
-    _runtime: TypeRuntime,
-    _lhs: Types.Type,
-    _rhs: Types.Type,
-    _lhsExpr: Expression,
-    _rhsExpr: Expression,
-  ): GetTypeResult {
-    return ok(new Types.MessageType())
-  }
-
-  operatorEval(
-    _runtime: ValueRuntime,
-    _lhs: Values.Value,
-    _rhs: () => GetValueResult,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ): GetRuntimeResult<Values.BooleanValue> {
-    return err(
-      new RuntimeError(lhsExpr, 'Still working on assignment ' + lhsExpr + ' = ' + rhsExpr),
-    )
-  }
-}
-
-addBinaryOperator({
-  name: 'assignment',
-  symbol: '=',
-  precedence: -1,
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new AssignmentOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
 class SortOperator extends BinaryOperator {
   symbol = '<=>'
 
@@ -4111,7 +4063,79 @@ addUnaryOperator({
   },
 })
 
-class BinaryAssignmentOperator extends BinaryOperator {
+class AssignmentOperator extends BinaryOperator {
+  symbol = '='
+
+  operatorType(
+    _runtime: TypeRuntime,
+    lhs: Types.Type,
+    rhs: Types.Type,
+    lhsExpr: Expression,
+    _rhsExpr: Expression,
+  ): GetTypeResult {
+    if (!Types.canBeAssignedTo(rhs, lhs)) {
+      return err(
+        new RuntimeError(
+          this,
+          `Cannot assign '${rhs}' to '${lhsExpr}: ${lhs}'. Types are incompatible.`,
+        ),
+      )
+    }
+
+    return ok(new Types.MessageType())
+  }
+
+  eval(runtime: ValueRuntime) {
+    const thisValue = runtime.getThisValue()
+    if (!thisValue) {
+      return err(
+        new RuntimeError(this, 'Cannot evaluate assignment outside of the context of a view.'),
+      )
+    }
+
+    const [lhsExpr, rhsExpr] = this.args
+    if (!(lhsExpr instanceof Expressions.StateReference)) {
+      return err(
+        new RuntimeError(
+          this,
+          'TODO: AssignmentOperator only supports @prop = value (or @prop += value etc)',
+        ),
+      )
+    }
+
+    return rhsExpr
+      .eval(runtime)
+      .map(rhs => new Values.MessageAssignmentValue(thisValue, lhsExpr.name, rhs))
+  }
+
+  operatorEval(): GetValueResult {
+    throw 'no need, see eval'
+  }
+}
+
+addBinaryOperator({
+  name: 'assignment',
+  symbol: '=',
+  precedence: -1,
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new AssignmentOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class BinaryAssignmentOperator extends AssignmentOperator {
   readonly symbol: string
 
   constructor(
@@ -4123,28 +4147,6 @@ class BinaryAssignmentOperator extends BinaryOperator {
   ) {
     super(range, precedingComments, followingOperatorComments, operator, args)
     this.symbol = operator.symbol
-  }
-
-  operatorType(
-    _runtime: TypeRuntime,
-    _lhs: Types.Type,
-    _rhs: Types.Type,
-    _lhsExpr: Expression,
-    _rhsExpr: Expression,
-  ): GetTypeResult {
-    return ok(new Types.MessageType())
-  }
-
-  operatorEval(
-    _runtime: ValueRuntime,
-    _lhs: Values.Value,
-    _rhs: () => GetValueResult,
-    lhsExpr: Expression,
-    rhsExpr: Expression,
-  ): GetRuntimeResult<Values.BooleanValue> {
-    return err(
-      new RuntimeError(lhsExpr, 'Still working on assignment ' + lhsExpr + ' = ' + rhsExpr),
-    )
   }
 
   toCode(prevPrecedence = LOWEST_PRECEDENCE): string {

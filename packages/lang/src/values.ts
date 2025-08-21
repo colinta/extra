@@ -1976,6 +1976,46 @@ export class ModuleValue extends Value {
   }
 }
 
+export abstract class MessageValue extends Value {
+  constructor(readonly subject: Value) {
+    super()
+  }
+
+  getType() {
+    return new Types.MessageType()
+  }
+
+  isEqual(rhs: Value): boolean {
+    return rhs === this
+  }
+
+  isTruthy() {
+    return true
+  }
+
+  toCode() {
+    return "Hello, I'm a Message. Don't output me."
+  }
+
+  printable() {
+    return ''
+  }
+
+  propValue() {
+    return undefined
+  }
+}
+
+export class MessageAssignmentValue extends MessageValue {
+  constructor(
+    readonly subject: ClassInstanceValue,
+    readonly prop: string,
+    readonly value: Value,
+  ) {
+    super(subject)
+  }
+}
+
 ;(function init() {
   ArrayValue._props.set('length', (value: ArrayValue) => int(value.values.length))
   ArrayValue._props.set('map', (array: ArrayValue) =>
