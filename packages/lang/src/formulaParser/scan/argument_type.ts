@@ -1,7 +1,7 @@
 import {DEFAULT_NARROWED_LENGTH, lengthDesc, type NarrowedLength} from '../../narrowed'
 import {ARRAY, BOOLEAN, DICT, FLOAT, INT, OBJECT, SET, STRING} from '../../types'
-import * as Expressions from '../expressions'
-import {type Expression} from '../expressions'
+import * as Expressions from '../../expressions'
+import {type Expression} from '../../expressions'
 import {
   isNumberChar,
   isNumberStart,

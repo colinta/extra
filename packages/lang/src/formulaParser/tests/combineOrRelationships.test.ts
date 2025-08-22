@@ -3,7 +3,7 @@ import {type TypeRuntime} from '../../runtime'
 import * as Types from '../../types'
 import * as Values from '../../values'
 import {parse} from '../../formulaParser'
-import {type Expression} from '../expressions'
+import {type Expression} from '../../expressions'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
 
 let runtimeTypes: {[K in string]: [Types.Type, Values.Value]}

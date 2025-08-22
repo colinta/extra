@@ -2,7 +2,7 @@ import {Result} from '@extra-lang/result'
 import {type Type} from '../types'
 import {type Value, type Node} from '../values'
 import {type ValueRuntime} from '../runtime'
-import {type Expression, type Operation, type RuntimeError} from './expressions'
+import {type Expression, type Operation, type RuntimeError} from '../expressions'
 
 export type GetRuntimeResult<T> = Result<T, RuntimeError>
 export type GetTypeResult = GetRuntimeResult<Type>

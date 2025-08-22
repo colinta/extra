@@ -1,7 +1,7 @@
-import * as Expressions from '../expressions'
-import {type Expression} from '../expressions'
+import * as Expressions from '../../expressions'
+import {type Expression} from '../../expressions'
 import {ATOM_START, isRefStartChar} from '../grammars'
-import {binaryOperatorNamed} from '../operators'
+import {binaryOperatorNamed} from '../../operators'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 

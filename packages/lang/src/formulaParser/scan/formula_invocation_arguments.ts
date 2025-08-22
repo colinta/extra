@@ -1,4 +1,4 @@
-import * as Expressions from '../expressions'
+import * as Expressions from '../../expressions'
 import {
   ARGS_CLOSE,
   ARGS_OPEN,

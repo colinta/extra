@@ -1,5 +1,5 @@
-import * as Expressions from '../expressions'
-import {type Expression} from '../expressions'
+import * as Expressions from '../../expressions'
+import {type Expression} from '../../expressions'
 import {
   ARGS_CLOSE,
   ARGS_OPEN,
@@ -14,7 +14,7 @@ import {
   isStringStartChar,
   AS_KEYWORD,
 } from '../grammars'
-import {STRING_CONCAT_OPERATOR} from '../operators'
+import {STRING_CONCAT_OPERATOR} from '../../operators'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 import {scanArgumentType} from './argument_type'

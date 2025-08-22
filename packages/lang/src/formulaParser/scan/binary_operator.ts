@@ -5,7 +5,7 @@ import {
   isBinaryOperator,
   BINARY_OP_ALIASES,
   BINARY_OP_NAMES,
-} from '../operators'
+} from '../../operators'
 import {scanBinaryOperatorSymbol} from '../grammars'
 
 export function scanBinaryOperator(scanner: Scanner): Operator {

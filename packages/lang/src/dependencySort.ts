@@ -1,7 +1,7 @@
 import {err, ok} from '@extra-lang/result'
 import {type Expression, RuntimeError} from './expressions'
-import {difference} from './set'
-import {type GetRuntimeResult} from './types'
+import {difference} from './util'
+import {type GetRuntimeResult} from './formulaParser/types'
 
 function findChain(
   needles: string[],

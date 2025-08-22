@@ -1,13 +1,13 @@
 import {err, mapAll, ok, type Result} from '@extra-lang/result'
-import * as Types from '../types'
-import * as Values from '../values'
+import * as Types from './types'
+import * as Values from './values'
 import {
   MutableTypeRuntime,
   MutableValueRuntime,
   type TypeRuntime,
   type ValueRuntime,
-} from '../runtime'
-import {combineConcatLengths, combineSetLengths} from '../narrowed'
+} from './runtime'
+import {combineConcatLengths, combineSetLengths} from './narrowed'
 import {
   findEventualRef,
   verifyRelationship,
@@ -18,7 +18,7 @@ import {
   relationshipToType,
   isAssign,
   combineEitherTypeRuntimes,
-} from '../relationship'
+} from './relationship'
 import * as Expressions from './expressions'
 import {
   comparisonOperation,
@@ -39,10 +39,9 @@ import {
   type GetValueResult,
   type GetValueRuntimeResult,
   type Operator,
-} from './types'
-import {indent, SMALL_LEN} from './util'
-import {KWARG_OP} from '../types'
-import {difference} from './set'
+} from './formulaParser/types'
+import {difference, indent, SMALL_LEN} from './util'
+import {KWARG_OP} from './types'
 
 export const BINARY_OP_NAMES = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
 export const BINARY_OP_ALIASES = {

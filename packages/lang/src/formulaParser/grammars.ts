@@ -4,7 +4,7 @@ import {
   BINARY_OP_NAMES,
   BINARY_OP_SYMBOLS,
   UNARY_OP_NAMES,
-} from './operators'
+} from '../operators'
 import {type Scanner} from './scanner'
 import {type ExpressionType} from './types'
 

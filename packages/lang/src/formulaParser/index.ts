@@ -1,16 +1,16 @@
 import {ok, err, attempt} from '@extra-lang/result'
 
 import * as Values from '../values'
+import * as Expressions from '../expressions'
+import {Expression} from '../expressions'
 
-import * as Expressions from './expressions'
-import {Expression} from './expressions'
 import {
   INCLUSION_OPERATOR,
   LOWEST_PRECEDENCE,
   NULL_COALESCING_OPERATOR,
   binaryOperatorNamed,
   isOperator,
-} from './operators'
+} from '../operators'
 import {
   ParseError,
   type ParseNext,

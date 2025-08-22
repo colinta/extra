@@ -2,7 +2,7 @@ import * as Values from '../../values'
 import {isNumber, isNumberChar} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
-import * as Expressions from '../expressions'
+import * as Expressions from '../../expressions'
 
 // float cannot use binary/hex/octal
 // int cannot have a '.'

@@ -1,6 +1,6 @@
 import {STATIC} from 'src/types'
-import * as Expressions from '../expressions'
-import {type Expression} from '../expressions'
+import * as Expressions from '../../expressions'
+import {type Expression} from '../../expressions'
 import {
   CLASS_KEYWORD,
   GENERIC_OPEN,

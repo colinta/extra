@@ -1,5 +1,5 @@
 import {c, cases} from '@extra-lang/cases'
-import {Literal} from '../expressions'
+import {Literal} from '../../expressions'
 import {parse} from '../../formulaParser'
 import * as Values from '../../values'
 

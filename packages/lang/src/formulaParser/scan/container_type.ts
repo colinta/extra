@@ -1,6 +1,6 @@
 import * as Values from '../../values'
-import * as Expressions from '../expressions'
-import {type Expression} from '../expressions'
+import * as Expressions from '../../expressions'
+import {type Expression} from '../../expressions'
 import {
   isNumberStart,
   isStringStartChar,
@@ -18,7 +18,7 @@ import {
   OBJECT_WORD_START,
   isArgumentStartChar,
 } from '../grammars'
-import {SPREAD_OPERATOR} from '../operators'
+import {SPREAD_OPERATOR} from '../../operators'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 

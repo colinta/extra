@@ -1,5 +1,5 @@
-import * as Expressions from '../expressions'
-import {type Expression} from '../expressions'
+import * as Expressions from '../../expressions'
+import {type Expression} from '../../expressions'
 import {ARGS_CLOSE, ARGS_OPEN, KWARG_OP, SPLAT_OP, isArgumentStartChar} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'

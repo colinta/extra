@@ -1,4 +1,4 @@
-import * as Expressions from '../expressions'
+import * as Expressions from '../../expressions'
 import {ARGS_OPEN, EXPORT_KEYWORD, FUNCTION_BODY_START, VIEW_KEYWORD} from '../grammars'
 import type {Scanner} from '../scanner'
 import {type ParseNext} from '../types'

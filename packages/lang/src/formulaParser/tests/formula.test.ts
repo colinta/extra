@@ -2,7 +2,7 @@ import {c, cases} from '@extra-lang/cases'
 import * as Values from '../../values'
 import {type ValueRuntime} from '../../runtime'
 import {parse} from '../../formulaParser'
-import {type Expression} from '../expressions'
+import {type Expression} from '../../expressions'
 import {mockValueRuntime} from '../../tests/mockValueRuntime'
 
 let valueRuntime: ValueRuntime

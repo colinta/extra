@@ -1,5 +1,5 @@
 import {err, mapAll, mapOr, ok, type Result} from '@extra-lang/result'
-import {intersection} from './formulaParser/set'
+import {intersection} from './util'
 import {splitter} from './graphemes'
 import * as Narrowed from './narrowed'
 import {narrowedFloatToInt, narrowedFloatToLength} from './narrowed'

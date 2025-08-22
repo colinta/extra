@@ -1,5 +1,5 @@
-import * as Expressions from '../expressions'
-import {type Expression} from '../expressions'
+import * as Expressions from '../../expressions'
+import {type Expression} from '../../expressions'
 import {isViewStart, isWhitespaceChar} from '../grammars'
 
 import {type Scanner} from '../scanner'

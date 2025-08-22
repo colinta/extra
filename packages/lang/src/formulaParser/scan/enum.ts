@@ -1,5 +1,5 @@
 import {STATIC} from 'src/types'
-import * as Expressions from '../expressions'
+import * as Expressions from '../../expressions'
 import {
   ENUM_KEYWORD,
   GENERIC_OPEN,

@@ -1,4 +1,4 @@
-import * as Expressions from '../expressions'
+import * as Expressions from '../../expressions'
 import {IGNORE_TOKEN, isRef, isRefChar} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'

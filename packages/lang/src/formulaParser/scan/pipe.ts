@@ -1,4 +1,4 @@
-import * as Expressions from '../expressions'
+import * as Expressions from '../../expressions'
 
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'

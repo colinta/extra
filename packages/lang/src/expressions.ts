@@ -1,20 +1,34 @@
 import {err, mapAll, mapMany, ok, type Result} from '@extra-lang/result'
 
-import {dependencySort} from './dependencySort'
-import {difference, union} from './set'
-
 import {
   type TypeRuntime,
   type ValueRuntime,
   MutableTypeRuntime,
   MutableValueRuntime,
-} from '../runtime'
-import * as Narrowed from '../narrowed'
-import * as Types from '../types'
-import {SPLAT_OP, KWARG_OP} from '../types'
-import * as Values from '../values'
-import * as Nodes from '../nodes'
-
+} from './runtime'
+import * as Narrowed from './narrowed'
+import * as Types from './types'
+import {SPLAT_OP, KWARG_OP} from './types'
+import * as Values from './values'
+import * as Nodes from './nodes'
+import {
+  assignRelationshipsToRuntime,
+  combineEitherTypeRuntimes,
+  invertSymbol,
+  type Relationship,
+  relationshipFormula,
+  type RelationshipFormula,
+} from './relationship'
+import {
+  indent,
+  MAX_INNER_LEN,
+  MAX_LEN,
+  NEWLINE_INDENT,
+  wrapStrings,
+  difference,
+  union,
+} from './util'
+import {dependencySort} from './dependencySort'
 import {
   type Comment,
   type Operator,
@@ -23,16 +37,7 @@ import {
   type GetNodeResult,
   type GetValueRuntimeResult,
   type GetRuntimeResult,
-} from './types'
-import {
-  assignRelationshipsToRuntime,
-  combineEitherTypeRuntimes,
-  invertSymbol,
-  type Relationship,
-  relationshipFormula,
-  type RelationshipFormula,
-} from '../relationship'
-import {indent, MAX_INNER_LEN, MAX_LEN, NEWLINE_INDENT, wrapStrings} from './util'
+} from './formulaParser/types'
 
 export type Range = [number, number]
 const HIGHEST_PRECEDENCE = 100

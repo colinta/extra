@@ -1,7 +1,7 @@
 import {isRegexFlag} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
-import * as Expressions from '../expressions'
+import * as Expressions from '../../expressions'
 import {scanValidLocalName} from './identifier'
 
 export function scanRegex(scanner: Scanner, embedded = false) {

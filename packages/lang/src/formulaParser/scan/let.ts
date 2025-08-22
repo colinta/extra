@@ -1,4 +1,4 @@
-import * as Expressions from '../expressions'
+import * as Expressions from '../../expressions'
 import {FN_KEYWORD, LET_IN, LET_KEYWORD} from '../grammars'
 import {type Scanner} from '../scanner'
 import {type ExpressionType, type ParseNext} from '../types'

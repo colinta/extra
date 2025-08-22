@@ -1,5 +1,5 @@
 import {err, mapAll, ok, type Result} from '@extra-lang/result'
-import {RuntimeError} from './formulaParser/expressions'
+import {RuntimeError} from './expressions'
 import {splitter} from './graphemes'
 import * as Types from './types'
 

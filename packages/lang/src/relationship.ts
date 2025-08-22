@@ -3,7 +3,7 @@ import {MutableTypeRuntime, type TypeRuntime} from './runtime'
 import * as Types from './types'
 import {type NarrowedInt, type NarrowedFloat, type NarrowedString} from './narrowed'
 import {uid} from './uid'
-import {union} from './formulaParser/set'
+import {union} from './util'
 
 /**
  * The Relationship module is responsible for checking and calculating

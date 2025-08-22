@@ -1,5 +1,5 @@
 import {c, cases} from '@extra-lang/cases'
-import {stringSort} from '../stringSort'
+import {stringSort} from '../../stringSort'
 
 describe('arguments', () => {
   cases<[string, string, 1 | 0 | -1]>(

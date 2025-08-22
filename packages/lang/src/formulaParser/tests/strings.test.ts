@@ -1,5 +1,5 @@
 import {cases, c} from '@extra-lang/cases'
-import {type Expression} from '../expressions'
+import {type Expression} from '../../expressions'
 import {parse} from '../../formulaParser'
 
 describe('strings', () => {
