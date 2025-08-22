@@ -1,6 +1,6 @@
 import {cases, c} from '@extra-lang/cases'
 import {parse} from '../../formulaParser'
-import {type Expression, RegexLiteral} from '../../expressions'
+import {type Expression, LiteralRegex} from '../../expressions'
 
 describe('regex', () => {
   cases(
@@ -20,8 +20,8 @@ describe('regex', () => {
 
   it('should capture groups', () => {
     let expression = parse('/(?<test>testing)-(?<test2>TESTING)/').get()
-    const regex = expression as RegexLiteral
-    expect(expression).toBeInstanceOf(RegexLiteral)
+    const regex = expression as LiteralRegex
+    expect(expression).toBeInstanceOf(LiteralRegex)
     expect(regex.groups).toEqual(
       new Map([
         ['test', 'testing'],

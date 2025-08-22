@@ -59,10 +59,7 @@ export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
               [argRange0, scanner.charIndex],
               scanner.flushComments(),
               propName,
-              new Expressions.FalseExpression(
-                [argRange0, scanner.charIndex],
-                scanner.flushComments(),
-              ),
+              new Expressions.LiteralFalse([argRange0, scanner.charIndex], scanner.flushComments()),
             ),
           )
           if (!isWhitespaceChar(scanner.char) && scanner.char !== '>') {
@@ -95,10 +92,7 @@ export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
               [argRange0, scanner.charIndex],
               scanner.flushComments(),
               propName,
-              new Expressions.TrueExpression(
-                [argRange0, scanner.charIndex],
-                scanner.flushComments(),
-              ),
+              new Expressions.LiteralTrue([argRange0, scanner.charIndex], scanner.flushComments()),
             ),
           )
 
@@ -188,7 +182,7 @@ export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
         if (stringBuffer.length > 0) {
           scanner.whereAmI(`scanJsx <${name}>: ${stringBuffer}`)
           children.push(
-            new Expressions.StringLiteral(
+            new Expressions.LiteralString(
               [textRange0, scanner.charIndex],
               scanner.flushComments(),
               stringBuffer,
@@ -199,7 +193,7 @@ export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
     }
 
     children = children.map(child => {
-      if (child instanceof Expressions.StringLiteral) {
+      if (child instanceof Expressions.LiteralString) {
         const lines = child.stringValue.split('\n').map(line => {
           if (line === '') {
             return line
@@ -210,7 +204,7 @@ export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
           }
         })
 
-        return new Expressions.StringLiteral(child.range, scanner.flushComments(), lines.join('\n'))
+        return new Expressions.LiteralString(child.range, scanner.flushComments(), lines.join('\n'))
       } else {
         return child
       }

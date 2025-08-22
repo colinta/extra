@@ -156,7 +156,7 @@ export function scanAtom(scanner: Scanner) {
   }
 
   scanner.whereAmI(`scanAtom: ${currentToken}`)
-  return new Expressions.StringAtomLiteral(
+  return new Expressions.LiteralStringAtom(
     [range0, scanner.charIndex],
     scanner.flushComments(),
     currentToken,
@@ -208,40 +208,28 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
       identifier = new Expressions.InferIdentifier(range, scanner.flushComments())
       break
     case 'null':
-      identifier = new Expressions.NullExpression(range, scanner.flushComments())
+      identifier = new Expressions.LiteralNull(range, scanner.flushComments())
       break
     case 'true':
-      identifier = new Expressions.TrueExpression(range, scanner.flushComments())
+      identifier = new Expressions.LiteralTrue(range, scanner.flushComments())
       break
     case 'false':
-      identifier = new Expressions.FalseExpression(range, scanner.flushComments())
+      identifier = new Expressions.LiteralFalse(range, scanner.flushComments())
       break
     case 'this':
       identifier = new Expressions.ThisIdentifier(range, scanner.flushComments())
       break
     case 'Boolean':
-      identifier = new Expressions.BooleanTypeExpression(range, scanner.flushComments())
+      identifier = new Expressions.BooleanTypeIdentifier(range, scanner.flushComments())
       break
     case 'Float':
-      identifier = new Expressions.FloatTypeExpression(range, scanner.flushComments())
+      identifier = new Expressions.FloatTypeIdentifier(range, scanner.flushComments())
       break
     case 'Int':
-      identifier = new Expressions.IntTypeExpression(range, scanner.flushComments())
+      identifier = new Expressions.IntTypeIdentifier(range, scanner.flushComments())
       break
     case 'String':
-      identifier = new Expressions.StringTypeExpression(range, scanner.flushComments())
-      break
-    case 'object':
-      identifier = new Expressions.ObjectConstructorIdentifier(range, scanner.flushComments())
-      break
-    case 'array':
-      identifier = new Expressions.ArrayConstructorIdentifier(range, scanner.flushComments())
-      break
-    case 'dict':
-      identifier = new Expressions.DictConstructorIdentifier(range, scanner.flushComments())
-      break
-    case 'set':
-      identifier = new Expressions.SetConstructorIdentifier(range, scanner.flushComments())
+      identifier = new Expressions.StringTypeIdentifier(range, scanner.flushComments())
       break
     case 'Object':
       identifier = new Expressions.ObjectTypeIdentifier(range, scanner.flushComments())
@@ -254,9 +242,6 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
       break
     case 'Set':
       identifier = new Expressions.SetTypeIdentifier(range, scanner.flushComments())
-      break
-    case 'view':
-      identifier = new Expressions.ViewTypeExpression(range, scanner.flushComments())
       break
   }
 

@@ -26,7 +26,7 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
   if (scanner.is(ATOM_START)) {
     const literal = scanAtom(scanner)
     scanner.whereAmI(`scanString :${literal.stringValue}`)
-    return new Expressions.StringAtomLiteral(
+    return new Expressions.LiteralStringAtom(
       [range0, scanner.charIndex],
       scanner.flushComments(),
       literal.stringValue,
@@ -74,7 +74,7 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
   function appendNext() {
     if (stringBuffer.length) {
       parts.push(
-        new Expressions.StringLiteral(
+        new Expressions.LiteralString(
           [bufferRange0, scanner.charIndex],
           scanner.flushComments(),
           stringBuffer,
@@ -214,7 +214,7 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
   appendNext()
   scanner.whereAmI('scanString: indent `' + indentationBuffer + '`')
   parts.forEach((expr, index) => {
-    if (expr instanceof Expressions.StringLiteral) {
+    if (expr instanceof Expressions.LiteralString) {
       const value = expr.value.removeIndent(indentationBuffer, firstLineIsNewline)
       if (!value) {
         throw new ParseError(
@@ -226,12 +226,12 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
         )
       }
 
-      parts[index] = new Expressions.StringLiteral(expr.range, scanner.flushComments(), value, tag)
+      parts[index] = new Expressions.LiteralString(expr.range, scanner.flushComments(), value, tag)
     }
   })
 
   if (parts.length === 0) {
-    return new Expressions.StringLiteral(
+    return new Expressions.LiteralString(
       [bufferRange0, scanner.charIndex],
       scanner.flushComments(),
       '',
@@ -263,7 +263,7 @@ export function scanStringLiteral(scanner: Scanner) {
       'scanString should never call parseNext when enableInterpolation is false',
     )
   })
-  if (!(stringExpr instanceof Expressions.StringLiteral)) {
+  if (!(stringExpr instanceof Expressions.LiteralString)) {
     throw new ParseError(scanner, `Expected a string literal, found ${stringExpr} instead`)
   }
   return stringExpr

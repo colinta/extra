@@ -317,19 +317,19 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
         name = value = scanParensGroup(scanner, parseNext)
       } else if (scanner.isWord('null')) {
         scanner.expectString('null')
-        name = value = new Expressions.NullExpression(
+        name = value = new Expressions.LiteralNull(
           [range0, scanner.charIndex],
           scanner.flushComments(),
         )
       } else if (scanner.isWord('true')) {
         scanner.expectString('true')
-        name = value = new Expressions.TrueExpression(
+        name = value = new Expressions.LiteralTrue(
           [range0, scanner.charIndex],
           scanner.flushComments(),
         )
       } else if (scanner.isWord('false')) {
         scanner.expectString('false')
-        name = value = new Expressions.FalseExpression(
+        name = value = new Expressions.LiteralFalse(
           [range0, scanner.charIndex],
           scanner.flushComments(),
         )

@@ -26,10 +26,7 @@ import {type ArgumentType, ParseError, type ParseNext} from '../types'
 
 import {unexpectedToken} from './basics'
 import {scanGenerics} from './formula'
-import {
-  scanFormulaArgumentDefinitions,
-  scanFormulaTypeArgumentDefinitions,
-} from './formula_arguments'
+import {scanFormulaLiteralArguments, scanFormulaTypeArguments} from './formula_arguments'
 import {scanAnyReference, scanAtom, scanIdentifier, scanValidName} from './identifier'
 import {
   scanNarrowedFloat,
@@ -113,9 +110,9 @@ export function scanArgumentType(
 
       const enumCaseName = scanAnyReference(scanner).name
       scanner.whereAmI(`scanEnum: ${enumCaseName}`)
-      let args: Expressions.FormulaLiteralArgumentAndTypeDeclaration[] = []
+      let args: Expressions.FormulaLiteralArgument[] = []
       if (scanner.is(ARGS_OPEN)) {
-        args = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false).args
+        args = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false).args
 
         // TODO: I'm being lazy, and don't want to implement spread arguments support
         // in the new enum code (specifically in the matching code)
@@ -181,7 +178,7 @@ export function scanArgumentType(
 
         if (typeName.name === STRING) {
           const narrowed = scanNarrowedString(scanner)
-          argType = new Expressions.StringTypeExpression(
+          argType = new Expressions.StringTypeIdentifier(
             [arg0, scanner.charIndex],
             scanner.flushComments(),
             narrowed,
@@ -191,7 +188,7 @@ export function scanArgumentType(
           scanner.expectString(ARGS_CLOSE)
         } else if (typeName.name === INT) {
           const narrowed = scanNarrowedInt(scanner)
-          argType = new Expressions.IntTypeExpression(
+          argType = new Expressions.IntTypeIdentifier(
             [arg0, scanner.charIndex],
             scanner.flushComments(),
             narrowed,
@@ -201,7 +198,7 @@ export function scanArgumentType(
           scanner.expectString(ARGS_CLOSE)
         } else if (typeName.name === FLOAT) {
           const narrowed = scanNarrowedFloat(scanner)
-          argType = new Expressions.FloatTypeExpression(
+          argType = new Expressions.FloatTypeIdentifier(
             [arg0, scanner.charIndex],
             scanner.flushComments(),
             narrowed,
@@ -371,7 +368,7 @@ export function scanArgumentType(
       oneOfExpressions.push(argType)
     }
     oneOfExpressions.push(
-      new Expressions.NullExpression(
+      new Expressions.LiteralNull(
         [scanner.charIndex - 1, scanner.charIndex],
         scanner.flushComments(),
       ),
@@ -408,7 +405,7 @@ function scanFormulaType(
   } else {
     generics = []
   }
-  const argDefinitions = scanFormulaTypeArgumentDefinitions(scanner, parseNext)
+  const argDefinitions = scanFormulaTypeArguments(scanner, parseNext)
 
   let returnType: Expression
   if (scanner.scanAhead(':')) {

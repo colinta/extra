@@ -4352,8 +4352,8 @@ export class IfExpressionInvocation extends FunctionInvocationOperator {
       // allow literal 'true/false' expressions (for testing)
       // TODO: disallow for "production" builds
       if (
-        !(conditionExpr instanceof Expressions.TrueExpression) &&
-        !(conditionExpr instanceof Expressions.FalseExpression)
+        !(conditionExpr instanceof Expressions.LiteralTrue) &&
+        !(conditionExpr instanceof Expressions.LiteralFalse)
       ) {
         if (conditionType.isOnlyTruthyType()) {
           return err(new RuntimeError(this, unexpectedOnlyType(conditionType, true)))
@@ -4529,8 +4529,8 @@ export class ElseIfExpressionInvocation extends FunctionInvocationOperator {
       // allow literal 'true/false' expressions (for testing)
       // TODO: disallow for "production" builds
       if (
-        !(conditionExpr instanceof Expressions.TrueExpression) &&
-        !(conditionExpr instanceof Expressions.FalseExpression)
+        !(conditionExpr instanceof Expressions.LiteralTrue) &&
+        !(conditionExpr instanceof Expressions.LiteralFalse)
       ) {
         if (conditionType.isOnlyTruthyType()) {
           return err(new RuntimeError(this, unexpectedOnlyType(conditionType, true)))
@@ -4696,8 +4696,8 @@ export class GuardExpressionInvocation extends FunctionInvocationOperator {
     // TODO: disallow for "production" builds
 
     if (
-      !(conditionExpr instanceof Expressions.TrueExpression) &&
-      !(conditionExpr instanceof Expressions.FalseExpression)
+      !(conditionExpr instanceof Expressions.LiteralTrue) &&
+      !(conditionExpr instanceof Expressions.LiteralFalse)
     ) {
       if (conditionType.value.isOnlyTruthyType()) {
         return err(new RuntimeError(this, unexpectedOnlyType(conditionType.value, true)))
