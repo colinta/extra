@@ -5,7 +5,7 @@ import {type ParseNext} from '../types'
 import {scanValidViewName} from './identifier'
 import {scanClassBody} from './class'
 import {scanViewFormula} from './formula'
-import {scanFormulaArgumentDefinitions} from './formula_arguments'
+import {scanFormulaLiteralArguments} from './formula_arguments'
 
 /**
  * Scans a view type:
@@ -41,9 +41,9 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
   const nameRef = scanValidViewName(scanner)
   scanner.scanAllWhitespace()
 
-  let argDeclarations: Expressions.FormulaLiteralArgumentDeclarations | undefined
+  let argDeclarations: Expressions.FormulaLiteralArguments | undefined
   if (scanner.scanIfString(ARGS_OPEN)) {
-    argDeclarations = scanFormulaArgumentDefinitions(scanner, 'view', parseNext, false)
+    argDeclarations = scanFormulaLiteralArguments(scanner, 'view', parseNext, false)
   }
 
   const {properties, formulas} = scanClassBody(scanner, parseNext, 'view')

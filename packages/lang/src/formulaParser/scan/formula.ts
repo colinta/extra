@@ -12,7 +12,7 @@ import {
 } from '../grammars'
 
 import {scanArgumentType} from './argument_type'
-import {scanFormulaArgumentDefinitions} from './formula_arguments'
+import {scanFormulaLiteralArguments} from './formula_arguments'
 import {scanValidLocalName, scanValidTypeName, scanValidViewName} from './identifier'
 
 export function scanFormula(
@@ -174,17 +174,17 @@ function _scanFormula(
   }
   scanner.whereAmI(`scanFormula generics = [${generics.join(', ')}]`)
 
-  let argDeclarations: Expressions.FormulaLiteralArgumentDeclarations
+  let argDeclarations: Expressions.FormulaLiteralArguments
   // support fn => 'value' (parentheses are optional when no args)
   if (!scanner.is(ARGS_OPEN)) {
-    argDeclarations = new Expressions.FormulaLiteralArgumentDeclarations(
+    argDeclarations = new Expressions.FormulaLiteralArguments(
       [scanner.charIndex, scanner.charIndex],
       [],
       [],
     )
   } else {
     const canInfer = expressionType === 'argument'
-    argDeclarations = scanFormulaArgumentDefinitions(
+    argDeclarations = scanFormulaLiteralArguments(
       scanner,
       isInView ? 'view' : 'fn',
       parseNext,

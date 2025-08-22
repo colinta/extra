@@ -1,6 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
 import {testScan} from '../../formulaParser'
-import {scanFormulaArgumentDefinitions} from '../scan/formula_arguments'
+import {scanFormulaLiteralArguments} from '../scan/formula_arguments'
 
 describe('argument parser', () => {
   describe('arguments', () => {
@@ -87,7 +87,7 @@ describe('argument parser', () => {
         () => {
           expectedCode = expectedCode ?? formula
           const expression = testScan(`(${formula})`, (scanner, parseNext) =>
-            scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
+            scanFormulaLiteralArguments(scanner, 'fn', parseNext, false),
           ).get()
 
           expect(expression!.toCode()).toEqual(expectedCode)
@@ -109,7 +109,7 @@ describe('argument parser', () => {
         () => {
           expect(() => {
             testScan(`(${formula})`, (scanner, parseNext) =>
-              scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
+              scanFormulaLiteralArguments(scanner, 'fn', parseNext, false),
             ).get()
           }).toThrow(message)
         },
@@ -130,7 +130,7 @@ describe('argument parser', () => {
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse arguments ${formula}`, () => {
         const expression = testScan(`(${formula})`, (scanner, parseNext) =>
-          scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
+          scanFormulaLiteralArguments(scanner, 'fn', parseNext, false),
         ).get()
 
         expect(expression!.toLisp()).toEqual(expected)
@@ -153,7 +153,7 @@ describe('argument parser', () => {
       (only ? it.only : skip ? it.skip : it)(`should not parse arguments ${formula}`, () => {
         expect(() => {
           testScan(`(${formula})`, (scanner, parseNext) =>
-            scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false),
+            scanFormulaLiteralArguments(scanner, 'fn', parseNext, false),
           ).get()
         }).toThrow(message)
       }),

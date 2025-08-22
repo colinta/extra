@@ -95,9 +95,17 @@ export function scanNumber(scanner: Scanner, expectedType: 'int' | 'float' | 'le
     magnitude = 4 * (numberToken.length - 2)
   }
 
-  return new Expressions.Literal(
+  if (numberType === 'float') {
+    return new Expressions.LiteralFloat(
+      [range0, scanner.charIndex],
+      scanner.flushComments(),
+      Values.float(value),
+    )
+  }
+
+  return new Expressions.LiteralInt(
     [range0, scanner.charIndex],
     scanner.flushComments(),
-    numberType === 'float' ? Values.float(value) : Values.int(value, magnitude, base),
+    Values.int(value, magnitude, base),
   )
 }

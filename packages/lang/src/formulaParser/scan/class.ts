@@ -24,7 +24,7 @@ import {
   scanViewFormula,
 } from './formula'
 import {scanValidClassPropertyName, scanValidTypeName} from './identifier'
-import {scanFormulaArgumentDefinitions} from './formula_arguments'
+import {scanFormulaLiteralArguments} from './formula_arguments'
 import {scanArgumentType} from './argument_type'
 
 export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.ClassDefinition {
@@ -53,9 +53,9 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
     scanner.scanAllWhitespace()
   }
 
-  let argDeclarations: Expressions.FormulaLiteralArgumentDeclarations | undefined
+  let argDeclarations: Expressions.FormulaLiteralArguments | undefined
   if (scanner.is(ARGS_OPEN)) {
-    argDeclarations = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false)
+    argDeclarations = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)
     scanner.scanAllWhitespace()
   }
 

@@ -14,7 +14,7 @@ import type {Scanner} from '../scanner'
 import {type ParseNext, ParseError} from '../types'
 import {unexpectedToken} from './basics'
 import {scanGenerics, scanNamedFormula, scanStaticFormula} from './formula'
-import {scanFormulaArgumentDefinitions} from './formula_arguments'
+import {scanFormulaLiteralArguments} from './formula_arguments'
 import {scanValidTypeName, scanAnyReference} from './identifier'
 
 export function scanEnum(
@@ -60,9 +60,9 @@ export function scanEnum(
       const enum0 = scanner.charIndex
       const enumCaseName = scanAnyReference(scanner).name
       scanner.whereAmI(`scanEnum: ${enumCaseName}`)
-      let args: Expressions.FormulaLiteralArgumentAndTypeDeclaration[]
+      let args: Expressions.FormulaLiteralArgument[]
       if (scanner.is(ARGS_OPEN)) {
-        args = scanFormulaArgumentDefinitions(scanner, 'fn', parseNext, false).args
+        args = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false).args
 
         // TODO: I'm being lazy, and don't want to implement spread arguments support
         // in the new enum code (specifically in the matching code)

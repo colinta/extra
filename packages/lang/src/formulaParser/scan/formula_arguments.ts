@@ -15,7 +15,7 @@ import {scanValidLocalName} from './identifier'
 // fn plusOne(# arg: Int = 0) => foo + 1
 //            ^^^^^^^^^^^^^^
 
-export function scanFormulaArgumentDefinitions(
+export function scanFormulaLiteralArguments(
   scanner: Scanner,
   type: 'view' | 'fn',
   parseNext: ParseNext,
@@ -25,29 +25,25 @@ export function scanFormulaArgumentDefinitions(
   const precedingComments = scanner.flushComments()
   scanner.expectString(ARGS_OPEN, `Expected '${ARGS_OPEN}' to start arguments`)
   scanner.scanAllWhitespace()
-  const [args, range1] = _scanArgumentDeclarations(scanner, 'formula', type, parseNext, canInfer)
-  return new Expressions.FormulaLiteralArgumentDeclarations(
-    [range0, range1],
-    precedingComments,
-    args,
-  )
+  const [args, range1] = _scanArguments(scanner, 'formula', type, parseNext, canInfer)
+  return new Expressions.FormulaLiteralArguments([range0, range1], precedingComments, args)
 }
 
 // _Formula Types_ cannot have default values, only optional args
 //
 // fn visit(func: fn(# arg?: Int): Int) => func(0) + func()
 //                  ^^^^^^^^^^^^^
-export function scanFormulaTypeArgumentDefinitions(scanner: Scanner, parseNext: ParseNext) {
+export function scanFormulaTypeArguments(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
   scanner.expectString(ARGS_OPEN)
   scanner.scanAllWhitespace()
 
-  const [args, range1] = _scanArgumentDeclarations(scanner, 'formula_type', 'fn', parseNext, false)
-  return new Expressions.FormulaTypeArgumentDeclarations([range0, range1], precedingComments, args)
+  const [args, range1] = _scanArguments(scanner, 'formula_type', 'fn', parseNext, false)
+  return new Expressions.FormulaTypeArguments([range0, range1], precedingComments, args)
 }
 
-function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
+function _scanArguments<T extends 'formula' | 'formula_type'>(
   scanner: Scanner,
   is: T,
   // view formulas cannot have positional arguments
@@ -55,12 +51,10 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
   parseNext: ParseNext,
   canInfer: boolean,
 ): [
-  T extends 'formula'
-    ? Expressions.FormulaLiteralArgumentAndTypeDeclaration[]
-    : Expressions.FormulaTypeArgumentAndType[],
+  T extends 'formula' ? Expressions.FormulaLiteralArgument[] : Expressions.FormulaTypeArgument[],
   number,
 ] {
-  scanner.whereAmI(`_scanArgumentDeclarations is = ${is}, type = ${type}`)
+  scanner.whereAmI(`_scanArguments is = ${is}, type = ${type}`)
 
   let range1 = scanner.charIndex
   const args: Expressions.ArgumentExpression[] = []
@@ -300,7 +294,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
 
       let arg: Expressions.ArgumentExpression
       if (is === 'formula') {
-        arg = new Expressions.FormulaLiteralArgumentAndTypeDeclaration(
+        arg = new Expressions.FormulaLiteralArgument(
           [argRange0, scanner.charIndex],
           [], // precedingComments
           argName,
@@ -311,7 +305,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
           defaultValue,
         )
       } else {
-        arg = new Expressions.FormulaTypeArgumentAndType(
+        arg = new Expressions.FormulaTypeArgument(
           [argRange0, scanner.charIndex],
           [], // precedingComments
           argName,
@@ -327,7 +321,7 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
         `Expected ',' separating items in the arguments`,
       )
 
-      scanner.whereAmI(`_scanArgumentDeclarations: (${argName.name}: ${argType.constructor.name})`)
+      scanner.whereAmI(`_scanArguments: (${argName.name}: ${argType.constructor.name})`)
       arg.followingComments.push(...scanner.flushComments())
       args.push(arg)
 
@@ -340,11 +334,11 @@ function _scanArgumentDeclarations<T extends 'formula' | 'formula_type'>(
     }
   }
 
-  scanner.whereAmI('_scanArgumentDeclarations: [' + args.map(arg => arg.toCode()).join(',') + ']')
+  scanner.whereAmI('_scanArguments: [' + args.map(arg => arg.toCode()).join(',') + ']')
   return [
     args as T extends 'formula'
-      ? Expressions.FormulaLiteralArgumentAndTypeDeclaration[]
-      : Expressions.FormulaTypeArgumentAndType[],
+      ? Expressions.FormulaLiteralArgument[]
+      : Expressions.FormulaTypeArgument[],
     range1,
   ]
 }

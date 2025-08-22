@@ -220,13 +220,13 @@ function parseInternal(
         if (isOperator(operator, '-', 1) && args[0] instanceof Expressions.Literal) {
           const literal = args[0]
           if (literal.value instanceof Values.IntValue) {
-            negativeNumber = new Expressions.Literal(
+            negativeNumber = new Expressions.LiteralInt(
               literal.range,
               literal.precedingComments,
               Values.int(-literal.value.value),
             )
           } else if (literal.value instanceof Values.FloatValue) {
-            negativeNumber = new Expressions.Literal(
+            negativeNumber = new Expressions.LiteralFloat(
               literal.range,
               literal.precedingComments,
               Values.float(-literal.value.value),

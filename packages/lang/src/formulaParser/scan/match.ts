@@ -239,7 +239,10 @@ function scanMatchRange(scanner: Scanner) {
   const precedingComments = scanner.flushComments()
   const start = scanNumber(scanner, 'float')
   if (!scanner.test(isRange)) {
-    return new Expressions.MatchLiteral(start)
+    if (start.value.isInt()) {
+      return new Expressions.MatchLiteralInt(start)
+    }
+    return new Expressions.MatchLiteralFloat(start)
   }
   scanner.scanSpaces()
 
@@ -278,8 +281,8 @@ function scanMatchString(scanner: Scanner) {
   const range0 = scanner.charIndex
   const precedingComments = scanner.flushComments()
 
-  const args: [Expressions.MatchReference, Expressions.MatchStringLiteral][] = []
-  let prefix: Expressions.MatchStringLiteral | undefined
+  const args: [Expressions.MatchReference, Expressions.MatchLiteralString][] = []
+  let prefix: Expressions.MatchLiteralString | undefined
   let lastRef: Expressions.MatchReference | undefined
   let prev: 'string' | 'ref' | undefined
   for (;;) {
@@ -297,7 +300,7 @@ function scanMatchString(scanner: Scanner) {
         throw new ParseError(scanner, `Empty string is invalid in match expression`)
       }
 
-      const matchExpression = new Expressions.MatchStringLiteral(stringExpression)
+      const matchExpression = new Expressions.MatchLiteralString(stringExpression)
 
       if (lastRef) {
         args.push([lastRef!, matchExpression])
@@ -349,7 +352,7 @@ function scanMatchString(scanner: Scanner) {
 function scanMatchRegex(scanner: Scanner) {
   scanner.whereAmI('scanMatchRegex')
   const regex = scanRegex(scanner)
-  return new Expressions.MatchRegexLiteral(regex)
+  return new Expressions.MatchLiteralRegex(regex)
 }
 
 function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {

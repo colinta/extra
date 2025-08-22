@@ -15,7 +15,7 @@ export function scanRegex(scanner: Scanner, embedded = false) {
   const [stringBuffer, flags] = scanRegexString(scanner, embedded, groups)
 
   scanner.whereAmI('scanRegex (literal): ' + stringBuffer)
-  return new Expressions.RegexLiteral(
+  return new Expressions.LiteralRegex(
     [bufferRange0, scanner.charIndex],
     scanner.flushComments(),
     stringBuffer,

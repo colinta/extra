@@ -196,7 +196,7 @@ export abstract class Expression {
     return this.eval(runtime).map(value => new Nodes.ValueNode(this.renderDeps(runtime), value))
   }
 
-  renderDeps(_runtime: ValueRuntime): Set<Values.Value> {
+  renderDeps(_runtime: ValueRuntime): Set<Values.ClassInstanceValue> {
     return new Set()
   }
 
@@ -365,17 +365,14 @@ export abstract class Operation extends Expression {
 //|
 
 /**
- * Literal of any kind: Boolean, Int, Float, Regex, null. Gonna be honest,
- * having all the literals stored in one type - *except* StringLiteral
- * (sometimes? I don't even remember) - this was not my favourite decision.
+ * Literal of any kind: Boolean, Int, Float, Regex, null.
  *
- * StringLiteral has its own type, which has to do with String interpolation
- * literals.
+ * StringTemplateOperation is composed of StringLiteral and expressions.
  *
  * RegexLiteral is its own type because it stores capture group names (for use
  * in matching expressions).
  */
-export class Literal extends Expression {
+export abstract class Literal extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -436,30 +433,115 @@ export class Literal extends Expression {
   }
 }
 
-export class LiteralKey extends Literal {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly value: Values.BasicValue,
-  ) {
-    super(range, precedingComments, value)
+export class LiteralNull extends Literal {
+  readonly name = 'null'
+
+  constructor(range: Range, precedingComments: Comment[]) {
+    super(range, precedingComments, Values.NullValue)
   }
 
   toLisp() {
-    return this.toCode()
+    return '`null`'
   }
 
   toCode() {
-    const code = `${this.value.value}`
-    if (!code.includes(' ') && !code.includes('\n')) {
-      return code
-    }
+    return 'null'
+  }
 
-    return super.toCode()
+  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
+    return relationshipFormula.null()
+  }
+
+  getType(): GetTypeResult {
+    return ok(Types.NullType)
+  }
+
+  eval(): GetValueResult {
+    return okNull
   }
 }
 
-export class RegexLiteral extends Literal {
+export class LiteralTrue extends Literal {
+  readonly name = 'true'
+  readonly value: Values.BooleanValue
+
+  constructor(range: Range, precedingComments: Comment[]) {
+    super(range, precedingComments, Values.TrueValue)
+    this.value = Values.TrueValue
+  }
+
+  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
+    return relationshipFormula.boolean(true)
+  }
+
+  toLisp() {
+    return '`true`'
+  }
+
+  toCode() {
+    return 'true'
+  }
+
+  getType(): GetTypeResult {
+    return ok(Types.literal(true))
+  }
+
+  eval(): GetValueResult {
+    return okTrue
+  }
+}
+
+export class LiteralFalse extends Literal {
+  readonly name = 'false'
+  readonly value: Values.BooleanValue
+
+  constructor(range: Range, precedingComments: Comment[]) {
+    super(range, precedingComments, Values.FalseValue)
+    this.value = Values.FalseValue
+  }
+
+  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
+    return relationshipFormula.boolean(false)
+  }
+
+  toLisp() {
+    return '`false`'
+  }
+
+  toCode() {
+    return 'false'
+  }
+
+  getType(): GetTypeResult {
+    return ok(Types.literal(false))
+  }
+
+  eval(): GetValueResult {
+    return okFalse
+  }
+}
+
+export class LiteralFloat extends Literal {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly value: Values.FloatValue,
+  ) {
+    super(range, precedingComments, value)
+  }
+}
+
+export class LiteralInt extends Literal {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly value: Values.IntValue,
+  ) {
+    super(range, precedingComments, value)
+  }
+}
+
+export class LiteralRegex extends Literal {
   readonly value: Values.RegexValue
 
   constructor(
@@ -484,7 +566,7 @@ export class RegexLiteral extends Literal {
  * interpolated strings and View expressions, we need a way to distinguish "parts
  * of a string" with "the whole string".
  */
-export class StringLiteral extends Literal {
+export class LiteralString extends Literal {
   readonly stringValue: string
   readonly value: Values.StringValue
 
@@ -526,7 +608,7 @@ export class StringLiteral extends Literal {
  * A string literal starting with `:` and only containing letters, numbers, dashes,
  * and underscores.
  */
-export class StringAtomLiteral extends StringLiteral {
+export class LiteralStringAtom extends LiteralString {
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -555,7 +637,7 @@ export class StringTemplateOperation extends Operation {
   toLisp(): string {
     const args = this.args
       .map(it => {
-        if (it instanceof StringLiteral) {
+        if (it instanceof LiteralString) {
           return it.toLisp(false)
         } else {
           return it.toLisp()
@@ -573,7 +655,7 @@ export class StringTemplateOperation extends Operation {
     let output = ''
     let hasNewline = false
     for (const arg of this.args) {
-      if (arg instanceof StringLiteral) {
+      if (arg instanceof LiteralString) {
         const code = arg.value.value.replaceAll(this.quote, '\\' + this.quote)
         hasNewline = hasNewline || code.includes('\n')
         output += code
@@ -593,7 +675,7 @@ export class StringTemplateOperation extends Operation {
   getType(): GetTypeResult {
     // todo scan all values in the string template and return a narrowed string type
     const minLength = this.args.reduce((length, expression) => {
-      if (!(expression instanceof StringLiteral)) {
+      if (!(expression instanceof LiteralString)) {
         return length
       }
       return length + expression.value.length
@@ -698,15 +780,19 @@ export class StateReference extends Reference {
   }
 
   dependencies() {
-    return new Set(['@' + this.name])
+    return new Set([this.stateName])
+  }
+
+  get stateName() {
+    return '@' + this.name
   }
 
   toLisp() {
-    return '@' + this.name
+    return this.stateName
   }
 
   toCode() {
-    return '@' + this.name
+    return this.stateName
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
@@ -974,11 +1060,33 @@ export class DictEntry extends Expression {
   }
 
   toLisp() {
-    return `(${this.name.toLisp()}: ${this.value.toLisp()})`
+    let name: string
+    if (this.isLiteralKey(this.name)) {
+      name = this.name.value.value
+    } else {
+      name = this.name.toLisp()
+    }
+
+    return `(${name}: ${this.value.toLisp()})`
+  }
+
+  isLiteralKey(key: Expression): key is LiteralString {
+    return (
+      key instanceof LiteralString &&
+      !!key.value.value.match(
+        /^([a-zA-Z_]|\p{Extended_Pictographic})([a-zA-Z0-9_-]|\p{Extended_Pictographic})*$/u,
+      )
+    )
   }
 
   toCode() {
-    const name = this.name.toCode(HIGHEST_PRECEDENCE)
+    let name: string
+    if (this.isLiteralKey(this.name)) {
+      name = this.name.value.value
+    } else {
+      name = this.name.toCode(HIGHEST_PRECEDENCE)
+    }
+
     if (this.value instanceof Reference && this.value.name === name) {
       return name + ':'
     }
@@ -1432,8 +1540,8 @@ export class OneOfTypeExpression extends TypeExpression {
       return `(${this.toCode(0)})`
     }
 
-    if (this.of.length === 2 && this.of.some(type => type instanceof NullExpression)) {
-      if (this.of[0] instanceof NullExpression) {
+    if (this.of.length === 2 && this.of.some(type => type instanceof LiteralNull)) {
+      if (this.of[0] instanceof LiteralNull) {
         return `${this.of[1].toCode(this.precedence)}?`
       } else {
         return `${this.of[0].toCode(this.precedence)}?`
@@ -2483,22 +2591,6 @@ export class CaseIdentifier extends ReservedWord {
   readonly name = 'case'
 }
 
-export class ObjectConstructorIdentifier extends ReservedWord {
-  readonly name = 'Object'
-}
-
-export class ArrayConstructorIdentifier extends ReservedWord {
-  readonly name = 'Array'
-}
-
-export class DictConstructorIdentifier extends ReservedWord {
-  readonly name = 'Dict'
-}
-
-export class SetConstructorIdentifier extends ReservedWord {
-  readonly name = 'Set'
-}
-
 export class ThisIdentifier extends ReservedWord {
   readonly name = 'this'
 
@@ -2544,79 +2636,7 @@ abstract class TypeIdentifier extends Identifier {
   }
 }
 
-export class NullExpression extends TypeIdentifier {
-  readonly name = 'null'
-
-  toLisp() {
-    return '`null`'
-  }
-
-  toCode() {
-    return 'null'
-  }
-
-  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
-    return relationshipFormula.null()
-  }
-
-  getType(): GetTypeResult {
-    return ok(Types.NullType)
-  }
-
-  eval(): GetValueResult {
-    return okNull
-  }
-}
-
-export class TrueExpression extends TypeIdentifier {
-  readonly name = 'true'
-
-  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
-    return relationshipFormula.boolean(true)
-  }
-
-  toLisp() {
-    return '`true`'
-  }
-
-  toCode() {
-    return 'true'
-  }
-
-  getType(): GetTypeResult {
-    return ok(Types.literal(true))
-  }
-
-  eval(): GetValueResult {
-    return okTrue
-  }
-}
-
-export class FalseExpression extends TypeIdentifier {
-  readonly name = 'false'
-
-  relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
-    return relationshipFormula.boolean(false)
-  }
-
-  toLisp() {
-    return '`false`'
-  }
-
-  toCode() {
-    return 'false'
-  }
-
-  getType(): GetTypeResult {
-    return ok(Types.literal(false))
-  }
-
-  eval(): GetValueResult {
-    return okFalse
-  }
-}
-
-export class BooleanTypeExpression extends TypeIdentifier {
+export class BooleanTypeIdentifier extends TypeIdentifier {
   readonly name = 'Boolean'
 
   toCode() {
@@ -2640,7 +2660,7 @@ export class BooleanTypeExpression extends TypeIdentifier {
   }
 }
 
-export class FloatTypeExpression extends TypeIdentifier {
+export class FloatTypeIdentifier extends TypeIdentifier {
   readonly name = 'Float'
 
   constructor(
@@ -2676,7 +2696,7 @@ export class FloatTypeExpression extends TypeIdentifier {
   }
 }
 
-export class IntTypeExpression extends TypeIdentifier {
+export class IntTypeIdentifier extends TypeIdentifier {
   readonly name = 'Int'
 
   constructor(
@@ -2712,7 +2732,7 @@ export class IntTypeExpression extends TypeIdentifier {
   }
 }
 
-export class StringTypeExpression extends TypeIdentifier {
+export class StringTypeIdentifier extends TypeIdentifier {
   readonly name = 'String'
 
   constructor(
@@ -2745,30 +2765,6 @@ export class StringTypeExpression extends TypeIdentifier {
 
   eval(): GetValueResult {
     return err(new RuntimeError(this, 'StringTypeExpression cannot be evaluated'))
-  }
-}
-
-export class ViewTypeExpression extends TypeIdentifier {
-  readonly name = 'view'
-
-  toCode() {
-    return this.safeTypeAssertion().toCode()
-  }
-
-  safeTypeAssertion(): Types.Type {
-    return Types.UserViewType
-  }
-
-  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getType() {
-    return err(new RuntimeError(this, 'ViewTypeExpression has no intrinsic type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'ViewTypeExpression cannot be evaluated'))
   }
 }
 
@@ -2949,7 +2945,7 @@ export class ClassDefinition extends Expression {
     readonly nameRef: Reference,
     readonly generics: string[],
     readonly extendsExpression: Reference | undefined,
-    readonly argDefinitions: FormulaLiteralArgumentDeclarations | undefined,
+    readonly argDefinitions: FormulaLiteralArguments | undefined,
     /**
      * Properties and their type, possibly with a default value.
      * properties.nameRef could be a StateReference
@@ -3450,7 +3446,7 @@ export class ViewClassDefinition extends ClassDefinition {
     precedingComments: Comment[],
     lastComments: Comment[],
     nameRef: Reference,
-    argDeclarations: FormulaLiteralArgumentDeclarations | undefined,
+    argDeclarations: FormulaLiteralArguments | undefined,
     properties: ClassPropertyExpression[],
     formulas: NamedFormulaExpression[],
     isExport: boolean,
@@ -3629,10 +3625,10 @@ export class EnumMemberExpression extends Expression {
     precedingComments: Comment[],
     readonly name: string,
     /**
-     * Uses FormulaLiteralArgumentDeclarations, which supports default arguments.
+     * Uses FormulaLiteralArgument, which supports default arguments.
      * EnumMemberExpression acts very much like a formula literal.
      */
-    readonly args: FormulaLiteralArgumentAndTypeDeclaration[],
+    readonly args: FormulaLiteralArgument[],
   ) {
     super(range, precedingComments)
   }
@@ -3957,27 +3953,27 @@ export class ArgumentsList extends Expression {
 
 /**
  * List of argument declarations and their type, e.g. `(name: String, age: Int)`,
- * as part of a function literal. Comes in two subclasses, FormulaLiteralArgumentDeclarations
- * and FormulaTypeArgumentDeclarations.
+ * as part of a function literal. Comes in two subclasses, FormulaLiteralArguments
+ * and FormulaTypeArguments.
  *
- * FormulaLiteralArgumentDeclarations stores the arguments and types of a formula
- * literal (an instance of a formula)
+ * FormulaLiteralArguments stores the arguments and types of a formula literal
+ * (an instance of a formula)
  *
  *   […].map( fn(a: Int) => a + 1 )
- *               ^^^^^^ FormulaLiteralArgumentDeclarations
- *               (list of FormulaLiteralArgumentAndTypeDeclaration)
+ *               ^^^^^^ FormulaLiteralArguments
+ *               (list of FormulaLiteralArgument)
  *
- * FormulaTypeArgumentDeclarations stores the arguments and types of a formula *type*
+ * FormulaTypeArguments stores the arguments and types of a formula *type*
  *
  *   Add is fn(a: Int, b: Int): Int
  *             ^^^^^^^^^^^^^^
- *            (list of FormulaTypeArgumentAndType)
+ *            (list of FormulaTypeArgument)
  *
  * The main difference being that formula _types_ can have optional arguments,
  * whereas formulas can have default values.
  */
-export abstract class ArgumentDeclarations extends Expression {
-  abstract args: (FormulaLiteralArgumentAndTypeDeclaration | FormulaTypeArgumentAndType)[]
+export abstract class ArgumentsExpression extends Expression {
+  abstract args: (FormulaLiteralArgument | FormulaTypeArgument)[]
 
   dependencies() {
     return this.args.reduce((set, type) => union(set, type.dependencies()), new Set<string>())
@@ -4012,7 +4008,7 @@ export abstract class ArgumentDeclarations extends Expression {
   }
 
   eval(): GetValueResult {
-    return err(new RuntimeError(this, 'ArgumentDeclarations cannot be evaluated'))
+    return err(new RuntimeError(this, 'ArgumentsExpression cannot be evaluated'))
   }
 
   toLisp() {
@@ -4028,17 +4024,17 @@ export abstract class ArgumentDeclarations extends Expression {
  * List of argument declarations and their type for a literal formula,
  * e.g. `(name: String, age: Int = 0)`
  *
- * FormulaLiteralArgumentDeclarations stores the arguments and types of a formula literal
+ * FormulaLiteralArguments stores the arguments and types of a formula literal
  *
  *   fn helper(a: Int = 0) => a + 1
- *             ^^^^^^^^^^ FormulaLiteralArgumentDeclarations
- *             (list of FormulaLiteralArgumentAndTypeDeclaration)
+ *             ^^^^^^^^^^ FormulaLiteralArguments
+ *             (list of FormulaLiteralArgument)
  */
-export class FormulaLiteralArgumentDeclarations extends ArgumentDeclarations {
+export class FormulaLiteralArguments extends ArgumentsExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly args: FormulaLiteralArgumentAndTypeDeclaration[],
+    readonly args: FormulaLiteralArgument[],
   ) {
     super(range, precedingComments)
   }
@@ -4056,7 +4052,7 @@ export class FormulaLiteralArgumentDeclarations extends ArgumentDeclarations {
  *     ...spread: Array(Type)
  *     **kwargs: Dict(Type)
  */
-export class FormulaLiteralArgumentAndTypeDeclaration extends ArgumentExpression {
+export class FormulaLiteralArgument extends ArgumentExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -4125,17 +4121,17 @@ export class FormulaLiteralArgumentAndTypeDeclaration extends ArgumentExpression
 
 /**
  * List of argument declarations and their type, e.g. `(name: String, age: Int)`
- * FormulaTypeArgumentDeclarations stores the arguments and types of a formula *type*
+ * FormulaTypeArguments stores the arguments and types of a formula *type*
  *
  *     add = fn(a: Int, b: Int): Int
  *              ^^^^^^^^^^^^^^
- *       (list of FormulaTypeArgumentAndType)
+ *       (list of FormulaTypeArgument)
  */
-export class FormulaTypeArgumentDeclarations extends ArgumentDeclarations {
+export class FormulaTypeArguments extends ArgumentsExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly args: FormulaTypeArgumentAndType[],
+    readonly args: FormulaTypeArgument[],
   ) {
     super(range, precedingComments)
   }
@@ -4148,7 +4144,7 @@ export class FormulaTypeArgumentDeclarations extends ArgumentDeclarations {
  *             ^^^^^^  |
  *                     ^^^^^^
  */
-export class FormulaTypeArgumentAndType extends ArgumentExpression {
+export class FormulaTypeArgument extends ArgumentExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -4257,7 +4253,7 @@ export class FormulaTypeExpression extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly argDefinitions: FormulaTypeArgumentDeclarations,
+    readonly argDefinitions: FormulaTypeArguments,
     readonly returnType: Expression,
     readonly generics: string[],
   ) {
@@ -4325,7 +4321,7 @@ export class FormulaExpression extends Expression {
      */
     readonly precedingReturnTypeComments: Comment[],
     readonly nameRef: Reference | undefined,
-    readonly argDefinitions: FormulaLiteralArgumentDeclarations,
+    readonly argDefinitions: FormulaLiteralArguments,
     readonly returnType: Expression,
     readonly body: Expression,
     readonly generics: string[],
@@ -4530,7 +4526,7 @@ export class FormulaExpression extends Expression {
 
 function argumentToArgumentType(
   expr: FormulaExpression,
-  arg: FormulaLiteralArgumentAndTypeDeclaration,
+  arg: FormulaLiteralArgument,
   type: Types.Type,
 ): GetRuntimeResult<Types.Argument> {
   if (arg.spreadArg === 'spread' && arg.isPositional) {
@@ -4653,14 +4649,14 @@ function argumentTypes(
   )
 }
 
-function organizeArguments(argDefinitions: FormulaLiteralArgumentAndTypeDeclaration[]) {
-  const requiredPositional: FormulaLiteralArgumentAndTypeDeclaration[] = []
-  // const lastPositional: FormulaLiteralArgumentAndTypeDeclaration[] = []
-  const optionalPositional: [FormulaLiteralArgumentAndTypeDeclaration, Expression][] = []
-  let remainingPositional: FormulaLiteralArgumentAndTypeDeclaration | undefined
-  const singleNamed: Map<string, FormulaLiteralArgumentAndTypeDeclaration> = new Map()
-  const repeatNamed: Map<string, FormulaLiteralArgumentAndTypeDeclaration> = new Map()
-  let kwargs: FormulaLiteralArgumentAndTypeDeclaration | undefined
+function organizeArguments(argDefinitions: FormulaLiteralArgument[]) {
+  const requiredPositional: FormulaLiteralArgument[] = []
+  // const lastPositional: FormulaLiteralArgument[] = []
+  const optionalPositional: [FormulaLiteralArgument, Expression][] = []
+  let remainingPositional: FormulaLiteralArgument | undefined
+  const singleNamed: Map<string, FormulaLiteralArgument> = new Map()
+  const repeatNamed: Map<string, FormulaLiteralArgument> = new Map()
+  let kwargs: FormulaLiteralArgument | undefined
 
   for (const arg of argDefinitions) {
     if (arg.spreadArg === 'spread' && arg.isPositional) {
@@ -4705,7 +4701,7 @@ function organizeArguments(argDefinitions: FormulaLiteralArgumentAndTypeDeclarat
 
 function argumentValues(
   runtime: ValueRuntime,
-  argDefinitions: FormulaLiteralArgumentAndTypeDeclaration[],
+  argDefinitions: FormulaLiteralArgument[],
   invokedArgs: Values.FormulaArgs,
   boundThis: Values.ClassInstanceValue | undefined,
 ): GetRuntimeResult<MutableValueRuntime> {
@@ -4724,7 +4720,7 @@ function argumentValues(
       runtime,
       argDefinitions.map(
         arg =>
-          new FormulaLiteralArgumentAndTypeDeclaration(
+          new FormulaLiteralArgument(
             arg.range,
             arg.precedingComments,
             arg.nameRef,
@@ -4837,7 +4833,7 @@ export class NamedFormulaExpression extends FormulaExpression {
     precedingNameComments: Comment[],
     precedingReturnTypeComments: Comment[],
     readonly nameRef: Reference,
-    argDefinitions: FormulaLiteralArgumentDeclarations,
+    argDefinitions: FormulaLiteralArguments,
     returnType: Expression,
     body: Expression,
     generics: string[],
@@ -4896,7 +4892,7 @@ export class MemberFormulaExpression extends NamedFormulaExpression {
     precedingNameComments: Comment[],
     precedingReturnTypeComments: Comment[],
     nameRef: Reference,
-    argDefinitions: FormulaLiteralArgumentDeclarations,
+    argDefinitions: FormulaLiteralArguments,
     returnType: Expression,
     body: Expression,
     generics: string[],
@@ -4930,7 +4926,7 @@ export class StaticFormulaExpression extends NamedFormulaExpression {
     precedingNameComments: Comment[],
     precedingReturnTypeComments: Comment[],
     nameRef: Reference,
-    argDefinitions: FormulaLiteralArgumentDeclarations,
+    argDefinitions: FormulaLiteralArguments,
     returnType: Expression,
     body: Expression,
     generics: string[],
@@ -4988,9 +4984,9 @@ abstract class JsxExpression extends Expression {
 
       code += this.args
         .map(arg => {
-          if (arg.value instanceof TrueExpression) {
+          if (arg.value instanceof LiteralTrue) {
             return arg.alias
-          } else if (arg.value instanceof FalseExpression) {
+          } else if (arg.value instanceof LiteralFalse) {
             return `!${arg.alias}`
           }
 
@@ -5052,9 +5048,9 @@ abstract class JsxExpression extends Expression {
 
       code += this.args
         .map(arg => {
-          if (arg.value instanceof TrueExpression) {
+          if (arg.value instanceof LiteralTrue) {
             return arg.alias
-          } else if (arg.value instanceof FalseExpression) {
+          } else if (arg.value instanceof LiteralFalse) {
             return `!${arg.alias}`
           }
 
@@ -5322,7 +5318,7 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
     precedingNameComments: Comment[],
     precedingReturnTypeComments: Comment[],
     nameRef: Reference,
-    argDefinitions: FormulaLiteralArgumentDeclarations,
+    argDefinitions: FormulaLiteralArguments,
     returnType: Expression,
     body: Expression,
   ) {
@@ -6010,7 +6006,7 @@ export class MatchEnumExpression extends MatchExpression {
   }
 }
 
-export class MatchLiteral extends MatchExpression {
+export abstract class MatchLiteral extends MatchExpression {
   constructor(readonly literal: Literal) {
     super(literal.range, literal.precedingComments)
   }
@@ -6066,6 +6062,9 @@ export class MatchLiteral extends MatchExpression {
     return this.literal.toCode()
   }
 }
+
+export class MatchLiteralFloat extends MatchLiteral {}
+export class MatchLiteralInt extends MatchLiteral {}
 
 export class MatchUnaryRange extends MatchExpression {
   readonly precedence = 12 // from operators.ts
@@ -6432,14 +6431,14 @@ export class MatchBinaryRange extends MatchExpression {
   }
 }
 
-export class MatchStringLiteral extends MatchLiteral {
-  constructor(readonly literal: StringLiteral) {
+export class MatchLiteralString extends MatchLiteral {
+  constructor(readonly literal: LiteralString) {
     super(literal)
   }
 }
 
-export class MatchRegexLiteral extends MatchLiteral {
-  constructor(readonly literal: RegexLiteral) {
+export class MatchLiteralRegex extends MatchLiteral {
+  constructor(readonly literal: LiteralRegex) {
     super(literal)
   }
 
@@ -6560,15 +6559,15 @@ export class MatchStringExpression extends MatchExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly prefix: MatchStringLiteral | undefined,
-    readonly matches: [MatchReference, MatchStringLiteral][],
+    readonly prefix: MatchLiteralString | undefined,
+    readonly matches: [MatchReference, MatchLiteralString][],
     readonly lastRef: MatchReference | undefined,
   ) {
     super(range, precedingComments)
   }
 
-  all(): (MatchReference | MatchStringLiteral)[] {
-    const all: (MatchReference | MatchStringLiteral)[] = this.prefix ? [this.prefix] : []
+  all(): (MatchReference | MatchLiteralString)[] {
+    const all: (MatchReference | MatchLiteralString)[] = this.prefix ? [this.prefix] : []
     for (const [match, literal] of this.matches) {
       all.push(match)
       all.push(literal)
@@ -6583,7 +6582,7 @@ export class MatchStringExpression extends MatchExpression {
     return this.matches.map(([match]) => match).concat(this.lastRef ? [this.lastRef] : [])
   }
 
-  literals(): MatchStringLiteral[] {
+  literals(): MatchLiteralString[] {
     return (this.prefix ? [this.prefix] : []).concat(this.matches.map(([, literal]) => literal))
   }
 
@@ -7633,6 +7632,11 @@ export class TypeDefinition extends Expression {
   }
 }
 
+/**
+ * This is the return type indicator for the `Msg` type, regardless of where
+ * that message is being returned. Messages constructors are always bound
+ * functions, so the value of 'this' determines the recipient.
+ */
 export class BuiltinCommandIdentifier extends Identifier {
   name = '&'
 
@@ -7982,9 +7986,9 @@ export class DiceExpression extends Expression {
 }
 
 function mergeRenderDeps(runtime: ValueRuntime, expressions: Expression[]) {
-  return expressions.reduce((deps, expr): Set<Values.Value> => {
+  return expressions.reduce((deps, expr): Set<Values.ClassInstanceValue> => {
     return union(deps, expr.renderDeps(runtime))
-  }, new Set<Values.Value>())
+  }, new Set<Values.ClassInstanceValue>())
 }
 
 /**
