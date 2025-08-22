@@ -1,20 +1,23 @@
 import * as Values from './values'
-import {Node, type NodeExpression} from './values'
+import {Node, type Send, type DOM} from './values'
 
-export class Children extends Node {
+export class ChildrenNode extends Node {
   readonly value: Values.ArrayValue
+
   constructor(
-    expression: NodeExpression,
+    deps: Set<Values.Value>,
     readonly nodes: Node[],
   ) {
-    super(expression)
+    super(deps, nodes)
+
+    nodes.forEach(node => (node.parentNode = this))
     this.value = Values.array(this.nodes.map(node => node.value))
     Object.defineProperty(this, 'value', {enumerable: false})
   }
 
-  renderInto<T>(dom: Values.DOM<T>, el: T) {
+  renderInto<T>(dom: DOM<T>, el: T, send: Send) {
     for (const node of this.nodes) {
-      const child = node.renderInto(dom, el)
+      const child = node.renderInto(dom, el, send)
       dom.appendElement(el, child)
     }
     return el
@@ -26,42 +29,71 @@ export class Children extends Node {
  */
 export class ValueNode extends Node {
   constructor(
-    expression: NodeExpression,
+    deps: Set<Values.Value>,
     readonly value: Values.Value,
   ) {
-    super(expression)
+    super(deps, [])
   }
 
-  renderInto<T>(dom: Values.DOM<T>, el: T) {
+  renderInto<T>(dom: DOM<T>, el: T, send: Send) {
     return dom.createTextNode(this.value)
   }
 }
 
-export class ArrayValueNode extends Children {}
+/**
+ * Stores a Value instance that refers to a property of state
+ */
+export class StateReferenceNode extends ValueNode {
+  constructor(
+    readonly reevaluateFn: () => Values.Value,
+    deps: Set<Values.Value>,
+    readonly thisValue: Values.ClassInstanceValue,
+    readonly prop: string,
+    value: Values.Value,
+  ) {
+    super(deps, value)
+  }
+
+  receive<T>(dom: DOM<T>, message: Values.MessageValue) {
+    if (!this.firstRender) {
+      return
+    }
+    dom.updateTextNode(this.firstRender, this.reevaluateFn())
+  }
+}
+
+export class ArrayValueNode extends ChildrenNode {}
 
 /**
- * Any named JSX-tag.
- *     <p>…</p>, <input />, <Account />, <Stack>…</Stack>
+ * A named JSX-tag that is created externally (aka a "hosted" component,
+ * borrowing React terminology).
+ *     <p>…</p>, <input />, etc.
  */
 export class NamedNode extends Node {
   constructor(
-    expression: NodeExpression,
+    deps: Set<Values.Value>,
     readonly tag: Values.NamedViewValue,
-    readonly args: Map<string, Node>,
-    readonly children: Children | undefined,
+    readonly attrs: Map<string, Node>,
+    readonly childNode: ChildrenNode | undefined,
   ) {
-    super(expression)
+    const attrNodes = Array.from(attrs).map(([, node]) => node)
+    super(deps, [...(childNode ? [childNode] : []), ...attrNodes])
+
+    attrNodes.forEach(node => (node.parentAttrNode = this))
+    if (childNode) {
+      childNode.parentNode = this
+    }
   }
 
   get value(): Values.Value {
     return this.tag
   }
 
-  renderInto<T>(dom: Values.DOM<T>, el: T) {
-    const args = new Map(Array.from(this.args).map(([name, node]) => [name, node.value] as const))
-    const element = dom.createElement(this.tag, args)
-    if (this.children) {
-      this.children.renderInto(dom, element)
+  renderInto<T>(dom: DOM<T>, el: T, send: Send) {
+    const attrs = new Map(Array.from(this.attrs).map(([name, node]) => [name, node.value] as const))
+    const element = dom.createElement(this.tag, attrs, send)
+    if (this.childNode) {
+      this.childNode.renderInto(dom, element, send)
     }
     return element
   }
@@ -80,39 +112,45 @@ export class NamedNode extends Node {
  */
 export class FragmentNode extends Node {
   constructor(
-    expression: NodeExpression,
-    readonly children: Children,
+    deps: Set<Values.Value>,
+    readonly childNode: ChildrenNode,
   ) {
-    super(expression)
+    super(deps, [childNode])
+
+    childNode.parentNode = this
   }
 
   get value(): Values.Value {
-    return this.children.value
+    return this.childNode.value
   }
 
-  renderInto<T>(dom: Values.DOM<T>, el: T): T {
-    return this.children.renderInto(dom, el)
+  renderInto<T>(dom: DOM<T>, el: T, send: Send): T {
+    return this.childNode.renderInto(dom, el, send)
   }
 }
 
 abstract class InvocableNode extends Node {
   constructor(
-    expression: NodeExpression,
+    deps: Set<Values.Value>,
     readonly args: Map<string, Node>,
-    readonly children: Children | undefined,
-    readonly firstRender: Node,
+    readonly childNode: ChildrenNode | undefined,
+    readonly firstNode: Node,
   ) {
-    super(expression)
+    super(deps, [...(childNode ? [childNode] : []), firstNode])
+
+    if (childNode) {
+      childNode.parentNode = this
+    }
   }
 
   get value(): Values.Value {
-    return this.firstRender.value
+    return this.firstNode.value
   }
 
-  renderInto<T>(dom: Values.DOM<T>, el: T): T {
-    const element = this.firstRender.renderInto(dom, el)
-    if (this.children) {
-      this.children.renderInto(dom, element)
+  renderInto<T>(dom: DOM<T>, el: T, send: Send): T {
+    const element = this.firstNode.renderInto(dom, el, send)
+    if (this.childNode) {
+      this.childNode.renderInto(dom, element, send)
     }
     return element
   }
@@ -120,24 +158,58 @@ abstract class InvocableNode extends Node {
 
 export class ViewFormulaNode extends InvocableNode {
   constructor(
-    expression: NodeExpression,
+    deps: Set<Values.Value>,
     readonly formula: Values.ViewFormulaValue,
     args: Map<string, Node>,
-    children: Children | undefined,
-    firstRender: Node,
+    childNode: ChildrenNode | undefined,
+    firstNode: Node,
   ) {
-    super(expression, args, children, firstRender)
+    super(deps, args, childNode, firstNode)
+
+    if (childNode) {
+      childNode.parentNode = this
+    }
   }
 }
 
 export class ViewInstanceNode extends InvocableNode {
   constructor(
-    expression: NodeExpression,
+    deps: Set<Values.Value>,
     readonly view: Values.ViewClassInstanceValue,
     args: Map<string, Node>,
-    children: Children | undefined,
-    firstRender: Node,
+    childNode: ChildrenNode | undefined,
+    firstNode: Node,
   ) {
-    super(expression, args, children, firstRender)
+    super(deps, args, childNode, firstNode)
+
+    if (childNode) {
+      childNode.parentNode = this
+    }
+  }
+
+  renderInto<T>(dom: DOM<T>, parentElement: T, send: Send): T {
+    const thisSend = (message: Values.MessageValue) => {
+      if (message.subject === this.view) {
+        this.view.receive(dom, message, this)
+      } else {
+        send(message)
+      }
+    }
+    return super.renderInto(dom, parentElement, thisSend)
+  }
+
+  receive<T>(dom: DOM<T>, message: Values.MessageValue) {
+    const dependents = this.dependencies().get(message.subject)
+    if (!dependents) {
+      return
+    }
+
+    for (const node of dependents) {
+      if (node === this) {
+        continue
+      }
+
+      node.receive(dom, message)
+    }
   }
 }

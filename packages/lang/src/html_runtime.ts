@@ -10,15 +10,19 @@ export class HtmlRuntime implements ViewRuntime {
   }
 
   getViewType(tag: string) {
+    // TODO: add 'args' definitions to tags
     switch (tag) {
+      case 'button':
+        return new HtmlViewType('button')
       case 'p':
-        // TODO: add 'args' definitions to tags
         return new HtmlViewType('p')
     }
   }
 
   getViewValue(tag: string) {
     switch (tag) {
+      case 'button':
+        return new HtmlButtonElement('button')
       case 'p':
         return new HtmlParagraphElement('p')
     }
@@ -33,3 +37,4 @@ class HtmlViewType extends ViewType {
 
 class HtmlElement extends NamedViewValue {}
 class HtmlParagraphElement extends HtmlElement {}
+class HtmlButtonElement extends HtmlElement {}

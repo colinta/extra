@@ -4105,7 +4105,7 @@ class AssignmentOperator extends BinaryOperator {
 
     return rhsExpr
       .eval(runtime)
-      .map(rhs => new Values.MessageAssignmentValue(thisValue, lhsExpr.name, rhs))
+      .map(rhs => Values.MessageValue.assignment(thisValue, lhsExpr.name, rhs))
   }
 
   operatorEval(): GetValueResult {

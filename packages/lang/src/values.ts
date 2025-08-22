@@ -3,31 +3,70 @@ import {RuntimeError} from './formulaParser/expressions'
 import {splitter} from './graphemes'
 import * as Types from './types'
 
-// I hate having the Node class here, and the NodeExpression interface for that
-// matter.
+// I hate having the Node class here. It's only here because of renderFormula
+// needing to return a Node instance...
 
-/**
- * expressions.ts depends on Node, so references to Expression need to happen
- * via an inteface
- */
-export interface NodeExpression {
-  range: [number, number]
-}
+export type Send = (message: MessageValue) => void
 
 export interface DOM<T> {
-  createElement(tag: NamedViewValue, args: Map<string, Value>): T
+  createElement(tag: NamedViewValue, attrs: Map<string, Value>, send: Send): T
   createTextNode(text: Value): T
+  updateTextNode(node: T, text: Value): void
   appendElement(container: T, child: T): T
   removeElement(container: T, child: T): T
 }
 
 export abstract class Node {
-  constructor(readonly expression: NodeExpression) {
+  parentNode: Node | undefined
+  parentAttrNode: Node | undefined
+  firstRender: any
+
+  #dependencies: Map<Value, Node[]> | undefined
+
+  constructor(
+    readonly deps: Set<Value>,
+    readonly children: Node[],
+  ) {
+    const renderInto: any = this.renderInto.bind(this)
+    this.renderInto = (dom: DOM<unknown>, element: unknown, send: Send) => {
+      if (this.firstRender) {
+        return this.firstRender
+      }
+      const render = renderInto(dom, element, send)
+      this.firstRender = render
+      return render
+    }
+
+    Object.defineProperty(this, 'renderInto', {enumerable: false})
     Object.defineProperty(this, 'expression', {enumerable: false})
+    Object.defineProperty(this, 'deps', {enumerable: false})
+    Object.defineProperty(this, 'children', {enumerable: false})
+    Object.defineProperty(this, 'parentNode', {enumerable: false})
+    Object.defineProperty(this, 'parentAttrNode', {enumerable: false})
   }
 
   abstract get value(): Value
-  abstract renderInto<T>(dom: DOM<T>, el: T): T
+  abstract renderInto<T>(dom: DOM<T>, element: T, send: Send): T
+  receive<T>(_dom: DOM<T>, _message: MessageValue) {}
+
+  dependencies(): Map<Value, Node[]> {
+    if (!this.#dependencies) {
+      this.#dependencies = this._dependencies(new Map<Value, Node[]>())
+    }
+    return this.#dependencies
+  }
+
+  private _dependencies(deps: Map<Value, Node[]>): Map<Value, Node[]> {
+    for (const dep of this.deps) {
+      const list = deps.get(dep) ?? []
+      list.push(this)
+      deps.set(dep, list)
+    }
+    for (const child of this.children) {
+      child._dependencies(deps)
+    }
+    return deps
+  }
 }
 
 export function nullValue(): typeof NullValue {
@@ -1940,6 +1979,13 @@ export class ViewClassInstanceValue extends ClassInstanceValue {
   render(args: FormulaArgs): Result<Node, string | RuntimeError> {
     return this.renderFormula.render(args)
   }
+
+  receive<T>(dom: DOM<T>, message: MessageValue, node: Node) {
+    if (message.payload.is === 'assignment') {
+      this.props.set(message.payload.prop, message.payload.value)
+    }
+    node.receive(dom, message)
+  }
 }
 
 export class ModuleValue extends Value {
@@ -1976,9 +2022,18 @@ export class ModuleValue extends Value {
   }
 }
 
-export abstract class MessageValue extends Value {
-  constructor(readonly subject: Value) {
+type MessagePayload = {is: 'assignment'; prop: string; value: Value}
+
+export class MessageValue extends Value {
+  constructor(
+    readonly subject: Value,
+    readonly payload: MessagePayload,
+  ) {
     super()
+  }
+
+  static assignment(subject: Value, prop: string, value: Value) {
+    return new MessageValue(subject, {is: 'assignment', prop, value})
   }
 
   getType() {
@@ -2003,16 +2058,6 @@ export abstract class MessageValue extends Value {
 
   propValue() {
     return undefined
-  }
-}
-
-export class MessageAssignmentValue extends MessageValue {
-  constructor(
-    readonly subject: ClassInstanceValue,
-    readonly prop: string,
-    readonly value: Value,
-  ) {
-    super(subject)
   }
 }
 

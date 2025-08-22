@@ -1,0 +1,11 @@
+view Button {
+  @count: Int = 0
+
+  fn incr() =>
+    @count += 1
+
+  render() =>
+    <p>
+      <button onClick=this.incr>@count = {@count}</button>
+    </p>
+}

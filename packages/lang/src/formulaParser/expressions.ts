@@ -109,7 +109,6 @@ export function isRuntimeError(error: any): error is RuntimeError {
  */
 export abstract class Expression {
   resolvedType: Types.Type | undefined
-  // #resolvedRuntime: TypeRuntime | undefined
 
   constructor(
     readonly range: Range,
@@ -119,19 +118,6 @@ export abstract class Expression {
      */
     public followingComments: Comment[] = [],
   ) {
-    // const getType: (runtime: TypeRuntime, ...rem: any[]) => GetTypeResult = this.getType.bind(this)
-    // this.getType = (runtime: TypeRuntime, ...args: any[]) => {
-    //   if (this.#resolvedRuntime !== runtime) {
-    //     this.resolvedType = undefined
-    //   } else if (this.resolvedType) {
-    //     return ok(this.resolvedType)
-    //   }
-    //   return getType(runtime, ...args).map(type => {
-    //     this.resolvedType = type
-    //     return type
-    //   })
-    // }
-    // Object.defineProperty(this, 'getType', {enumerable: false})
     Object.defineProperty(this, 'precedingComments', {enumerable: false})
     Object.defineProperty(this, 'followingComments', {enumerable: false})
     Object.defineProperty(this, 'resolvedType', {enumerable: false})
@@ -202,7 +188,11 @@ export abstract class Expression {
    * messages via `send`.
    */
   render(runtime: ValueRuntime): GetNodeResult {
-    return this.eval(runtime).map(value => new Nodes.ValueNode(this, value))
+    return this.eval(runtime).map(value => new Nodes.ValueNode(this.renderDeps(runtime), value))
+  }
+
+  renderDeps(_runtime: ValueRuntime): Set<Values.Value> {
+    return new Set()
   }
 
   /**
@@ -354,6 +344,10 @@ export abstract class Operation extends Expression {
     readonly args: Expression[],
   ) {
     super(range, precedingComments)
+  }
+
+  renderDeps(runtime: ValueRuntime) {
+    return mergeRenderDeps(runtime, this.args)
   }
 
   dependencies() {
@@ -549,6 +543,10 @@ export class StringTemplateOperation extends Operation {
     super(range, precedingComments, [], operator, args)
   }
 
+  renderDeps(runtime: ValueRuntime) {
+    return mergeRenderDeps(runtime, this.args)
+  }
+
   toLisp(): string {
     const args = this.args
       .map(it => {
@@ -689,6 +687,11 @@ export class Reference extends Identifier {
 }
 
 export class StateReference extends Reference {
+  renderDeps(runtime: ValueRuntime) {
+    const thisValue = runtime.getThisValue()
+    return new Set(thisValue ? [thisValue] : [])
+  }
+
   dependencies() {
     return new Set(['@' + this.name])
   }
@@ -717,6 +720,20 @@ export class StateReference extends Reference {
     }
 
     return err(new RuntimeError(this, `Cannot get value of state variable '@${this.name}'`))
+  }
+
+  render(runtime: ValueRuntime): GetNodeResult {
+    const thisValue = runtime.getThisValue()!
+    return this.eval(runtime).map(
+      value =>
+        new Nodes.StateReferenceNode(
+          () => thisValue.propValue(this.name)!,
+          this.renderDeps(runtime),
+          thisValue,
+          this.name,
+          value,
+        ),
+    )
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
@@ -760,6 +777,10 @@ export class ObjectExpression extends Expression {
     readonly values: Expression[],
   ) {
     super(range, precedingComments)
+  }
+
+  renderDeps(runtime: ValueRuntime) {
+    return mergeRenderDeps(runtime, this.values)
   }
 
   dependencies() {
@@ -857,6 +878,10 @@ export class ArrayExpression extends Expression {
     }
   }
 
+  renderDeps(runtime: ValueRuntime) {
+    return mergeRenderDeps(runtime, this.values)
+  }
+
   dependencies() {
     return this.values.reduce((set, value) => union(set, value.dependencies()), new Set<string>())
   }
@@ -924,7 +949,7 @@ export class ArrayExpression extends Expression {
 
   render(runtime: ValueRuntime): GetNodeResult {
     return mapAll(this.values.map(value => value.render(runtime))).map(
-      nodes => new Nodes.ArrayValueNode(this, nodes),
+      nodes => new Nodes.ArrayValueNode(this.renderDeps(runtime), nodes),
     )
   }
 }
@@ -1069,6 +1094,10 @@ export class SetExpression extends Expression {
     if (!generic) {
       throw new Error(this.toString() + ' must have a generic type')
     }
+  }
+
+  renderDeps(runtime: ValueRuntime) {
+    return mergeRenderDeps(runtime, this.values)
   }
 
   dependencies() {
@@ -3835,6 +3864,10 @@ export class ArgumentsList extends Expression {
     }
   }
 
+  renderDeps(runtime: ValueRuntime) {
+    return mergeRenderDeps(runtime, this.allArgs)
+  }
+
   get allArgs() {
     return [...this.parenArgs, ...this.blockArgs]
   }
@@ -4302,6 +4335,10 @@ export class FormulaExpression extends Expression {
     return new Set()
   }
 
+  renderDeps(runtime: ValueRuntime) {
+    return this.body.renderDeps(runtime)
+  }
+
   dependencies() {
     const deps = union(
       this.returnType.dependencies(),
@@ -4405,7 +4442,9 @@ export class FormulaExpression extends Expression {
     runtime: TypeRuntime,
     formulaType?: Types.FormulaType | undefined,
   ): GetRuntimeResult<Types.FormulaType> {
-    const mutableRuntime = new MutableTypeRuntime(runtime)
+    // this is called from ClassDefinition with a 'this' value set, we need to preserve it.
+    const mutableRuntime = new MutableTypeRuntime(runtime, runtime.getThisType())
+
     const genericTypes: Types.GenericType[] = []
     for (const generic of this.generics) {
       const genericType = new Types.GenericType(generic)
@@ -4470,11 +4509,17 @@ export class FormulaExpression extends Expression {
         this.body.eval(nextRuntime),
       )
 
-    if (this.nameRef) {
-      return ok(new Values.NamedFormulaValue(this.nameRef.name, fn, undefined))
-    } else {
-      return ok(new Values.FormulaValue(fn, undefined))
-    }
+    return ok(this.getFormulaValueWith(runtime, fn))
+  }
+
+  getFormulaValueWith(
+    _runtime: ValueRuntime,
+    fn: (
+      args: Values.FormulaArgs,
+      boundThis: Values.ClassInstanceValue | undefined,
+    ) => Result<Values.Value, RuntimeError>,
+  ) {
+    return new Values.FormulaValue(fn, undefined)
   }
 }
 
@@ -4827,6 +4872,16 @@ export class NamedFormulaExpression extends FormulaExpression {
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.NamedFormulaValue> {
     return super.eval(runtime) as GetRuntimeResult<Values.NamedFormulaValue>
   }
+
+  getFormulaValueWith(
+    _runtime: ValueRuntime,
+    fn: (
+      args: Values.FormulaArgs,
+      boundThis: Values.ClassInstanceValue | undefined,
+    ) => Result<Values.Value, RuntimeError>,
+  ) {
+    return new Values.NamedFormulaValue(this.nameRef.name, fn, undefined)
+  }
 }
 
 export class MemberFormulaExpression extends NamedFormulaExpression {
@@ -5085,7 +5140,7 @@ abstract class JsxExpression extends Expression {
     return err(new RuntimeError(this, `JsxExpression cannot be eval'd (try 'render' instead)`))
   }
 
-  renderFragment(children: Nodes.Children | undefined): GetNodeResult {
+  renderFragment(runtime: ValueRuntime, children: Nodes.ChildrenNode | undefined): GetNodeResult {
     if (this.args.length) {
       return err(new RuntimeError(this, `Fragment Views should not have args`))
     }
@@ -5096,12 +5151,14 @@ abstract class JsxExpression extends Expression {
       )
     }
 
-    return ok(new Nodes.FragmentNode(this, children))
+    return ok(new Nodes.FragmentNode(this.renderDeps(runtime), children))
   }
 
   render(runtime: ValueRuntime): GetNodeResult {
     return mapAll(this.children?.map(child => child.render(runtime)) ?? []).map(childrenNodes => {
-      const children = this.children ? new Nodes.Children(this, childrenNodes) : undefined
+      const children = this.children
+        ? new Nodes.ChildrenNode(this.renderDeps(runtime), childrenNodes)
+        : undefined
 
       if (this.nameRef) {
         const refValue = runtime.getViewValue(this.nameRef.name)
@@ -5112,14 +5169,14 @@ abstract class JsxExpression extends Expression {
         return this.renderValue(runtime, refValue, children)
       }
 
-      return this.renderFragment(children)
+      return this.renderFragment(runtime, children)
     })
   }
 
   renderValue(
     runtime: ValueRuntime,
     refValue: Values.NamedViewValue | Values.ViewFormulaValue | Values.ViewClassDefinitionValue,
-    children: Nodes.Children | undefined,
+    children: Nodes.ChildrenNode | undefined,
   ) {
     return mapAll(
       this.args.map(namedArg => {
@@ -5145,14 +5202,14 @@ abstract class JsxExpression extends Expression {
           return this.renderViewInstance(runtime, refValue, children, args, valueArgs)
         }
 
-        return new Nodes.NamedNode(this, refValue, args, children)
+        return new Nodes.NamedNode(this.renderDeps(runtime), refValue, args, children)
       })
   }
 
   renderViewFormula(
-    _runtime: ValueRuntime,
+    runtime: ValueRuntime,
     refValue: Values.ViewFormulaValue,
-    children: Nodes.Children | undefined,
+    children: Nodes.ChildrenNode | undefined,
     args: Map<string, Values.Node>,
     valueArgs: [string, Values.Value][],
   ) {
@@ -5165,17 +5222,20 @@ abstract class JsxExpression extends Expression {
     // - inserted 'children' into props (renderValue(runtime, refValue, children))
     // - TODO: merge/insert context
     // # renderViewFormula(runtime, refValue, children, ...)
-    // - since we have a ViewFormulaValue, we rendered the view (firstRender)
+    // - since we have a ViewFormulaValue, we rendered the view (firstNode)
     // - create a ViewFormulaNode
     return refValue
       .render(new Values.FormulaArgs(valueArgs))
-      .map(firstRender => new Nodes.ViewFormulaNode(this, refValue, args, children, firstRender))
+      .map(
+        firstNode =>
+          new Nodes.ViewFormulaNode(this.renderDeps(runtime), refValue, args, children, firstNode),
+      )
   }
 
   renderViewInstance(
-    _runtime: ValueRuntime,
+    runtime: ValueRuntime,
     refValue: Values.ViewClassDefinitionValue,
-    children: Nodes.Children | undefined,
+    children: Nodes.ChildrenNode | undefined,
     args: Map<string, Values.Node>,
     valueArgs: [string, Values.Value][],
   ) {
@@ -5193,7 +5253,7 @@ abstract class JsxExpression extends Expression {
         }
 
         return instance.render(new Values.FormulaArgs([])).map(
-          firstRender =>
+          firstNode =>
             // to recap:
             // # render(runtime)
             // - we rendered all children
@@ -5205,10 +5265,16 @@ abstract class JsxExpression extends Expression {
             // # renderViewInstance(runtime, refValue, children, ...)
             // - since we have a ViewClassDefinitionValue, we
             //   instantiated the view (konstructor.call)
-            // - we rendered the view to get a firstRender
+            // - we rendered the view to get a firstNode
             //   (ViewClassInstanceValue has a render formula)
             // - create a ViewInstanceNode
-            new Nodes.ViewInstanceNode(this, instance, args, children, firstRender),
+            new Nodes.ViewInstanceNode(
+              this.renderDeps(runtime),
+              instance,
+              args,
+              children,
+              firstNode,
+            ),
         )
       })
   }
@@ -5277,15 +5343,14 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
     return new Types.ViewFormulaType(this.nameRef.name, returnType, namedArgs, genericTypes)
   }
 
-  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ViewFormulaValue> {
-    const argDefinitions = this.argDefinitions.args
-    const fn = (
+  getFormulaValueWith(
+    runtime: ValueRuntime,
+    fn: (
       args: Values.FormulaArgs,
       boundThis: Values.ClassInstanceValue | undefined,
-    ): Result<Values.Value, RuntimeError> =>
-      argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime =>
-        this.body.eval(nextRuntime),
-      )
+    ) => Result<Values.Value, RuntimeError>,
+  ) {
+    const argDefinitions = this.argDefinitions.args
     const render = (
       args: Values.FormulaArgs,
       boundThis: Values.ClassInstanceValue | undefined,
@@ -5294,7 +5359,7 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
         this.body.render(nextRuntime),
       )
 
-    return ok(new Values.ViewFormulaValue(this.nameRef.name, fn, undefined, render))
+    return new Values.ViewFormulaValue(this.nameRef.name, fn, undefined, render)
   }
 }
 
@@ -7911,6 +7976,17 @@ export class DiceExpression extends Expression {
   }
 }
 
+function mergeRenderDeps(runtime: ValueRuntime, expressions: Expression[]) {
+  return expressions.reduce((deps, expr): Set<Values.Value> => {
+    return union(deps, expr.renderDeps(runtime))
+  }, new Set<Values.Value>())
+}
+
+/**
+ * toCode formatting helper. Calls 'toCode' on every expression, then wraps it
+ * in lhs/rhs using wrapStrings helper, which handles wrapping max
+ * string-length.
+ */
 function wrapValues(lhs: string, expressions: Expression[], rhs: string, precedence = 0) {
   const codes = expressions.map(it => it.toCode(precedence))
   return wrapStrings(lhs, codes, rhs)

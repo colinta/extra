@@ -54,7 +54,6 @@ export interface ViewRuntime {
   has(name: string): boolean
 }
 
-const THIS = '@'
 const THIS_PREFIX = '@'
 
 export class MutableTypeRuntime {
@@ -87,10 +86,14 @@ export class MutableTypeRuntime {
   // namespaces is only half-baked so far
   private namespaces: Map<string, Map<string, Type>> = new Map()
 
-  constructor(readonly parent?: TypeRuntime) {
+  constructor(
+    readonly parent?: TypeRuntime,
+    thisType?: ClassInstanceType | undefined,
+  ) {
     if (parent) {
       this.viewRuntime = parent.viewRuntime
     }
+    this.thisType = thisType
   }
 
   resolved(): Set<string> {
@@ -178,7 +181,10 @@ export class MutableTypeRuntime {
    *         this.firstName ++ this.lastName
    *     }
    */
-  getThisType() {
+  getThisType(): ClassInstanceType | undefined {
+    // do not call 'parent.getThisType()'. We don't want to accidentally leak
+    // the value of 'this'. Pass runtime.getThisType() to the
+    // `MutableTypeRuntime` constructor when appropriate.
     return this.thisType
   }
 
@@ -301,8 +307,12 @@ export class MutableValueRuntime extends MutableTypeRuntime {
   values: Map<string, Value> = new Map()
   thisValue: ClassInstanceValue | undefined
 
-  constructor(readonly parent?: ValueRuntime) {
+  constructor(
+    readonly parent?: ValueRuntime,
+    thisValue?: ClassInstanceValue | undefined,
+  ) {
     super(parent)
+    this.thisValue = thisValue
   }
 
   resolved(): Set<string> {
@@ -335,7 +345,10 @@ export class MutableValueRuntime extends MutableTypeRuntime {
     return thisValue.propValue(name)
   }
 
-  getThisValue() {
+  getThisValue(): ClassInstanceValue | undefined {
+    // do not call 'parent.getThisValue()'. We don't want to accidentally leak
+    // the value of 'this'. Pass runtime.getThisValue() to the
+    // `MutableValueRuntime` constructor when appropriate.
     return this.thisValue
   }
 
@@ -367,7 +380,7 @@ export class MutableValueRuntime extends MutableTypeRuntime {
   }
 
   setThisValue(value: ClassInstanceValue) {
-    this.addLocalValue(THIS, value)
+    this.thisValue = value
   }
 
   setPipeValue(value: Value) {
