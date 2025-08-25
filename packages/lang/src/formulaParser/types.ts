@@ -82,16 +82,19 @@ export type ExpressionType =
   | 'expression' // default, but greedy
   | 'let' // let ... in
   | 'type' // parses the type within fn<..>()
-  | 'object' // parses the value within {key: value}
   | 'module' // all module-level definitions are scanned in this context
   | 'enum' // parses enum members, member and static functions, closes w/ }
   | 'case' // parses the argument after 'case [match]:'
   | 'class' // parses properties, member and static functions, closes w/ }
   | 'default' // parses a single expression in the context of a class default value
-  | 'array[]' // parses the values within [1,2,3]
-  | 'array-word' // parses the values within array(1,2,3)
-  | 'dict-word' // parses the values within dict(1,2,3)
-  | 'set-word' // parses the values within set(1,2,3)
+  | 'object-symbol' // parses the values within {key: value}
+  | 'object-word' // parses the values within Object(key: value)
+  | 'array-symbol' // parses the values within [1,2,3]
+  | 'array-word' // parses the values within Array(1,2,3)
+  | 'dict-symbol' // parses the values within #{1,2,3}
+  | 'dict-word' // parses the values within Dict(1,2,3)
+  | 'set-symbol' // parses the values within #{1,2,3}
+  | 'set-word' // parses the values within Set(1,2,3)
   | 'bracket_access' // value[access]
   | 'interpolation' // ${ … }
   | 'parens' // ( … )

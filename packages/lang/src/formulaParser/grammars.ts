@@ -54,7 +54,11 @@ export const ARRAY_OPEN = '['
 export const ARRAY_CLOSE = ']'
 
 export const DICT_WORD_START = 'Dict'
+export const DICT_OPEN = '#['
+export const DICT_CLOSE = ']'
 export const SET_WORD_START = 'Set'
+export const SET_OPEN = '#{'
+export const SET_CLOSE = '}'
 export const REGEX_START = '/'
 export const ATOM_START = ':'
 export const STATE_START = '@'
@@ -245,10 +249,13 @@ export function isRef(input: string) {
 
 export function expressionSupportsSplat(expressionType: ExpressionType) {
   return (
-    expressionType === 'object' ||
-    expressionType === 'array[]' ||
+    expressionType === 'object-symbol' ||
+    expressionType === 'object-word' ||
+    expressionType === 'array-symbol' ||
     expressionType === 'array-word' ||
+    expressionType === 'dict-symbol' ||
     expressionType === 'dict-word' ||
+    expressionType === 'set-symbol' ||
     expressionType === 'set-word'
   )
 }
@@ -260,14 +267,17 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
     expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
-    expressionType === 'object' ||
     expressionType === 'module' ||
     expressionType === 'enum' ||
     expressionType === 'class' ||
     expressionType === 'default' ||
-    expressionType === 'array[]' ||
+    expressionType === 'object-symbol' ||
+    expressionType === 'object-word' ||
+    expressionType === 'array-symbol' ||
     expressionType === 'array-word' ||
+    expressionType === 'dict-symbol' ||
     expressionType === 'dict-word' ||
+    expressionType === 'set-symbol' ||
     expressionType === 'set-word'
   )
 }
@@ -280,10 +290,13 @@ export function terminatesWithComma(expressionType: ExpressionType) {
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
     expressionType === 'default' ||
-    expressionType === 'object' ||
-    expressionType === 'array[]' ||
+    expressionType === 'object-symbol' ||
+    expressionType === 'object-word' ||
+    expressionType === 'array-symbol' ||
     expressionType === 'array-word' ||
+    expressionType === 'dict-symbol' ||
     expressionType === 'dict-word' ||
+    expressionType === 'set-symbol' ||
     expressionType === 'set-word'
   )
 }
@@ -291,6 +304,7 @@ export function terminatesWithComma(expressionType: ExpressionType) {
 export function terminatesWithRoundBracket(expressionType: ExpressionType) {
   return (
     expressionType === 'argument' ||
+    expressionType === 'object-word' ||
     expressionType === 'array-word' ||
     expressionType === 'dict-word' ||
     expressionType === 'set-word' ||
@@ -299,7 +313,11 @@ export function terminatesWithRoundBracket(expressionType: ExpressionType) {
 }
 
 export function terminatesWithSquareBracket(expressionType: ExpressionType) {
-  return expressionType === 'bracket_access' || expressionType === 'array[]'
+  return (
+    expressionType === 'bracket_access' ||
+    expressionType === 'dict-symbol' ||
+    expressionType === 'array-symbol'
+  )
 }
 
 export function terminatesWithCurlyBracket(expressionType: ExpressionType) {
@@ -307,7 +325,8 @@ export function terminatesWithCurlyBracket(expressionType: ExpressionType) {
     expressionType === 'block_argument' ||
     expressionType === 'jsx_embed' ||
     expressionType === 'interpolation' ||
-    expressionType === 'object' ||
+    expressionType === 'object-symbol' ||
+    expressionType === 'set-symbol' ||
     expressionType === 'enum' ||
     expressionType === 'case' ||
     expressionType === 'class' ||

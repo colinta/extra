@@ -940,8 +940,11 @@ Set: an unordered collection of homogenous items. Only one of each item will be 
 Syntax:
 
 - Array: `[] [] [1] [1,] [1, 2, 3]`
+  (alternatively you can use the "long form" `Array(1,2,3)`)
 - Dict: `Dict() Dict(key: 1) Dict(key: 1,) Dict(1: 1, 'key2': 2, "key$three": 3)`
+  (alternative shorthand: `#[key: value]`)
 - Set: `Set() Set(1) Set(1,) Set(1, 2, 3)`
+  (alternative shorthand: `#{1, 2, 3}`)
 
 #### Heterogenous types: Tuple, Object
 
@@ -950,8 +953,9 @@ Tuple: same as an object, but indexed by number instead of string. Tuples and Ob
 
 Syntax:
 
-- Object: `{} {} {one: 1} {one: 1,} {1: 1, 'two': "two", "$three": [3]}`
-- Tuple: `{} {1} {1,} {1,"two",[3]}`
+- By (string) key: `{} {one: 1} {one: 1,} {1: 1, 'two': "two", "$three": [3]}`
+- By index: `{} {1} {1,} {1,"two",[3]}`
+- Mix: `{one: 1, 0, 1, zero: 0}`
 
 #### More examples
 

@@ -5,16 +5,22 @@ import {type Expression} from '../../expressions'
 describe('set', () => {
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
-      c(['Set()', 'Set()', 'Set()']),
+      c(['Set()', 'Set()']), //
       c([' Set(  )', 'Set()', 'Set()']),
-      c(['Set()', 'Set()', 'Set()']),
-      c([' Set(  )', 'Set()', 'Set()']),
-      c(["Set('a')", "Set('a')"]),
-      c(['Set(a)', 'Set(a)']),
-      c(['Set(a)', 'Set(a)', 'Set(a)']),
+      c(["Set('a')", "Set('a')"]), //
+      c(['Set(a)', 'Set(a)']), //
+      c(['Set(a)', 'Set(a)']), //
       c(['Set<Int>(a)', '(Set(`Int`) (a))', 'Set<Int>(a)']),
-      c(["Set('a', [1, 2, 3])", "Set('a' [1 2 3])"]),
-      c(["Set(a, b, 'c', dee)", "Set(a b 'c' dee)", "Set(a, b, 'c', dee)"]),
+      c(["Set('a', [1, 2, 3])", "Set('a' [1 2 3])"]), //
+      c(["Set(a, b, 'c', dee)", "Set(a b 'c' dee)"]), //
+      c(['#{}', 'Set()', 'Set()']),
+      c([' #{  }', 'Set()', 'Set()']),
+      c(['#{}', 'Set()', 'Set()']),
+      c([' #{  }', 'Set()', 'Set()']),
+      c(["#{'a'}", "Set('a')", "Set('a')"]),
+      c(['#{a}', 'Set(a)', 'Set(a)']),
+      c(["#{'a', [1, 2, 3]}", "Set('a' [1 2 3])", "Set('a', [1, 2, 3])"]),
+      c(["#{a, b, 'c', dee}", "Set(a b 'c' dee)", "Set(a, b, 'c', dee)"]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse set '${formula}'`, () => {
         expectedCode ??= formula
@@ -28,7 +34,7 @@ describe('set', () => {
 
   describe('spread operator', () => {
     cases<[string, string] | [string, string, string]>(
-      c(['Set(...lhs, rhs)', 'Set((... lhs) rhs)']),
+      c(['#{...lhs, rhs}', 'Set((... lhs) rhs)', 'Set(...lhs, rhs)']),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         expectedCode ??= formula
@@ -42,7 +48,7 @@ describe('set', () => {
   })
 
   describe('trailing commas', () => {
-    cases<[string, string]>(c(['Set(1,)', 'Set(1)']), c(['Set(1 , )', 'Set(1)'])).run(
+    cases<[string, string]>(c(['#{1,}', 'Set(1)']), c(['#{1 , }', 'Set(1)'])).run(
       ([formula, expected], {only, skip}) =>
         (only ? it.only : skip ? it.skip : it)(`should allow trailing comma in ${formula}`, () => {
           const expression = parse(formula).get()
