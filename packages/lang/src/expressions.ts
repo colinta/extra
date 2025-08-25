@@ -3528,7 +3528,7 @@ export class ViewClassDefinition extends ClassDefinition {
    */
   guaranteeConstructor(
     instance: Values.Value,
-  ): GetRuntimeResult<[Values.ClassInstanceValue, Values.ViewFormulaValue]> {
+  ): GetRuntimeResult<[Values.ClassInstanceValue, Values.ViewFormulaValue<Nodes.Node>]> {
     if (!(instance instanceof Values.ClassInstanceValue)) {
       return err(
         new RuntimeError(
@@ -5137,7 +5137,7 @@ abstract class JsxExpression extends Expression {
   }
 
   eval() {
-    // cannot return a Values.NodeValue, because nodes.ts depends on values.ts
+    // cannot return a Nodes.NodeValue, because nodes.ts depends on values.ts
     return err(new RuntimeError(this, `JsxExpression cannot be eval'd (try 'render' instead)`))
   }
 
@@ -5176,7 +5176,10 @@ abstract class JsxExpression extends Expression {
 
   renderValue(
     runtime: ValueRuntime,
-    refValue: Values.NamedViewValue | Values.ViewFormulaValue | Values.ViewClassDefinitionValue,
+    refValue:
+      | Values.NamedViewValue
+      | Values.ViewFormulaValue<Nodes.Node>
+      | Values.ViewClassDefinitionValue,
     children: Nodes.ChildrenNode | undefined,
   ) {
     return mapAll(
@@ -5209,9 +5212,9 @@ abstract class JsxExpression extends Expression {
 
   renderViewFormula(
     runtime: ValueRuntime,
-    refValue: Values.ViewFormulaValue,
+    refValue: Values.ViewFormulaValue<Nodes.Node>,
     children: Nodes.ChildrenNode | undefined,
-    args: Map<string, Values.Node>,
+    args: Map<string, Nodes.Node>,
     valueArgs: [string, Values.Value][],
   ) {
     // to recap:
@@ -5237,7 +5240,7 @@ abstract class JsxExpression extends Expression {
     runtime: ValueRuntime,
     refValue: Values.ViewClassDefinitionValue,
     children: Nodes.ChildrenNode | undefined,
-    args: Map<string, Values.Node>,
+    args: Map<string, Nodes.Node>,
     valueArgs: [string, Values.Value][],
   ) {
     return refValue
@@ -5355,7 +5358,7 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
     const render = (
       args: Values.FormulaArgs,
       boundThis: Values.ClassInstanceValue | undefined,
-    ): Result<Values.Node, RuntimeError> =>
+    ): Result<Nodes.Node, RuntimeError> =>
       argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime =>
         this.body.render(nextRuntime),
       )

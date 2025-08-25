@@ -18,6 +18,7 @@ import {
   NamedViewValue,
   ClassInstanceValue,
 } from './values'
+import {type Node} from './nodes'
 import {uid} from './uid'
 
 export type TypeRuntime = Omit<
@@ -354,7 +355,7 @@ export class MutableValueRuntime extends MutableTypeRuntime {
 
   getViewValue(
     name: string,
-  ): NamedViewValue | ViewClassDefinitionValue | ViewFormulaValue | undefined {
+  ): NamedViewValue | ViewClassDefinitionValue | ViewFormulaValue<Node> | undefined {
     const view = this.viewRuntime?.getViewValue(name)
     if (view) {
       return view

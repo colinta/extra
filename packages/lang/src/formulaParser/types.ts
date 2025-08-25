@@ -1,6 +1,7 @@
 import {Result} from '@extra-lang/result'
 import {type Type} from '../types'
-import {type Value, type Node} from '../values'
+import {type Value} from '../values'
+import {type Node} from '../nodes'
 import {type ValueRuntime} from '../runtime'
 import {type Expression, type Operation, type RuntimeError} from '../expressions'
 

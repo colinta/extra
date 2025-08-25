@@ -3,72 +3,6 @@ import {RuntimeError} from './expressions'
 import {splitter} from './graphemes'
 import * as Types from './types'
 
-// I hate having the Node class here. It's only here because of renderFormula
-// needing to return a Node instance...
-
-export type Send = (message: MessageValue) => void
-
-export interface DOM<T> {
-  createElement(tag: NamedViewValue, attrs: Map<string, Value>, send: Send): T
-  createTextNode(text: Value): T
-  updateTextNode(node: T, text: Value): void
-  appendElement(container: T, child: T): T
-  removeElement(container: T, child: T): T
-}
-
-export abstract class Node {
-  parentNode: Node | undefined
-  parentAttrNode: Node | undefined
-  firstRender: any
-
-  #dependencies: Map<Value, Node[]> | undefined
-
-  constructor(
-    readonly deps: Set<Value>,
-    readonly children: Node[],
-  ) {
-    const renderInto: any = this.renderInto.bind(this)
-    this.renderInto = (dom: DOM<unknown>, element: unknown, send: Send) => {
-      if (this.firstRender) {
-        return this.firstRender
-      }
-      const render = renderInto(dom, element, send)
-      this.firstRender = render
-      return render
-    }
-
-    Object.defineProperty(this, 'renderInto', {enumerable: false})
-    Object.defineProperty(this, 'expression', {enumerable: false})
-    Object.defineProperty(this, 'deps', {enumerable: false})
-    Object.defineProperty(this, 'children', {enumerable: false})
-    Object.defineProperty(this, 'parentNode', {enumerable: false})
-    Object.defineProperty(this, 'parentAttrNode', {enumerable: false})
-  }
-
-  abstract get value(): Value
-  abstract renderInto<T>(dom: DOM<T>, element: T, send: Send): T
-  receive<T>(_dom: DOM<T>, _message: MessageValue) {}
-
-  dependencies(): Map<Value, Node[]> {
-    if (!this.#dependencies) {
-      this.#dependencies = this._dependencies(new Map<Value, Node[]>())
-    }
-    return this.#dependencies
-  }
-
-  private _dependencies(deps: Map<Value, Node[]>): Map<Value, Node[]> {
-    for (const dep of this.deps) {
-      const list = deps.get(dep) ?? []
-      list.push(this)
-      deps.set(dep, list)
-    }
-    for (const child of this.children) {
-      child._dependencies(deps)
-    }
-    return deps
-  }
-}
-
 export function nullValue(): typeof NullValue {
   return NullValue
 }
@@ -1764,7 +1698,7 @@ export class EnumValue extends Value {
   }
 }
 
-export class ViewFormulaValue extends NamedFormulaValue {
+export class ViewFormulaValue<Node> extends NamedFormulaValue {
   constructor(
     name: string,
     fn: (
@@ -1958,12 +1892,12 @@ export class ClassInstanceValue extends Value {
   }
 }
 
-export class ViewClassInstanceValue extends ClassInstanceValue {
-  readonly renderFormula: ViewFormulaValue
+export class ViewClassInstanceValue<Node> extends ClassInstanceValue {
+  readonly renderFormula: ViewFormulaValue<Node>
 
   constructor(
     readonly metaClass: ViewClassDefinitionValue,
-    renderFormula: ViewFormulaValue,
+    renderFormula: ViewFormulaValue<Node>,
     props: Map<string, Value>,
     formulas: Map<string, FormulaValue>,
   ) {
@@ -1978,13 +1912,6 @@ export class ViewClassInstanceValue extends ClassInstanceValue {
 
   render(args: FormulaArgs): Result<Node, string | RuntimeError> {
     return this.renderFormula.render(args)
-  }
-
-  receive<T>(dom: DOM<T>, message: MessageValue, node: Node) {
-    if (message.payload.is === 'assignment') {
-      this.props.set(message.payload.prop, message.payload.value)
-    }
-    node.receive(dom, message)
   }
 }
 
