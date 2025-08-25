@@ -104,10 +104,13 @@ function _scanFormula(
       case 'let':
       case 'argument':
       case 'block_argument':
-      case 'object':
-      case 'array[]':
+      case 'object-symbol':
+      case 'object-word':
+      case 'array-symbol':
       case 'array-word':
+      case 'dict-symbol':
       case 'dict-word':
+      case 'set-symbol':
       case 'set-word':
       case 'bracket_access':
       case 'expression':

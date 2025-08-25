@@ -50,6 +50,20 @@ describe('function parser', () => {
     )
   })
 
+  describe('emoji refs', () => {
+    cases<[string, string]>(
+      c(['a_🙂', 'a_🙂']),
+      c(['a-🙂', 'a-🙂']),
+      c(['a -🙂', 'a - 🙂']),
+      c(['😁+😁', '😁 + 😁']),
+    ).run(([formula, expected], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`should allow trailing comma in ${formula}`, () => {
+        const expression = parse(formula).get()
+        expect(expression.toCode()).toEqual(expected)
+      }),
+    )
+  })
+
   describe('conditional inclusion', () => {
     cases<[string, string] | [string, string, string]>(
       c(['[x onlyif c]', '[(onlyif x c)]']),

@@ -17,6 +17,10 @@ import {
   SET_WORD_START,
   OBJECT_WORD_START,
   isArgumentStartChar,
+  SET_OPEN,
+  DICT_OPEN,
+  DICT_CLOSE,
+  SET_CLOSE,
 } from '../grammars'
 import {SPREAD_OPERATOR} from '../../operators'
 import {type Scanner} from '../scanner'
@@ -43,31 +47,34 @@ function isNamedObjectArgument(scanner: Scanner) {
 export function scanObject(
   scanner: Scanner,
   parseNext: ParseNext,
-  type: 'object{}' | 'object-word',
+  type: 'object-symbol' | 'object-word',
 ) {
   scanner.whereAmI(`scanObject:${type}`)
   const range0 = scanner.charIndex
-
   const precedingComments = scanner.flushComments()
-  if (type === 'object{}') {
+
+  let closer: string
+  if (type === 'object-symbol') {
     scanner.expectString(OBJECT_OPEN)
     scanner.scanAllWhitespace()
-
-    if (scanner.scanIfString(OBJECT_CLOSE)) {
-      scanner.whereAmI('scanObject: {}')
-      return new Expressions.ObjectExpression(
-        [range0, scanner.charIndex],
-        precedingComments,
-        scanner.flushComments(),
-        [],
-      )
-    }
+    closer = OBJECT_CLOSE
   } else {
     scanner.expectString(OBJECT_WORD_START)
     scanner.scanAllWhitespace()
+    closer = PARENS_CLOSE
 
     scanner.expectString(PARENS_OPEN, `Expected '${PARENS_OPEN}' after reserved word 'object'`)
     scanner.scanAllWhitespace()
+  }
+
+  if (scanner.scanIfString(closer)) {
+    scanner.whereAmI(`scanObject: ${type}`)
+    return new Expressions.ObjectExpression(
+      [range0, scanner.charIndex],
+      precedingComments,
+      scanner.flushComments(),
+      [],
+    )
   }
 
   const props: Expression[] = []
@@ -78,7 +85,7 @@ export function scanObject(
 
     const argRange0 = scanner.charIndex
     if (scanner.scanIfString(SPREAD_OPERATOR)) {
-      const expression = parseNext('object')
+      const expression = parseNext(type)
       // move the comments off of the expression, attach to the SpreadDict
       const precedingComments = expression.precedingComments
       const followingComments = expression.followingComments
@@ -112,7 +119,7 @@ export function scanObject(
         props.push(expression)
         scanner.whereAmI(`scanObjectArg: {${propName.name}:} shorthand`)
       } else {
-        const expression = parseNext('object')
+        const expression = parseNext(type)
         props.push(
           new Expressions.NamedArgument(
             [argRange0, scanner.charIndex],
@@ -125,7 +132,7 @@ export function scanObject(
       }
     } else {
       // tuple value of any kind
-      const expression = parseNext('object')
+      const expression = parseNext(type)
       props.push(expression)
     }
 
@@ -169,27 +176,23 @@ function scanOptionalGeneric(scanner: Scanner, parseNext: ParseNext) {
   return generic
 }
 
-export function scanArray(scanner: Scanner, parseNext: ParseNext, type: 'array[]' | 'array-word') {
+export function scanArray(
+  scanner: Scanner,
+  parseNext: ParseNext,
+  type: 'array-symbol' | 'array-word',
+) {
   scanner.whereAmI(`scanArray:${type}`)
   const range0 = scanner.charIndex
-
   const precedingComments = scanner.flushComments()
+
   let generic: Expression
-  if (type === 'array[]') {
+  let closer: string
+  if (type === 'array-symbol') {
     generic = new Expressions.InferIdentifier([scanner.charIndex, scanner.charIndex], [])
+
     scanner.expectString(ARRAY_OPEN)
     scanner.scanAllWhitespace()
-
-    if (scanner.scanIfString(ARRAY_CLOSE)) {
-      scanner.whereAmI('scanArray: []')
-      return new Expressions.ArrayExpression(
-        [range0, scanner.charIndex],
-        precedingComments,
-        scanner.flushComments(),
-        [],
-        generic,
-      )
-    }
+    closer = ARRAY_CLOSE
   } else {
     scanner.expectString(ARRAY_WORD_START)
     scanner.scanAllWhitespace()
@@ -197,18 +200,19 @@ export function scanArray(scanner: Scanner, parseNext: ParseNext, type: 'array[]
     generic = scanOptionalGeneric(scanner, parseNext)
     scanner.scanAllWhitespace()
     scanner.expectString(PARENS_OPEN)
-    scanner.scanAllWhitespace()
+    closer = PARENS_CLOSE
+  }
 
-    if (scanner.scanIfString(PARENS_CLOSE)) {
-      scanner.whereAmI('scanArray: array()')
-      return new Expressions.ArrayExpression(
-        [range0, scanner.charIndex],
-        precedingComments,
-        scanner.flushComments(),
-        [],
-        generic,
-      )
-    }
+  scanner.scanAllWhitespace()
+  if (scanner.scanIfString(closer)) {
+    scanner.whereAmI(`scanArray: ${type}`)
+    return new Expressions.ArrayExpression(
+      [range0, scanner.charIndex],
+      precedingComments,
+      scanner.flushComments(),
+      [],
+      generic,
+    )
   }
 
   const args: Expression[] = []
@@ -239,7 +243,7 @@ export function scanArray(scanner: Scanner, parseNext: ParseNext, type: 'array[]
     }
 
     const shouldBreak = scanner.scanCommaOrBreak(
-      type === 'array[]' ? ARRAY_CLOSE : PARENS_CLOSE,
+      type === 'array-symbol' ? ARRAY_CLOSE : PARENS_CLOSE,
       `Expected ',' separating items in the array`,
     )
 
@@ -260,20 +264,34 @@ export function scanArray(scanner: Scanner, parseNext: ParseNext, type: 'array[]
   )
 }
 
-export function scanDict(scanner: Scanner, parseNext: ParseNext) {
+export function scanDict(
+  scanner: Scanner,
+  parseNext: ParseNext,
+  type: 'dict-symbol' | 'dict-word',
+) {
   scanner.whereAmI('scanDict')
   const range0 = scanner.charIndex
-  scanner.expectString(DICT_WORD_START)
-  scanner.scanAllWhitespace()
-
-  const generic = scanOptionalGeneric(scanner, parseNext)
-  scanner.scanAllWhitespace()
-  scanner.expectString(PARENS_OPEN)
   const precedingComments = scanner.flushComments()
 
+  let generic: Expression
+  let closer: string
+  if (type === 'dict-symbol') {
+    generic = new Expressions.InferIdentifier([scanner.charIndex, scanner.charIndex], [])
+    scanner.expectString(DICT_OPEN)
+    closer = DICT_CLOSE
+  } else {
+    scanner.expectString(DICT_WORD_START)
+    scanner.scanAllWhitespace()
+    closer = PARENS_CLOSE
+
+    generic = scanOptionalGeneric(scanner, parseNext)
+    scanner.scanAllWhitespace()
+    scanner.expectString(PARENS_OPEN)
+  }
+
   scanner.scanAllWhitespace()
-  if (scanner.scanIfString(PARENS_CLOSE)) {
-    scanner.whereAmI('scanDict: Dict()')
+  if (scanner.scanIfString(closer)) {
+    scanner.whereAmI(`scanDict: ${type}`)
     return new Expressions.DictExpression(
       [range0, scanner.charIndex],
       precedingComments,
@@ -291,7 +309,7 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
 
     const argRange0 = scanner.charIndex
     if (scanner.scanIfString(SPREAD_OPERATOR)) {
-      const expression = parseNext('dict-word')
+      const expression = parseNext(type)
       // move the comments off of the expression, attach to the SpreadDict
       const precedingComments = expression.precedingComments
       const followingComments = expression.followingComments
@@ -349,7 +367,7 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
       const precedingComments = valueComments.concat(scanner.flushComments())
       scanner.scanSpaces()
 
-      if (scanner.is(',') || scanner.is(PARENS_CLOSE) || scanner.is('\n')) {
+      if (scanner.is(',') || scanner.is(closer) || scanner.is('\n')) {
         // { name: } shorthand
         scanner.whereAmI(`scanDictArg: Dict( ${name}: ${name} ) shorthand`)
 
@@ -362,7 +380,7 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
         entry.followingComments.push(...scanner.flushComments())
         entries.push(entry)
       } else {
-        const expression = parseNext('dict-word')
+        const expression = parseNext(type)
         scanner.whereAmI(`scanDictArg: Dict( ${name.toCode()}: ${expression.toCode()} )`)
 
         const entry = new Expressions.DictEntry(
@@ -377,7 +395,7 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
     }
 
     const shouldBreak = scanner.scanCommaOrBreak(
-      PARENS_CLOSE,
+      closer,
       `Expected ',' separating items in the dict`,
     )
 
@@ -400,20 +418,30 @@ export function scanDict(scanner: Scanner, parseNext: ParseNext) {
   )
 }
 
-export function scanSet(scanner: Scanner, parseNext: ParseNext) {
+export function scanSet(scanner: Scanner, parseNext: ParseNext, type: 'set-symbol' | 'set-word') {
   scanner.whereAmI('scanSet')
-  const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  scanner.expectString(SET_WORD_START)
-  scanner.scanAllWhitespace()
+  const precedingComments = scanner.flushComments()
 
-  const generic = scanOptionalGeneric(scanner, parseNext)
-  scanner.scanAllWhitespace()
-  scanner.expectString(PARENS_OPEN)
-  scanner.scanAllWhitespace()
+  let generic: Expression
+  let closer: string
+  if (type === 'set-symbol') {
+    generic = new Expressions.InferIdentifier([scanner.charIndex, scanner.charIndex], [])
+    scanner.expectString(SET_OPEN)
+    closer = SET_CLOSE
+  } else {
+    scanner.expectString(SET_WORD_START)
+    scanner.scanAllWhitespace()
+    closer = PARENS_CLOSE
 
-  if (scanner.scanIfString(PARENS_CLOSE)) {
-    scanner.whereAmI('scanSet: Set()')
+    generic = scanOptionalGeneric(scanner, parseNext)
+    scanner.scanAllWhitespace()
+    scanner.expectString(PARENS_OPEN)
+  }
+
+  scanner.scanAllWhitespace()
+  if (scanner.scanIfString(closer)) {
+    scanner.whereAmI(`scanSet: #{closer}`)
     return new Expressions.SetExpression(
       [range0, scanner.charIndex],
       scanner.flushComments(),
@@ -431,7 +459,7 @@ export function scanSet(scanner: Scanner, parseNext: ParseNext) {
 
     const argRange0 = scanner.charIndex
     if (scanner.scanIfString(SPREAD_OPERATOR)) {
-      const expression = parseNext('set-word')
+      const expression = parseNext(type)
       // move the comments off of the expression, attach to the SpreadDict
       const precedingComments = expression.precedingComments
       const followingComments = expression.followingComments
@@ -445,15 +473,12 @@ export function scanSet(scanner: Scanner, parseNext: ParseNext) {
       entry.followingComments.push(...followingComments)
       args.push(entry)
     } else {
-      const expression = parseNext('set-word')
+      const expression = parseNext(type)
       args.push(expression)
       scanner.whereAmI('scanSetArg: Set() ' + expression.toCode())
     }
 
-    const shouldBreak = scanner.scanCommaOrBreak(
-      PARENS_CLOSE,
-      `Expected ',' separating items in the set`,
-    )
+    const shouldBreak = scanner.scanCommaOrBreak(closer, `Expected ',' separating items in the set`)
 
     if (shouldBreak) {
       break

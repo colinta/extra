@@ -57,6 +57,8 @@ import {
   NOT_IS_KEYWORD,
   CASE_KEYWORD,
   SPLAT_OP,
+  SET_OPEN,
+  DICT_OPEN,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -450,19 +452,21 @@ function parseInternal(
       } else if (scanner.is(PARENS_OPEN)) {
         processExpression(scanParensGroup(scanner, parseNext))
       } else if (scanner.is(ARRAY_OPEN)) {
-        processExpression(scanArray(scanner, parseNext, 'array[]'))
+        processExpression(scanArray(scanner, parseNext, 'array-symbol'))
       } else if (scanner.isWord(ARRAY_WORD_START)) {
         processExpression(scanArray(scanner, parseNext, 'array-word'))
       } else if (scanner.is(OBJECT_OPEN)) {
-        processExpression(scanObject(scanner, parseNext, 'object{}'))
+        processExpression(scanObject(scanner, parseNext, 'object-symbol'))
       } else if (scanner.isWord(OBJECT_WORD_START)) {
         processExpression(scanObject(scanner, parseNext, 'object-word'))
+      } else if (scanner.is(SET_OPEN)) {
+        processExpression(scanSet(scanner, parseNext, 'set-symbol'))
       } else if (scanner.isWord(SET_WORD_START)) {
-        // TODO: set(a,b) == #{a,b}
-        processExpression(scanSet(scanner, parseNext))
+        processExpression(scanSet(scanner, parseNext, 'set-word'))
+      } else if (scanner.is(DICT_OPEN)) {
+        processExpression(scanDict(scanner, parseNext, 'dict-symbol'))
       } else if (scanner.isWord(DICT_WORD_START)) {
-        // TODO: dict(a: b) == #[a: b]
-        processExpression(scanDict(scanner, parseNext))
+        processExpression(scanDict(scanner, parseNext, 'dict-word'))
       } else if (isUnaryOperatorChar(scanner.char) || isUnaryOperatorName(scanner.remainingInput)) {
         processOperator(scanUnaryOperator(scanner))
       } else if (isStringStartChar(scanner)) {
