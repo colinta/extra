@@ -67,7 +67,7 @@ else:
       ]),
       c([
         "if (a) { then: 1, elseif (b): 3, else: '4' }",
-        "(if (a) { (then: 1) (fn `elseif` (b) { 3 }) (else: '4') })",
+        "(if (a) { (then: 1) (elseif (b) { 3 }) (else: '4') })",
         `\
 if (a) {
 then:
@@ -121,7 +121,7 @@ else:
   '4'
 }
 `,
-        "(if (a) { (then: 1) (fn `elseif` (b) { 3 }) (else: '4') })",
+        "(if (a) { (then: 1) (elseif (b) { 3 }) (else: '4') })",
         `\
 if (a) {
 then:
@@ -149,7 +149,7 @@ else:
   '5'
 }
 `,
-        "(if (a) { (then: (+ 1 2)) (fn `elseif` (b) { (+ 3 4) }) (else: (.. '4' '5')) })",
+        "(if (a) { (then: (+ 1 2)) (elseif (b) { (+ 3 4) }) (else: (.. '4' '5')) })",
         `\
 if (a) {
 then:

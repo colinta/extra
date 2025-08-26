@@ -17,7 +17,10 @@ import {
   invertSymbol,
   type Relationship,
   relationshipFormula,
+  isAssign,
+  relationshipToType,
   type RelationshipFormula,
+  type RelationshipAssign,
 } from './relationship'
 import {
   indent,
@@ -27,6 +30,7 @@ import {
   wrapStrings,
   difference,
   union,
+  SMALL_LEN,
 } from './util'
 import {dependencySort} from './dependencySort'
 import {
@@ -2880,6 +2884,15 @@ export abstract class ClassPropertyExpression extends Expression {
   }
 }
 
+/**
+ * A (mutable) property of a class definition.
+ *
+ *     class Foo {
+ *       @state_property_expression: Type = value
+ *       @state_property_expression = value -- inferred type
+ *       @state_property_expression: Type -- required argument
+ *     }
+ */
 export class ClassStatePropertyExpression extends ClassPropertyExpression {
   constructor(
     range: Range,
@@ -7943,6 +7956,761 @@ export class Module extends Expression {
   }
 }
 
+//|
+//|  Control Flow Expressions
+//|
+
+export class IfExpression extends Expression {
+  symbol = 'if'
+  conditionExpr?: Expression
+  thenExpr?: Expression
+  elseifExprs: Expression[] = []
+  elseExpr?: Expression
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    readonly argList: ArgumentsList,
+  ) {
+    super(range, precedingComments, followingOperatorComments)
+    this.argList = argList
+    this.conditionExpr = argList.positionalArg(0)
+    this.thenExpr = argList.namedArg('then')
+    this.elseifExprs = argList.allPositionalArgs(1)
+    this.elseExpr = argList.namedArg('else')
+  }
+
+  /**
+   * No need to enclose function invocations in `(…)`
+   */
+  toViewPropCode() {
+    return this.toCode()
+  }
+
+  toLisp() {
+    return `(if ${this.argList.toLisp()})`
+  }
+
+  toCode(): string {
+    if (this.conditionExpr && this.thenExpr) {
+      const conditionCode = this.conditionExpr.toCode(0)
+      const thenCode = this.thenExpr.toCode(0)
+      const elseifs = this.elseifExprs.map(it => it.toCode(0))
+      const elseCode = this.elseExpr?.toCode(0) ?? ''
+
+      let totalLength = 0
+      const hasNewline =
+        conditionCode.includes('\n') ||
+        thenCode.includes('\n') ||
+        elseCode.includes('\n') ||
+        elseifs.some(it => it.includes('\n'))
+      if (!hasNewline) {
+        totalLength +=
+          elseifs.reduce((l, r) => l + r.length, 0) +
+          conditionCode.length +
+          thenCode.length +
+          elseCode.length
+        totalLength += ' () { then: }'.length
+        totalLength += elseifs.length * 'elseif(): '.length
+        totalLength += elseCode ? 'else: '.length : 0
+      }
+      if (hasNewline || totalLength > SMALL_LEN) {
+        let code = ''
+        if (conditionCode.includes('\n')) {
+          code += 'if (\n'
+          code += indent(conditionCode) + '\n'
+          code += ') {\n'
+        } else {
+          code += `if (${conditionCode}) {\n`
+        }
+        let blockCode = ''
+        blockCode += 'then:\n'
+        blockCode += indent(thenCode) + '\n'
+        for (const elseifExpr of this.elseifExprs) {
+          if (elseifExpr instanceof ElseIfExpression) {
+            const conditionCode = elseifExpr.conditionExpr?.toCode() ?? ''
+            if (conditionCode.includes('\n')) {
+              blockCode += `elseif (\n`
+              blockCode += conditionCode
+              blockCode += `\n):\n`
+            } else {
+              blockCode += `elseif (`
+              blockCode += conditionCode
+              blockCode += `):\n`
+            }
+            const thenCode = elseifExpr.thenExpr?.toCode() ?? ''
+            blockCode += indent(thenCode + '\n')
+          } else {
+            const elseifCode = elseifExpr.toCode(0)
+            blockCode += indent(elseifCode) + '\n'
+          }
+        }
+        if (elseCode) {
+          blockCode += 'else:\n'
+          blockCode += indent(elseCode) + '\n'
+        }
+        code += blockCode
+        code += '}'
+        return code
+      } else {
+        let code = `if (`
+        code += conditionCode
+        code += `, then: `
+        code += thenCode
+        for (const elseif of this.elseifExprs) {
+          code += `, `
+          code += elseif.toCode(0)
+        }
+        if (elseCode) {
+          code += `, else: `
+          code += elseCode
+        }
+        code += ')'
+        return code
+      }
+    } else {
+      const argListCode = this.argList.toCode()
+      return `if ` + argListCode
+    }
+  }
+
+  // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+  rhsType(): GetTypeResult {
+    return ok(Types.AllType)
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    const conditionExpr = this.conditionExpr
+    const thenExpr = this.thenExpr
+    const elseifExprs = this.elseifExprs
+    const elseExpr = this.elseExpr
+    if (!conditionExpr) {
+      return err(new RuntimeError(this, expectedIfCondition()))
+    }
+
+    if (!thenExpr) {
+      return err(new RuntimeError(this, expectedIfThenResult()))
+    }
+
+    return getChildType(this, conditionExpr, runtime).map(conditionType => {
+      // allow literal 'true/false' expressions (for testing)
+      // TODO: disallow for "production" builds
+      if (!(conditionExpr instanceof LiteralTrue) && !(conditionExpr instanceof LiteralFalse)) {
+        if (conditionType.isOnlyTruthyType()) {
+          return err(new RuntimeError(this, unexpectedOnlyType(conditionType, true)))
+        }
+
+        if (conditionType.isOnlyFalseyType()) {
+          return err(new RuntimeError(this, unexpectedOnlyType(conditionType, false)))
+        }
+      }
+
+      // Evaluate 'then' as if conditionExpr is true
+      const returnResult = conditionExpr
+        .assumeTrue(runtime)
+        .map(truthyRuntime => getChildType(this, thenExpr, truthyRuntime))
+      if (returnResult.isErr()) {
+        return err(returnResult.error)
+      }
+
+      let returnType = returnResult.value
+
+      // Evaluate 'elseif' conditions as if conditionExpr is false.
+      // merge the results of the 'then' and 'elseif' expressions into one type
+      // returnType = Types.compatibleWithBothTypes(returnType, elseifThenType)
+      // falseyType then becomes the toFalseyType of the elseif conditionType.
+      const nextRuntimeResult = conditionExpr.assumeFalse(runtime)
+      if (nextRuntimeResult.isErr()) {
+        return err(nextRuntimeResult.error)
+      }
+      let nextRuntime = nextRuntimeResult.value
+
+      for (const elseif of elseifExprs) {
+        if (!(elseif instanceof ElseIfExpression)) {
+          return err(new RuntimeError(elseif, expectedElseifConditionExpression(elseif)))
+        }
+
+        const elseifThenType = elseif.getReturnType(nextRuntime)
+        if (elseifThenType.isErr()) {
+          return err(elseifThenType.error)
+        }
+
+        returnType = Types.compatibleWithBothTypes(returnType, elseifThenType.value)
+
+        const elseifConditionExpr = elseif.conditionExpr
+        if (!elseifConditionExpr) {
+          return err(new RuntimeError(elseif, expectedElseifConditionArgument()))
+        }
+
+        const nextRuntimeResult = elseifConditionExpr.assumeFalse(nextRuntime)
+        if (nextRuntimeResult.isErr()) {
+          return err(nextRuntimeResult.error)
+        }
+        nextRuntime = nextRuntimeResult.value
+      }
+
+      if (elseExpr) {
+        const elseType = getChildType(this, elseExpr, nextRuntime)
+        if (elseType.isErr()) {
+          return err(elseType.error)
+        }
+
+        returnType = Types.compatibleWithBothTypes(returnType, elseType.value)
+      } else {
+        returnType = Types.optional(returnType)
+      }
+
+      // damn y'all, we made it
+      return ok(returnType)
+    })
+  }
+
+  eval(runtime: ValueRuntime): GetValueResult {
+    const conditionExpr = this.conditionExpr
+    const thenExpr = this.thenExpr
+    const elseExpr = this.elseExpr
+    const elseifExprs = this.elseifExprs
+    if (!conditionExpr) {
+      return err(new RuntimeError(this, expectedIfCondition()))
+    }
+
+    if (!thenExpr) {
+      return err(new RuntimeError(this, expectedIfThenResult()))
+    }
+
+    return conditionExpr.evalReturningRuntime(runtime).map(([conditionValue, thenRuntime]) => {
+      if (conditionValue.isTruthy()) {
+        return thenExpr.eval(thenRuntime)
+      }
+
+      for (const elseif of elseifExprs) {
+        if (!(elseif instanceof ElseIfExpression)) {
+          return err(new RuntimeError(elseif, expectedElseifConditionExpression(elseif)))
+        }
+
+        const elseifConditionExpr = elseif.conditionExpr
+        if (!elseifConditionExpr) {
+          return err(new RuntimeError(elseif, expectedElseifConditionArgument()))
+        }
+
+        const elseifThen = elseif.thenExpr
+        if (!elseifThen) {
+          return err(new RuntimeError(elseif, expectedElseifConditionResult()))
+        }
+
+        const elseifCondition = elseifConditionExpr.evalReturningRuntime(runtime)
+        if (elseifCondition.isErr()) {
+          return elseifCondition
+        }
+
+        const [elseifValue, elseifThenRuntime] = elseifCondition.value
+        if (elseifValue.isTruthy()) {
+          return elseifThen.eval(elseifThenRuntime)
+        }
+      }
+
+      if (elseExpr) {
+        return elseExpr.eval(runtime)
+      }
+
+      // that wasn't so bad
+      return ok(Values.NullValue)
+    })
+  }
+}
+
+export class ElseIfExpression extends Expression {
+  symbol = 'elseif'
+  conditionExpr?: Expression
+  thenExpr?: Expression
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    readonly argList: ArgumentsList,
+  ) {
+    super(range, precedingComments, followingOperatorComments)
+    this.conditionExpr = argList.positionalArg(0)
+    this.thenExpr = argList.positionalArg(1)
+  }
+
+  toLisp() {
+    return `(elseif ${this.argList.toLisp()})`
+  }
+
+  toCode() {
+    const argListCode = this.argList.toCode()
+    return `elseif ${argListCode}`
+  }
+
+  getReturnType(runtime: TypeRuntime): GetTypeResult {
+    const argList = this.argList
+    if (!(argList instanceof ArgumentsList)) {
+      return err(new RuntimeError(this, expectedType('arguments list', argList)))
+    }
+
+    const conditionExpr = this.conditionExpr
+    const thenExpr = this.thenExpr
+    if (!conditionExpr) {
+      return err(new RuntimeError(this, expectedElseIfCondition()))
+    }
+
+    if (!thenExpr) {
+      return err(new RuntimeError(this, expectedElseIfThenResult()))
+    }
+
+    return getChildType(this, conditionExpr, runtime).map(conditionType => {
+      // allow literal 'true/false' expressions (for testing)
+      // TODO: disallow for "production" builds
+      if (!(conditionExpr instanceof LiteralTrue) && !(conditionExpr instanceof LiteralFalse)) {
+        if (conditionType.isOnlyTruthyType()) {
+          return err(new RuntimeError(this, unexpectedOnlyType(conditionType, true)))
+        }
+
+        if (conditionType.isOnlyFalseyType()) {
+          return err(new RuntimeError(this, unexpectedOnlyType(conditionType, false)))
+        }
+      }
+
+      // Evaluate 'then' as if conditionExpr is true
+      const returnResult = conditionExpr
+        .assumeTrue(runtime)
+        .map(truthyRuntime => getChildType(this, thenExpr, truthyRuntime))
+      if (returnResult.isErr()) {
+        return err(returnResult.error)
+      }
+
+      return ok(returnResult.value)
+    })
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    return this.getReturnType(runtime).map(returnType => {
+      return ok(
+        Types.lazy(
+          Types.oneOf([
+            Types.tuple([Types.LiteralTrueType, returnType]),
+            Types.tuple([Types.LiteralFalseType, Types.NullType]),
+          ]),
+        ),
+      )
+    })
+  }
+
+  eval(runtime: ValueRuntime) {
+    const returnType = this.getReturnType(runtime)
+    if (returnType.isErr()) {
+      return err(returnType.error)
+    }
+
+    const argList = this.argList
+    if (!(argList instanceof ArgumentsList)) {
+      return err(new RuntimeError(this, expectedType('arguments list', argList)))
+    }
+
+    const conditionExpr = this.conditionExpr
+    const thenExpr = this.thenExpr
+    if (!conditionExpr) {
+      return err(new RuntimeError(this, expectedElseIfCondition()))
+    }
+
+    if (!thenExpr) {
+      return err(new RuntimeError(this, expectedElseIfThenResult()))
+    }
+
+    return ok(
+      Values.formula(() =>
+        conditionExpr.evalReturningRuntime(runtime).map(([conditionValue, thenRuntime]) => {
+          if (conditionValue.isTruthy()) {
+            return thenExpr
+              .eval(thenRuntime)
+              .map(thenValue => ok(Values.tuple([Values.booleanValue(true), thenValue])))
+          }
+
+          return ok(Values.tuple([Values.booleanValue(false), Values.NullValue]))
+        }),
+      ),
+    )
+  }
+}
+
+export class GuardExpression extends Expression {
+  symbol = 'guard'
+  conditionExpr?: Expression
+  bodyExpr?: Expression
+  elseExpr?: Expression
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    readonly argList: ArgumentsList,
+  ) {
+    super(range, precedingComments, followingOperatorComments)
+    this.argList = argList
+    const args = argList.allPositionalArgs()
+    this.conditionExpr = args[0]
+    this.bodyExpr = args[1]
+    this.elseExpr = argList.namedArg('else')
+  }
+
+  /**
+   * No need to enclose function invocations in `(…)`
+   */
+  toViewPropCode() {
+    return this.toCode()
+  }
+
+  toLisp() {
+    return `(guard ${this.argList.toLisp()})`
+  }
+
+  toCode(): string {
+    if (!this.bodyExpr || !this.conditionExpr || !this.elseExpr) {
+      const argListCode = this.argList.toCode()
+      return `guard ${argListCode}`
+    }
+
+    const condition = this.conditionExpr.toCode()
+    const elseCode = this.elseExpr.toCode()
+    let bodyCode: string
+    if (
+      this.bodyExpr instanceof ArgumentsList &&
+      this.bodyExpr.parenArgs.length === 0 &&
+      this.bodyExpr.blockArgs.length === 1 &&
+      this.bodyExpr.blockArgs[0] &&
+      this.bodyExpr.blockArgs[0].isPositional()
+    ) {
+      bodyCode = this.bodyExpr.blockArgs[0].toCode()
+    } else {
+      bodyCode = this.bodyExpr.toCode()
+    }
+    let code = 'guard (\n'
+    code += indent(condition) + '\n'
+    code += 'else:\n'
+    code += indent(elseCode) + '\n'
+    code += '):\n\n'
+    code += bodyCode
+    return code
+  }
+
+  // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+  rhsType(): GetTypeResult {
+    return ok(Types.AllType)
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    const bodyExpr = this.bodyExpr
+    const conditionExpr = this.conditionExpr
+    const elseExpr = this.elseExpr
+    if (!bodyExpr || !conditionExpr) {
+      return err(new RuntimeError(this, expectedGuardArguments()))
+    }
+
+    if (!elseExpr) {
+      return err(new RuntimeError(this, expectedGuardElseResult()))
+    }
+
+    let nextRuntime = runtime
+    let elseRuntime = runtime
+    const conditionType = getChildType(this, conditionExpr, nextRuntime)
+    if (conditionType.isErr()) {
+      return err(conditionType.error)
+    }
+
+    // allow literal 'true/false' expressions (for testing)
+    // TODO: disallow for "production" builds
+
+    if (!(conditionExpr instanceof LiteralTrue) && !(conditionExpr instanceof LiteralFalse)) {
+      if (conditionType.value.isOnlyTruthyType()) {
+        return err(new RuntimeError(this, unexpectedOnlyType(conditionType.value, true)))
+      }
+
+      if (conditionType.value.isOnlyFalseyType()) {
+        return err(new RuntimeError(this, unexpectedOnlyType(conditionType.value, false)))
+      }
+    }
+
+    const nextRuntimeResult = conditionExpr.assumeTrue(runtime)
+    if (nextRuntimeResult.isErr()) {
+      return err(nextRuntimeResult.error)
+    }
+
+    const elseRuntimeResult = conditionExpr.assumeFalse(runtime)
+    if (elseRuntimeResult.isErr()) {
+      return err(elseRuntimeResult.error)
+    }
+    elseRuntime = elseRuntimeResult.value
+
+    nextRuntime = nextRuntimeResult.value
+
+    return bodyExpr
+      .getType(nextRuntime)
+      .map(bodyType =>
+        elseExpr
+          .getType(elseRuntime)
+          .map(elseType => Types.compatibleWithBothTypes(bodyType, elseType)),
+      )
+  }
+
+  eval(runtime: ValueRuntime): GetValueResult {
+    const bodyExpr = this.bodyExpr
+    const conditionExpr = this.conditionExpr
+    const elseExpr = this.elseExpr
+    if (!bodyExpr || !conditionExpr) {
+      return err(new RuntimeError(this, expectedGuardArguments()))
+    }
+
+    if (!elseExpr) {
+      return err(new RuntimeError(this, expectedGuardElseResult()))
+    }
+
+    return conditionExpr.evalReturningRuntime(runtime).map(([conditionValue, bodyRuntime]) => {
+      if (!conditionValue.isTruthy()) {
+        return elseExpr.eval(runtime)
+      }
+
+      return bodyExpr.eval(bodyRuntime)
+    })
+  }
+}
+
+export class SwitchExpression extends Expression {
+  symbol = 'switch'
+  subjectExpr?: Expression
+  caseExprs?: CaseExpression[]
+  elseExpr?: Expression
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    readonly argList: ArgumentsList,
+  ) {
+    super(range, precedingComments, followingOperatorComments)
+
+    const args = argList.allPositionalArgs()
+    this.subjectExpr = args[0]
+    this.caseExprs = args.slice(1) as CaseExpression[]
+    if (this.caseExprs.some(arg => !(arg instanceof CaseExpression))) {
+      throw new RuntimeError(this, expectedCaseConditions())
+    }
+
+    this.elseExpr = argList.namedArg('else')
+    const names = new Set(argList.allNamedArgs().keys())
+    names.delete('else')
+    if (names.size) {
+      throw new RuntimeError(
+        this,
+        `Unexpected named arguments in switch expression: '${Array.from(names).join("', '")}'`,
+      )
+    }
+  }
+
+  /**
+   * No need to enclose function invocations in `(…)`
+   */
+  toViewPropCode() {
+    return this.toCode()
+  }
+
+  toLisp() {
+    return `(switch ${this.argList.toLisp()})`
+  }
+
+  toCode(): string {
+    if (!this.subjectExpr || !this.caseExprs) {
+      const argListCode = this.argList.toCode()
+      return `switch ${argListCode}`
+    }
+
+    const subjectCode = this.subjectExpr.toCode()
+    let code = 'switch (' + subjectCode + ') {\n'
+    for (const caseExpr of this.caseExprs) {
+      code += caseExpr.toCode() + '\n'
+    }
+    if (this.elseExpr) {
+      code += 'else:\n'
+      code += indent(this.elseExpr.toCode()) + '\n'
+    }
+    code += '}'
+    return code
+  }
+
+  // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+  rhsType(): GetTypeResult {
+    return ok(Types.AllType)
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    const subjectExpr = this.subjectExpr
+    const caseExprs = this.caseExprs
+    const elseExpr = this.elseExpr
+
+    if (!subjectExpr) {
+      return err(new RuntimeError(this, expectedSubjectCondition()))
+    }
+
+    if (!caseExprs) {
+      return err(new RuntimeError(this, expectedCaseConditions()))
+    }
+
+    const subjectFormula = subjectExpr.relationshipFormula(runtime)
+    let nextRuntime: TypeRuntime = runtime
+    return getChildType(this, subjectExpr, runtime)
+      .map(initialSubjectType => {
+        let trackingFormula: RelationshipAssign
+        if (subjectFormula && isAssign(subjectFormula)) {
+          trackingFormula = subjectFormula
+        } else {
+          // Let me explain this hack. No, it will take too long. Let me sum up.
+          // If subjectFormula is not defined, or not expressible as an
+          // assignment, then relationshipToType below will fail. We need an
+          // assignable relationship in order to check the type of the subject
+          // in each caseExpr 'false' branch. So we fake it! We "assign" the
+          // subject to a variable named after the expression... the runtime
+          // only cares about strings, so we are guaranteed this expression will
+          // not be expressible by "user-land" references, and it makes
+          // debugging a joy.
+          const mutableRuntime = new MutableTypeRuntime(runtime)
+          const id = mutableRuntime.addLocalType(subjectExpr.toCode(), initialSubjectType)
+          trackingFormula = relationshipFormula.reference(subjectExpr.toCode(), id)
+          nextRuntime = mutableRuntime
+        }
+
+        return caseExprs.reduce(
+          (info, caseExpr): GetRuntimeResult<[Types.Type, Types.Type[]]> => {
+            if (info.isErr()) {
+              return err(info.error)
+            }
+
+            const [subjectType, bodyTypes] = info.get()
+            if (subjectType === Types.NeverType) {
+              return err(
+                new RuntimeError(
+                  caseExpr,
+                  `Unreachable case detected. '${subjectExpr}' is of type '${subjectType}' because the previous cases are exhaustive.`,
+                ),
+              )
+            }
+
+            const typeResult = caseExpr
+              .assumeTrueWith(nextRuntime, trackingFormula, subjectType)
+              .map(truthyRuntime => caseExpr.bodyExpression.getType(truthyRuntime))
+
+            if (typeResult.isErr()) {
+              return err(typeResult.error)
+            }
+            bodyTypes.push(typeResult.get())
+
+            const runtimeResult = caseExpr.assumeFalseWith(
+              nextRuntime,
+              trackingFormula,
+              subjectType,
+            )
+
+            if (runtimeResult.isErr()) {
+              return err(runtimeResult.error)
+            }
+
+            nextRuntime = runtimeResult.get()
+            const caseSubjectType = relationshipToType(nextRuntime, trackingFormula)
+            if (!caseSubjectType) {
+              throw new RuntimeError(
+                this,
+                "No subjectType type in SwitchExpression? that shouldn't happen",
+              )
+            }
+
+            const nextSubjectType = Types.narrowTypeIs(subjectType, caseSubjectType)
+            return ok([nextSubjectType, bodyTypes])
+          },
+          ok([initialSubjectType, []] as [Types.Type, Types.Type[]]),
+        )
+      })
+      .map(([subjectType, bodyTypes]) => {
+        if (elseExpr) {
+          if (subjectType === Types.NeverType) {
+            return err(
+              new RuntimeError(
+                elseExpr,
+                `Unreachable case detected. '${subjectExpr}' is of type '${subjectType}' because the previous cases are exhaustive.`,
+              ),
+            )
+          }
+
+          const typeResult = elseExpr.getType(nextRuntime)
+          if (typeResult.isErr()) {
+            return err(typeResult.error)
+          }
+
+          bodyTypes.push(typeResult.get())
+          return [Types.NeverType, bodyTypes]
+        } else {
+          return [subjectType, bodyTypes]
+        }
+      })
+      .map(([subjectType, bodyTypes]) => {
+        if (subjectType !== Types.NeverType) {
+          return err(
+            `Switch is not exhaustive, '${subjectExpr}' has unhandled type '${subjectType}'`,
+          )
+        }
+
+        return Types.oneOf(bodyTypes)
+      })
+  }
+
+  eval(runtime: ValueRuntime): GetValueResult {
+    const subjectExpr = this.subjectExpr
+    const caseExprs = this.caseExprs
+    const elseExpr = this.elseExpr
+
+    if (!subjectExpr) {
+      return err(new RuntimeError(this, expectedSubjectCondition()))
+    }
+
+    if (!caseExprs) {
+      return err(new RuntimeError(this, expectedCaseConditions()))
+    }
+
+    return subjectExpr.eval(runtime).map(subject => {
+      for (const caseExpr of caseExprs) {
+        const allAssigns = allNamesFrom(caseExpr.matches)
+
+        for (const matchExpr of caseExpr.matches) {
+          const didMatchResult = matchExpr.evalWithSubjectReturningRuntime(
+            runtime,
+            caseExpr,
+            subject,
+          )
+          if (didMatchResult.isErr()) {
+            return err(didMatchResult.error)
+          }
+
+          const [didMatch, matchRuntimeUnchecked] = didMatchResult.value
+          if (didMatch.isTruthy()) {
+            const matchRuntime = includeMissingNames(matchRuntimeUnchecked, allAssigns, matchExpr)
+            return caseExpr.bodyExpression.eval(matchRuntime)
+          }
+        }
+      }
+
+      if (elseExpr) {
+        return elseExpr.eval(runtime)
+      }
+
+      throw 'TODO: hm, should never reach here - no cases (or else) matched'
+    })
+  }
+}
+
+//|
+//| Dice rolling!? Look up the history of Extra.
+//|
+
 /**
  * Dice rolling expression.
  *
@@ -8061,6 +8829,91 @@ export function expectedType(expected: string, expr: Expression, type?: Types.Ty
 
 export function expectedNumberMessage(found: Expression, type?: Types.Type | Values.Value) {
   return expectedType('Int or Float', found, type)
+}
+
+function expectedIfCondition() {
+  return "Missing '# condition: Condition' in 'if()' expression"
+}
+
+function expectedIfThenResult() {
+  return "Missing 'then: T' in 'if()' expression"
+}
+
+function expectedElseIfCondition() {
+  return "Missing '# condition: Condition' in 'elseif()' expression"
+}
+
+function expectedElseIfThenResult() {
+  return "Missing 'then: T' in 'elseif()' expression"
+}
+
+function expectedElseifConditionExpression(found: Expression) {
+  return `Expected 'elseif(condition): then' expression, found '${found}'`
+}
+
+function expectedElseifConditionArgument() {
+  return "Missing condition in 'elseif(<condition>)' expression"
+}
+
+function expectedElseifConditionResult() {
+  return `Missing result in 'elseif(): <result>' expression`
+}
+
+function expectedGuardArguments() {
+  return "Missing '# condition: Condition' and '# body: T' in 'guard()' expression"
+}
+
+function expectedGuardElseResult() {
+  return "Missing 'else: T' in 'guard()' expression"
+}
+
+function expectedSubjectCondition() {
+  return "Missing subject argument '# subject: T' in 'switch()' expression"
+}
+
+function expectedCaseConditions() {
+  return "Missing case expressions '...# cases: T' in 'switch()' expression"
+}
+
+function unexpectedOnlyType(conditionType: Types.Type, only: boolean): string {
+  return `Type '${conditionType}' is invalid as an if condition, because it is always ${only ? 'true' : 'false'}.`
+}
+
+/**
+ * Looks at all the match expressions and returns the assigned names
+ *     case Int as foo <-- returns 'foo' from this match expression
+ *     case [foo, bar] <-- returns 'foo', 'bar'
+ */
+export function allNamesFrom(expressions: Expression[]) {
+  const names = new Set<string>()
+  for (const matchExpr of expressions) {
+    for (const name of matchExpr.matchAssignReferences()) {
+      names.add(name)
+    }
+  }
+  return names
+}
+
+/**
+ * Assigns NullValue to any names that aren't already assigned, useful for
+ * 'or'-ing match expressions that have different assigned names.
+ */
+export function includeMissingNames(
+  runtime: ValueRuntime,
+  allNames: Set<string>,
+  fromExpr: Expression,
+) {
+  const matchNames = new Set(fromExpr.matchAssignReferences())
+  const missingNames = difference(allNames, matchNames)
+  if (!missingNames.size) {
+    return runtime
+  }
+
+  const mutableRuntime = new MutableValueRuntime(runtime)
+  for (const missingName of missingNames) {
+    mutableRuntime.addLocalValue(missingName, Values.NullValue)
+  }
+  return mutableRuntime
 }
 
 const okNull: GetValueResult = ok(Values.NullValue)

@@ -10,6 +10,8 @@ import {
   NULL_COALESCING_OPERATOR,
   binaryOperatorNamed,
   isOperator,
+  NegateOperator,
+  FunctionInvocationOperator,
 } from '../operators'
 import {
   ParseError,
@@ -59,6 +61,7 @@ import {
   SPLAT_OP,
   SET_OPEN,
   DICT_OPEN,
+  ARGS_OPEN,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -185,6 +188,70 @@ function parseInternal(
   const expressionStack: Expression[] = []
   const parseNext = prepareParseNext(scanner)
 
+  // a chance to intercept function invocations and negate operations that are
+  // better expressed as another expression, but only detectable after-the-fact
+  function rewriteExpression(expression: Expression) {
+    // small optimization to convert unary negate of a literal number to the
+    // negated literal number
+    if (expression instanceof NegateOperator && expression.args[0] instanceof Expressions.Literal) {
+      const literal = expression.args[0]
+      if (literal.value instanceof Values.IntValue) {
+        return new Expressions.LiteralInt(
+          literal.range,
+          literal.precedingComments,
+          Values.int(-literal.value.value),
+        )
+      } else if (literal.value instanceof Values.FloatValue) {
+        return new Expressions.LiteralFloat(
+          literal.range,
+          literal.precedingComments,
+          Values.float(-literal.value.value),
+        )
+      }
+    }
+
+    // convert if/elseif/guard/switch expressions
+    if (expression instanceof FunctionInvocationOperator) {
+      if (expression.args[0] instanceof Expressions.IfIdentifier) {
+        return new Expressions.IfExpression(
+          expression.range,
+          expression.precedingComments,
+          expression.followingOperatorComments,
+          expression.args[1] as Expressions.ArgumentsList,
+        )
+      }
+
+      if (expression.args[0] instanceof Expressions.ElseIfIdentifier) {
+        return new Expressions.ElseIfExpression(
+          expression.range,
+          expression.precedingComments,
+          expression.followingOperatorComments,
+          expression.args[1] as Expressions.ArgumentsList,
+        )
+      }
+
+      if (expression.args[0] instanceof Expressions.GuardIdentifier) {
+        return new Expressions.GuardExpression(
+          expression.range,
+          expression.precedingComments,
+          expression.followingOperatorComments,
+          expression.args[1] as Expressions.ArgumentsList,
+        )
+      }
+
+      if (expression.args[0] instanceof Expressions.SwitchIdentifier) {
+        return new Expressions.SwitchExpression(
+          expression.range,
+          expression.precedingComments,
+          expression.followingOperatorComments,
+          expression.args[1] as Expressions.ArgumentsList,
+        )
+      }
+    }
+
+    return expression
+  }
+
   function processOperator(nextOperator: Operator) {
     // once we're "in the pipe", since it's the lowest precedence, we can't really
     // *leave* the pipe (within the current expression)
@@ -216,36 +283,14 @@ function parseInternal(
           args.unshift(value)
         }
 
-        // small "optimization" (aesthetics, really), to convert unary negate of a
-        // literal number, to the negated literal number
-        let negativeNumber: Expression | undefined
-        if (isOperator(operator, '-', 1) && args[0] instanceof Expressions.Literal) {
-          const literal = args[0]
-          if (literal.value instanceof Values.IntValue) {
-            negativeNumber = new Expressions.LiteralInt(
-              literal.range,
-              literal.precedingComments,
-              Values.int(-literal.value.value),
-            )
-          } else if (literal.value instanceof Values.FloatValue) {
-            negativeNumber = new Expressions.LiteralFloat(
-              literal.range,
-              literal.precedingComments,
-              Values.float(-literal.value.value),
-            )
-          }
-        }
-
-        const operation =
-          negativeNumber ??
-          operator.create(
-            [range0, range0 + operator.symbol.length],
-            operator.precedingComments,
-            operator.followingOperatorComments,
-            operator,
-            args,
-          )
-        expressionStack.push(operation)
+        const operation = operator.create(
+          [range0, range0 + operator.symbol.length],
+          operator.precedingComments,
+          operator.followingOperatorComments,
+          operator,
+          args,
+        )
+        expressionStack.push(rewriteExpression(operation))
       }
 
       const last = operatorStack.at(-1)
@@ -494,10 +539,10 @@ function parseInternal(
         }
       }
     } else {
-      if (scanner.is(PARENS_OPEN)) {
+      if (scanner.is(ARGS_OPEN)) {
         processOperator(binaryOperatorNamed('fn', scanner.flushComments()))
         processExpression(scanInvocationArgs(scanner, parseNext))
-      } else if (scanner.is(NULL_COALESCING_OPERATOR + PARENS_OPEN)) {
+      } else if (scanner.is(NULL_COALESCING_OPERATOR + ARGS_OPEN)) {
         scanner.expectString(NULL_COALESCING_OPERATOR)
         processOperator(binaryOperatorNamed('?.()', scanner.flushComments()))
         processExpression(scanInvocationArgs(scanner, parseNext))

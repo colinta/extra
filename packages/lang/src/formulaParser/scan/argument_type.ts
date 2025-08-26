@@ -166,14 +166,7 @@ export function scanArgumentType(
     } else if (isArgumentStartChar(scanner)) {
       const typeName = scanIdentifier(scanner)
 
-      if (
-        scanner.test(() => {
-          scanner.scanSpaces()
-          return scanner.scanIfString(ARGS_OPEN)
-        })
-      ) {
-        scanner.scanSpaces()
-        scanner.expectString(ARGS_OPEN)
+      if (scanner.scanAhead(ARGS_OPEN)) {
         scanner.scanAllWhitespace()
 
         if (typeName.name === STRING) {
