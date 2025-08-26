@@ -170,7 +170,7 @@ function scanOptionalGeneric(scanner: Scanner, parseNext: ParseNext) {
     scanner.scanAllWhitespace()
     scanner.expectString(GENERIC_CLOSE, `Expected '${GENERIC_CLOSE}'`)
   } else {
-    generic = new Expressions.InferIdentifier([scanner.charIndex, scanner.charIndex], [])
+    return undefined
   }
 
   return generic
@@ -185,11 +185,9 @@ export function scanArray(
   const range0 = scanner.charIndex
   const precedingComments = scanner.flushComments()
 
-  let generic: Expression
+  let generic: Expression | undefined
   let closer: string
   if (type === 'array-symbol') {
-    generic = new Expressions.InferIdentifier([scanner.charIndex, scanner.charIndex], [])
-
     scanner.expectString(ARRAY_OPEN)
     scanner.scanAllWhitespace()
     closer = ARRAY_CLOSE
@@ -273,10 +271,10 @@ export function scanDict(
   const range0 = scanner.charIndex
   const precedingComments = scanner.flushComments()
 
-  let generic: Expression
+  let generic: Expression | undefined
   let closer: string
   if (type === 'dict-symbol') {
-    generic = new Expressions.InferIdentifier([scanner.charIndex, scanner.charIndex], [])
+    generic = undefined
     scanner.expectString(DICT_OPEN)
     closer = DICT_CLOSE
   } else {
@@ -423,10 +421,9 @@ export function scanSet(scanner: Scanner, parseNext: ParseNext, type: 'set-symbo
   const range0 = scanner.charIndex
   const precedingComments = scanner.flushComments()
 
-  let generic: Expression
+  let generic: Expression | undefined
   let closer: string
   if (type === 'set-symbol') {
-    generic = new Expressions.InferIdentifier([scanner.charIndex, scanner.charIndex], [])
     scanner.expectString(SET_OPEN)
     closer = SET_CLOSE
   } else {

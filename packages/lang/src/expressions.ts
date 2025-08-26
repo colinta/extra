@@ -965,12 +965,9 @@ export class ArrayExpression extends Expression {
      */
     readonly lastComments: Comment[],
     readonly values: Expression[],
-    readonly generic: Expression,
+    readonly generic: Expression | undefined,
   ) {
     super(range, precedingComments, [])
-    if (!generic) {
-      throw new Error(this.toString() + ' must have a generic type')
-    }
   }
 
   renderDeps(runtime: ValueRuntime) {
@@ -982,19 +979,19 @@ export class ArrayExpression extends Expression {
   }
 
   toLisp() {
-    if (this.generic instanceof InferIdentifier) {
-      return `[${this.values.map(it => it.toLisp()).join(' ')}]`
+    if (this.generic) {
+      return `(Array(${this.generic.toLisp()}) (${this.values.map(it => it.toLisp()).join(' ')}))`
     }
 
-    return `(Array(${this.generic.toLisp()}) (${this.values.map(it => it.toLisp()).join(' ')}))`
+    return `[${this.values.map(it => it.toLisp()).join(' ')}]`
   }
 
   toCode() {
-    if (this.generic instanceof InferIdentifier) {
-      return wrapValues('[', this.values, ']')
+    if (this.generic) {
+      return `Array<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
     }
 
-    return `Array<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
+    return wrapValues('[', this.values, ']')
   }
 
   // SpreadArgument works pretty easily here, its type signature is an
@@ -1126,12 +1123,9 @@ export class DictExpression extends Expression {
      */
     readonly lastComments: Comment[],
     readonly values: (DictEntry | SpreadDictArgument)[],
-    readonly generic: Expression,
+    readonly generic: Expression | undefined,
   ) {
     super(range, precedingComments)
-    if (!generic) {
-      throw new Error(this.toString() + ' must have a generic type')
-    }
   }
 
   dependencies() {
@@ -1145,19 +1139,19 @@ export class DictExpression extends Expression {
       })
       .join(' ')
 
-    if (this.generic instanceof InferIdentifier) {
-      return `Dict(${values})`
+    if (this.generic) {
+      return `(Dict(${this.generic.toLisp()}) (${values}))`
     }
 
-    return `(Dict(${this.generic.toLisp()}) (${values}))`
+    return `Dict(${values})`
   }
 
   toCode() {
-    if (this.generic instanceof InferIdentifier) {
-      return wrapValues('Dict(', this.values, ')')
+    if (this.generic) {
+      return `Dict<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
     }
 
-    return `Dict<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
+    return wrapValues('Dict(', this.values, ')')
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
@@ -1205,12 +1199,9 @@ export class SetExpression extends Expression {
      */
     readonly lastComments: Comment[],
     readonly values: Expression[],
-    readonly generic: Expression,
+    readonly generic: Expression | undefined,
   ) {
     super(range, precedingComments)
-    if (!generic) {
-      throw new Error(this.toString() + ' must have a generic type')
-    }
   }
 
   renderDeps(runtime: ValueRuntime) {
@@ -1222,19 +1213,19 @@ export class SetExpression extends Expression {
   }
 
   toLisp() {
-    if (this.generic instanceof InferIdentifier) {
-      return `Set(${this.values.map(it => it.toLisp()).join(' ')})`
+    if (this.generic) {
+      return `(Set(${this.generic.toLisp()}) (${this.values.map(it => it.toLisp()).join(' ')}))`
     }
 
-    return `(Set(${this.generic.toLisp()}) (${this.values.map(it => it.toLisp()).join(' ')}))`
+    return `Set(${this.values.map(it => it.toLisp()).join(' ')})`
   }
 
   toCode() {
-    if (this.generic instanceof InferIdentifier) {
-      return wrapValues('Set(', this.values, ')')
+    if (this.generic) {
+      return `Set<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
     }
 
-    return `Set<${this.generic.toCode()}>${wrapValues('(', this.values, ')')}`
+    return wrapValues('Set(', this.values, ')')
   }
 
   // Unlike ArrayType, combining Set is not straighforward. We can only reason about
