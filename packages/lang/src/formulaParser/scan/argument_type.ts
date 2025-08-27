@@ -20,6 +20,7 @@ import {
   ENUM_START,
   ENUM_KEYWORD,
   CLASS_KEYWORD,
+  MSG_TYPE,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {type ArgumentType, ParseError, type ParseNext} from '../types'
@@ -39,7 +40,7 @@ import {scanString} from './string'
 
 /**
  * scans for:
- *   type:
+ *   simple type:
  *     Int, String, String(), etc
  *   Object:
  *     { … }
@@ -60,6 +61,7 @@ import {scanString} from './string'
  *   enum shorthand (does not support generics):
  *     .notLoaded | .loading | .success(String) | .failure(HttpError)
  *     ❌ enum RemoteData<Tsuccess, Tfailure> { .notLoaded, .loading, .success(Tsuccess), .failure(Tfailure) }
+ *   &: message type
  */
 export function scanArgumentType(
   scanner: Scanner,
@@ -77,6 +79,7 @@ export function scanArgumentType(
   let hasOptional = false
   let rewind = scanner.charIndex
 
+  // support leading '|'
   if (scanner.scanIfString('|')) {
     scanner.scanAllWhitespace()
   }
@@ -96,6 +99,11 @@ export function scanArgumentType(
         `Expected '${PARENS_CLOSE}' closing the argument type group`,
       )
       scanner.whereAmI(`scanArgumentType: () ${argType.toCode()}`)
+    } else if (scanner.scanIfString(MSG_TYPE)) {
+      argType = new Expressions.BuiltinCommandIdentifier(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+      )
     } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
       argType = scanNumber(scanner, 'float')
     } else if (isStringStartChar(scanner)) {

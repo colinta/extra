@@ -74,6 +74,8 @@ export const CLASS_EXTENDS = 'extends'
 export const CLASS_OPEN = '{'
 export const CLASS_CLOSE = '}'
 
+export const MSG_TYPE = '&'
+
 export function isCommentStart(input: string) {
   const code = input.charCodeAt(0)
   if (code === 0x2190 || code === 0x2192) {
