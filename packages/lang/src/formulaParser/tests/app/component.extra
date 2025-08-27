@@ -3,22 +3,19 @@
 ╰───────╯
 type User = {name: String}
 
-view Main {
+view Main(name: String, onResetName: fn(): &) {
   ╭────────╮
   │ @State │
   ╰────────╯
-  @users: User[] = []
+  @users: Array(User) = []
 
   ╭────────╮
   │ Render │
   ╰────────╯
-  override fn render(
-    name: String
-    onResetName: fn(): &
-  ) =>
+  render() =>
     <>
       Name: {name}
-      <Button onPress=addUser(name)>Add</Button>
+      <Button onPress=(fn() => addUser(name))>Add</Button>
       <Button onPress=onResetName>Reset</Button>
     </>
 
@@ -26,17 +23,17 @@ view Main {
   │ &Msg │
   ╰──────╯
   fn addUser(name: String) =>
-    guard(
+    guard (
       name.length > 0
     else:
       @error = 'Name cannot be empty'
     ):
 
-    guard(
+    guard (
       @users.all(fn(u) => u.name != name)
     else:
       @error = 'User already exists'
     ):
 
-    @users.push({ name: })
+    @users.push({name:})
 }

@@ -39,6 +39,12 @@ interface Scanner {
   debugLines: string[]
 }
 
+/**
+ * line: --
+ * box: {- -}
+ * arrow: <--
+ * box: lots of unicode chrs (in delim)
+ */
 export type CommentType = 'line' | 'box' | 'block' | 'arrow'
 
 export interface Comment {

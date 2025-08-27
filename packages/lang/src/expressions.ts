@@ -2860,6 +2860,7 @@ export abstract class ClassPropertyExpression extends Expression {
 
   toCode() {
     let code = ''
+    code += formatComments(this.precedingComments)
     code += this.nameRef.toCode()
     if (this.argType) {
       code += ': ' + this.argType.toCode()
@@ -2944,6 +2945,14 @@ export class ClassDefinition extends Expression {
     range: Range,
     precedingComments: Comment[],
     readonly lastComments: Comment[],
+    /**
+     * Comments attached to the opening '(' beginning the arguments list
+     */
+    readonly precedingArgumentsComments: Comment[],
+    /**
+     * Comments attached to the closing ')' ending the arguments list
+     */
+    readonly followingArgumentsComments: Comment[],
     readonly nameRef: Reference,
     readonly generics: string[],
     readonly extendsExpression: Reference | undefined,
@@ -3447,6 +3456,8 @@ export class ViewClassDefinition extends ClassDefinition {
     range: Range,
     precedingComments: Comment[],
     lastComments: Comment[],
+    precedingArgumentsComments: Comment[],
+    followingArgumentsComments: Comment[],
     nameRef: Reference,
     argDefinitions: FormulaLiteralArgument[] | undefined,
     properties: ClassPropertyExpression[],
@@ -3457,6 +3468,8 @@ export class ViewClassDefinition extends ClassDefinition {
       range,
       precedingComments,
       lastComments,
+      precedingArgumentsComments,
+      followingArgumentsComments,
       nameRef,
       // generics
       [],
@@ -4289,8 +4302,16 @@ export class FormulaExpression extends Expression {
     return this.toCodePrefixed(true, false)
   }
 
+  toViewPropCode() {
+    return `(${this.toCode()})`
+  }
+
   toCodePrefixed(prefixed: boolean, forceNewline: boolean) {
-    let code = prefixed ? this.prefix : ''
+    let code = ''
+    code += formatComments(this.precedingComments)
+    if (prefixed) {
+      code += this.prefix
+    }
     if (this.nameRef) {
       if (prefixed) {
         code += ' '
@@ -5285,6 +5306,10 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
       )
 
     return new Values.ViewFormulaValue(this.nameRef.name, fn, undefined, render)
+  }
+
+  toCode() {
+    return this.toCodePrefixed(true, true)
   }
 }
 
@@ -7532,6 +7557,7 @@ export class TypeDefinition extends Expression {
 
   toCode() {
     let code = ''
+    code += formatComments(this.precedingComments)
     if (this.isExport) {
       code += EXPORT_KEYWORD + ' '
     }
@@ -7650,22 +7676,22 @@ export class ViewDefinition extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly value: ViewFormulaExpression,
+    readonly view: ViewFormulaExpression | ViewClassDefinition,
     readonly isExport: boolean,
   ) {
     super(range, precedingComments)
   }
 
   get name() {
-    return this.value.nameRef.name
+    return this.view.nameRef.name
   }
 
   dependencies() {
-    return this.value.dependencies()
+    return this.view.dependencies()
   }
 
   provides() {
-    return new Set([this.value.nameRef.name])
+    return new Set([this.view.nameRef.name])
   }
 
   toLisp() {
@@ -7674,9 +7700,12 @@ export class ViewDefinition extends Expression {
       code += EXPORT_KEYWORD + ' '
     }
 
-    code += `${this.value.toLispPrefixed(false)}`
+    if (this.view instanceof ViewFormulaExpression) {
+      code += `${this.view.toLispPrefixed(false)}`
+      return '(view ' + code + ')'
+    }
 
-    return '(view ' + code + ')'
+    return (code += this.view.toLisp())
   }
 
   toCode() {
@@ -7685,15 +7714,19 @@ export class ViewDefinition extends Expression {
       code += EXPORT_KEYWORD + ' '
     }
 
-    return code + this.value.toCodePrefixed(true, true)
+    if (this.view instanceof ViewFormulaExpression) {
+      return code + this.view.toCodePrefixed(true, true)
+    }
+
+    return (code += this.view.toCode())
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
-    return getChildType(this, this.value, runtime)
+    return getChildType(this, this.view, runtime)
   }
 
   eval(runtime: ValueRuntime): GetValueResult {
-    return this.value.eval(runtime)
+    return this.view.eval(runtime)
   }
 }
 
@@ -8830,6 +8863,25 @@ function allDependencies(expressions: Expression[]) {
 
 function allProvides(expressions: Expression[]) {
   return expressions.reduce((set, expr) => union(set, expr.provides()), new Set<string>())
+}
+
+function formatComments(comments: Comment[]) {
+  let code = ''
+  for (const comment of comments) {
+    switch (comment.type) {
+      case 'line':
+      case 'arrow':
+        code += comment.delim + comment.comment + '\n'
+        break
+      case 'box':
+        code += comment.comment + '\n'
+        break
+      case 'block':
+        code += '{-' + comment.comment + '-}'
+        break
+    }
+  }
+  return code
 }
 
 const okNull: GetValueResult = ok(Values.NullValue)

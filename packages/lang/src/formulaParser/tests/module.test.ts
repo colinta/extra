@@ -104,9 +104,8 @@ beforeEach(() => {
 describe('module', () => {
   describe('parser', () => {
     cases<[string]>(
-      //
       c.skip(['real']),
-      c.skip(['component']),
+      c(['component']),
       c(['minimal']),
       c(['small']),
       c(['button']),
@@ -197,7 +196,6 @@ describe('module', () => {
 
   describe('message passing', () => {
     cases<[string, string, (result: any) => void, any]>(
-      //
       c([
         'button',
         'Button',

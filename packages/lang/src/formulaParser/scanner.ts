@@ -155,28 +155,33 @@ export class Scanner {
    * start. Returns whether the search string was found.
    */
   lookAhead(search: string) {
+    this.#pauseComments = true
     const rewind = this.charIndex
     this.scanAllWhitespace()
 
     const found = this.is(search)
     this.whereAmI(`scanAhead '${search}' ? ${found}`)
     this.rewindTo(rewind)
+    this.#pauseComments = false
 
     return found
   }
 
   scanAhead(search: string) {
+    this.#pauseComments = true
     const rewind = this.charIndex
     this.scanAllWhitespace()
 
     if (this.is(search)) {
       this.charIndex += search.length
       this.whereAmI(`scanAhead '${search}' ? yes`)
+      this.#pauseComments = false
       return true
     }
 
     this.whereAmI(`scanAhead '${search}' ? no`)
     this.rewindTo(rewind)
+    this.#pauseComments = false
 
     return false
   }
@@ -352,19 +357,23 @@ export class Scanner {
     let comment: string
     if (this.is('--')) {
       // ADA style comments ❤
+      if (!this.#pauseComments) debugger
       comment = scanCommentLine(this)
       this.pushComment('line', comment, '--', commentIndex)
     } else if (this.is('{-')) {
       // Elm style {- -}
+      if (!this.#pauseComments) debugger
       comment = scanCommentContainer(this)
       this.pushComment('block', comment, '{-', commentIndex)
     } else if (this.is('<--')) {
       // point at thing comment
+      if (!this.#pauseComments) debugger
       comment = scanArrowCommentLine(this)
       this.pushComment('arrow', comment, '<--', commentIndex)
     } else {
       // box drawing characters and special arrows ←→
       const char = this.char
+      if (!this.#pauseComments) debugger
       comment = scanCommentBox(this)
       this.pushComment('box', comment, char, commentIndex)
     }

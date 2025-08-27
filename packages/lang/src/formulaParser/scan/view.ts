@@ -1,11 +1,11 @@
 import * as Expressions from '../../expressions'
-import {ARGS_OPEN, EXPORT_KEYWORD, FUNCTION_BODY_START, VIEW_KEYWORD} from '../grammars'
+import {ARGS_OPEN, CLASS_OPEN, EXPORT_KEYWORD, VIEW_KEYWORD} from '../grammars'
 import type {Scanner} from '../scanner'
-import {type ParseNext} from '../types'
+import {type ParseNext, type Comment, type ExpressionType} from '../types'
 import {scanValidViewName} from './identifier'
 import {scanClassBody} from './class'
-import {scanViewFormula} from './formula'
 import {scanFormulaLiteralArguments} from './formula_arguments'
+import {finishScanningFormula} from './formula'
 
 /**
  * Scans a view type:
@@ -27,48 +27,80 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
     scanner.expectWhitespace()
   }
 
-  if (scanner.test(isViewFormula)) {
-    const formula = scanViewFormula(scanner, 'module', parseNext)
-    return new Expressions.ViewDefinition(
-      [range0, scanner.charIndex],
-      precedingComments,
-      formula,
-      isExport,
-    )
-  }
   scanner.expectWord(VIEW_KEYWORD)
+  scanner.scanAllWhitespace()
 
+  const precedingNameComments = scanner.flushComments()
   const nameRef = scanValidViewName(scanner)
   scanner.scanAllWhitespace()
 
   let argDefinitions: Expressions.FormulaLiteralArgument[] | undefined
-  if (scanner.scanIfString(ARGS_OPEN)) {
+  let precedingArgsComments: Comment[] = []
+  let followingArgsComments: Comment[] = []
+  if (scanner.is(ARGS_OPEN)) {
+    precedingArgsComments = scanner.flushComments()
     argDefinitions = scanFormulaLiteralArguments(scanner, 'view', parseNext, false)
+    scanner.scanAllWhitespace()
+    followingArgsComments = scanner.flushComments()
   }
 
-  const {properties, formulas} = scanClassBody(scanner, parseNext, 'view')
+  if (scanner.is(CLASS_OPEN)) {
+    const {properties, formulas} = scanClassBody(scanner, parseNext, 'view')
 
-  const lastComments = scanner.flushComments()
+    const lastComments = scanner.flushComments()
 
-  return new Expressions.ViewClassDefinition(
-    [range0, scanner.charIndex],
+    return new Expressions.ViewClassDefinition(
+      [range0, scanner.charIndex],
+      precedingComments,
+      lastComments,
+      precedingArgsComments,
+      followingArgsComments,
+      nameRef,
+      argDefinitions,
+      properties,
+      formulas,
+      isExport,
+    )
+  }
+
+  return finishScanningViewFunction(
+    scanner,
+    parseNext,
+    range0,
     precedingComments,
-    lastComments,
+    precedingNameComments,
+    precedingArgsComments,
+    followingArgsComments,
     nameRef,
     argDefinitions,
-    properties,
-    formulas,
-    isExport,
   )
 }
 
-function isViewFormula(scanner: Scanner) {
-  if (!scanner.scanIfWord(VIEW_KEYWORD)) {
-    return false
-  }
-  scanner.expectWhitespace()
-  scanValidViewName(scanner)
-  scanner.scanAllWhitespace()
-
-  return scanner.is(ARGS_OPEN) || scanner.is(FUNCTION_BODY_START)
+function finishScanningViewFunction(
+  scanner: Scanner,
+  parseNext: ParseNext,
+  range0: number,
+  precedingComments: Comment[],
+  precedingNameComments: Comment[],
+  precedingArgsComments: Comment[],
+  followingArgsComments: Comment[],
+  nameRef: Expressions.Reference | undefined,
+  argDefinitions: Expressions.FormulaLiteralArgument[] | undefined,
+) {
+  return finishScanningFormula(
+    scanner,
+    parseNext,
+    range0,
+    precedingComments,
+    precedingNameComments,
+    precedingArgsComments,
+    followingArgsComments,
+    false,
+    nameRef,
+    [],
+    argDefinitions ?? [],
+    'view',
+    'module',
+    true,
+  ) as Expressions.ViewFormulaExpression
 }

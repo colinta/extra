@@ -99,8 +99,21 @@ export function scanModule(scanner: Scanner, parseNext: ParseNext) {
       //
       //  <VIEW>
       //
+      const range0 = scanner.charIndex
+      const precedingComments = scanner.flushComments()
+      const isExport = scanner.scanIfWord(EXPORT_KEYWORD)
+      if (isExport) {
+        scanner.expectWhitespace()
+      }
       const view = scanView(scanner, parseNext)
-      moduleTokens.expressions.push(view as Expressions.ViewDefinition)
+      moduleTokens.expressions.push(
+        new Expressions.ViewDefinition(
+          [range0, scanner.charIndex],
+          precedingComments,
+          view,
+          isExport,
+        ),
+      )
     } else {
       throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
     }

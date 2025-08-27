@@ -15,7 +15,7 @@ import {
   ARGS_OPEN,
 } from '../grammars'
 import type {Scanner} from '../scanner'
-import {ParseError, type ParseNext} from '../types'
+import {ParseError, type Comment, type ParseNext} from '../types'
 import {
   scanGenerics,
   scanNamedFormula,
@@ -54,17 +54,24 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
   }
 
   let argDefinitions: Expressions.FormulaLiteralArgument[] | undefined
+  let precedingArgsComments: Comment[] = []
+  let followingArgsComments: Comment[] = []
   if (scanner.is(ARGS_OPEN)) {
+    precedingArgsComments = scanner.flushComments()
     argDefinitions = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)
     scanner.scanAllWhitespace()
+    followingArgsComments = scanner.flushComments()
   }
 
   const {properties, formulas} = scanClassBody(scanner, parseNext, 'class')
 
+  const lastComments = scanner.flushComments()
   return new Expressions.ClassDefinition(
     [range0, scanner.charIndex],
     precedingComments,
-    scanner.flushComments(),
+    lastComments,
+    precedingArgsComments,
+    followingArgsComments,
     nameRef,
     generics,
     extendsExpression,
