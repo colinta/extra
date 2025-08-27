@@ -1,7 +1,7 @@
 import * as Expressions from '../../expressions'
 import {ARGS_OPEN, CLASS_OPEN, EXPORT_KEYWORD, VIEW_KEYWORD} from '../grammars'
 import type {Scanner} from '../scanner'
-import {type ParseNext, type Comment, type ExpressionType} from '../types'
+import {type ParseNext, type Comment} from '../types'
 import {scanValidViewName} from './identifier'
 import {scanClassBody} from './class'
 import {scanFormulaLiteralArguments} from './formula_arguments'
