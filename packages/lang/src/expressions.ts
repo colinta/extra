@@ -360,7 +360,7 @@ export abstract class Operation extends Expression {
   }
 
   dependencies() {
-    return this.args.reduce((set, arg) => union(set, arg.dependencies()), new Set<string>())
+    return allDependencies(this.args)
   }
 }
 
@@ -879,7 +879,7 @@ export class ObjectExpression extends Expression {
   }
 
   dependencies() {
-    return this.values.reduce((set, value) => union(set, value.dependencies()), new Set<string>())
+    return allDependencies(this.values)
   }
 
   toLisp() {
@@ -975,7 +975,7 @@ export class ArrayExpression extends Expression {
   }
 
   dependencies() {
-    return this.values.reduce((set, value) => union(set, value.dependencies()), new Set<string>())
+    return allDependencies(this.values)
   }
 
   toLisp() {
@@ -1129,7 +1129,7 @@ export class DictExpression extends Expression {
   }
 
   dependencies() {
-    return this.values.reduce((set, value) => union(set, value.dependencies()), new Set<string>())
+    return allDependencies(this.values)
   }
 
   toLisp() {
@@ -1209,7 +1209,7 @@ export class SetExpression extends Expression {
   }
 
   dependencies() {
-    return this.values.reduce((set, value) => union(set, value.dependencies()), new Set<string>())
+    return allDependencies(this.values)
   }
 
   toLisp() {
@@ -1523,7 +1523,7 @@ export class OneOfTypeExpression extends TypeExpression {
   }
 
   dependencies() {
-    return this.of.reduce((set, type) => type.dependencies(), new Set<string>())
+    return allDependencies(this.of)
   }
 
   toLisp() {
@@ -1575,7 +1575,7 @@ export class ExtendsExpression extends TypeExpression {
   }
 
   dependencies() {
-    return this.of.reduce((set, type) => type.dependencies(), new Set<string>())
+    return allDependencies(this.of)
   }
 
   toLisp() {
@@ -1609,9 +1609,7 @@ export class ObjectTypeExpression extends TypeExpression {
   }
 
   dependencies() {
-    return this.values
-      .map(([_, value]) => value)
-      .reduce((set, value) => union(set, value.dependencies()), new Set<string>())
+    return allDependencies(this.values.map(([_, value]) => value))
   }
 
   toLisp() {
@@ -1808,7 +1806,7 @@ export class TypeConstructorExpression extends TypeExpression {
   }
 
   dependencies() {
-    return this.types.reduce((set, type) => union(set, type.dependencies()), new Set<string>())
+    return allDependencies(this.types)
   }
 
   toLisp() {
@@ -2992,7 +2990,7 @@ export class ClassDefinition extends Expression {
       deps = union(deps, exprDeps)
     }
     if (this.argDefinitions) {
-      const exprDeps = this.argDefinitions.dependencies()
+      const exprDeps = allDependencies(this.argDefinitions)
       deps = union(deps, exprDeps)
     }
     for (const expr of this.properties) {
@@ -3638,7 +3636,7 @@ export class EnumMemberExpression extends Expression {
   }
 
   dependencies() {
-    return this.args.reduce((set, type) => union(set, type.dependencies()), new Set<string>())
+    return allDependencies(this.args)
   }
 
   toLisp() {
@@ -3678,10 +3676,7 @@ export abstract class EnumTypeExpression extends Expression {
   }
 
   dependencies() {
-    return this.members.reduce(
-      (set, member) => union(set, member.dependencies()),
-      new Set<string>(),
-    )
+    return allDependencies(this.members)
   }
 
   getAsTypeExpression(runtime: TypeRuntime) {
@@ -3824,12 +3819,12 @@ export class EnumShorthandTypeExpression extends EnumTypeExpression {
     super(range, precedingComments, members)
   }
 
-  toCode() {
-    return this.members.map(m => m.toCode()).join(' | ')
-  }
-
   toLisp() {
     return '(enum | ' + this.members.map(m => m.toLisp()).join(' | ') + ')'
+  }
+
+  toCode() {
+    return this.members.map(m => m.toCode()).join(' | ')
   }
 }
 
@@ -3898,7 +3893,7 @@ export class ArgumentsList extends Expression {
   }
 
   dependencies() {
-    return this.allArgs.reduce((set, arg) => union(set, arg.dependencies()), new Set<string>())
+    return allDependencies(this.allArgs)
   }
 
   isTruthy() {
@@ -4962,17 +4957,14 @@ abstract class JsxExpression extends Expression {
   }
 
   dependencies() {
-    const argsDependencies = this.args.reduce(
-      (set, value) => union(set, value.dependencies()),
-      new Set<string>(this.nameRef ? [this.nameRef.name] : []),
+    const argsDependencies = union(
+      new Set(this.nameRef ? [this.nameRef.name] : []),
+      allDependencies(this.args),
     )
     if (!this.children) {
       return argsDependencies
     }
-    return union(
-      argsDependencies,
-      this.children.reduce((set, value) => union(set, value.dependencies()), new Set<string>()),
-    )
+    return union(argsDependencies, allDependencies(this.children))
   }
 
   toLispCode() {
@@ -5818,7 +5810,7 @@ export class MatchEnumExpression extends MatchExpression {
   }
 
   provides() {
-    return this.args.reduce((set, arg) => union(set, arg.provides()), new Set<string>())
+    return allProvides(this.args)
   }
 
   /**
@@ -6892,7 +6884,7 @@ export class MatchArrayExpression extends MatchExpression {
   }
 
   provides() {
-    return this.all().reduce((set, arg) => union(set, arg.provides()), new Set<string>())
+    return allProvides(this.all())
   }
 
   gimmeTrueStuffWith(
@@ -8905,6 +8897,14 @@ export function includeMissingNames(
     mutableRuntime.addLocalValue(missingName, Values.NullValue)
   }
   return mutableRuntime
+}
+
+function allDependencies(expressions: Expression[]) {
+  return expressions.reduce((set, expr) => union(set, expr.dependencies()), new Set<string>())
+}
+
+function allProvides(expressions: Expression[]) {
+  return expressions.reduce((set, expr) => union(set, expr.provides()), new Set<string>())
 }
 
 const okNull: GetValueResult = ok(Values.NullValue)
