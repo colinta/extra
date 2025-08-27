@@ -583,16 +583,16 @@ fn
           --comment20
           (a+b)`
 
-      let formlaExpr: Expressions.Expression = parse(formula).get()
+      let formulaExpr: Expressions.Expression = parse(formula).get()
 
-      if (!(formlaExpr! instanceof Expressions.FormulaExpression)) {
-        expect(formlaExpr!).toBeInstanceOf(Expressions.FormulaExpression)
+      if (!(formulaExpr! instanceof Expressions.FormulaExpression)) {
+        expect(formulaExpr!).toBeInstanceOf(Expressions.FormulaExpression)
         return
       }
 
       // Extract function definition components for testing
-      const argDefinitions = formlaExpr.argDefinitions
-      const [arg0, arg1] = argDefinitions.args
+      const argDefinitions = formulaExpr.argDefinitions
+      const [arg0, arg1] = argDefinitions
 
       // Extract properties of the first argument
       const {nameRef: name0, argType: type0, defaultValue: defaultValue0} = arg0
@@ -601,8 +601,8 @@ fn
       const {nameRef: name1, aliasRef: alias1, argType: type1} = arg1
 
       // Get function return type and body
-      const returnType = formlaExpr.returnType
-      const body = formlaExpr.body as Expressions.Operation
+      const returnType = formulaExpr.returnType
+      const body = formulaExpr.body as Expressions.Operation
       const [ref0] = body.args as Expressions.Reference[]
 
       // Ensure the default value exists before continuing with tests
@@ -612,12 +612,12 @@ fn
       }
 
       // Test comments preceding the function expression
-      expect(formlaExpr.precedingComments).toEqual([
+      expect(formulaExpr.precedingComments).toEqual([
         {delim: '--', comment: 'comment0', type: 'line'},
       ])
 
       // Test comments preceding the argument definitions (after 'fn' but before opening parenthesis)
-      expect(argDefinitions.precedingComments).toEqual([
+      expect(formulaExpr.precedingArgumentsComments).toEqual([
         {delim: '--', comment: 'comment1', type: 'line'},
       ])
 
@@ -656,7 +656,7 @@ fn
       expect(arg1.followingComments).toEqual([{delim: '--', comment: 'comment15', type: 'line'}])
 
       // Test comments following the argument list (after closing parenthesis)
-      expect(argDefinitions.followingComments).toEqual([
+      expect(formulaExpr.followingArgumentsComments).toEqual([
         {delim: '--', comment: 'comment16', type: 'line'},
       ])
 
@@ -669,7 +669,7 @@ fn
       ])
 
       // Test comments preceding the return arrow
-      expect(formlaExpr.precedingReturnTypeComments).toEqual([
+      expect(formulaExpr.precedingReturnTypeComments).toEqual([
         {delim: '--', comment: 'comment19', type: 'line'},
       ])
 

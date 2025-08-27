@@ -21,12 +21,7 @@ export function scanFormulaLiteralArguments(
   parseNext: ParseNext,
   canInfer: boolean,
 ) {
-  const range0 = scanner.charIndex - 1
-  const precedingComments = scanner.flushComments()
-  scanner.expectString(ARGS_OPEN, `Expected '${ARGS_OPEN}' to start arguments`)
-  scanner.scanAllWhitespace()
-  const [args, range1] = _scanArguments(scanner, 'formula', type, parseNext, canInfer)
-  return new Expressions.FormulaLiteralArguments([range0, range1], precedingComments, args)
+  return _scanArguments(scanner, 'formula', type, parseNext, canInfer)
 }
 
 // _Formula Types_ cannot have default values, only optional args
@@ -34,13 +29,7 @@ export function scanFormulaLiteralArguments(
 // fn visit(func: fn(# arg?: Int): Int) => func(0) + func()
 //                  ^^^^^^^^^^^^^
 export function scanFormulaTypeArguments(scanner: Scanner, parseNext: ParseNext) {
-  const precedingComments = scanner.flushComments()
-  const range0 = scanner.charIndex
-  scanner.expectString(ARGS_OPEN)
-  scanner.scanAllWhitespace()
-
-  const [args, range1] = _scanArguments(scanner, 'formula_type', 'fn', parseNext, false)
-  return new Expressions.FormulaTypeArguments([range0, range1], precedingComments, args)
+  return _scanArguments(scanner, 'formula_type', 'fn', parseNext, false)
 }
 
 function _scanArguments<T extends 'formula' | 'formula_type'>(
@@ -50,13 +39,12 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
   type: 'view' | 'fn',
   parseNext: ParseNext,
   canInfer: boolean,
-): [
-  T extends 'formula' ? Expressions.FormulaLiteralArgument[] : Expressions.FormulaTypeArgument[],
-  number,
-] {
+): T extends 'formula' ? Expressions.FormulaLiteralArgument[] : Expressions.FormulaTypeArgument[] {
   scanner.whereAmI(`_scanArguments is = ${is}, type = ${type}`)
 
-  let range1 = scanner.charIndex
+  scanner.expectString(ARGS_OPEN, `Expected '${ARGS_OPEN}' to start arguments`)
+  scanner.scanAllWhitespace()
+
   const args: Expressions.ArgumentExpression[] = []
   if (scanner.is(ARGS_CLOSE)) {
     scanner.expectString(ARGS_CLOSE)
@@ -326,7 +314,6 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
       args.push(arg)
 
       if (shouldBreak) {
-        range1 = scanner.charIndex
         break
       }
 
@@ -335,12 +322,9 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
   }
 
   scanner.whereAmI('_scanArguments: [' + args.map(arg => arg.toCode()).join(',') + ']')
-  return [
-    args as T extends 'formula'
-      ? Expressions.FormulaLiteralArgument[]
-      : Expressions.FormulaTypeArgument[],
-    range1,
-  ]
+  return args as T extends 'formula'
+    ? Expressions.FormulaLiteralArgument[]
+    : Expressions.FormulaTypeArgument[]
 }
 
 function scannerIsSpreadPositional(scanner: Scanner) {

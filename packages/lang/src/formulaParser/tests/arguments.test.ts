@@ -1,6 +1,29 @@
 import {c, cases} from '@extra-lang/cases'
 import {testScan} from '../../formulaParser'
 import {scanFormulaLiteralArguments} from '../scan/formula_arguments'
+import {Expression} from 'src/expressions'
+
+class Arguments extends Expression {
+  constructor(readonly args: Expression[]) {
+    super([0, 0], [])
+  }
+
+  toCode() {
+    return this.args.map(expr => expr.toCode()).join(', ')
+  }
+
+  toLisp() {
+    return `(${this.args.map(expr => expr.toLisp()).join(' ')})`
+  }
+
+  getType() {
+    return [] as any
+  }
+
+  eval() {
+    return [] as any
+  }
+}
 
 describe('argument parser', () => {
   describe('arguments', () => {
@@ -86,8 +109,10 @@ describe('argument parser', () => {
         `should parse argument definitions '${formula}'`,
         () => {
           expectedCode = expectedCode ?? formula
-          const expression = testScan(`(${formula})`, (scanner, parseNext) =>
-            scanFormulaLiteralArguments(scanner, 'fn', parseNext, false),
+          const expression = testScan(
+            `(${formula})`,
+            (scanner, parseNext) =>
+              new Arguments(scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)),
           ).get()
 
           expect(expression!.toCode()).toEqual(expectedCode)
@@ -108,8 +133,10 @@ describe('argument parser', () => {
         `should not parse argument definitions ${formula}`,
         () => {
           expect(() => {
-            testScan(`(${formula})`, (scanner, parseNext) =>
-              scanFormulaLiteralArguments(scanner, 'fn', parseNext, false),
+            testScan(
+              `(${formula})`,
+              (scanner, parseNext) =>
+                new Arguments(scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)),
             ).get()
           }).toThrow(message)
         },
@@ -129,8 +156,10 @@ describe('argument parser', () => {
       c(['number  :Int,asdf:Float', '((number: `Int`) (asdf: `Float`))']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse arguments ${formula}`, () => {
-        const expression = testScan(`(${formula})`, (scanner, parseNext) =>
-          scanFormulaLiteralArguments(scanner, 'fn', parseNext, false),
+        const expression = testScan(
+          `(${formula})`,
+          (scanner, parseNext) =>
+            new Arguments(scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)),
         ).get()
 
         expect(expression!.toLisp()).toEqual(expected)
@@ -152,8 +181,10 @@ describe('argument parser', () => {
     ).run(([formula, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not parse arguments ${formula}`, () => {
         expect(() => {
-          testScan(`(${formula})`, (scanner, parseNext) =>
-            scanFormulaLiteralArguments(scanner, 'fn', parseNext, false),
+          testScan(
+            `(${formula})`,
+            (scanner, parseNext) =>
+              new Arguments(scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)),
           ).get()
         }).toThrow(message)
       }),

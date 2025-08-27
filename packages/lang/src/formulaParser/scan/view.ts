@@ -41,9 +41,9 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
   const nameRef = scanValidViewName(scanner)
   scanner.scanAllWhitespace()
 
-  let argDeclarations: Expressions.FormulaLiteralArguments | undefined
+  let argDefinitions: Expressions.FormulaLiteralArgument[] | undefined
   if (scanner.scanIfString(ARGS_OPEN)) {
-    argDeclarations = scanFormulaLiteralArguments(scanner, 'view', parseNext, false)
+    argDefinitions = scanFormulaLiteralArguments(scanner, 'view', parseNext, false)
   }
 
   const {properties, formulas} = scanClassBody(scanner, parseNext, 'view')
@@ -55,7 +55,7 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
     precedingComments,
     lastComments,
     nameRef,
-    argDeclarations,
+    argDefinitions,
     properties,
     formulas,
     isExport,

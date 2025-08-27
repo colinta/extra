@@ -53,9 +53,9 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
     scanner.scanAllWhitespace()
   }
 
-  let argDeclarations: Expressions.FormulaLiteralArguments | undefined
+  let argDefinitions: Expressions.FormulaLiteralArgument[] | undefined
   if (scanner.is(ARGS_OPEN)) {
-    argDeclarations = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)
+    argDefinitions = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)
     scanner.scanAllWhitespace()
   }
 
@@ -68,7 +68,7 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
     nameRef,
     generics,
     extendsExpression,
-    argDeclarations,
+    argDefinitions,
     properties,
     formulas,
     isExport,

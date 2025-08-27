@@ -2947,7 +2947,7 @@ export class ClassDefinition extends Expression {
     readonly nameRef: Reference,
     readonly generics: string[],
     readonly extendsExpression: Reference | undefined,
-    readonly argDefinitions: FormulaLiteralArguments | undefined,
+    readonly argDefinitions: FormulaLiteralArgument[] | undefined,
     /**
      * Properties and their type, possibly with a default value.
      * properties.nameRef could be a StateReference
@@ -2972,7 +2972,7 @@ export class ClassDefinition extends Expression {
       provides = union(provides, this.extendsExpression.provides())
     }
     if (this.argDefinitions) {
-      provides = union(provides, this.argDefinitions.provides())
+      provides = union(provides, allProvides(this.argDefinitions))
     }
     for (const expr of this.properties) {
       provides = union(provides, expr.provides())
@@ -3037,7 +3037,7 @@ export class ClassDefinition extends Expression {
       code += ` extends ${this.extendsExpression.name}`
     }
     if (this.argDefinitions) {
-      code += ' (' + this.argDefinitions.toLisp() + ')'
+      code += ' (' + this.argDefinitions.map(expr => expr.toLisp()).join(' ') + ')'
     }
     if (this.properties.length) {
       code += ' (' + this.properties.map(m => m.toLisp()).join(' ') + ')'
@@ -3058,7 +3058,7 @@ export class ClassDefinition extends Expression {
       code += `<${this.generics.join(', ')}>`
     }
     if (this.argDefinitions) {
-      code += '(' + this.argDefinitions.toCode() + ')'
+      code += '(' + this.argDefinitions.map(expr => expr.toCode()).join(', ') + ')'
     }
     if (this.extendsExpression) {
       code += ` extends ${this.extendsExpression.name}`
@@ -3374,7 +3374,7 @@ export class ClassDefinition extends Expression {
             // yeeees the constructor is called in the context of the class
             // definition (ie static functions are treated as "in scope"), but
             // I'm not passing classDef as 'this'.
-            argumentValues(thisSharedRuntime, this.argDefinitions?.args ?? [], args, undefined).map(
+            argumentValues(thisSharedRuntime, this.argDefinitions ?? [], args, undefined).map(
               thisRuntime => {
                 const stateProps = this.stateProperties().map(
                   expr => [expr.stateName, expr] as [string, ClassStatePropertyExpression],
@@ -3448,7 +3448,7 @@ export class ViewClassDefinition extends ClassDefinition {
     precedingComments: Comment[],
     lastComments: Comment[],
     nameRef: Reference,
-    argDeclarations: FormulaLiteralArguments | undefined,
+    argDefinitions: FormulaLiteralArgument[] | undefined,
     properties: ClassPropertyExpression[],
     formulas: NamedFormulaExpression[],
     isExport: boolean,
@@ -3462,7 +3462,7 @@ export class ViewClassDefinition extends ClassDefinition {
       [],
       // extends
       undefined,
-      argDeclarations,
+      argDefinitions,
       properties,
       formulas,
       isExport,
@@ -3951,105 +3951,16 @@ export class ArgumentsList extends Expression {
 }
 
 /**
- * List of argument declarations and their type, e.g. `(name: String, age: Int)`,
- * as part of a function literal. Comes in two subclasses, FormulaLiteralArguments
- * and FormulaTypeArguments.
- *
- * FormulaLiteralArguments stores the arguments and types of a formula literal
- * (an instance of a formula)
- *
- *   […].map( fn(a: Int) => a + 1 )
- *               ^^^^^^ FormulaLiteralArguments
- *               (list of FormulaLiteralArgument)
- *
- * FormulaTypeArguments stores the arguments and types of a formula *type*
- *
- *   Add is fn(a: Int, b: Int): Int
- *             ^^^^^^^^^^^^^^
- *            (list of FormulaTypeArgument)
- *
- * The main difference being that formula _types_ can have optional arguments,
- * whereas formulas can have default values.
- */
-export abstract class ArgumentsExpression extends Expression {
-  abstract args: (FormulaLiteralArgument | FormulaTypeArgument)[]
-
-  dependencies() {
-    return this.args.reduce((set, type) => union(set, type.dependencies()), new Set<string>())
-  }
-
-  provides() {
-    return this.args.reduce((set, arg) => union(set, arg.provides()), new Set<string>())
-  }
-
-  getType(runtime: TypeRuntime): GetTypeResult {
-    const resolvedArgs: [string, Types.Type][] = []
-    const errors: RuntimeError[] = []
-    this.args.forEach(arg => {
-      const type = getChildType(this, arg.argType, runtime)
-      if (type.isOk()) {
-        resolvedArgs.push([arg.nameRef.name, type.get()])
-      } else {
-        errors.push(type.error)
-      }
-    })
-
-    if (errors.length) {
-      return err(new RuntimeError(this, 'errors found in types', errors))
-    }
-
-    const props: Types.ObjectProp[] = []
-    for (const [name, type] of resolvedArgs) {
-      props.push({is: 'named', name, type})
-    }
-
-    return ok(new Types.ObjectType(props))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'ArgumentsExpression cannot be evaluated'))
-  }
-
-  toLisp() {
-    return `(${this.args.map(it => it.toLisp()).join(' ')})`
-  }
-
-  toCode() {
-    return wrapValues('', this.args, '')
-  }
-}
-
-/**
- * List of argument declarations and their type for a literal formula,
- * e.g. `(name: String, age: Int = 0)`
- *
- * FormulaLiteralArguments stores the arguments and types of a formula literal
- *
- *   fn helper(a: Int = 0) => a + 1
- *             ^^^^^^^^^^ FormulaLiteralArguments
- *             (list of FormulaLiteralArgument)
- */
-export class FormulaLiteralArguments extends ArgumentsExpression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly args: FormulaLiteralArgument[],
-  ) {
-    super(range, precedingComments)
-  }
-}
-
-/**
  * An argument definition. Comes in many flavors: position, named (w/ optional
  * aliased), spread, and keyword-args. Position and named arguments can have a
- * default value.
+ * default value. Spread arguments defaults to `[]` and kwargs defaults to `#[]`
  *
  *     # name: Type [=value]
  *     alias name: Type [= value]
  *     name: Type [= value]
- *     ...# spread: Array(Type)
- *     ...spread: Array(Type)
- *     **kwargs: Dict(Type)
+ *     ...# spread: Array(Type), default = []
+ *     ...spread: Array(Type), default = []
+ *     **kwargs: Dict(Type), default = #[]
  */
 export class FormulaLiteralArgument extends ArgumentExpression {
   constructor(
@@ -4119,29 +4030,17 @@ export class FormulaLiteralArgument extends ArgumentExpression {
 }
 
 /**
- * List of argument declarations and their type, e.g. `(name: String, age: Int)`
- * FormulaTypeArguments stores the arguments and types of a formula *type*
+ * The argument name and type for a FormulaType expression. Argument types can
+ * be declared as optional.
  *
- *     add = fn(a: Int, b: Int): Int
- *              ^^^^^^^^^^^^^^
- *       (list of FormulaTypeArgument)
- */
-export class FormulaTypeArguments extends ArgumentsExpression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly args: FormulaTypeArgument[],
-  ) {
-    super(range, precedingComments)
-  }
-}
-
-/**
- * The argument name and type for a FormulaType expression
+ *     add: fn(# a: Int, b: Int, c?: Int): Int
+ *               ^^^^^^  |       ^^^^^^^ optional
+ *                       ^^^^^^
  *
- *     add: fn(a: Int, b: Int): Int
- *             ^^^^^^  |
- *                     ^^^^^^
+ * Variadic arguments are also declared on the formula type:
+ *     add: fn(...# values: Array(Int)): Int
+ *     add: fn(...values: Array(Int)): Int
+ *     add: fn(**named: Dict(Int)): Int
  */
 export class FormulaTypeArgument extends ArgumentExpression {
   constructor(
@@ -4252,7 +4151,7 @@ export class FormulaTypeExpression extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly argDefinitions: FormulaTypeArguments,
+    readonly argDefinitions: FormulaTypeArgument[],
     readonly returnType: Expression,
     readonly generics: string[],
   ) {
@@ -4260,17 +4159,19 @@ export class FormulaTypeExpression extends Expression {
   }
 
   dependencies() {
-    const deps = union(this.argDefinitions.dependencies(), this.returnType.dependencies())
-    return difference(deps, this.argDefinitions.provides())
+    const deps = union(allDependencies(this.argDefinitions), this.returnType.dependencies())
+    return difference(deps, allProvides(this.argDefinitions))
   }
 
   toLisp() {
-    return `(fn ${this.argDefinitions.toLisp()} : (${this.returnType.toLisp()}))`
+    const argsCode = this.argDefinitions.map(expr => expr.toLisp()).join(' ')
+    return `(fn (${argsCode}) : (${this.returnType.toLisp()}))`
   }
 
   toCode() {
     const returnType = ': ' + this.returnType.toCode()
-    return `fn(${this.argDefinitions.toCode()})${returnType}`
+    const argsCode = this.argDefinitions.map(expr => expr.toCode()).join(', ')
+    return `fn(${argsCode})${returnType}`
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
@@ -4282,7 +4183,7 @@ export class FormulaTypeExpression extends Expression {
       mutableRuntime.addLocalType(generic, genericType)
     }
 
-    return mapAll(this.argDefinitions.args.map(arg => arg.formulaArgumentType(mutableRuntime))).map(
+    return mapAll(this.argDefinitions.map(arg => arg.formulaArgumentType(mutableRuntime))).map(
       args => {
         return this.returnType
           .getAsTypeExpression(mutableRuntime)
@@ -4312,15 +4213,23 @@ export class FormulaExpression extends Expression {
     range: Range,
     precedingComments: Comment[],
     /**
-     * Comments preceding the name
+     * Comments preceding the name of the function
      */
     readonly precedingNameComments: Comment[],
+    /**
+     * Comments attached to the opening '(' beginning the arguments list
+     */
+    readonly precedingArgumentsComments: Comment[],
+    /**
+     * Comments attached to the closing ')' ending the arguments list
+     */
+    readonly followingArgumentsComments: Comment[],
     /**
      * Comments after the return type
      */
     readonly precedingReturnTypeComments: Comment[],
     readonly nameRef: Reference | undefined,
-    readonly argDefinitions: FormulaLiteralArguments,
+    readonly argDefinitions: FormulaLiteralArgument[],
     readonly returnType: Expression,
     readonly body: Expression,
     readonly generics: string[],
@@ -4343,9 +4252,9 @@ export class FormulaExpression extends Expression {
     const deps = union(
       this.returnType.dependencies(),
       this.body.dependencies(),
-      this.argDefinitions.dependencies(),
+      allDependencies(this.argDefinitions),
     )
-    const provides = union(this.argDefinitions.provides(), new Set(this.generics))
+    const provides = union(allProvides(this.argDefinitions), new Set(this.generics))
     return difference(deps, provides)
   }
 
@@ -4367,7 +4276,7 @@ export class FormulaExpression extends Expression {
     if (this.generics.length) {
       code += '<' + this.generics.join(', ') + '> '
     }
-    code += this.argDefinitions.toLisp()
+    code += `(${this.argDefinitions.map(expr => expr.toLisp()).join(' ')})`
     if (!(this.returnType instanceof InferIdentifier)) {
       code += ' : ' + this.returnType.toLisp()
     }
@@ -4393,7 +4302,7 @@ export class FormulaExpression extends Expression {
       code += '<' + this.generics.join(', ') + '>'
     }
 
-    const argDefinitions = this.argDefinitions.toCode()
+    const argDefinitions = this.argDefinitions.map(expr => expr.toCode()).join(', ')
     const returnTypeCode = this.returnType.toCode()
     let hasNewline: boolean
     if (forceNewline) {
@@ -4498,7 +4407,7 @@ export class FormulaExpression extends Expression {
   }
 
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.FormulaValue> {
-    const argDefinitions = this.argDefinitions.args
+    const argDefinitions = this.argDefinitions
     // this is the function that is invoked by 'FunctionInvocationOperator', via
     // FormulaValue.call(args)
     const fn = (
@@ -4593,7 +4502,7 @@ function argumentTypes(
   // for every arg, check the arg type _and_ the default type, and make sure
   // default type can be assigned to the arg type
   return mapAll(
-    expr.argDefinitions.args.map((arg, position) => {
+    expr.argDefinitions.map((arg, position) => {
       let argType: GetTypeResult
       if (arg.argType instanceof InferIdentifier) {
         if (arg.spreadArg) {
@@ -4830,9 +4739,11 @@ export class NamedFormulaExpression extends FormulaExpression {
     range: Range,
     precedingComments: Comment[],
     precedingNameComments: Comment[],
+    precedingArgsComments: Comment[],
+    followingArgsComments: Comment[],
     precedingReturnTypeComments: Comment[],
     readonly nameRef: Reference,
-    argDefinitions: FormulaLiteralArguments,
+    argDefinitions: FormulaLiteralArgument[],
     returnType: Expression,
     body: Expression,
     generics: string[],
@@ -4841,6 +4752,8 @@ export class NamedFormulaExpression extends FormulaExpression {
       range,
       precedingComments,
       precedingNameComments,
+      precedingArgsComments,
+      followingArgsComments,
       precedingReturnTypeComments,
       nameRef,
       argDefinitions,
@@ -4889,9 +4802,11 @@ export class MemberFormulaExpression extends NamedFormulaExpression {
     range: Range,
     precedingComments: Comment[],
     precedingNameComments: Comment[],
+    precedingArgsComments: Comment[],
+    followingArgsComments: Comment[],
     precedingReturnTypeComments: Comment[],
     nameRef: Reference,
-    argDefinitions: FormulaLiteralArguments,
+    argDefinitions: FormulaLiteralArgument[],
     returnType: Expression,
     body: Expression,
     generics: string[],
@@ -4901,6 +4816,8 @@ export class MemberFormulaExpression extends NamedFormulaExpression {
       range,
       precedingComments,
       precedingNameComments,
+      precedingArgsComments,
+      followingArgsComments,
       precedingReturnTypeComments,
       nameRef,
       argDefinitions,
@@ -4923,9 +4840,11 @@ export class StaticFormulaExpression extends NamedFormulaExpression {
     range: Range,
     precedingComments: Comment[],
     precedingNameComments: Comment[],
+    precedingArgsComments: Comment[],
+    followingArgsComments: Comment[],
     precedingReturnTypeComments: Comment[],
     nameRef: Reference,
-    argDefinitions: FormulaLiteralArguments,
+    argDefinitions: FormulaLiteralArgument[],
     returnType: Expression,
     body: Expression,
     generics: string[],
@@ -4934,6 +4853,8 @@ export class StaticFormulaExpression extends NamedFormulaExpression {
       range,
       precedingComments,
       precedingNameComments,
+      precedingArgsComments,
+      followingArgsComments,
       precedingReturnTypeComments,
       nameRef,
       argDefinitions,
@@ -5316,8 +5237,10 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
     precedingComments: Comment[],
     precedingNameComments: Comment[],
     precedingReturnTypeComments: Comment[],
+    precedingArgsComments: Comment[],
+    followingArgsComments: Comment[],
     nameRef: Reference,
-    argDefinitions: FormulaLiteralArguments,
+    argDefinitions: FormulaLiteralArgument[],
     returnType: Expression,
     body: Expression,
   ) {
@@ -5325,6 +5248,8 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
       range,
       precedingComments,
       precedingNameComments,
+      precedingArgsComments,
+      followingArgsComments,
       precedingReturnTypeComments,
       nameRef,
       argDefinitions,
@@ -5350,7 +5275,7 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
       boundThis: Values.ClassInstanceValue | undefined,
     ) => Result<Values.Value, RuntimeError>,
   ) {
-    const argDefinitions = this.argDefinitions.args
+    const argDefinitions = this.argDefinitions
     const render = (
       args: Values.FormulaArgs,
       boundThis: Values.ClassInstanceValue | undefined,

@@ -177,15 +177,14 @@ function _scanFormula(
   }
   scanner.whereAmI(`scanFormula generics = [${generics.join(', ')}]`)
 
-  let argDeclarations: Expressions.FormulaLiteralArguments
+  let argDeclarations: Expressions.FormulaLiteralArgument[]
+  let precedingArgsComments: Comment[] = []
+  let followingArgsComments: Comment[] = []
   // support fn => 'value' (parentheses are optional when no args)
   if (!scanner.is(ARGS_OPEN)) {
-    argDeclarations = new Expressions.FormulaLiteralArguments(
-      [scanner.charIndex, scanner.charIndex],
-      [],
-      [],
-    )
+    argDeclarations = []
   } else {
+    precedingArgsComments = scanner.flushComments()
     const canInfer = expressionType === 'argument'
     argDeclarations = scanFormulaLiteralArguments(
       scanner,
@@ -194,7 +193,7 @@ function _scanFormula(
       canInfer,
     )
     scanner.scanAllWhitespace()
-    argDeclarations.followingComments.push(...scanner.flushComments())
+    followingArgsComments = scanner.flushComments()
   }
   scanner.whereAmI(`scanFormula argDeclarations = (${argDeclarations})`)
 
@@ -209,7 +208,7 @@ function _scanFormula(
     )
   } else {
     returnType = new Expressions.InferIdentifier(
-      [argDeclarations.range[1], argDeclarations.range[1]],
+      [scanner.charIndex, scanner.charIndex],
       scanner.flushComments(),
     )
   }
@@ -236,6 +235,8 @@ function _scanFormula(
       [range0, scanner.charIndex],
       precedingComments,
       precedingNameComments,
+      precedingArgsComments,
+      followingArgsComments,
       precedingReturnTypeComments,
       nameRef!,
       argDeclarations,
@@ -247,6 +248,8 @@ function _scanFormula(
       [range0, scanner.charIndex],
       precedingComments,
       precedingNameComments,
+      precedingArgsComments,
+      followingArgsComments,
       precedingReturnTypeComments,
       nameRef!,
       argDeclarations,
@@ -259,6 +262,8 @@ function _scanFormula(
         [range0, scanner.charIndex],
         precedingComments,
         precedingNameComments,
+        precedingArgsComments,
+        followingArgsComments,
         precedingReturnTypeComments,
         nameRef!,
         argDeclarations,
@@ -271,6 +276,8 @@ function _scanFormula(
         [range0, scanner.charIndex],
         precedingComments,
         precedingNameComments,
+        precedingArgsComments,
+        followingArgsComments,
         precedingReturnTypeComments,
         nameRef!,
         argDeclarations,
@@ -284,6 +291,8 @@ function _scanFormula(
         [range0, scanner.charIndex],
         precedingComments,
         precedingNameComments,
+        precedingArgsComments,
+        followingArgsComments,
         precedingReturnTypeComments,
         nameRef,
         argDeclarations,
@@ -297,6 +306,8 @@ function _scanFormula(
       [range0, scanner.charIndex],
       precedingComments,
       precedingNameComments,
+      precedingArgsComments,
+      followingArgsComments,
       precedingReturnTypeComments,
       undefined,
       argDeclarations,

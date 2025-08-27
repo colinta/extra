@@ -112,7 +112,7 @@ export function scanArgumentType(
       scanner.whereAmI(`scanEnum: ${enumCaseName}`)
       let args: Expressions.FormulaLiteralArgument[] = []
       if (scanner.is(ARGS_OPEN)) {
-        args = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false).args
+        args = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)
 
         // TODO: I'm being lazy, and don't want to implement spread arguments support
         // in the new enum code (specifically in the matching code)
