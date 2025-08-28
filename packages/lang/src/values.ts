@@ -1949,7 +1949,10 @@ export class ModuleValue extends Value {
   }
 }
 
-type MessagePayload = {is: 'assignment'; prop: string; value: Value}
+type MessagePayload =
+  | {is: 'assignment'; prop: string; value: Value}
+  | {is: 'prop'; value: Value}
+  | {is: 'jsx-prop'; prop: string; value: Value}
 
 export class MessageValue extends Value {
   constructor(

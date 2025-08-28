@@ -1900,6 +1900,10 @@ export abstract class Argument extends Expression {
     super(range, precedingComments)
   }
 
+  renderDependencies(runtime: ValueRuntime) {
+    return this.value.renderDependencies(runtime)
+  }
+
   dependencies() {
     return this.value.dependencies()
   }
@@ -4908,7 +4912,7 @@ abstract class JsxExpression extends Expression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly args: NamedArgument[],
+    readonly props: NamedArgument[],
     readonly children: Expression[] | undefined,
   ) {
     super(range, precedingComments)
@@ -4917,16 +4921,12 @@ abstract class JsxExpression extends Expression {
   dependencies() {
     const argsDependencies = union(
       new Set(this.nameRef ? [this.nameRef.name] : []),
-      allDependencies(this.args),
+      allDependencies(this.props),
     )
     if (!this.children) {
       return argsDependencies
     }
     return union(argsDependencies, allDependencies(this.children))
-  }
-
-  renderDependencies(runtime: ValueRuntime) {
-    return mergeRenderDeps(runtime, this.args, this.children ?? [])
   }
 
   toLispCode() {
@@ -4935,12 +4935,12 @@ abstract class JsxExpression extends Expression {
       code += this.nameRef
     }
 
-    if (this.args.length) {
+    if (this.props.length) {
       if (this.nameRef) {
         code += ' '
       }
 
-      code += this.args
+      code += this.props
         .map(arg => {
           if (arg.value instanceof LiteralTrue) {
             return arg.alias
@@ -4999,12 +4999,12 @@ abstract class JsxExpression extends Expression {
       code += this.nameRef
     }
 
-    if (this.args.length) {
+    if (this.props.length) {
       if (this.nameRef) {
         code += ' '
       }
 
-      code += this.args
+      code += this.props
         .map(arg => {
           if (arg.value instanceof LiteralTrue) {
             return arg.alias
@@ -5086,7 +5086,7 @@ abstract class JsxExpression extends Expression {
         return ok(refType)
       }
 
-      if (this.args.length) {
+      if (this.props.length) {
         return err(new RuntimeError(this, `Fragments cannot receive props.`))
       }
 
@@ -5100,7 +5100,7 @@ abstract class JsxExpression extends Expression {
   }
 
   renderFragment(runtime: ValueRuntime, children: Nodes.ChildrenNode | undefined): GetNodeResult {
-    if (this.args.length) {
+    if (this.props.length) {
       return err(new RuntimeError(this, `Fragment Views should not have args`))
     }
 
@@ -5110,7 +5110,7 @@ abstract class JsxExpression extends Expression {
       )
     }
 
-    return ok(new Nodes.FragmentNode(this.renderDependencies(runtime), children))
+    return ok(new Nodes.JSXFragmentNode(this.renderDependencies(runtime), children))
   }
 
   render(runtime: ValueRuntime): GetNodeResult {
@@ -5141,14 +5141,16 @@ abstract class JsxExpression extends Expression {
     children: Nodes.ChildrenNode | undefined,
   ) {
     return mapAll(
-      this.args.map(namedArg => {
+      this.props.map(namedArg => {
         const name = namedArg.alias
-        return namedArg.value.render(runtime).map(value => [name, value] as const)
+        return namedArg.value
+          .render(runtime)
+          .map(node => [name, new Nodes.JSXPropNode(name, node)] as const)
       }),
     )
-      .map(args => new Map(args))
-      .map(args => {
-        const valueArgs = Array.from(args).map(([name, node]): [string, Values.Value] => [
+      .map(propNodes => new Map(propNodes))
+      .map(propNodes => {
+        const valueArgs = Array.from(propNodes).map(([name, node]): [string, Values.Value] => [
           name,
           node.value,
         ])
@@ -5157,14 +5159,19 @@ abstract class JsxExpression extends Expression {
         }
 
         if (refValue instanceof Values.ViewFormulaValue) {
-          return this.renderViewFormula(runtime, refValue, children, args, valueArgs)
+          return this.renderViewFormula(runtime, refValue, children, propNodes, valueArgs)
         }
 
         if (refValue instanceof Values.ViewClassDefinitionValue) {
-          return this.renderViewInstance(runtime, refValue, children, args, valueArgs)
+          return this.renderViewInstance(runtime, refValue, children, propNodes, valueArgs)
         }
 
-        return new Nodes.NamedNode(this.renderDependencies(runtime), refValue, args, children)
+        return new Nodes.JSXNamedNode(
+          this.renderDependencies(runtime),
+          refValue,
+          propNodes,
+          children,
+        )
       })
   }
 
@@ -5172,7 +5179,7 @@ abstract class JsxExpression extends Expression {
     runtime: ValueRuntime,
     refValue: Values.ViewFormulaValue<Nodes.Node>,
     children: Nodes.ChildrenNode | undefined,
-    args: Map<string, Nodes.Node>,
+    propNodes: Map<string, Nodes.Node>,
     valueArgs: [string, Values.Value][],
   ) {
     // to recap:
@@ -5193,7 +5200,7 @@ abstract class JsxExpression extends Expression {
           new Nodes.ViewFormulaNode(
             this.renderDependencies(runtime),
             refValue,
-            args,
+            propNodes,
             children,
             firstNode,
           ),
@@ -5204,7 +5211,7 @@ abstract class JsxExpression extends Expression {
     runtime: ValueRuntime,
     refValue: Values.ViewClassDefinitionValue,
     children: Nodes.ChildrenNode | undefined,
-    args: Map<string, Nodes.Node>,
+    propNodes: Map<string, Nodes.Node>,
     valueArgs: [string, Values.Value][],
   ) {
     return refValue
@@ -5239,7 +5246,7 @@ abstract class JsxExpression extends Expression {
             new Nodes.ViewInstanceNode(
               this.renderDependencies(runtime),
               instance,
-              args,
+              propNodes,
               children,
               firstNode,
             ),
@@ -5261,7 +5268,7 @@ export class NamedJsxExpression extends JsxExpression {
 }
 
 export class FragmentJsxExpression extends JsxExpression {
-  readonly nameRef: Reference | undefined = undefined
+  readonly nameRef: undefined = undefined
 
   constructor(
     range: Range,
@@ -8723,16 +8730,6 @@ export class DiceExpression extends Expression {
   }
 }
 
-function mergeRenderDeps(runtime: ValueRuntime, ...allExpressions: Expression[][]) {
-  const set = new Set<Values.ClassInstanceValue>()
-  for (const expressions of allExpressions) {
-    expressions.reduce((deps, expr): Set<Values.ClassInstanceValue> => {
-      return union(deps, expr.renderDependencies(runtime))
-    }, set)
-  }
-  return set
-}
-
 /**
  * toCode formatting helper. Calls 'toCode' on every expression, then wraps it
  * in lhs/rhs using wrapStrings helper, which handles wrapping max
@@ -8893,6 +8890,16 @@ function allDependencies(expressions: Expression[]) {
 
 function allProvides(expressions: Expression[]) {
   return expressions.reduce((set, expr) => union(set, expr.provides()), new Set<string>())
+}
+
+function mergeRenderDeps(runtime: ValueRuntime, ...allExpressions: Expression[][]) {
+  let set = new Set<Values.ClassInstanceValue>()
+  for (const expressions of allExpressions) {
+    set = expressions.reduce((deps, expr): Set<Values.ClassInstanceValue> => {
+      return union(deps, expr.renderDependencies(runtime))
+    }, set)
+  }
+  return set
 }
 
 function formatComments(comments: Comment[]) {

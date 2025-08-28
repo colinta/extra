@@ -86,6 +86,11 @@ beforeEach(() => {
         node.text = value.viewPrintable()
       }
     },
+    updateProp(node: Element, prop: string, value: Values.Value) {
+      if (node.is === 'element') {
+        node.attrs.set(prop, value.viewPrintable())
+      }
+    },
     appendElement(container: Element, child: Element) {
       if (container.is === 'element') {
         container.children.push(child)
@@ -169,6 +174,23 @@ describe('module', () => {
           ],
         }),
       ]),
+      c([
+        'increment-prop',
+        'Increment',
+        element({
+          tag: 'p',
+          attrs: new Map([['id', '0']]),
+          children: [
+            text('\n  '),
+            element({
+              tag: 'button',
+              attrs: new Map([['onClick', expect.anything()]]),
+              children: [text('@count')],
+            }),
+            text('\n'),
+          ],
+        }),
+      ]),
     ).run(([filename, name, expectedResult], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should render '${filename}'`, () => {
         const path = join(__dirname, `app/${filename}.extra`)
@@ -210,6 +232,26 @@ describe('module', () => {
               tag: 'button',
               attrs: new Map([['onClick', expect.anything()]]),
               children: [text('@count = '), text('1')],
+            }),
+            text('\n'),
+          ],
+        }),
+      ]),
+      c([
+        'increment-prop',
+        'Increment',
+        (result: any) => {
+          result.children[1].attrs.get('onClick').call()
+        },
+        element({
+          tag: 'p',
+          attrs: new Map([['id', '1']]),
+          children: [
+            text('\n  '),
+            element({
+              tag: 'button',
+              attrs: new Map([['onClick', expect.anything()]]),
+              children: [text('@count')],
             }),
             text('\n'),
           ],

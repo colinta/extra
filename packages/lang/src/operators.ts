@@ -1,6 +1,7 @@
 import {err, mapAll, ok, type Result} from '@extra-lang/result'
 import * as Types from './types'
 import * as Values from './values'
+import * as Nodes from './nodes'
 import {
   MutableTypeRuntime,
   MutableValueRuntime,
@@ -2863,6 +2864,10 @@ class PropertyAccessOperator extends PropertyChainOperator {
     return this.args[0].dependencies()
   }
 
+  renderDependencies(runtime: ValueRuntime) {
+    return this.args[0].renderDependencies(runtime)
+  }
+
   relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
     const rhs = this.args[1]
     if (!(rhs instanceof Expressions.Identifier)) {
@@ -2896,24 +2901,30 @@ class PropertyAccessOperator extends PropertyChainOperator {
     return ok(Types.AllType)
   }
 
+  rhsName(): GetRuntimeResult<string> {
+    const [, rhsExpr] = this.args
+    if (!(rhsExpr instanceof Expressions.Identifier)) {
+      return err(new RuntimeError(rhsExpr, expectedType('property name', rhsExpr)))
+    }
+    return ok(rhsExpr.name)
+  }
+
   chainOperatorType(
     _runtime: TypeRuntime,
     lhs: Types.Type,
     _lhsExpr: Expression,
     rhsExpr: Expression,
   ): GetTypeResult {
-    if (!(rhsExpr instanceof Expressions.Identifier)) {
-      return err(new RuntimeError(rhsExpr, expectedType('property name', rhsExpr)))
-    }
+    return this.rhsName().map(rhsName => {
+      const rhType = lhs.propAccessType(rhsName)
+      if (!rhType) {
+        return err(
+          new RuntimeError(rhsExpr, `Property '${rhsName}' does not exist on ${lhs.toCode()}`),
+        )
+      }
 
-    const rhType = lhs.propAccessType(rhsExpr.name)
-    if (!rhType) {
-      return err(
-        new RuntimeError(rhsExpr, `Property '${rhsExpr.name}' does not exist on ${lhs.toCode()}`),
-      )
-    }
-
-    return ok(rhType)
+      return ok(rhType)
+    })
   }
 
   operatorEval(
@@ -2923,22 +2934,42 @@ class PropertyAccessOperator extends PropertyChainOperator {
     lhsExpr: Expression,
     rhsExpr: Expression,
   ): GetValueResult {
-    if (!(rhsExpr instanceof Expressions.Identifier)) {
-      return err(new RuntimeError(rhsExpr, expectedType('property name', rhsExpr)))
-    }
+    return this.rhsName().map(rhsName => {
+      const value = lhs.propValue(rhsName)
+      if (!value) {
+        const lhsType = getChildType(this, lhsExpr, runtime).value
+        return err(
+          new RuntimeError(
+            rhsExpr,
+            `'${rhsExpr}' is not a property of '${lhsExpr}' ${lhsType ? ` (type: ${lhsType})` : ''}`,
+          ),
+        )
+      }
 
-    const value = lhs.propValue(rhsExpr.name)
-    if (!value) {
-      const lhsType = getChildType(this, lhsExpr, runtime).value
-      return err(
-        new RuntimeError(
-          rhsExpr,
-          `'${rhsExpr}' is not a property of '${lhsExpr}' ${lhsType ? ` (type: ${lhsType})` : ''}`,
+      return ok(value)
+    })
+  }
+
+  render(runtime: ValueRuntime) {
+    const [lhs] = this.args
+    return lhs
+      .render(runtime)
+      .map(lhsNode =>
+        this.rhsName().map(rhsName =>
+          lhs
+            .eval(runtime)
+            .map(
+              lhsValue =>
+                new Nodes.PropertyAccessNode(
+                  () => lhsValue.propValue(rhsName)!,
+                  this.renderDependencies(runtime),
+                  lhsNode,
+                  rhsName,
+                  lhsValue.propValue(rhsName)!,
+                ),
+            ),
         ),
       )
-    }
-
-    return ok(value)
   }
 
   toCode(prevPrecedence = 0): string {

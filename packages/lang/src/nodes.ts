@@ -6,6 +6,7 @@ export interface DOM<T> {
   createElement(tag: Values.NamedViewValue, attrs: Map<string, Values.Value>, send: Send): T
   createTextNode(text: Values.Value): T
   updateTextNode(node: T, text: Values.Value): void
+  updateProp(node: T, prop: string, value: Values.Value): void
   appendElement(container: T, child: T): T
   removeElement(container: T, child: T): T
 }
@@ -60,6 +61,20 @@ export abstract class Node {
       child._dependencies(deps)
     }
     return deps
+  }
+
+  updateValue<T>(dom: DOM<T>, subject: Values.Value, value: Values.Value) {
+    if (this.parentNode && this.firstRender) {
+      dom.updateTextNode(this.firstRender, value)
+    } else if (this.parentAttrNode) {
+      this.parentAttrNode.receive(
+        dom,
+        new Values.MessageValue(subject, {
+          is: 'prop',
+          value,
+        }),
+      )
+    }
   }
 }
 
@@ -117,21 +132,79 @@ export class StateReferenceNode extends ValueNode {
   }
 
   receive<T>(dom: DOM<T>, message: Values.MessageValue) {
-    if (!this.firstRender) {
-      return
+    this.updateValue(dom, message.subject, this.reevaluateFn())
+  }
+}
+
+/**
+ * Filters messages that don't apply to this property access.
+ */
+export class PropertyAccessNode extends ValueNode {
+  constructor(
+    readonly reevaluateFn: () => Values.Value,
+    deps: Set<Values.Value>,
+    readonly lhsNode: Node,
+    readonly prop: string,
+    value: Values.Value,
+  ) {
+    super(deps, value)
+  }
+
+  receive<T>(dom: DOM<T>, message: Values.MessageValue) {
+    if (message.payload.is === 'assignment') {
+      if (message.payload.prop !== this.prop) {
+        return
+      }
+
+      this.updateValue(dom, message.subject, this.reevaluateFn())
     }
-    dom.updateTextNode(this.firstRender, this.reevaluateFn())
   }
 }
 
 export class ArrayValueNode extends ChildrenNode {}
 
 /**
+ * Wraps a node, combining it with a prop attribute name. Changes to the node
+ * map to a prop update.
+ */
+export class JSXPropNode extends Node {
+  constructor(
+    readonly name: string,
+    readonly node: Node,
+  ) {
+    super(new Set(), [node])
+    node.parentAttrNode = this
+  }
+
+  get value() {
+    return this.node.value
+  }
+
+  renderInto<T>(dom: DOM<T>, el: T, send: Send): T {
+    throw 'N/A'
+  }
+
+  receive<T>(dom: DOM<T>, message: Values.MessageValue) {
+    if (message.payload.is !== 'prop' || !this.parentAttrNode) {
+      return
+    }
+    this.parentAttrNode.receive(
+      dom,
+      new Values.MessageValue(message.subject, {
+        is: 'jsx-prop',
+        prop: this.name,
+        value: message.payload.value,
+      }),
+    )
+  }
+}
+
+/**
  * A named JSX-tag that is created externally (aka a "hosted" component,
  * borrowing React terminology).
  *     <p>…</p>, <input />, etc.
  */
-export class NamedNode extends Node {
+export class JSXNamedNode extends Node {
   constructor(
     deps: Set<Values.Value>,
     readonly tag: Values.NamedViewValue,
@@ -144,6 +217,15 @@ export class NamedNode extends Node {
     attrNodes.forEach(node => (node.parentAttrNode = this))
     if (childNode) {
       childNode.parentNode = this
+    }
+  }
+
+  receive<T>(dom: DOM<T>, message: Values.MessageValue) {
+    if (!this.firstRender) {
+      return
+    }
+    if (message.payload.is === 'jsx-prop') {
+      dom.updateProp(this.firstRender, message.payload.prop, message.payload.value)
     }
   }
 
@@ -172,7 +254,7 @@ export class NamedNode extends Node {
  *       <footer … />
  *     </main>
  */
-export class FragmentNode extends Node {
+export class JSXFragmentNode extends Node {
   constructor(
     deps: Set<Values.Value>,
     readonly childNode: ChildrenNode,
