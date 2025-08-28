@@ -1,4 +1,4 @@
-view Button {
+view Increment {
   @count: Int = 0
 
   fn incr() =>

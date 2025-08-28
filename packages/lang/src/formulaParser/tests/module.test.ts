@@ -108,7 +108,7 @@ describe('module', () => {
       c(['component']),
       c(['minimal']),
       c(['small']),
-      c(['button']),
+      c(['increment-text']),
     ).run(([filename], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse view '${filename}'`, () => {
         const path = join(__dirname, `app/${filename}.extra`)
@@ -154,8 +154,8 @@ describe('module', () => {
         }),
       ]),
       c([
-        'button',
-        'Button',
+        'increment-text',
+        'Increment',
         element({
           tag: 'p',
           children: [
@@ -197,8 +197,8 @@ describe('module', () => {
   describe('message passing', () => {
     cases<[string, string, (result: any) => void, any]>(
       c([
-        'button',
-        'Button',
+        'increment-text',
+        'Increment',
         (result: any) => {
           result.children[1].attrs.get('onClick').call()
         },
