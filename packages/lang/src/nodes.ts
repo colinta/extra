@@ -64,9 +64,7 @@ export abstract class Node {
   }
 
   updateValue<T>(dom: DOM<T>, subject: Values.Value, value: Values.Value) {
-    if (this.parentNode && this.firstRender) {
-      dom.updateTextNode(this.firstRender, value)
-    } else if (this.parentAttrNode) {
+    if (this.parentAttrNode) {
       this.parentAttrNode.receive(
         dom,
         new Values.MessageValue(subject, {
@@ -74,6 +72,14 @@ export abstract class Node {
           value,
         }),
       )
+    } else if (this.parentNode) {
+      // this.parentNode.receive(
+      //   dom,
+      //   new Values.MessageValue(subject, {
+      //     is: 'prop',
+      //     value,
+      //   }),
+      // )
     }
   }
 }
@@ -85,10 +91,11 @@ export class ChildrenNode extends Node {
     deps: Set<Values.Value>,
     readonly nodes: Node[],
   ) {
-    super(deps, nodes)
+    const childNodes = nodes.map(node => new JSXChildNode(node))
+    super(deps, childNodes)
 
-    nodes.forEach(node => (node.parentNode = this))
-    this.value = Values.array(this.nodes.map(node => node.value))
+    childNodes.forEach(node => (node.parentNode = this))
+    this.value = Values.array(nodes.map(node => node.value))
     Object.defineProperty(this, 'value', {enumerable: false})
   }
 
@@ -106,8 +113,8 @@ export class ChildrenNode extends Node {
  */
 export class ValueNode extends Node {
   constructor(
-    deps: Set<Values.Value>,
     readonly value: Values.Value,
+    deps: Set<Values.Value> = new Set(),
   ) {
     super(deps, [])
   }
@@ -122,17 +129,21 @@ export class ValueNode extends Node {
  */
 export class StateReferenceNode extends ValueNode {
   constructor(
-    readonly reevaluateFn: () => Values.Value,
     deps: Set<Values.Value>,
     readonly thisValue: Values.ClassInstanceValue,
     readonly prop: string,
-    value: Values.Value,
   ) {
-    super(deps, value)
+    super(thisValue.propValue(prop)!, deps)
   }
 
   receive<T>(dom: DOM<T>, message: Values.MessageValue) {
-    this.updateValue(dom, message.subject, this.reevaluateFn())
+    if (message.subject !== this.thisValue) {
+      throw `Unexpected receive, subject: ${message.subject}`
+    }
+
+    if (message.payload.is === 'assign-state') {
+      this.updateValue(dom, message.subject, message.payload.value)
+    }
   }
 }
 
@@ -141,22 +152,24 @@ export class StateReferenceNode extends ValueNode {
  */
 export class PropertyAccessNode extends ValueNode {
   constructor(
-    readonly reevaluateFn: () => Values.Value,
-    deps: Set<Values.Value>,
+    readonly lhsValue: Values.Value,
     readonly lhsNode: Node,
     readonly prop: string,
-    value: Values.Value,
   ) {
-    super(deps, value)
+    super(lhsValue.propValue(prop)!)
   }
 
   receive<T>(dom: DOM<T>, message: Values.MessageValue) {
-    if (message.payload.is === 'assignment') {
+    if (message.subject !== this.lhsValue) {
+      throw `Unexpected receive, subject: ${message.subject}`
+    }
+
+    if (message.payload.is === 'assign-state') {
       if (message.payload.prop !== this.prop) {
         return
       }
 
-      this.updateValue(dom, message.subject, this.reevaluateFn())
+      this.updateValue(dom, message.subject, this.lhsValue.propValue(this.prop)!)
     }
   }
 }
@@ -188,6 +201,7 @@ export class JSXPropNode extends Node {
     if (message.payload.is !== 'prop' || !this.parentAttrNode) {
       return
     }
+
     this.parentAttrNode.receive(
       dom,
       new Values.MessageValue(message.subject, {
@@ -196,6 +210,32 @@ export class JSXPropNode extends Node {
         value: message.payload.value,
       }),
     )
+  }
+}
+
+/**
+ * Wraps a node, turning it into a child node text update.
+ */
+export class JSXChildNode extends Node {
+  constructor(readonly node: Node) {
+    super(new Set(), [node])
+    node.parentNode = this
+  }
+
+  get value() {
+    return this.node.value
+  }
+
+  renderInto<T>(dom: DOM<T>, el: T, send: Send): T {
+    throw 'N/A'
+  }
+
+  receive<T>(dom: DOM<T>, message: Values.MessageValue) {}
+
+  updateValue<T>(dom: DOM<T>, subject: Values.Value, value: Values.Value) {
+    if (this.firstRender) {
+      dom.updateTextNode(this.firstRender, value)
+    }
   }
 }
 
@@ -331,20 +371,26 @@ export class ViewInstanceNode extends InvocableNode {
     }
   }
 
-  renderInto<T>(dom: DOM<T>, parentElement: T, send: Send): T {
+  renderInto<T>(dom: DOM<T>, parentElement: T, sendToParent: Send): T {
     const thisSend = (message: Values.MessageValue) => {
       if (message.subject === this.view) {
         this.receive(dom, message)
       } else {
-        send(message)
+        sendToParent(message)
       }
     }
     return super.renderInto(dom, parentElement, thisSend)
   }
 
   receive<T>(dom: DOM<T>, message: Values.MessageValue) {
-    if (message.payload.is === 'assignment') {
+    if (message.subject !== this.view) {
+      throw `Unexpected receive, subject: ${message.subject}`
+    }
+
+    if (message.payload.is === 'assign-state') {
       this.view.props.set(message.payload.prop, message.payload.value)
+    } else {
+      throw `TODO: ViewInstanceNode.receive('${message.payload.is}')`
     }
 
     const dependents = this.dependencies().get(message.subject)

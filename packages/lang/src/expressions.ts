@@ -109,8 +109,11 @@ export function isRuntimeError(error: any): error is RuntimeError {
  * compound expressions like Arrays, Objects, etc.
  *
  * Expressions can be stringified (`toCode()`), or if given a runtime they can
- * determine their Type (`getType(TypeRuntime)`) or Value (`eval(ValueRuntime)`)
- * or View (`render(ValueRuntime)`).
+ * determine their Type (`getType(TypeRuntime)`) or Value
+ * (`eval(ValueRuntime)`). But the real magic comes in running
+ * `render(runtime)` - the expectation is that all the types have been resolved,
+ * and the runtime and types are used to create runtime nodes that are able to
+ * update the UI based on state changes.
  *
  * All these functions can result in an error. The contract is that if
  * `getType()` returns a value (ie type checking is successful), `eval()` will
@@ -177,6 +180,7 @@ export abstract class Expression {
    * Type of runtime value
    */
   abstract getType(runtime: TypeRuntime): GetTypeResult
+
   /**
    * Converts a "type expression" into the type it represents (usually a `TypeConstructor`).
    *
@@ -187,23 +191,21 @@ export abstract class Expression {
   getAsTypeExpression(_runtime: TypeRuntime): GetTypeResult {
     return err(new RuntimeError(this, `Invalid argument type ${this}`))
   }
+
   /**
    * Returns a Value for the expression. Literals return their literal value,
    * Operations perform their operation, etc.
    */
   abstract eval(runtime: ValueRuntime): GetValueResult
+
   /**
    * Renders the expression, returning a runtime "Node" that can respond to
    * messages via `send`.
    */
   render(runtime: ValueRuntime): GetNodeResult {
     return this.eval(runtime).map(
-      value => new Nodes.ValueNode(this.renderDependencies(runtime), value),
+      value => new Nodes.ValueNode(value, this.renderDependencies(runtime)),
     )
-  }
-
-  renderDependencies(_runtime: ValueRuntime): Set<Values.ClassInstanceValue> {
-    return new Set()
   }
 
   /**
@@ -212,7 +214,7 @@ export abstract class Expression {
    * (only the `body` receives the assignments - and, technically, subsequent
    * assignments within the same `let` expression).
    *
-   * `evalWithRuntime` is not called universally - it is only invoked from
+   * `evalReturningRuntime` is not called universally - it is only invoked from
    * `and`, `or`, `if`, `guard`, and `switch` expressions.
    */
   evalReturningRuntime(runtime: ValueRuntime): GetValueRuntimeResult {
@@ -331,6 +333,14 @@ export abstract class Expression {
    * Returns the names of all the variables this expression provides
    */
   provides(): Set<string> {
+    return new Set()
+  }
+
+  /**
+   * Specifically refers to StateReference instances, those are the starting
+   * point for state changes.
+   */
+  renderDependencies(_runtime: ValueRuntime): Set<Values.ClassInstanceValue> {
     return new Set()
   }
 }
@@ -827,16 +837,8 @@ export class StateReference extends Reference {
     if (!thisValue) {
       throw new RuntimeError(this, '`this` is not available in this context')
     }
-    return this.eval(runtime).map(
-      value =>
-        new Nodes.StateReferenceNode(
-          () => thisValue.propValue(this.name)!,
-          this.renderDependencies(runtime),
-          thisValue,
-          this.name,
-          value,
-        ),
-    )
+
+    return ok(new Nodes.StateReferenceNode(this.renderDependencies(runtime), thisValue, this.name))
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {

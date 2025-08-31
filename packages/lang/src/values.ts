@@ -1950,9 +1950,9 @@ export class ModuleValue extends Value {
 }
 
 type MessagePayload =
-  | {is: 'assignment'; prop: string; value: Value}
-  | {is: 'prop'; value: Value}
+  | {is: 'assign-state'; prop: string; value: Value}
   | {is: 'jsx-prop'; prop: string; value: Value}
+  | {is: 'prop'; value: Value}
 
 export class MessageValue extends Value {
   constructor(
@@ -1963,7 +1963,7 @@ export class MessageValue extends Value {
   }
 
   static assignment(subject: Value, prop: string, value: Value) {
-    return new MessageValue(subject, {is: 'assignment', prop, value})
+    return new MessageValue(subject, {is: 'assign-state', prop, value})
   }
 
   getType() {

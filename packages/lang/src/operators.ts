@@ -2958,16 +2958,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
         this.rhsName().map(rhsName =>
           lhs
             .eval(runtime)
-            .map(
-              lhsValue =>
-                new Nodes.PropertyAccessNode(
-                  () => lhsValue.propValue(rhsName)!,
-                  this.renderDependencies(runtime),
-                  lhsNode,
-                  rhsName,
-                  lhsValue.propValue(rhsName)!,
-                ),
-            ),
+            .map(lhsValue => new Nodes.PropertyAccessNode(lhsValue, lhsNode, rhsName)),
         ),
       )
   }
