@@ -10,7 +10,6 @@ import * as Narrowed from './narrowed'
 import * as Types from './types'
 import {SPLAT_OP, KWARG_OP} from './types'
 import * as Values from './values'
-import * as Nodes from './nodes'
 import {
   assignRelationshipsToRuntime,
   combineEitherTypeRuntimes,
@@ -106,53 +105,31 @@ export function isRuntimeError(error: any): error is RuntimeError {
 
 /**
  * Each Expression represents a section of code, like a number, reference, or
- * compound expressions like Arrays, Objects, etc.
+ * compound expressions like Arrays, Objects, etc. They store references to the
+ * original source, so that error messages can reference the code by line and
+ * character.
  *
- * Expressions can be stringified (`toCode()`), or if given a runtime they can
- * determine their Type (`getType(TypeRuntime)`) or Value
- * (`eval(ValueRuntime)`). But the real magic comes in running
- * `render(runtime)` - the expectation is that all the types have been resolved,
- * and the runtime and types are used to create runtime nodes that are able to
- * update the UI based on state changes.
- *
- * All these functions can result in an error. The contract is that if
- * `getType()` returns a value (ie type checking is successful), `eval()` will
- * return a value.
+ * Expressions are compiled, which emit Node objects. Nodes are annotated with a
+ * type (all Nodes have a type, which makes them not quite 1:1 with
+ * Expressions), and can be compiled into more useful outputs, like normalized
+ * code, JavaScript, WASM (one day!), etx.
  */
 export abstract class Expression {
-  resolvedType: Types.Type | undefined
-
   constructor(
     readonly range: Range,
+    /**
+     * Comments are stored in a buffer when they are skipped as whitespace, and
+     * when a new expression is reached, the buffer is cleared and passed in as
+     * `precedingComments`.
+     */
     public precedingComments: Comment[],
     /**
      * These are most often comments attached to the same line as the expression.
      */
     public followingComments: Comment[] = [],
   ) {
-    // rewrite `getType` to  store the return value in `resolvedType`, for use
-    // in render() this is a hacky way of avoiding a mirror class tree that
-    // duplicates Expression, with the addition of a required 'type' property.
-    // Ideally there would be some tree structure of expressions that includes
-    // the type, but I don't have the time right now to explore that.
-    const getType: (runtime: TypeRuntime, ...rem: any[]) => GetTypeResult = this.getType.bind(this)
-    let resolvedRuntime = undefined as TypeRuntime | undefined
-    this.getType = (runtime: TypeRuntime, ...args: any[]) => {
-      if (resolvedRuntime !== runtime) {
-        this.resolvedType = undefined
-      } else if (this.resolvedType) {
-        return ok(this.resolvedType)
-      }
-
-      return getType(runtime, ...args).map(type => {
-        this.resolvedType = type
-        return type
-      })
-    }
-    Object.defineProperty(this, 'getType', {enumerable: false})
     Object.defineProperty(this, 'precedingComments', {enumerable: false})
     Object.defineProperty(this, 'followingComments', {enumerable: false})
-    Object.defineProperty(this, 'resolvedType', {enumerable: false})
     Object.defineProperty(this, 'range', {enumerable: false})
   }
 
@@ -167,7 +144,8 @@ export abstract class Expression {
   }
 
   /**
-   * For debugging purposes (makes it clear what was parsed, and order of operations)
+   * For debugging purposes (makes it clear what was parsed / order of
+   * operations)
    */
   abstract toLisp(): string
 
@@ -197,9 +175,15 @@ export abstract class Expression {
   }
 
   /**
-   * Type of runtime value
+   * The type of this expression
    */
   abstract getType(runtime: TypeRuntime): GetTypeResult
+
+  /**
+   * The compiled "Node", which roughly corresponds to an expression, but
+   * includes Type information.
+   */
+  abstract compile(runtime: TypeRuntime): GetNodeResult
 
   /**
    * Converts a "type expression" into the type it represents (usually a `TypeConstructor`).
@@ -217,16 +201,6 @@ export abstract class Expression {
    * Operations perform their operation, etc.
    */
   abstract eval(runtime: ValueRuntime): GetValueResult
-
-  /**
-   * Renders the expression, returning a runtime "Node" that can respond to
-   * messages via `send`.
-   */
-  render(runtime: ValueRuntime): GetNodeResult {
-    return this.eval(runtime).map(
-      value => new Nodes.ValueNode(value, this.renderDependencies(runtime)),
-    )
-  }
 
   /**
    * MatchExpressions return a modified runtime, effectively passing assignments
@@ -854,15 +828,6 @@ export class StateReference extends Reference {
     return err(new RuntimeError(this, `Cannot get value of state variable '@${this.name}'`))
   }
 
-  render(runtime: ValueRuntime): GetNodeResult {
-    const thisValue = runtime.getThisValue()
-    if (!thisValue) {
-      throw new RuntimeError(this, '`this` is not available in this context')
-    }
-
-    return ok(new Nodes.StateReferenceNode(this.renderDependencies(runtime), thisValue, this.name))
-  }
-
   replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
     const thisType = runtime.getThisType()
     if (!thisType) {
@@ -1069,12 +1034,6 @@ export class ArrayExpression extends Expression {
     )
       .map(values => values.flat())
       .map(values => new Values.ArrayValue(values))
-  }
-
-  render(runtime: ValueRuntime): GetNodeResult {
-    return mapAll(this.values.map(value => value.render(runtime))).map(
-      nodes => new Nodes.ArrayValueNode(this.renderDependencies(runtime), nodes),
-    )
   }
 }
 
@@ -5125,161 +5084,6 @@ abstract class JsxExpression extends Expression {
     // cannot return a Nodes.NodeValue, because nodes.ts depends on values.ts
     return err(new RuntimeError(this, `JsxExpression cannot be eval'd (try 'render' instead)`))
   }
-
-  renderFragment(runtime: ValueRuntime, children: Nodes.ChildrenNode | undefined): GetNodeResult {
-    if (this.props.length) {
-      return err(new RuntimeError(this, `Fragment Views should not have args`))
-    }
-
-    if (!children) {
-      return err(
-        new RuntimeError(this, `Fragment Views should never be self-closing (found '</>')`),
-      )
-    }
-
-    return ok(new Nodes.JSXFragmentNode(this.renderDependencies(runtime), children))
-  }
-
-  render(runtime: ValueRuntime): GetNodeResult {
-    return mapAll(this.children?.map(child => child.render(runtime)) ?? []).map(childrenNodes => {
-      const children = this.children
-        ? new Nodes.ChildrenNode(this.renderDependencies(runtime), childrenNodes)
-        : undefined
-
-      if (this.nameRef) {
-        const refValue = runtime.getViewValue(this.nameRef.name)
-        if (!refValue) {
-          return err(new RuntimeError(this, `No View named '${this.nameRef}'`))
-        }
-
-        return this.renderValue(runtime, refValue, children)
-      }
-
-      return this.renderFragment(runtime, children)
-    })
-  }
-
-  renderValue(
-    runtime: ValueRuntime,
-    refValue:
-      | Values.NamedViewValue
-      | Values.ViewFormulaValue<Nodes.Node>
-      | Values.ViewClassDefinitionValue,
-    children: Nodes.ChildrenNode | undefined,
-  ) {
-    return mapAll(
-      this.props.map(namedArg => {
-        const name = namedArg.alias
-        return namedArg.value
-          .render(runtime)
-          .map(node => [name, new Nodes.JSXPropNode(name, node)] as const)
-      }),
-    )
-      .map(propNodes => new Map(propNodes))
-      .map(propNodes => {
-        const valueArgs = Array.from(propNodes).map(([name, node]): [string, Values.Value] => [
-          name,
-          node.value,
-        ])
-        if (children) {
-          valueArgs.push(['children', children.value])
-        }
-
-        if (refValue instanceof Values.ViewFormulaValue) {
-          return this.renderViewFormula(runtime, refValue, children, propNodes, valueArgs)
-        }
-
-        if (refValue instanceof Values.ViewClassDefinitionValue) {
-          return this.renderViewInstance(runtime, refValue, children, propNodes, valueArgs)
-        }
-
-        return new Nodes.JSXNamedNode(
-          this.renderDependencies(runtime),
-          refValue,
-          propNodes,
-          children,
-        )
-      })
-  }
-
-  renderViewFormula(
-    runtime: ValueRuntime,
-    refValue: Values.ViewFormulaValue<Nodes.Node>,
-    children: Nodes.ChildrenNode | undefined,
-    propNodes: Map<string, Nodes.Node>,
-    valueArgs: [string, Values.Value][],
-  ) {
-    // to recap:
-    // # render(runtime)
-    // - we rendered all children
-    // - fetched the view from runtime (render(runtime))
-    // # renderValue(runtime, refValue, children)
-    // - rendered the props (args)
-    // - inserted 'children' into props (renderValue(runtime, refValue, children))
-    // - TODO: merge/insert context
-    // # renderViewFormula(runtime, refValue, children, ...)
-    // - since we have a ViewFormulaValue, we rendered the view (firstNode)
-    // - create a ViewFormulaNode
-    return refValue
-      .render(new Values.FormulaArgs(valueArgs))
-      .map(
-        firstNode =>
-          new Nodes.ViewFormulaNode(
-            this.renderDependencies(runtime),
-            refValue,
-            propNodes,
-            children,
-            firstNode,
-          ),
-      )
-  }
-
-  renderViewInstance(
-    runtime: ValueRuntime,
-    refValue: Values.ViewClassDefinitionValue,
-    children: Nodes.ChildrenNode | undefined,
-    propNodes: Map<string, Nodes.Node>,
-    valueArgs: [string, Values.Value][],
-  ) {
-    return refValue
-      .konstructor(refValue)
-      .call(new Values.FormulaArgs(valueArgs))
-      .map(instance => {
-        if (!(instance instanceof Values.ViewClassInstanceValue)) {
-          return err(
-            new RuntimeError(
-              this,
-              `Unexpected return value '${instance}' (${instance.constructor.name})`,
-            ),
-          )
-        }
-
-        return instance.render(new Values.FormulaArgs([])).map(
-          firstNode =>
-            // to recap:
-            // # render(runtime)
-            // - we rendered all children
-            // - fetched the view from runtime (render(runtime))
-            // # renderValue(runtime, refValue, children)
-            // - rendered the props (args)
-            // - inserted 'children' into props (renderValue(runtime, refValue, children))
-            // - TODO: merge/insert context
-            // # renderViewInstance(runtime, refValue, children, ...)
-            // - since we have a ViewClassDefinitionValue, we
-            //   instantiated the view (konstructor.call)
-            // - we rendered the view to get a firstNode
-            //   (ViewClassInstanceValue has a render formula)
-            // - create a ViewInstanceNode
-            new Nodes.ViewInstanceNode(
-              this.renderDependencies(runtime),
-              instance,
-              propNodes,
-              children,
-              firstNode,
-            ),
-        )
-      })
-  }
 }
 
 export class NamedJsxExpression extends JsxExpression {
@@ -5360,10 +5164,11 @@ export class ViewFormulaExpression extends NamedFormulaExpression {
     const render = (
       args: Values.FormulaArgs,
       boundThis: Values.ClassInstanceValue | undefined,
-    ): Result<Nodes.Node, RuntimeError> =>
-      argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime =>
-        this.body.render(nextRuntime),
-      )
+    ): Result<any, RuntimeError> =>
+      argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime => {
+        // this.body.render(nextRuntime)
+        throw new RuntimeError(this, 'TODO: getFormulaValueWith')
+      })
 
     return new Values.ViewFormulaValue(this.nameRef.name, fn, undefined, render)
   }

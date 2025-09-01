@@ -1,7 +1,6 @@
 import {err, mapAll, ok, type Result} from '@extra-lang/result'
 import * as Types from './types'
 import * as Values from './values'
-import * as Nodes from './nodes'
 import {
   MutableTypeRuntime,
   MutableValueRuntime,
@@ -2936,19 +2935,6 @@ class PropertyAccessOperator extends PropertyChainOperator {
 
       return ok(value)
     })
-  }
-
-  render(runtime: ValueRuntime) {
-    const [lhs] = this.args
-    return lhs
-      .render(runtime)
-      .map(lhsNode =>
-        this.rhsName().map(rhsName =>
-          lhs
-            .eval(runtime)
-            .map(lhsValue => new Nodes.PropertyAccessNode(lhsValue, lhsNode, rhsName)),
-        ),
-      )
   }
 
   toCode(prevPrecedence = 0): string {
