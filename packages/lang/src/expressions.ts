@@ -130,6 +130,26 @@ export abstract class Expression {
      */
     public followingComments: Comment[] = [],
   ) {
+    // rewrite `getType` to  store the return value in `resolvedType`, for use
+    // in render() this is a hacky way of avoiding a mirror class tree that
+    // duplicates Expression, with the addition of a required 'type' property.
+    // Ideally there would be some tree structure of expressions that includes
+    // the type, but I don't have the time right now to explore that.
+    const getType: (runtime: TypeRuntime, ...rem: any[]) => GetTypeResult = this.getType.bind(this)
+    let resolvedRuntime = undefined as TypeRuntime | undefined
+    this.getType = (runtime: TypeRuntime, ...args: any[]) => {
+      if (resolvedRuntime !== runtime) {
+        this.resolvedType = undefined
+      } else if (this.resolvedType) {
+        return ok(this.resolvedType)
+      }
+
+      return getType(runtime, ...args).map(type => {
+        this.resolvedType = type
+        return type
+      })
+    }
+    Object.defineProperty(this, 'getType', {enumerable: false})
     Object.defineProperty(this, 'precedingComments', {enumerable: false})
     Object.defineProperty(this, 'followingComments', {enumerable: false})
     Object.defineProperty(this, 'resolvedType', {enumerable: false})
@@ -473,7 +493,7 @@ export class LiteralNull extends Literal {
   }
 
   eval(): GetValueResult {
-    return okNull
+    return ok(Values.NullValue)
   }
 }
 
@@ -503,7 +523,7 @@ export class LiteralTrue extends Literal {
   }
 
   eval(): GetValueResult {
-    return okTrue
+    return okBoolean(true)
   }
 }
 
@@ -533,7 +553,7 @@ export class LiteralFalse extends Literal {
   }
 
   eval(): GetValueResult {
-    return okFalse
+    return okBoolean(false)
   }
 }
 
@@ -2098,6 +2118,7 @@ export class SpreadObjectArgument extends SpreadArgument {
 
 /**
  * A spread argument passed to an array
+ *     [...arg]
  */
 export class SpreadArrayArgument extends SpreadArgument {
   readonly alias = undefined
@@ -2108,7 +2129,7 @@ export class SpreadArrayArgument extends SpreadArgument {
       // a Set into an Array. Similar for Dict - could show how to extract the values
       // into an Array/Set.
       if (!(type instanceof Types.ArrayType)) {
-        return err(new RuntimeError(this, 'Expected a Array, found ' + type.constructor.name))
+        return err(new RuntimeError(this, 'Expected an Array, found ' + type.constructor.name))
       }
 
       return type
@@ -2118,7 +2139,7 @@ export class SpreadArrayArgument extends SpreadArgument {
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.ArrayValue> {
     return this.value.eval(runtime).map(value => {
       if (!(value instanceof Values.ArrayValue)) {
-        return err(new RuntimeError(this, 'Expected a Array, found ' + value.constructor.name))
+        return err(new RuntimeError(this, 'Expected an Array, found ' + value.constructor.name))
       }
 
       return value
@@ -2162,7 +2183,7 @@ export class SpreadSetArgument extends SpreadArgument {
   getType(runtime: TypeRuntime): GetRuntimeResult<Types.SetType> {
     return getChildType(this, this.value, runtime).map(type => {
       // TODO: could support Array here - better to show an error message about how to turn
-      // a Array into an Set. Similar for Dict - could show how to extract the values
+      // an Array into an Set. Similar for Dict - could show how to extract the values
       // into an Array/Set.
       if (!(type instanceof Types.SetType)) {
         return err(new RuntimeError(this, 'Expected a Set, found ' + type.toCode()))
@@ -5961,7 +5982,7 @@ export class MatchEnumExpression extends MatchExpression {
 
   evalWithSubject(_runtime: ValueRuntime, _op: Expression, lhs: Values.Value) {
     if (!(lhs instanceof Values.EnumValue)) {
-      return okFalse
+      return okBoolean(false)
     }
 
     return okBoolean(lhs.name === this.name)
@@ -6033,7 +6054,7 @@ export abstract class MatchLiteral extends MatchExpression {
 
   evalWithSubject(_runtime: ValueRuntime, _op: Expression, lhs: Values.Value) {
     if (this.literal.value.isInt() && !lhs.isInt()) {
-      return okFalse
+      return okBoolean(false)
     }
     return okBoolean(this.literal.value.isEqual(lhs))
   }
@@ -6176,13 +6197,13 @@ export class MatchUnaryRange extends MatchExpression {
       switch (this.op) {
         case '=':
           if (exclusiveMin || exclusiveMax || !min || !max || min.value !== max.value) {
-            return okFalse
+            return okBoolean(false)
           }
           return comparisonOperation(op, min, this.start.value, (lhs, rhs) => lhs === rhs)
         case '>':
         case '>=':
           if (!min) {
-            return okFalse
+            return okBoolean(false)
           }
           return comparisonOperation(op, min, this.start.value, (lhsMin, match) =>
             // exclusiveMin implies that the range's minimum is open-ended:
@@ -6197,7 +6218,7 @@ export class MatchUnaryRange extends MatchExpression {
         case '<':
         case '<=':
           if (!max) {
-            return okFalse
+            return okBoolean(false)
           }
           // see above discussion for why exclusiveMax or this.op === '<=' use
           // the '<=' comparison, and only inclusive ranges matching against '<'
@@ -6209,7 +6230,7 @@ export class MatchUnaryRange extends MatchExpression {
     }
 
     if (!lhs.isFloat()) {
-      return okFalse
+      return okBoolean(false)
     }
     switch (this.op) {
       case '=':
@@ -6357,7 +6378,7 @@ export class MatchBinaryRange extends MatchExpression {
       const [min, exclusiveMin] = lhs.start ?? []
       const [max, exclusiveMax] = lhs.stop ?? []
       if (!min || !max) {
-        return okFalse
+        return okBoolean(false)
       }
 
       // these comparisons are similarly calculated as MatchUnaryRange
@@ -6371,7 +6392,7 @@ export class MatchBinaryRange extends MatchExpression {
           : (lhsMin, matchMin) => lhsMin > matchMin
       return comparisonOperation(op, min, this.start.value, minCompare).map(minOk => {
         if (!minOk.isEqual(Values.TrueValue)) {
-          return okFalse
+          return okBoolean(false)
         }
         const maxCompare: (lhs: number, rhs: number) => boolean =
           exclusiveMax || this.op === '...' || this.op === '..<'
@@ -6382,7 +6403,7 @@ export class MatchBinaryRange extends MatchExpression {
     }
 
     if (!lhs.isFloat()) {
-      return okFalse
+      return okBoolean(false)
     }
 
     const minCompare: (lhsMin: number, matchMin: number) => boolean =
@@ -6391,7 +6412,7 @@ export class MatchBinaryRange extends MatchExpression {
         : (lhsMin, matchMin) => lhsMin > matchMin
     return comparisonOperation(op, lhs, this.start.value, minCompare).map(minOk => {
       if (!minOk.isEqual(Values.TrueValue)) {
-        return okFalse
+        return okBoolean(false)
       }
 
       const maxCompare: (lhsMax: number, matchMax: number) => boolean =
@@ -8770,7 +8791,7 @@ export function comparisonOperation(
   op: (lhs: number, rhs: number) => boolean,
 ): GetValueResult {
   if (lhs === Values.NaNValue || rhs === Values.NaNValue) {
-    return okFalse
+    return okBoolean(false)
   }
 
   if (lhs.isInt() && rhs.isInt()) {
@@ -8923,9 +8944,6 @@ function formatComments(comments: Comment[]) {
   return code
 }
 
-const okNull: GetValueResult = ok(Values.NullValue)
-const okFalse: GetValueResult = ok(Values.FalseValue)
-const okTrue: GetValueResult = ok(Values.TrueValue)
 function okBoolean(value: boolean): GetValueResult {
   return ok(Values.booleanValue(value))
 }

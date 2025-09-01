@@ -22,7 +22,7 @@ describe('repl tests', () => {
 
           const type = expr.value.getType(valueRuntime)
           if (type.isErr()) {
-            console.trace(type.error);
+            console.trace(type.error)
             throw type.error
           }
 
