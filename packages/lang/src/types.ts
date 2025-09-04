@@ -2671,10 +2671,7 @@ export class LiteralIntType extends LiteralFloatType {
   readonly is = 'literal-int'
   readonly narrowed: Narrowed.NarrowedInt
 
-  constructor(
-    value: number,
-    readonly magnitude = 0,
-  ) {
+  constructor(value: number) {
     super(Math.floor(value))
     this.narrowed = {min: value, max: value}
   }

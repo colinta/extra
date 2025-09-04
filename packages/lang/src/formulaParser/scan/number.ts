@@ -85,15 +85,6 @@ export function scanNumber(scanner: Scanner, expectedType: 'int' | 'float' | 'le
 
   const value = Number(numberToken)
   scanner.whereAmI(`scanNumber: ${numberToken} => ${value} (${numberType})`)
-  // number of binary digits
-  let magnitude = 0
-  if (base === 'binary') {
-    magnitude = numberToken.length - 2
-  } else if (base === 'octal') {
-    magnitude = 3 * (numberToken.length - 2)
-  } else if (base === 'hexadecimal') {
-    magnitude = 4 * (numberToken.length - 2)
-  }
 
   if (numberType === 'float') {
     return new Expressions.LiteralFloat(
@@ -106,6 +97,6 @@ export function scanNumber(scanner: Scanner, expectedType: 'int' | 'float' | 'le
   return new Expressions.LiteralInt(
     [range0, scanner.charIndex],
     scanner.flushComments(),
-    Values.int(value, magnitude, base),
+    Values.int(value, base),
   )
 }

@@ -15,10 +15,10 @@ export function float(value: number) {
   return new FloatValue(value)
 }
 
-export function int(value: number, magnitude: number, base: IntBase): IntValue
 export function int(value: number): IntValue
-export function int(value: number, magnitude = 0, base: IntBase = 'decimal') {
-  return new IntValue(value, magnitude, base)
+export function int(value: number, base: IntBase): IntValue
+export function int(value: number, base: IntBase = 'decimal') {
+  return new IntValue(value, base)
 }
 
 export function range(
@@ -242,7 +242,7 @@ export abstract class BasicValue extends Value {
         return new StringValue(value)
       case 'number':
         if (Number.isInteger(value) && isFloat !== 'float') {
-          return new IntValue(value, 0, 'decimal')
+          return new IntValue(value, 'decimal')
         } else {
           return new FloatValue(value)
         }
@@ -379,14 +379,13 @@ export class IntValue extends FloatValue {
 
   constructor(
     value: number,
-    readonly magnitude = 0,
     readonly base: IntBase,
   ) {
     super(Math.floor(value))
   }
 
   getType(): Types.Type {
-    return new Types.LiteralIntType(this.value, this.magnitude)
+    return new Types.LiteralIntType(this.value)
   }
 
   // static _intProps: Map<string, (value: IntValue) => Value> = new Map([])
@@ -507,11 +506,17 @@ export const FalseValue = new MetaFalseValue()
 
 export class StringValue extends BasicValue {
   readonly is: 'string' | 'unicode' = 'string'
+  readonly value: string
+  readonly chars: string[]
   readonly length: number
 
-  constructor(readonly value: string) {
+  constructor(value: string, chars?: string[]) {
     super()
-    this.length = value.length
+    this.value = value
+    this.chars = chars ?? Array.from(value)
+    this.length = this.chars.length
+    Object.defineProperty(this, 'chars', {enumerable: false})
+    Object.defineProperty(this, 'length', {enumerable: false})
   }
 
   removeIndent(indent: string, firstLineIsNewline: boolean): StringValue | undefined {
@@ -519,10 +524,13 @@ export class StringValue extends BasicValue {
     const replaced: string[] = []
     for (const line of lines) {
       // blank lines don't need to match the final indent, they get skipped
-      // (preserving the newline)
+      // (preserving the newline).
+      // `line.length < indent.length` is a required check, it preserves
+      // intentional leading spaces.
       if (line.length < indent.length && line.trim() === '') {
         replaced.push('')
       } else if (!line.startsWith(indent)) {
+        // special case for the first line - treat it as if it was indented
         if (replaced.length === 0 && !firstLineIsNewline) {
           replaced.push(line)
         } else {
@@ -629,22 +637,16 @@ export class StringValue extends BasicValue {
 
 export class UnicodeStringValue extends StringValue {
   readonly is = 'unicode'
-  readonly _chars: string[]
-  readonly length: number
 
   constructor(chars: string[]) {
-    super(chars.join(''))
-
-    this.length = chars.length
-    this._chars = chars
-    Object.defineProperty(this, '_chars', {enumerable: false})
+    super(chars.join(''), chars)
   }
 
   removeIndent(indent: string, firstLineIsNewline: boolean): UnicodeStringValue | undefined {
     let isMatchingIndent = firstLineIsNewline
     let indentIndex = 0
     const replaced: string[] = []
-    for (const char of this._chars) {
+    for (const char of this.chars) {
       if (char === '\n') {
         isMatchingIndent = true
         indentIndex = 0
@@ -683,7 +685,7 @@ export class UnicodeStringValue extends StringValue {
       return
     }
 
-    const char = this._chars[index]
+    const char = this.chars[index]
     if (char) {
       return new UnicodeStringValue([char])
     }

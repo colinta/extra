@@ -528,8 +528,7 @@ abstract class BinaryOperator extends OperatorOperation {
           return type
         }
 
-        const rhResult = this.rhsType(runtime, lhType, lhsExpr, rhsExpr)
-        return rhResult.map((rhType): GetTypeResult => {
+        return this.rhsType(runtime, lhType, lhsExpr, rhsExpr).map((rhType): GetTypeResult => {
           // if we have a OneOfType, we need to map every combination into op.getType, and
           // then collect all the errors, or return Types.oneOf()
           if (lhType instanceof Types.OneOfType && rhType instanceof Types.OneOfType) {

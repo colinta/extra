@@ -280,8 +280,6 @@ export abstract class Expression {
     }
 
     return ok([{formula, comparison: {operator: 'truthy'}}])
-    // return this.getType(runtime).map(type => {
-    // })
   }
 
   /**
@@ -295,8 +293,6 @@ export abstract class Expression {
     }
 
     return ok([{formula, comparison: {operator: 'falsey'}}])
-    // return this.getType(runtime).map(type => {
-    // })
   }
 
   /**
