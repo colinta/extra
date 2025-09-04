@@ -325,14 +325,6 @@ export abstract class Expression {
   provides(): Set<string> {
     return new Set()
   }
-
-  /**
-   * Specifically refers to StateReference instances, those are the starting
-   * point for state changes.
-   */
-  renderDependencies(_runtime: ValueRuntime): Set<Values.ClassInstanceValue> {
-    return new Set()
-  }
 }
 
 /**
@@ -355,10 +347,6 @@ export abstract class Operation extends Expression {
     readonly args: Expression[],
   ) {
     super(range, precedingComments)
-  }
-
-  renderDependencies(runtime: ValueRuntime) {
-    return mergeRenderDeps(runtime, this.args)
   }
 
   dependencies() {
@@ -636,10 +624,6 @@ export class StringTemplateOperation extends Operation {
     super(range, precedingComments, [], operator, args)
   }
 
-  renderDependencies(runtime: ValueRuntime) {
-    return mergeRenderDeps(runtime, this.args)
-  }
-
   toLisp(): string {
     const args = this.args
       .map(it => {
@@ -779,17 +763,13 @@ export class Reference extends Identifier {
     nextRuntime.replaceTypeByName(this.name, withType)
     return ok(nextRuntime)
   }
+
+  compile(runtime: TypeRuntime) {
+    return this.getType(runtime).map(type => new Nodes.Reference(toSource(this), this.name, type))
+  }
 }
 
 export class StateReference extends Reference {
-  renderDependencies(runtime: ValueRuntime) {
-    const thisValue = runtime.getThisValue()
-    if (!thisValue) {
-      throw new RuntimeError(this, '`this` is not available in this context')
-    }
-    return new Set([thisValue])
-  }
-
   dependencies() {
     return new Set([this.stateName])
   }
@@ -865,10 +845,6 @@ export class ObjectExpression extends Expression {
     readonly values: Expression[],
   ) {
     super(range, precedingComments)
-  }
-
-  renderDependencies(runtime: ValueRuntime) {
-    return mergeRenderDeps(runtime, this.values)
   }
 
   dependencies() {
@@ -961,10 +937,6 @@ export class ArrayExpression extends Expression {
     readonly generic: Expression | undefined,
   ) {
     super(range, precedingComments, [])
-  }
-
-  renderDependencies(runtime: ValueRuntime) {
-    return mergeRenderDeps(runtime, this.values)
   }
 
   dependencies() {
@@ -1189,10 +1161,6 @@ export class SetExpression extends Expression {
     readonly generic: Expression | undefined,
   ) {
     super(range, precedingComments)
-  }
-
-  renderDependencies(runtime: ValueRuntime) {
-    return mergeRenderDeps(runtime, this.values)
   }
 
   dependencies() {
@@ -1879,10 +1847,6 @@ export abstract class Argument extends Expression {
     readonly value: Expression,
   ) {
     super(range, precedingComments)
-  }
-
-  renderDependencies(runtime: ValueRuntime) {
-    return this.value.renderDependencies(runtime)
   }
 
   dependencies() {
@@ -2580,14 +2544,6 @@ export class CaseIdentifier extends ReservedWord {
 
 export class ThisIdentifier extends ReservedWord {
   readonly name = 'this'
-
-  renderDependencies(runtime: ValueRuntime) {
-    const thisValue = runtime.getThisValue()
-    if (!thisValue) {
-      throw new RuntimeError(this, '`this` is not available in this context')
-    }
-    return new Set([thisValue])
-  }
 
   getType(runtime: TypeRuntime): GetTypeResult {
     const thisType = runtime.getThisType()
@@ -3879,10 +3835,6 @@ export class ArgumentsList extends Expression {
     }
   }
 
-  renderDependencies(runtime: ValueRuntime) {
-    return mergeRenderDeps(runtime, this.allArgs)
-  }
-
   get allArgs() {
     return [...this.parenArgs, ...this.blockArgs]
   }
@@ -4257,10 +4209,6 @@ export class FormulaExpression extends Expression {
       return new Set([this.nameRef.name])
     }
     return new Set()
-  }
-
-  renderDependencies(runtime: ValueRuntime) {
-    return this.body.renderDependencies(runtime)
   }
 
   dependencies() {
@@ -8718,16 +8666,6 @@ function allDependencies(expressions: Expression[]) {
 
 function allProvides(expressions: Expression[]) {
   return expressions.reduce((set, expr) => union(set, expr.provides()), new Set<string>())
-}
-
-function mergeRenderDeps(runtime: ValueRuntime, ...allExpressions: Expression[][]) {
-  let set = new Set<Values.ClassInstanceValue>()
-  for (const expressions of allExpressions) {
-    set = expressions.reduce((deps, expr): Set<Values.ClassInstanceValue> => {
-      return union(deps, expr.renderDependencies(runtime))
-    }, set)
-  }
-  return set
 }
 
 function formatComments(comments: Comment[]) {
