@@ -69,6 +69,10 @@ fn(
         'fn<T>(a: fn(): T, # b: fn(): T): T => b()',
         '(fn <T> ((a: (fn () : (T))) (# b: (fn () : (T)))) : T => (fn b ()))',
       ]),
+      c([
+        'fn<T, U>(a: fn(): T, # b: fn(): U): {T, U} => {a(), b()}',
+        '(fn <T> ((a: (fn () : (T))) (# b: (fn () : (T)))) : T => (fn b ()))',
+      ]),
       c(['fn(# arg: .a | .b): T => b()', '(fn ((# arg: (enum | .a | .b))) : T => (fn b ()))']),
       c(['fn(# arg: {a: String}): T => b()', '(fn ((# arg: {(a: `String`)})) : T => (fn b ()))']),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
