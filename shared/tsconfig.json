@@ -2,10 +2,8 @@
   "include": ["src"],
   "exclude": ["bin/", "node_modules/"],
   "compilerOptions": {
-    //
     "noUnusedLocals": true,
     "noUnusedParameters": false,
-    //
     "noEmit": true,
     "target": "esnext",
     "module": "commonjs",
@@ -19,6 +17,10 @@
     "jsx": "react",
     "moduleResolution": "node",
     "resolveJsonModule": true,
-    "rootDir": "src/"
+    // "paths": {
+    //   "@/*": ["src/*"],
+    // },
+    // "baseUrl": ".",
+    // "rootDir": "src/"
   }
 }
