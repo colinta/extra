@@ -909,7 +909,7 @@ Extra runs within the JS runtime, and the regular expressions are passed directl
 
 ### Container Types: Array, Dict, Set, and Object
 
-Arrays and Objects are created using the common `[]` and `{}` symbols. Dicts (aka Map in JavaScript) are created using `dict<type>(key: value)` and Sets are created using `set<type>(value)` (`type` is optional in both cases, it is usually inferred).
+Arrays and Objects are created using the common `[]` and `{}` symbols. Dicts (aka Map in JavaScript) are created using `dict<type>(key: value)` and Sets are created using `set<type>(value)` (`type` is optional in both cases, it is usually inferred). I am seriously considering adding a sigil for dict and set, if I do it will be `#{}` for dict and `#[]` for set. These are already supported as "optional" syntaxes, but the code formatter will rewrite them to `dict/set`.
 
 Keys in Objects and Dicts can be strings, numbers, `null`, `true`, or `false` (i.e. any primitive value).
 
@@ -946,9 +946,9 @@ Syntax:
 - Array: `[] [] [1] [1,] [1, 2, 3]`
   (alternatively you can use the "long form" `Array(1,2,3)`)
 - Dict: `Dict() Dict(key: 1) Dict(key: 1,) Dict(1: 1, 'key2': 2, "key$three": 3)`
-  (alternative shorthand: `#[key: value]`)
+  (alternative shorthand: `#{key: value}`)
 - Set: `Set() Set(1) Set(1,) Set(1, 2, 3)`
-  (alternative shorthand: `#{1, 2, 3}`)
+  (alternative shorthand: `#[1, 2, 3]`)
 
 #### Heterogenous types: Tuple, Object
 

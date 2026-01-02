@@ -54,11 +54,11 @@ export const ARRAY_OPEN = '['
 export const ARRAY_CLOSE = ']'
 
 export const DICT_WORD_START = 'Dict'
-export const DICT_OPEN = '#['
-export const DICT_CLOSE = ']'
+export const DICT_OPEN = '#{'
+export const DICT_CLOSE = '}'
 export const SET_WORD_START = 'Set'
-export const SET_OPEN = '#{'
-export const SET_CLOSE = '}'
+export const SET_OPEN = '#['
+export const SET_CLOSE = ']'
 export const REGEX_START = '/'
 export const ATOM_START = ':'
 export const STATE_START = '@'
@@ -317,7 +317,7 @@ export function terminatesWithRoundBracket(expressionType: ExpressionType) {
 export function terminatesWithSquareBracket(expressionType: ExpressionType) {
   return (
     expressionType === 'bracket_access' ||
-    expressionType === 'dict-symbol' ||
+    expressionType === 'set-symbol' ||
     expressionType === 'array-symbol'
   )
 }
@@ -328,7 +328,7 @@ export function terminatesWithCurlyBracket(expressionType: ExpressionType) {
     expressionType === 'jsx_embed' ||
     expressionType === 'interpolation' ||
     expressionType === 'object-symbol' ||
-    expressionType === 'set-symbol' ||
+    expressionType === 'dict-symbol' ||
     expressionType === 'enum' ||
     expressionType === 'case' ||
     expressionType === 'class' ||

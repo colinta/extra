@@ -438,7 +438,7 @@ export function scanSet(scanner: Scanner, parseNext: ParseNext, type: 'set-symbo
 
   scanner.scanAllWhitespace()
   if (scanner.scanIfString(closer)) {
-    scanner.whereAmI(`scanSet: #{closer}`)
+    scanner.whereAmI(`scanSet: #[closer]`)
     return new Expressions.SetExpression(
       [range0, scanner.charIndex],
       scanner.flushComments(),

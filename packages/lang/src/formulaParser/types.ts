@@ -100,7 +100,7 @@ export type ExpressionType =
   | 'array-word' // parses the values within Array(1,2,3)
   | 'dict-symbol' // parses the values within #{1,2,3}
   | 'dict-word' // parses the values within Dict(1,2,3)
-  | 'set-symbol' // parses the values within #{1,2,3}
+  | 'set-symbol' // parses the values within #[1,2,3]
   | 'set-word' // parses the values within Set(1,2,3)
   | 'bracket_access' // value[access]
   | 'interpolation' // ${ … }
