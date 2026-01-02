@@ -57,8 +57,8 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
   scanner.whereAmI('quote: ' + JSON.stringify(quote))
 
   const parts: Expression[] = []
-  const isSingleQuote = quote.startsWith("'")
-  const quoteSupportsInterpolation = !isSingleQuote
+  const isBacktickQuote = quote.startsWith('`')
+  const quoteSupportsInterpolation = isBacktickQuote
   let bufferRange0 = scanner.charIndex
   let stringBuffer = ''
   let escapeBuffer = ''

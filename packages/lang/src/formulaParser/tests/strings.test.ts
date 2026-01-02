@@ -63,15 +63,20 @@ world
       "'🙂\\n 6what a\\nworld\\n'",
       "'''\n🙂\n 6what a\nworld\n'''",
     ]),
-    c(['"""this ${is} a good "test"."""', "(++ 'this ' is ' a good \"test\".')"]),
+    c(['```this ${is} a good "test".```', "(++ 'this ' is ' a good \"test\".')"]),
     c(["'''this ${is} ok.'''", "'this ${is} ok.'", "'this ${is} ok.'"]),
     c([
-      '"""this $another fine \'test\'."""',
+      "```this $another fine 'test'.```",
       "(++ 'this ' another ' fine \\'test\\'.')",
-      '"""this ${another} fine \'test\'."""',
+      "```this ${another} fine 'test'.```",
     ]),
     c([
       '"""this \\$one more "test"."""',
+      '\'this $one more "test".\'',
+      '\'this $one more "test".\'',
+    ]),
+    c([
+      '```this \\$one more "test".```',
       '\'this $one more "test".\'',
       '\'this $one more "test".\'',
     ]),
@@ -80,7 +85,11 @@ world
       '\'this is $an alternative "test".\'',
       '\'this is $an alternative "test".\'',
     ]),
-    c(['"""this ${.is} a good "test"."""', `(++ 'this ' (. is) ' a good "test".')`]),
+    c([
+      '```this is \\$an alternative "test".```',
+      '\'this is $an alternative "test".\'',
+      '\'this is $an alternative "test".\'',
+    ]),
     c(['```this ${@is} a `good` "test".```', `(++ 'this ' @is ' a \`good\` "test".')`]),
     c([
       '```this $@is a `good` "test".```',

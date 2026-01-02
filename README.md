@@ -57,7 +57,7 @@ pretty-darn-good™ programming language!
 -- `let` is a special language construct that assigns values to scope.
 let
   fn format(# name: String, age: Int) =>
-    "Hello, $name! Are you $age years old?"
+    `Hello, $name! Are you $age years old?`
   someNumber = 2 * 1 + 40
   name = "Extra"
 in
@@ -212,7 +212,7 @@ Extra's "coerce to String" function is a unary operator `$`, and it's also the s
 -- look at the beautiful similarity between String templates
 -- and String coercion:
 
-"How many: $n"
+`How many: $n`
 "How many: " .. $n
 
 -- because it's an _operator_, you can do things like
@@ -392,7 +392,7 @@ The usual comment characters `#` and `//` both have special meaning in Extra, an
 **More examples**
 ```extra
 -- this is a line comment
-"no longer a comment"  <-- this is a statement (and this is a comment!)
+"no longer a comment"  <-- this is code (and this is a comment!)
 
 {- comment block, line 1
  {- comment blocks _can_ be nested -}
@@ -537,13 +537,13 @@ groups, or you can match against a prefix and assign the remainder.
 ```extra
 switch (name) {
 case /(?<first>\w+) (?<last>\w+)/:
-  "Hello, $first $last!"
+  `Hello, $first $last!`
 case "Bob " .. last:
-  "Did you say Bab? Bab $last!?"
+  `Did you say Bab? Bab $last!?`
 case _ .. "!":
   "Your name ends in an exclamation mark, wow, that's so cool 🙄"
 else:
-  "Hello, $name!"
+  `Hello, $name!`
 }
 ```
 
@@ -554,13 +554,13 @@ switch (friends) {
 case []:
   "Aww, I'll be your friend"
 case [one-friend]:
-  "$one-friend sounds like a great friend!"
+  `$one-friend sounds like a great friend!`
 case [first, last]:
-  "Wow you know $first and $last!?"
+  `Wow you know $first and $last!?`
 case [first, _, last]:
-  "Wow you know $first and $last!? And someone else, but I forgot their name."
+  `Wow you know $first and $last!? And someone else, but I forgot their name.`
 case [...some, last]:
-  "${some.join(", ")} and $last... that's too many friends."
+  `${some.join(", ")} and $last... that's too many friends.`
 }
 ```
 
@@ -606,7 +606,7 @@ case 'foo' .. bar:
 case [onlyOne]:
   onlyOne  -- onlyOne: String, input: Array(String, length: =1)
 case [...many, last]:
-  many.join(',') .. " and $last"  -- many: Array(String), last: String, input: Array(String, length: >=1)
+  many.join(',') .. ` and $last`  -- many: Array(String), last: String, input: Array(String, length: >=1)
 else:
   'not "foo…" or [a, …]'
 }
@@ -637,11 +637,11 @@ enum Colour {
 
 switch (colour) {
 case .rgb(r, g, b):
-  "rgb($r, $g, $b)"
+  `rgb($r, $g, $b)`
 case .hex(hex):
-  "hex(#$hex)"
+  `hex(#$hex)`
 case .name(name):
-  "Colour named '$name'"
+  `Colour named '$name'`
 }
 ```
 
@@ -753,11 +753,9 @@ If you're thinking "wow these are all supported by JavaScript's `Number()` const
 
 ### Strings
 
-Strings come in a few variants: single-quoted, double-quoted, backticks, and atomic. The quoted variants all support triple-quotes (`'''test'''`). Double-quoted and backticks support tagged strings.
+Strings come in a few variants: single-quoted, double-quoted, backticks, and atomic. The quoted variants all support triple-quotes (`'''test'''`). Backticks support string interpolation and "tagged" strings. Single-quoted and double-quoted strings do not support String interpolation (`${}`).
 
 Strings can be spread across multiple lines, though I _recommend_ triple-quotes for that. Triple quotes have the added feature of removing preceding indentation, up to the closing quotes (more below).
-
-Single-quoted do not support String interpolation (`${}`), the `$` character is left intact.
 
 ```extra
 'testing'      --> testing
@@ -779,27 +777,29 @@ An even simpler string literal is the "atomic" string, so called because in Ruby
 :🤯          --> "🤯"
 ```
 
-Double-quoted strings: Same as single-quoted, but support _String interpolation_ and can be tagged. Backticks: An alternative to double-quoted (same support for interpolation and tagging).
+Double-quoted strings: Same as single-quoted, just an alternative quote symbol.
+Backticks: Support _string interpolation_.
 
 ```extra
 "testing"           --> testing
-"$money"            --> replaces $money with the stringified contents of `money`
+`$money`            --> replaces $money with the stringified contents of `money`
 
-"${money.currency}" --> replaces ${…} with the contents of `money.currency` reference
-`${money.currency}` --> same
-`$money.currency`   --> replaces $money with `money`, but leaves ".currency"
+`${money.currency}` --> replaces ${…} with the contents of `money.currency` reference
+`$money.currency`   --> replaces $money with stringified contents of `money`, but leaves ".currency"
 
-`\$`   "\$"         --> If you need a dollar sign
+`\$`                --> If you need a dollar sign
 
-"$123"              --> If '$' isn't followed by a reference, there's no need to escape it.
+`$123`              --> If '$' isn't followed by a reference, there's no need to escape it.
 ```
 
 String tags work similar to how they do in Javascript - the parts of the string are passed to the 'tag', which better be a function capable of handling all the parts.
 
-Unlike in Js, though, each "part" is passed as its own arg (the string literals are not gathered into one array).
+Unlike in JS, though, each "part" is passed as its own arg (the string literals are not gathered into one array).
 
 ```extra
 let
+  one = 1
+  two = 2
   calculator = fn(# a: Int, # op: String, # b: Int, # out: String) =>
     let
       result =
@@ -813,7 +813,11 @@ let
     in
       `$a$op$b$out`
 in
-  calculator`$a + $b = ?`
+  calculator`$one + $two = ?`
+  ---        ^^^^ a
+  ---            ^^^ op
+  ---               ^^^^ b
+  ---                   ^^^^ out
 ```
 
 Triple quoted strings ignore the first character if it is a newline, and remove the preceding indentation according to the _indentation of the closing quotes_.

@@ -1023,7 +1023,7 @@ describe('match operator', () => {
 
   describe('invalid parse', () => {
     cases<[string, string]>(
-      c([`foo is "$foo" .. value`, 'Interpolation is not enabled in this context']),
+      c(['foo is `$foo` .. value', 'Interpolation is not enabled in this context']),
       c([
         `foo is value1 .. value2 .. "test"`,
         'In a match expression, after every reference you must concatenate a string',
