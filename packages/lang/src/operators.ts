@@ -3059,7 +3059,8 @@ class ArrayAccessOperator extends PropertyChainOperator {
     }
 
     const [lhsExpr, rhsExpr] = this.args
-    return `${lhsExpr.toCode(prevPrecedence)}[${rhsExpr}]`
+    const [open] = this.symbol.split(']')
+    return `${lhsExpr.toCode(prevPrecedence)}${open}${rhsExpr}]`
   }
 
   relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
@@ -3381,7 +3382,7 @@ addBinaryOperator({
   name: 'null coalescing array access',
   symbol: '?.[]',
   precedence: PRECEDENCE.BINARY['?.[]'],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -3559,10 +3560,32 @@ export class NullCoalescingFunctionInvocationOperator extends FunctionInvocation
 }
 
 addBinaryOperator({
+  name: 'function invocation',
+  symbol: 'fn',
+  precedence: PRECEDENCE.BINARY['fn'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new FunctionInvocationOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+addBinaryOperator({
   name: 'null coalescing function invocation',
   symbol: '?.()',
   precedence: PRECEDENCE.BINARY['?.()'],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -3683,7 +3706,7 @@ addUnaryOperator({
   name: 'logical not',
   symbol: 'not',
   precedence: PRECEDENCE.UNARY['not'],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -3733,7 +3756,7 @@ addUnaryOperator({
   name: 'negate',
   symbol: '-',
   precedence: PRECEDENCE.UNARY['-'],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -3765,7 +3788,7 @@ addUnaryOperator({
   name: 'binary negate',
   symbol: '~',
   precedence: PRECEDENCE.UNARY['~'],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -3915,7 +3938,7 @@ addUnaryOperator({
   name: 'unary-range-equals',
   symbol: '=',
   precedence: PRECEDENCE.UNARY['='],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -3938,7 +3961,7 @@ addUnaryOperator({
   name: 'unary-range-max-exclusive',
   symbol: '<',
   precedence: PRECEDENCE.UNARY['<'],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -3961,7 +3984,7 @@ addUnaryOperator({
   name: 'unary-range-max',
   symbol: '<=',
   precedence: PRECEDENCE.UNARY['<='],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -3984,7 +4007,7 @@ addUnaryOperator({
   name: 'unary-range-min-exclusive',
   symbol: '>',
   precedence: PRECEDENCE.UNARY['>'],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -4007,7 +4030,7 @@ addUnaryOperator({
   name: 'unary-range-min',
   symbol: '>=',
   precedence: PRECEDENCE.UNARY['>='],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -4050,7 +4073,7 @@ addUnaryOperator({
   name: 'enum lookup',
   symbol: '.',
   precedence: PRECEDENCE.UNARY['.'],
-  associativity: 'right',
+  associativity: 'left',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -4211,28 +4234,6 @@ for (const {name, symbol, binarySymbol} of BINARY_ASSIGN_OPERATORS) {
 
   addBinaryAssignmentOperator({name, symbol, binaryOp})
 }
-
-addBinaryOperator({
-  name: 'function invocation',
-  symbol: 'fn',
-  precedence: PRECEDENCE.BINARY['fn'],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new FunctionInvocationOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
 
 type _IntermediateArgs =
   | ['positional', undefined, Types.Type]
