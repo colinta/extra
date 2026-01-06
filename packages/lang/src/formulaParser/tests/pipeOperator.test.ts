@@ -54,7 +54,7 @@ describe('|> / ?|>', () => {
         () => {
           runtimeTypes['a'] = [
             Types.optional(Types.int()),
-            valueA ? Values.int(valueA) : Values.nullValue(),
+            valueA !== null ? Values.int(valueA) : Values.nullValue(),
           ]
           runtimeTypes['b'] = [Types.int(), Values.int(valueB)]
 
@@ -76,14 +76,14 @@ describe('|> / ?|>', () => {
         "Expected Int or Float, found '#pipe' of type 'null'",
       ]),
       c([`a ?|> #pipe`, Types.int(), "Left hand side of '?|>' operator must be a nullable-type."]),
-    ).run(([formula, aType, message], {only, skip}) =>
+    ).run(([formula, aType, expectedMessage], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not get type of ${formula}`, () => {
         runtimeTypes['a'] = [aType, Values.string('')]
 
         expect(() => {
           const expression = parse(formula).get()
           expression.getType(typeRuntime).get()
-        }).toThrow(message)
+        }).toThrow(expectedMessage)
       }),
     )
   })
