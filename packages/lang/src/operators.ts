@@ -2724,7 +2724,7 @@ addBinaryOperator({
  * In this case, though, we want to *ignore* the `null` type.
  *
  * Enter the 'chain' family of functions:
- * - `getChainLhsType` - excludes `null` from the lhs
+ * - `getChainType` - excludes `null` from the lhs
  * - `isNullCoalescing` - true if the lhs is a null-coalescing operator
  * - `hasNullCoalescing` - true if any descendents is null-coalescing operator
  * - `chainOperatorType` - the actual operator type
@@ -2739,25 +2739,6 @@ abstract class PropertyChainOperator extends BinaryOperator {
 
   joiner() {
     return this.symbol
-  }
-
-  /**
-   * Like getType(), but null-coalescing operators exclude 'null'. If no null type is
-   * found, a compile error is returned (null-coalescing operator should not be used
-   * in that case).
-   */
-  getChainLhsType(runtime: TypeRuntime): GetTypeResult {
-    return this.getType(runtime).map(type => {
-      if (
-        this.hasNullCoalescing() &&
-        type instanceof Types.OneOfType &&
-        type.of.some(of => of.isNull())
-      ) {
-        return Types.oneOf(type.of.filter(of => !of.isNull()))
-      }
-
-      return ok(type)
-    })
   }
 
   isNullCoalescing(): boolean {
@@ -2807,48 +2788,57 @@ abstract class PropertyChainOperator extends BinaryOperator {
     return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
   }
 
-  getType(runtime: TypeRuntime): GetTypeResult {
+  /**
+   * Like getType(), but null-coalescing operators exclude 'null'. Default
+   * implementation just returns `getType(runtime)`.
+   */
+  getChainType(runtime: TypeRuntime): GetTypeResult {
     const [lhsExpr, rhsExpr] = this.args
     let lhsResult: GetTypeResult
     if (lhsExpr instanceof PropertyChainOperator) {
-      lhsResult = lhsExpr.getChainLhsType(runtime)
+      lhsResult = lhsExpr.getChainType(runtime)
     } else {
       lhsResult = lhsExpr.getType(runtime)
     }
 
-    return lhsResult
-      .mapResult(decorateError(this))
-      .map(lhs => {
-        if (
-          this.isNullCoalescing() &&
-          (!(lhs instanceof Types.OneOfType) || !lhs.of.some(of => of.isNull()))
-        ) {
-          return err(
-            new RuntimeError(
-              this,
-              `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${lhs}`,
-            ),
-          )
-        }
+    return lhsResult.mapResult(decorateError(this)).map(lhsType => {
+      if (
+        this.isNullCoalescing() &&
+        (!(lhsType instanceof Types.OneOfType) || !lhsType.of.some(of => of.isNull()))
+      ) {
+        return err(
+          new RuntimeError(
+            this,
+            `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${lhsType}`,
+          ),
+        )
+      }
 
-        if (lhs instanceof Types.OneOfType) {
-          return mapAll(
-            lhs.of.map(
-              oneLhType =>
-                guardNeverType(oneLhType) ??
-                this.chainOperatorType(runtime, oneLhType, lhsExpr, rhsExpr),
-            ),
-          ).map(Types.oneOf)
-        }
+      if (lhsType instanceof Types.OneOfType) {
+        const lhsTypes = this.isNullCoalescing()
+          ? lhsType.of.filter(type => !type.isNull())
+          : lhsType.of
+        return mapAll(
+          lhsTypes.map(
+            oneLhType =>
+              guardNeverType(oneLhType) ??
+              this.chainOperatorType(runtime, oneLhType, lhsExpr, rhsExpr),
+          ),
+        ).map(Types.oneOf)
+      }
 
-        return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
-      })
-      .map(lhs => {
-        if (this.hasNullCoalescing()) {
-          return Types.optional(lhs)
-        }
-        return lhs
-      })
+      return this.chainOperatorType(runtime, lhsType, lhsExpr, rhsExpr)
+    })
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    return this.getChainType(runtime).map(lhs => {
+      if (this.hasNullCoalescing()) {
+        return Types.optional(lhs)
+      }
+
+      return lhs
+    })
   }
 }
 
@@ -2882,19 +2872,17 @@ class PropertyAccessOperator extends PropertyChainOperator {
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
     const [lhsExpr, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Expressions.Identifier)) {
-      return err(new RuntimeError(rhsExpr, expectedType('property name', rhsExpr)))
-    }
+    return this.rhsName().map(rhsName =>
+      getChildType(this, lhsExpr, runtime).map(lhsType =>
+        lhsType.replacingProp(rhsName, withType).mapResult(result => {
+          if (result.isErr()) {
+            return err(new RuntimeError(rhsExpr, result.error))
+          }
 
-    return getChildType(this, lhsExpr, runtime).map(lhsType => {
-      return lhsType.replacingProp(rhsExpr.name, withType).mapResult(result => {
-        if (result.isErr()) {
-          return err(new RuntimeError(rhsExpr, result.error))
-        }
-
-        return lhsExpr.replaceWithType(runtime, result.value)
-      })
-    })
+          return lhsExpr.replaceWithType(runtime, result.value)
+        }),
+      ),
+    )
   }
 
   rhsType(): GetTypeResult {
