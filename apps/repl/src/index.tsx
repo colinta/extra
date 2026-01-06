@@ -329,7 +329,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
 
       const typeExpr = typeExpressions.get(name)
       if (typeExpr) {
-        const typeResolved = typeExpr.getType(typeRuntime)
+        const typeResolved = typeExpr.getAsTypeExpression(typeRuntime)
         if (typeResolved.isErr()) {
           successText += red(
             `Error resolving type of '${name}': ${typeResolved.error.toString()}\n`,

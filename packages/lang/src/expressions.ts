@@ -788,9 +788,11 @@ export class Reference extends Identifier {
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return this.getType(runtime).map(type => {
-      return type.fromTypeConstructor()
-    })
+    // get the type from runtime, this should be a named type, like
+    //     type Foo = Int
+    // which means Foo is a type-constructor. Calling fromTypeConstructor will
+    // get the desired return type `Int`.
+    return this.getType(runtime).map(type => type.fromTypeConstructor())
   }
 
   eval(runtime: ValueRuntime) {
@@ -1452,8 +1454,8 @@ function combineAllTypesForDict(expr: DictExpression, runtime: TypeRuntime) {
 //|
 
 /**
- * The class doesn't provide much convenience, mostly it groups together a bunch of
- * related classes:
+ * This class doesn't provide much convenience, mostly it groups together a
+ * bunch of related classes:
  *   NamespaceAccessExpression
  *   OneOfTypeExpression
  *   ExtendsExpression
@@ -1576,16 +1578,14 @@ export class OneOfTypeExpression extends TypeExpression {
     return `${this.of.map(ref => ref.toCode(this.precedence)).join(' | ')}`
   }
 
-  getType(runtime: TypeRuntime): GetTypeResult {
-    return mapAll(
-      this.of.map(type => {
-        return getChildType(this, type, runtime)
-      }),
-    ).map(types => Types.oneOf(types))
+  getType(runtime: TypeRuntime) {
+    return err(new RuntimeError(this, 'OneOfTypeExpression has no intrinsic type'))
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return this.getType(runtime)
+    return mapAll(
+      this.of.map(type => type.getAsTypeExpression(runtime).mapResult(decorateError(this))),
+    ).map(types => Types.oneOf(types))
   }
 }
 
@@ -1621,11 +1621,11 @@ export class ExtendsExpression extends TypeExpression {
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
-    return mapAll(
-      this.of.map(type => {
-        return getChildType(this, type, runtime)
-      }),
-    ).map(types => Types.oneOf(types))
+    return err(new RuntimeError(this, `${this.constructor.name} does not have a type`))
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    throw 'TODO'
   }
 }
 
@@ -1850,6 +1850,10 @@ export class TypeConstructorExpression extends TypeExpression {
   }
 
   getType(): GetTypeResult {
+    throw 'TODO - TypeConstructorExpression getType'
+  }
+
+  getAsTypeExpression(): GetTypeResult {
     throw 'TODO - TypeConstructorExpression getAsTypeExpression'
   }
 }
