@@ -1,5 +1,5 @@
 import * as Expressions from '../../expressions'
-import {FN_KEYWORD, LET_IN, LET_KEYWORD} from '../grammars'
+import {FN_KEYWORD, LET_IN, LET_KEYWORD, TYPE_START} from '../grammars'
 import {type Scanner} from '../scanner'
 import {type ExpressionType, type ParseNext} from '../types'
 import {scanArgumentType} from './argument_type'
@@ -39,7 +39,7 @@ export function scanLet(
       const name = scanValidLocalName(scanner)
       scanner.scanAllWhitespace()
       let type: Expressions.Expression | undefined
-      if (scanner.scanIfString(':')) {
+      if (scanner.scanIfString(TYPE_START)) {
         scanner.scanAllWhitespace()
         type = scanArgumentType(scanner, 'argument_type', parseNext)
         scanner.scanAllWhitespace()

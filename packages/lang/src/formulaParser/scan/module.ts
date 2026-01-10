@@ -17,10 +17,11 @@ import {
   PROVIDES_KEYWORD,
   REQUIRES_KEYWORD,
   TYPE_KEYWORD,
+  VERSION_START,
   VIEW_KEYWORD,
 } from '../grammars'
 import {scanClass} from './class'
-import {scanEnum} from './enum'
+import {scanNamedEnum} from './enum'
 import {scanArgumentType} from './argument_type'
 import {scanView} from './view'
 import {unexpectedToken} from './basics'
@@ -36,7 +37,7 @@ export function scanModule(scanner: Scanner, parseNext: ParseNext) {
       | Expressions.HelperDefinition
       | Expressions.ViewDefinition
       | Expressions.ClassDefinition
-      | Expressions.EnumDefinition
+      | Expressions.NamedEnumDefinition
     )[]
   } = {
     provides: undefined,
@@ -87,8 +88,8 @@ export function scanModule(scanner: Scanner, parseNext: ParseNext) {
       const classExpr = scanClass(scanner, parseNext)
       moduleTokens.expressions.push(classExpr as Expressions.ClassDefinition)
     } else if (scanner.test(isExport(ENUM_KEYWORD))) {
-      const enumExpr = scanEnum(scanner, parseNext)
-      moduleTokens.expressions.push(enumExpr as Expressions.EnumDefinition)
+      const enumExpr = scanNamedEnum(scanner, parseNext)
+      moduleTokens.expressions.push(enumExpr as Expressions.NamedEnumDefinition)
     } else if (scanner.isWord(FN_KEYWORD)) {
       //
       //  HELPER
@@ -225,7 +226,7 @@ export function scanImportStatement(scanner: Scanner) {
     parts.push(part)
   }
 
-  if (schema && scanner.scanIfString('@')) {
+  if (schema && scanner.scanIfString(VERSION_START)) {
     version = ''
     while (!scanner.is(/\s/) && !scanner.isEOF()) {
       version += scanner.char
@@ -335,7 +336,7 @@ export function scanTypeDefinition(scanner: Scanner, parseNext: ParseNext) {
   }
 
   if (scanner.test(isEnum)) {
-    return scanEnum(scanner, parseNext, {isFnArg: false})
+    return scanNamedEnum(scanner, parseNext)
   }
 
   return scanModuleTypeDefinition(scanner, parseNext)
@@ -354,7 +355,7 @@ export function scanModuleTypeDefinition(scanner: Scanner, parseNext: ParseNext)
   const nameRef = scanValidTypeName(scanner)
   scanner.scanAllWhitespace()
 
-  const generics: string[] = []
+  const generics: Expressions.GenericExpression[] = []
   if (scanner.scanIfString('<')) {
     generics.push(...scanGenerics(scanner, parseNext))
     scanner.scanAllWhitespace()

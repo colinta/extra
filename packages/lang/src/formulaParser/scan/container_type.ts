@@ -21,8 +21,9 @@ import {
   DICT_OPEN,
   DICT_CLOSE,
   SET_CLOSE,
+  DICT_SEPARATOR,
+  SPREAD_OPERATOR,
 } from '../grammars'
-import {SPREAD_OPERATOR} from '../../operators'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
@@ -40,7 +41,7 @@ function isNamedObjectArgument(scanner: Scanner) {
     }
     scanIdentifier(scanner)
     scanner.scanSpaces() // if we hit a newline, we should treat it as a tuple value
-    return scanner.is(':')
+    return scanner.is(DICT_SEPARATOR)
   })
 }
 
@@ -103,33 +104,41 @@ export function scanObject(
       const nameComments = scanner.flushComments()
       scanner.whereAmI('nameComments: ' + nameComments)
       const propName = scanAnyReference(scanner)
-      scanner.scanSpaces() // TODO: this is a weird place for comments to hide
-      scanner.expectString(':')
+      // TODO: this is a weird place for comments to hide
+      scanner.scanAllWhitespace()
+      scanner.expectString(DICT_SEPARATOR)
       scanner.scanSpaces()
 
-      if (scanner.is(',') || scanner.is(OBJECT_CLOSE) || scanner.is('\n')) {
+      let entry: Expression
+      if (scanner.is(',') || scanner.is(closer) || scanner.is('\n')) {
         // { name: } shorthand
-        const expression = new Expressions.NamedArgument(
+        // TODO: supporting '\n' to terminate this expression is a possible
+        // source of confusion:
+        //     {
+        //        key:
+        //        value
+        //     } -> {key: key, value}, expected: {key: value}
+        // Easy way to avoid confusion: require a comma, and always insert the
+        // comma in `toCode()`
+        entry = new Expressions.DictEntry(
           [argRange0, scanner.charIndex],
           nameComments,
-          propName.name,
           propName,
+          undefined,
         )
-        expression.followingComments.push(...scanner.flushComments())
-        props.push(expression)
         scanner.whereAmI(`scanObjectArg: {${propName.name}:} shorthand`)
       } else {
         const expression = parseNext(type)
-        props.push(
-          new Expressions.NamedArgument(
-            [argRange0, scanner.charIndex],
-            nameComments.concat(scanner.flushComments()),
-            propName.name,
-            expression,
-          ),
+        entry = new Expressions.DictEntry(
+          [argRange0, scanner.charIndex],
+          nameComments.concat(scanner.flushComments()),
+          propName,
+          expression,
         )
         scanner.whereAmI('scanObjectArg: ' + expression.toCode())
       }
+      entry.followingComments.push(...scanner.flushComments())
+      props.push(entry)
     } else {
       // tuple value of any kind
       const expression = parseNext(type)
@@ -262,6 +271,35 @@ export function scanArray(
   )
 }
 
+function scanDictKey(
+  scanner: Scanner,
+  parseNext: ParseNext,
+): [Expression] | [Expression, Expression] {
+  const range0 = scanner.charIndex
+  if (isNumberStart(scanner)) {
+    return [scanNumber(scanner, 'float')]
+  } else if (isStringStartChar(scanner)) {
+    return [scanString(scanner, true, parseNext)]
+  } else if (scanner.is(PARENS_OPEN)) {
+    return [scanParensGroup(scanner, parseNext)]
+  } else if (scanner.isWord('null')) {
+    scanner.expectString('null')
+    return [new Expressions.LiteralNull([range0, scanner.charIndex], scanner.flushComments())]
+  } else if (scanner.isWord('true')) {
+    scanner.expectString('true')
+    return [new Expressions.LiteralTrue([range0, scanner.charIndex], scanner.flushComments())]
+  } else if (scanner.isWord('false')) {
+    scanner.expectString('false')
+    return [new Expressions.LiteralFalse([range0, scanner.charIndex], scanner.flushComments())]
+  } else {
+    const dictName = scanAnyReference(scanner)
+    return [
+      new Expressions.LiteralString(dictName.range, [], Values.string(dictName.name)),
+      dictName,
+    ]
+  }
+}
+
 export function scanDict(
   scanner: Scanner,
   parseNext: ParseNext,
@@ -322,74 +360,39 @@ export function scanDict(
       entries.push(entry)
       scanner.whereAmI(`scanDictArg: ...${expression}`)
     } else {
-      let name: Expression
-      let value: Expression
-      if (isNumberStart(scanner)) {
-        name = value = scanNumber(scanner, 'float')
-      } else if (isStringStartChar(scanner)) {
-        name = value = scanString(scanner, true, parseNext)
-        scanner.whereAmI(`scanDictArg: Dict( ${name.toCode()} )`)
-      } else if (scanner.is(PARENS_OPEN)) {
-        name = value = scanParensGroup(scanner, parseNext)
-      } else if (scanner.isWord('null')) {
-        scanner.expectString('null')
-        name = value = new Expressions.LiteralNull(
-          [range0, scanner.charIndex],
-          scanner.flushComments(),
-        )
-      } else if (scanner.isWord('true')) {
-        scanner.expectString('true')
-        name = value = new Expressions.LiteralTrue(
-          [range0, scanner.charIndex],
-          scanner.flushComments(),
-        )
-      } else if (scanner.isWord('false')) {
-        scanner.expectString('false')
-        name = value = new Expressions.LiteralFalse(
-          [range0, scanner.charIndex],
-          scanner.flushComments(),
-        )
-      } else {
-        const dictName = scanAnyReference(scanner)
-        name = new Expressions.LiteralString(dictName.range, [], Values.string(dictName.name))
-        value = dictName
-      }
-
-      scanner.scanSpaces()
-      scanner.expectString(':', `Expected ':' followed by the value for Dict entry '${name}'`)
-      // we just parsed the key, but comments on the key are now attached to what *may*
-      // become the value, so pluck those off, and add them to whatever comments are
-      // still in the queue.
-      const valueComments = value.precedingComments
-      value.precedingComments = []
-      const precedingComments = valueComments.concat(scanner.flushComments())
+      const precedingComments = scanner.flushComments()
+      const [name, maybeValue] = scanDictKey(scanner, parseNext)
+      scanner.scanAllWhitespace()
+      scanner.expectString(
+        DICT_SEPARATOR,
+        `Expected '${DICT_SEPARATOR}' followed by the value for Dict entry '${name}'`,
+      )
       scanner.scanSpaces()
 
+      let entry: Expressions.DictEntry
       if (scanner.is(',') || scanner.is(closer) || scanner.is('\n')) {
         // { name: } shorthand
         scanner.whereAmI(`scanDictArg: Dict( ${name}: ${name} ) shorthand`)
 
-        const entry = new Expressions.DictEntry(
+        entry = new Expressions.DictEntry(
           [argRange0, scanner.charIndex],
           precedingComments,
           name,
-          value,
+          maybeValue,
         )
-        entry.followingComments.push(...scanner.flushComments())
-        entries.push(entry)
       } else {
         const expression = parseNext(type)
         scanner.whereAmI(`scanDictArg: Dict( ${name.toCode()}: ${expression.toCode()} )`)
 
-        const entry = new Expressions.DictEntry(
+        entry = new Expressions.DictEntry(
           [argRange0, scanner.charIndex],
           precedingComments,
           name,
           expression,
         )
-        entry.followingComments.push(...scanner.flushComments())
-        entries.push(entry)
       }
+      entry.followingComments.push(...scanner.flushComments())
+      entries.push(entry)
     }
 
     const shouldBreak = scanner.scanCommaOrBreak(

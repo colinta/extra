@@ -12,7 +12,7 @@ view Minimal {
   ╭──────────╮
   │ <Main /> │
   ╰──────────╯
-  override render() =>
+  render() =>
     <Pt pt=@pt />
 
   ╭──────────╮

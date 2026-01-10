@@ -4,7 +4,7 @@ export const SMALL_LEN = 20
 export const MAX_LEN = 100
 export const MAX_INNER_LEN = 80
 
-export function wrapStrings(lhs: string, strings: string[], rhs: string) {
+export function wrapStrings(lhs: string, strings: string[], rhs: string, joiner: string = ', ') {
   const wrap = {totalLength: 0, hasNewline: false}
   const values = strings.map(code => {
     wrap.hasNewline = wrap.hasNewline || code.length > MAX_INNER_LEN || code.includes('\n')
@@ -20,7 +20,7 @@ export function wrapStrings(lhs: string, strings: string[], rhs: string) {
     const indented = values.map(code => indent(code)).join('\n')
     return `${lhs.trim()}\n${indented}\n${rhs.trim()}`
   } else {
-    return `${lhs}${values.join(', ')}${rhs}`
+    return `${lhs}${values.join(joiner)}${rhs}`
   }
 }
 
@@ -83,4 +83,24 @@ export function intersection<T>(setA: Set<T>, ...sets: Set<T>[]): Set<T> {
   }
 
   return _intersection
+}
+
+export function some<T>(iterable: Iterable<T>, test: (_: T) => boolean): boolean {
+  for (const item of iterable) {
+    if (test(item)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+export function every<T>(iterable: Iterable<T>, test: (_: T) => boolean): boolean {
+  for (const item of iterable) {
+    if (!test(item)) {
+      return false
+    }
+  }
+
+  return true
 }

@@ -1,10 +1,3 @@
-import {
-  BINARY_ASSIGN_SYMBOLS,
-  BINARY_OP_ALIASES,
-  BINARY_OP_NAMES,
-  BINARY_OP_SYMBOLS,
-  UNARY_OP_NAMES,
-} from '../operators'
 import {type Scanner} from './scanner'
 import {type ExpressionType} from './types'
 
@@ -26,8 +19,10 @@ export const VIEW_KEYWORD = 'view'
 export const RENDER_KEYWORD = 'render'
 export const STATIC_KEYWORD = 'static'
 export const TYPE_KEYWORD = 'type'
-export const SPLAT_OP = '...'
-export const KWARG_OP = '**'
+export const TYPE_START = ':'
+export const DICT_SEPARATOR = ':'
+export const ARG_SEPARATOR = ':'
+export const CASE_SEPARATOR = ':'
 
 export const ARGS_OPEN = '('
 export const ARGS_CLOSE = ')'
@@ -62,6 +57,7 @@ export const SET_CLOSE = ']'
 export const REGEX_START = '/'
 export const ATOM_START = ':'
 export const STATE_START = '@'
+export const VERSION_START = '@'
 export const FUNCTION_BODY_START = '=>'
 
 export const ENUM_KEYWORD = 'enum'
@@ -75,6 +71,103 @@ export const CLASS_OPEN = '{'
 export const CLASS_CLOSE = '}'
 
 export const MSG_TYPE = '&'
+
+export const KWARG_OPERATOR = '**'
+export const SPREAD_OPERATOR = '...'
+export const STRING_CONCAT_OPERATOR = '..'
+export const INCLUSION_OPERATOR = 'onlyif'
+export const FUNCTION_INVOCATION_OPERATOR = '()'
+export const PROPERTY_ACCESS_OPERATOR = '.'
+export const NULL_COALESCING_OPERATOR = '?.'
+export const NULL_COALESCE_INVOCATION_OPERATOR = '?.()'
+export const NULL_COALESCE_INVOCATION_OPEN = `${NULL_COALESCING_OPERATOR}(`
+export const NULL_COALESCE_ARRAY_ACCESS_OPERATOR = '?.[]'
+export const NULL_COALESCE_ARRAY_OPEN = `${NULL_COALESCING_OPERATOR}[`
+
+export const BINARY_OP_NAMES = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
+export const BINARY_OP_ALIASES = {
+  '&&': 'and',
+  '||': 'or',
+  '!?': INCLUSION_OPERATOR,
+  '?!': INCLUSION_OPERATOR,
+  '≤': '<=',
+  '≥': '>=',
+  '≠': '!=',
+} as const
+export const UNARY_OP_NAMES = ['not'] as const
+export const UNARY_OP_ALIASES = {
+  '!': 'not',
+} as const
+
+export const BINARY_ASSIGN_OPERATORS = [
+  {name: 'logical-and-assign', symbol: '&=', binarySymbol: '&'},
+  {name: 'logical-or-assign', symbol: '|=', binarySymbol: '|'},
+  {name: 'logical-xor-assign', symbol: '^=', binarySymbol: '^'},
+  {name: 'array-concat-assign', symbol: '++=', binarySymbol: '++'},
+  {name: 'string-concat-assign', symbol: '..=', binarySymbol: STRING_CONCAT_OPERATOR},
+  {name: 'object-merge-assign', symbol: '~~=', binarySymbol: '~~'},
+  {name: 'left-shift-assign', symbol: '<<=', binarySymbol: '<<'},
+  {name: 'right-shift-assign', symbol: '>>=', binarySymbol: '>>'},
+  {name: 'addition-assign', symbol: '+=', binarySymbol: '+'},
+  {name: 'subtraction-assign', symbol: '-=', binarySymbol: '-'},
+  {name: 'multiplication-assign', symbol: '*=', binarySymbol: '*'},
+  {name: 'division-assign', symbol: '/=', binarySymbol: '/'},
+  {name: 'floor-division-assign', symbol: '//=', binarySymbol: '//'},
+  {name: 'modulo-assign', symbol: '%=', binarySymbol: '%'},
+  {name: 'exponentiation-assign', symbol: '**=', binarySymbol: '**'},
+] as const
+
+export const BINARY_ASSIGN_SYMBOLS = BINARY_ASSIGN_OPERATORS.map(({symbol}) => symbol)
+const BINARY_OP_SYMBOLS = [
+  '=',
+  '|>',
+  '?|>',
+  '??',
+  '^',
+  '|',
+  '&',
+  '==',
+  '!=',
+  '>',
+  '>=',
+  '<',
+  '<=',
+  '<=>',
+  '::',
+  '++',
+  STRING_CONCAT_OPERATOR,
+  '~~',
+  '...',
+  '<..',
+  '..<',
+  '<.<',
+  '<<',
+  '>>',
+  '+',
+  '-',
+  '*',
+  '/',
+  '//',
+  '%',
+  '**',
+  PROPERTY_ACCESS_OPERATOR,
+  NULL_COALESCING_OPERATOR,
+  '&&',
+  '||',
+  '!?',
+  '?!',
+  '≤',
+  '≥',
+  '≠',
+] as const
+
+const BINARY_OPS = new Set<string>(BINARY_OP_SYMBOLS)
+const BINARY_ASSIGNS = new Set<string>(BINARY_ASSIGN_SYMBOLS)
+const BINARY_OP_CHARS = new Set(
+  BINARY_OP_SYMBOLS.join('')
+    .split('')
+    .filter(c => !/[a-zA-Z]/.test(c)),
+)
 
 export function isCommentStart(input: string) {
   const code = input.charCodeAt(0)
@@ -99,13 +192,6 @@ export function isWord(input: string): boolean {
   return /^\b\w+\b$/.test(input)
 }
 
-const BINARY_OPS = new Set<string>(BINARY_OP_SYMBOLS)
-const BINARY_ASSIGNS = new Set<string>(BINARY_ASSIGN_SYMBOLS)
-const BINARY_OP_CHARS = new Set(
-  BINARY_OP_SYMBOLS.join('')
-    .split('')
-    .filter(c => !/[a-zA-Z]/.test(c)),
-)
 export function isBinaryOperatorSymbol(scanner: Scanner) {
   return BINARY_OP_SYMBOLS.some(symbol => scanner.is(symbol))
 }

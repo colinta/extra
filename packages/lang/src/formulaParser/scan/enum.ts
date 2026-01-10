@@ -1,4 +1,3 @@
-import {STATIC} from 'src/types'
 import * as Expressions from '../../expressions'
 import {
   ENUM_KEYWORD,
@@ -16,21 +15,16 @@ import {unexpectedToken} from './basics'
 import {scanGenerics, scanNamedFormula, scanStaticFormula} from './formula'
 import {scanFormulaLiteralArguments} from './formula_arguments'
 import {scanValidTypeName, scanAnyReference} from './identifier'
+import {isStaticFunction, isStaticProperty, scanClassProperty} from './class'
 
-export function scanEnum(
+export function scanNamedEnum(
   scanner: Scanner,
   parseNext: ParseNext,
-  {
-    isFnArg,
-  }: {
-    // fn args do not support features like member and static methods
-    isFnArg: boolean
-  } = {isFnArg: false},
-): Expressions.EnumDefinition {
+): Expressions.NamedEnumDefinition {
   const range0 = scanner.charIndex
   const precedingComments = scanner.flushComments()
 
-  const isExport = isFnArg ? false : scanner.scanIfWord(EXPORT_KEYWORD)
+  const isExport = scanner.scanIfWord(EXPORT_KEYWORD)
   if (isExport) {
     scanner.expectWhitespace()
   }
@@ -39,7 +33,7 @@ export function scanEnum(
   const nameRef = scanValidTypeName(scanner)
   scanner.scanAllWhitespace()
 
-  const generics: string[] = []
+  const generics: Expressions.GenericExpression[] = []
   if (scanner.scanIfString(GENERIC_OPEN)) {
     generics.push(...scanGenerics(scanner, parseNext))
     scanner.scanAllWhitespace()
@@ -52,6 +46,9 @@ export function scanEnum(
   scanner.whereAmI('scanEnum')
 
   const members: Expressions.EnumMemberExpression[] = []
+  const staticProperties: Expressions.ClassStaticPropertyExpression[] = []
+  const staticNames = new Set<string>()
+  const memberNames = new Set<string>()
   const formulas: Expressions.NamedFormulaExpression[] = []
   while (!scanner.scanIfString(ENUM_CLOSE)) {
     if (scanner.scanIfString(ENUM_START)) {
@@ -90,17 +87,32 @@ export function scanEnum(
       )
 
       scanner.scanCommaOrNewline()
-    } else if (isFnArg && (scanner.isWord(FN_KEYWORD) || scanner.isWord(STATIC))) {
-      throw new ParseError(
-        scanner,
-        `Enum formulas are not supported in argument definitions, only enum cases.`,
-        scanner.charIndex - 1,
-      )
     } else if (scanner.isWord(FN_KEYWORD)) {
       const formula = scanNamedFormula(scanner, parseNext, 'enum')
+
+      if (memberNames.has(formula.name)) {
+        throw new ParseError(scanner, `Found duplicate property '${formula.name}'.`)
+      }
+
+      memberNames.add(formula.name)
       formulas.push(formula)
-    } else if (scanner.isWord(STATIC)) {
+    } else if (scanner.test(isStaticProperty)) {
+      const property = scanEnumProperty(scanner, parseNext)
+
+      if (staticNames.has(property.name)) {
+        throw new ParseError(scanner, `Found duplicate static property '${property}'.`)
+      }
+
+      staticNames.add(property.name)
+      staticProperties.push(property)
+    } else if (scanner.test(isStaticFunction)) {
       const formula = scanStaticFormula(scanner, parseNext, 'enum')
+
+      if (staticNames.has(formula.name)) {
+        throw new ParseError(scanner, `Found duplicate static property '${formula.name}'.`)
+      }
+
+      staticNames.add(formula.name)
       formulas.push(formula)
     } else {
       throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
@@ -113,13 +125,18 @@ export function scanEnum(
     throw new ParseError(scanner, `Expected at least one enum member.`, scanner.charIndex - 1)
   }
 
-  return new Expressions.EnumDefinition(
+  return new Expressions.NamedEnumDefinition(
     [range0, scanner.charIndex],
     precedingComments,
     nameRef,
     members,
+    staticProperties,
     formulas,
     generics,
     isExport,
   )
+}
+
+function scanEnumProperty(scanner: Scanner, parseNext: ParseNext) {
+  return scanClassProperty(scanner, parseNext, true) as Expressions.ClassStaticPropertyExpression
 }

@@ -1,12 +1,7 @@
 import {Scanner} from '../scanner'
 import {Operator, ParseError} from '../types'
-import {
-  binaryOperatorNamed,
-  isBinaryOperator,
-  BINARY_OP_ALIASES,
-  BINARY_OP_NAMES,
-} from '../../operators'
-import {scanBinaryOperatorSymbol} from '../grammars'
+import {binaryOperatorNamed, isBinaryOperator} from '../../operators'
+import {BINARY_OP_ALIASES, BINARY_OP_NAMES, scanBinaryOperatorSymbol} from '../grammars'
 
 export function scanBinaryOperator(scanner: Scanner): Operator {
   scanner.whereAmI('scanBinaryOperator')

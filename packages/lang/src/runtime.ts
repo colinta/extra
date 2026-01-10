@@ -91,9 +91,7 @@ export class MutableTypeRuntime {
     readonly parent?: TypeRuntime,
     thisType?: ClassInstanceType | undefined,
   ) {
-    if (parent) {
-      this.viewRuntime = parent.viewRuntime
-    }
+    this.viewRuntime = parent?.viewRuntime
     this.thisType = thisType
   }
 
@@ -163,11 +161,7 @@ export class MutableTypeRuntime {
    */
   getStateType(name: string): Type | undefined {
     const thisType = this.getThisType()
-    if (!thisType) {
-      return undefined
-    }
-
-    return thisType.propAccessType(name)
+    return thisType?.propAccessType(name)
   }
 
   /**
@@ -183,10 +177,14 @@ export class MutableTypeRuntime {
    *     }
    */
   getThisType(): ClassInstanceType | undefined {
-    // do not call 'parent.getThisType()'. We don't want to accidentally leak
-    // the value of 'this'. Pass runtime.getThisType() to the
-    // `MutableTypeRuntime` constructor when appropriate.
-    return this.thisType
+    // I had originally wanted to avoid accidentally setting 'this' when
+    // creating a new runtime, but when I thought about it later, I couldn't
+    // imagine a scenario where this would be the desired behavior. Certainly
+    // things like 'let' would need to assign 'this', and the rule in Extra is
+    // that scope is always 'inherited' downwards - you can just go up the
+    // expression tree to find a value... so assigning 'this' from the parent
+    // makes sense?
+    return this.thisType ?? this.parent?.thisType
   }
 
   /**
@@ -248,10 +246,6 @@ export class MutableTypeRuntime {
 
   replaceTypeById(id: string, type: Type) {
     this.types.set(id, type)
-  }
-
-  setThisType(type: ClassInstanceType) {
-    this.thisType = type
   }
 
   setPipeType(type: Type) {

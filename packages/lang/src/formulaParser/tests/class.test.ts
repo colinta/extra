@@ -29,7 +29,7 @@ describe('class', () => {
 class User {
   @name: String = ''
 
-  default-name = ''
+  static default-name = ''
 
   fn rename(# name: String) =>
     @name = name
@@ -58,11 +58,12 @@ class User {
 class User {
   static create(name: String) =>
     User(name:)
-  default = User(name: default-name)
+  static default = User(name: default-name)
   fn rename(# name: String) =>
     @name = name
-  default-name = ''
-        secret-name = ''
+  static default-name = ''
+  static
+      secret-name = ''
   static addAge(user: User, age: Int) =>
     User(name: user.name, age: user.age + age)
   @name: String = ''
@@ -76,9 +77,9 @@ class User {
   @name: String = ''
   @age: Int = 0
 
-  default = User(name: default-name)
-  default-name = ''
-  secret-name = ''
+  static default = User(name: default-name)
+  static default-name = ''
+  static secret-name = ''
 
   fn rename(# name: String) =>
     @name = name
@@ -95,13 +96,10 @@ class User {
 `,
       ]),
     ).run(([classDefinition, expectedCode], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(
-        `should parse class '${desc(classDefinition)}'`,
-        () => {
-          const classDef = parseModule(classDefinition).get()
-          expect(classDef.toCode()).toEqual(expectedCode ?? classDefinition)
-        },
-      ),
+      (only ? it : skip ? it.skip : it)(`should parse class '${desc(classDefinition)}'`, () => {
+        const classDef = parseModule(classDefinition).get()
+        expect(classDef.toCode()).toEqual(expectedCode ?? classDefinition)
+      }),
     )
   })
 
@@ -120,15 +118,15 @@ class User { -- inferred @name
             formulas: new Map(),
           }),
           defaults: ['name'],
-          props: new Map(),
+          staticProps: new Map(),
         }),
         [],
       ]),
       c([
         `\
 class User { -- explicit name
-  default-name = ''
-  secret-name = default-name
+  static default-name = ''
+  static secret-name = default-name
 
   @name: String = default-name
 
@@ -164,12 +162,12 @@ class User { -- explicit name
             ]),
           }),
           defaults: ['name'],
-          props: new Map([
+          staticProps: new Map([
             ['default-name', Types.literal('')],
             ['secret-name', Types.literal('')],
             ['sayHi', Types.namedFormula('sayHi', [], Types.literal('hi!'))],
           ] as [string, Types.Type][]),
-          moreProps: (_, classType) =>
+          moreStatics: (_, classType) =>
             new Map([
               [
                 'create',
@@ -189,8 +187,8 @@ class User { -- explicit name
       c([
         `\
 class User { -- default 'name'
-  default-name = ''
-  secret-name = default-name
+  static default-name = ''
+  static secret-name = default-name
 
   @name: String = default-name
 
@@ -226,12 +224,12 @@ class User { -- default 'name'
             ]),
           }),
           defaults: ['name'],
-          props: new Map([
+          staticProps: new Map([
             ['default-name', Types.literal('')],
             ['secret-name', Types.literal('')],
             ['sayHi', Types.namedFormula('sayHi', [], Types.literal('hi!'))],
           ] as [string, Types.Type][]),
-          moreProps: (_, classType) =>
+          moreStatics: (_, classType) =>
             new Map([['create', Types.namedFormula('create', [], classType)]]),
         }),
         [
@@ -242,8 +240,8 @@ class User { -- default 'name'
       c([
         `\
 class User(howdy: String) {
-  default-name = ''
-  secret-name = default-name
+  static default-name = ''
+  static secret-name = default-name
 
   @name: String = default-name
 
@@ -279,12 +277,12 @@ class User(howdy: String) {
             ]),
           }),
           defaults: ['name'],
-          props: new Map([
+          staticProps: new Map([
             ['default-name', Types.literal('')],
             ['secret-name', Types.literal('')],
             ['sayHi', Types.namedFormula('sayHi', [], Types.literal('hi!'))],
           ] as [string, Types.Type][]),
-          moreProps: (_, classType) =>
+          moreStatics: (_, classType) =>
             new Map([
               [
                 'create',
@@ -302,7 +300,7 @@ class User(howdy: String) {
         ],
       ]),
     ).run(([classDefinition, expectedClassType, moreTests], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(
+      (only ? it : skip ? it.skip : it)(
         `should getType class '${desc(classDefinition)}'` +
           (moreTests ? ' : ' + moreTests.map(([name]) => name).join(',') : ''),
         () => {
@@ -350,7 +348,7 @@ class User(howdy: String) { -- howdy: string
         [['User(howdy: "fella").name', Values.string('fella')]],
       ]),
     ).run(([classDefinition, expectedClassType, moreTests], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(
+      (only ? it : skip ? it.skip : it)(
         `should eval class '${desc(classDefinition)}'` +
           (moreTests ? ' : ' + moreTests.map(([name]) => name).join(',') : ''),
         () => {
@@ -382,7 +380,7 @@ class User {
         "Expected argument named 'name' of type 'String'",
       ]),
     ).run(([classDefinition, code, message], {only, skip}) =>
-      (only ? it.only : skip ? it.skip : it)(
+      (only ? it : skip ? it.skip : it)(
         `should not get type of ${code} after defining ${desc(classDefinition)}`,
         () => {
           expect(() => {

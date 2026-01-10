@@ -1,6 +1,13 @@
 import * as Expressions from '../../expressions'
 import {type Expression} from '../../expressions'
-import {ARGS_CLOSE, ARGS_OPEN, KWARG_OP, SPLAT_OP, isArgumentStartChar} from '../grammars'
+import {
+  ARGS_CLOSE,
+  ARGS_OPEN,
+  ARG_SEPARATOR,
+  KWARG_OPERATOR,
+  SPREAD_OPERATOR,
+  isArgumentStartChar,
+} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
@@ -81,16 +88,16 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
        */
       let isSpreadPositionalArg = false
       if (scanner.test(scannerIsSpreadPositional)) {
-        scanner.expectString(SPLAT_OP)
+        scanner.expectString(SPREAD_OPERATOR)
         scanner.scanAllWhitespace()
         isSpreadPositionalArg = true
         spreadArg = 'spread'
       } else if (scanner.test(scannerIsRepeatedNamed)) {
-        scanner.expectString(SPLAT_OP)
+        scanner.expectString(SPREAD_OPERATOR)
         scanner.scanAllWhitespace()
         spreadArg = 'spread'
       } else if (scanner.test(scannerIsKeywordList)) {
-        scanner.expectString(KWARG_OP)
+        scanner.expectString(KWARG_OPERATOR)
         scanner.scanAllWhitespace()
         spreadArg = 'kwargs'
       }
@@ -108,7 +115,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
         // we already have a spread positional arg
         throw new ParseError(
           scanner,
-          `Found second remaining arguments list '${SPLAT_OP}# ${argName.name}' after '${SPLAT_OP}# ${spreadPositionalArg}'`,
+          `Found second remaining arguments list '${SPREAD_OPERATOR}# ${argName.name}' after '${SPREAD_OPERATOR}# ${spreadPositionalArg}'`,
           argRange0,
         )
       }
@@ -116,7 +123,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
       if (isPositional && spreadPositionalArg !== undefined) {
         throw new ParseError(
           scanner,
-          `Found positional argument '# ${argName.name}' after '${SPLAT_OP}# ${spreadPositionalArg}'.`,
+          `Found positional argument '# ${argName.name}' after '${SPREAD_OPERATOR}# ${spreadPositionalArg}'.`,
           argRange0,
         )
       }
@@ -127,7 +134,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
         if (kwargsNamedArg !== undefined) {
           throw new ParseError(
             scanner,
-            `Found second keyword arguments list '${KWARG_OP}${argName.name}' after '${KWARG_OP}${kwargsNamedArg}'`,
+            `Found second keyword arguments list '${KWARG_OPERATOR}${argName.name}' after '${KWARG_OPERATOR}${kwargsNamedArg}'`,
             argRange0,
           )
         }
@@ -136,7 +143,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
       if (!isPositional && kwargsNamedArg !== undefined) {
         throw new ParseError(
           scanner,
-          `Found named argument '${argName.name}' after '${KWARG_OP}${kwargsNamedArg}'.`,
+          `Found named argument '${argName.name}' after '${KWARG_OPERATOR}${kwargsNamedArg}'.`,
           argRange0,
         )
       }
@@ -217,7 +224,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
       }
 
       let argType: Expression
-      if (is === 'formula' && !scanner.is(':')) {
+      if (is === 'formula' && !scanner.is(ARG_SEPARATOR)) {
         if (!canInfer) {
           throw new ParseError(scanner, `Expected type expression for '${argName.name}'`)
         }
@@ -227,7 +234,10 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
           scanner.flushComments(),
         )
       } else {
-        scanner.expectString(':', "Expected ':' followed by the argument type")
+        scanner.expectString(
+          ARG_SEPARATOR,
+          `Expected '${ARG_SEPARATOR}' followed by the argument type`,
+        )
         scanner.scanAllWhitespace()
         argType = scanArgumentType(scanner, 'argument_type', parseNext)
         scanner.scanSpaces()
@@ -236,14 +246,14 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
         if (spreadArg === 'spread' && !(argType instanceof Expressions.ArrayTypeExpression)) {
           throw new ParseError(
             scanner,
-            `Expected 'Array' type for '${SPLAT_OP}${isSpreadPositionalArg ? '# ' : ''}${
+            `Expected 'Array' type for '${SPREAD_OPERATOR}${isSpreadPositionalArg ? '# ' : ''}${
               argName.name
             }', found '${argType}'. Remaining argument lists must use the Array type, e.g. 'Array(${argType})'.`,
           )
         } else if (spreadArg === 'kwargs' && !(argType instanceof Expressions.DictTypeExpression)) {
           throw new ParseError(
             scanner,
-            `Expected 'Dict' type for '${KWARG_OP}${argName.name}', found '${argType}'. Keyword arguments lists must use the Dict type, e.g. 'Dict(${argType})'.`,
+            `Expected 'Dict' type for '${KWARG_OPERATOR}${argName.name}', found '${argType}'. Keyword arguments lists must use the Dict type, e.g. 'Dict(${argType})'.`,
           )
         }
       }
@@ -253,7 +263,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
         if (isPositional && spreadPositionalArg !== undefined) {
           throw new ParseError(
             scanner,
-            `Default values are not allowed on positional arguments following a spread positional argument ('${SPLAT_OP}# ${spreadPositionalArg}')`,
+            `Default values are not allowed on positional arguments following a spread positional argument ('${SPREAD_OPERATOR}# ${spreadPositionalArg}')`,
           )
         }
 
@@ -328,7 +338,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
 }
 
 function scannerIsSpreadPositional(scanner: Scanner) {
-  if (!scanner.scanIfString(SPLAT_OP)) {
+  if (!scanner.scanIfString(SPREAD_OPERATOR)) {
     return false
   }
 
@@ -337,7 +347,7 @@ function scannerIsSpreadPositional(scanner: Scanner) {
 }
 
 function scannerIsRepeatedNamed(scanner: Scanner) {
-  if (!scanner.scanIfString(SPLAT_OP)) {
+  if (!scanner.scanIfString(SPREAD_OPERATOR)) {
     return false
   }
 
@@ -346,7 +356,7 @@ function scannerIsRepeatedNamed(scanner: Scanner) {
 }
 
 function scannerIsKeywordList(scanner: Scanner) {
-  if (!scanner.scanIfString(KWARG_OP)) {
+  if (!scanner.scanIfString(KWARG_OPERATOR)) {
     return false
   }
 

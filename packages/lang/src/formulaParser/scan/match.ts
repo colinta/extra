@@ -13,8 +13,11 @@ import {
   IGNORE_TOKEN,
   isStringStartChar,
   AS_KEYWORD,
+  CASE_SEPARATOR,
+  ARG_SEPARATOR,
+  STRING_CONCAT_OPERATOR,
+  ENUM_START,
 } from '../grammars'
-import {STRING_CONCAT_OPERATOR} from '../../operators'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 import {scanArgumentType} from './argument_type'
@@ -108,7 +111,7 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
     return scanMatchString(scanner)
   } else if (isArgumentStartChar(scanner)) {
     return scanMatchReference(scanner)
-  } else if (scanner.is('.')) {
+  } else if (scanner.is(ENUM_START)) {
     return scanMatchEnum(scanner, parseNext)
   } else if (scanner.is(/[\'"`]/)) {
     return scanMatchString(scanner)
@@ -140,7 +143,7 @@ function scanMatchNamedReference(scanner: Scanner, parseNext: ParseNext) {
   const precedingComments = scanner.flushComments()
   const nameRef = scanAnyReference(scanner)
   scanner.scanSpaces()
-  scanner.expectString(':')
+  scanner.expectString(ARG_SEPARATOR)
   scanner.scanAllWhitespace()
 
   const reference = scanMatch(scanner, parseNext)
@@ -448,7 +451,7 @@ export function scanCase(scanner: Scanner, parseNext: ParseNext): Expression {
       scanner.whereAmI('scanCase or')
       continue
     } else {
-      scanner.expectString(':')
+      scanner.expectString(CASE_SEPARATOR)
       break
     }
   }
@@ -491,7 +494,7 @@ function isNamedArg(scanner: Scanner) {
   }
 
   scanner.scanSpaces()
-  return scanner.is(':')
+  return scanner.is(ARG_SEPARATOR)
 }
 
 function isAsKeyword(scanner: Scanner) {

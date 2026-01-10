@@ -3,6 +3,7 @@ import {intersection} from './util'
 import {splitter} from './graphemes'
 import * as Narrowed from './narrowed'
 import {narrowedFloatToInt, narrowedFloatToLength} from './narrowed'
+import {ATOM_START, SPREAD_OPERATOR, KWARG_OPERATOR} from './formulaParser/grammars'
 
 export const FN = 'fn'
 export const VIEW = 'view'
@@ -15,8 +16,6 @@ export const OBJECT = 'Object'
 export const ARRAY = 'Array'
 export const DICT = 'Dict'
 export const SET = 'Set'
-export const SPLAT_OP = '...'
-export const KWARG_OP = '**'
 
 // constructor functions
 export function never() {
@@ -176,27 +175,27 @@ export function floatRange(narrowed?: Partial<Narrowed.NarrowedFloat>) {
 export function metaClass({
   name,
   class: classType,
-  props,
+  staticProps,
   parent,
   defaults,
-  moreProps,
+  moreStatics,
 }: {
   name: string
   class: ClassInstanceType
-  props?: Map<string, Type>
+  staticProps?: Map<string, Type>
   parent?: ClassDefinitionType
   defaults?: string[]
-  moreProps?: (metaClass: ClassDefinitionType, classType: ClassInstanceType) => Map<string, Type>
+  moreStatics?: (metaClass: ClassDefinitionType, classType: ClassInstanceType) => Map<string, Type>
 }) {
   const metaClass = new ClassDefinitionType(
     name,
     parent,
     classType,
-    props ?? new Map(),
+    staticProps ?? new Map(),
     new Set(defaults),
   )
-  if (moreProps) {
-    for (const [name, type] of moreProps(metaClass, classType)) {
+  if (moreStatics) {
+    for (const [name, type] of moreStatics(metaClass, classType)) {
       metaClass.staticProps.set(name, type)
     }
   }
@@ -232,16 +231,22 @@ export function enumCase(
   return new EnumCase(name, args)
 }
 export function enumType(members: EnumCase[]) {
-  return new EnumType(members)
+  return new AnonymousEnumType(members)
 }
 
-export function namedEnumType(
-  name: string,
-  members: EnumCase[],
-  formulas: NamedFormulaType[],
-  staticFormulas: NamedFormulaType[],
-  genericTypes: GenericType[] = [],
-) {
+export function namedEnumType({
+  name,
+  members,
+  formulas = [],
+  staticFormulas = [],
+  genericTypes = [],
+}: {
+  name: string
+  members: EnumCase[]
+  formulas?: NamedFormulaType[]
+  staticFormulas?: NamedFormulaType[]
+  genericTypes?: GenericType[]
+}) {
   return new NamedEnumType(name, members, formulas, staticFormulas, genericTypes)
 }
 
@@ -585,6 +590,11 @@ export abstract class Type {
     return this.arrayAccessType(rhs)
   }
 
+  /**
+   * Used by null-coalescing access operators `?.` and `?.[]`. `OneOfType`
+   * overides `safePropAccessType` and `safeArrayAccessType` to filter out any
+   * `null` type.
+   */
   safePropAccessType(name: string) {
     return this.propAccessType(name)
   }
@@ -801,7 +811,7 @@ export interface PositionalArgument {
  * Example:
  *     fn filterUsers(...users: Array(User)): String
  *
- *     filterUsers(kevin, angie)
+ *     filterUsers(kevin, buzz)
  */
 export interface SpreadPositionalArgument {
   is: 'spread-positional-argument'
@@ -969,7 +979,7 @@ export class FormulaType extends Type {
 
         // spread === 'spread' =>  ...
         // spread === 'kwargs' =>  *
-        argDesc += spread === 'spread' ? SPLAT_OP : spread === 'kwargs' ? KWARG_OP : ''
+        argDesc += spread === 'spread' ? SPREAD_OPERATOR : spread === 'kwargs' ? KWARG_OPERATOR : ''
 
         // alias === undefined =>  # name: type
         // alias === name      =>  name: type
@@ -1273,7 +1283,7 @@ export abstract class OneOfType extends Type {
 }
 
 function scoreType(type: Type): number | undefined {
-  if (type instanceof EnumType) {
+  if (type instanceof AnonymousEnumType) {
     return 1
   }
   if (type instanceof EnumCase) {
@@ -1445,8 +1455,12 @@ export class OptionalType extends OneOfType {
     return new OptionalType(type)
   }
 
+  /**
+   * Called from convenience function `optional()`. operators.ts uses this
+   * function to create optional types without checking for whether the type
+   * includes NullType already.
+   */
   static createOptional(type: Type): Type {
-    // shouldn't happen but just in case
     if (type instanceof OneOfType) {
       // if types includes NullType, return it, otherwise return OneOfType with NullType
       // added
@@ -3082,7 +3096,7 @@ export class DictType extends ContainerType<DictType> {
     if (narrowedNames.size === 0) {
       namesDesc = ''
     } else {
-      namesDesc = `keys: [${[...narrowedNames].map(name => ':' + name).join(', ')}]`
+      namesDesc = `keys: [${[...narrowedNames].map(name => ATOM_START + name).join(', ')}]`
     }
 
     let lengthDesc = Narrowed.lengthDesc(narrowedLength)
@@ -3432,6 +3446,8 @@ export class NamedObjectType extends ObjectType {
   }
 }
 
+// not a type, just a holding class for enum cases. in practice, enum cases are
+// functions that return an instance of the associated EnumType
 export class EnumCase {
   readonly positionalTypes: Type[] = []
   readonly namedTypes = new Map<string, Type>()
@@ -3455,7 +3471,7 @@ export class EnumCase {
  *
  *     fn(foo: .a | .b(Int))
  */
-export class EnumType extends Type {
+export class AnonymousEnumType extends Type {
   is = 'enum'
 
   constructor(readonly members: EnumCase[]) {
@@ -3495,7 +3511,7 @@ export class EnumType extends Type {
 /**
  * Enum type defined at module scope – with functions, support for generics
  */
-export class NamedEnumType extends EnumType {
+export class NamedEnumType extends AnonymousEnumType {
   is = 'named-enum'
 
   constructor(
@@ -3569,7 +3585,7 @@ export class ClassDefinitionType extends Type {
     readonly parentClass: ClassDefinitionType | undefined,
     readonly returnClassType: ClassInstanceType,
     readonly staticProps: Map<string, Type>,
-    readonly hasDefaultValues: Set<string>,
+    readonly defaultValueNames: Set<string>,
   ) {
     super()
 
@@ -3577,7 +3593,7 @@ export class ClassDefinitionType extends Type {
       namedArgument({
         name,
         type,
-        isRequired: !hasDefaultValues.has(name),
+        isRequired: !defaultValueNames.has(name),
       }),
     )
 
@@ -3588,6 +3604,14 @@ export class ClassDefinitionType extends Type {
       // TODO: class generics
       [],
     )
+  }
+
+  addStaticProp(name: string, type: Type) {
+    this.staticProps.set(name, type)
+  }
+
+  fromTypeConstructor(): Type {
+    return this.returnClassType
   }
 
   propAccessType(name: string): Type | undefined {

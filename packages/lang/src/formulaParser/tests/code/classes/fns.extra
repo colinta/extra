@@ -1,0 +1,11 @@
+class Foo {
+  @name: String
+  @age = 0
+  @isActive = true
+  @title = ''
+
+  fn summary() =>
+    "${this.name}, age ${this.age}, " +
+      if(this.isActive, then: "active", else: "inactive") +
+      if(this.title != '', then: ", titled '${this.title}'", else: '')
+}

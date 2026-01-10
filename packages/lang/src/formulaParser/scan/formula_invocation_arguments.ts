@@ -1,12 +1,13 @@
 import * as Expressions from '../../expressions'
 import {
+  isNamedArg,
+  ARG_SEPARATOR,
   ARGS_CLOSE,
   ARGS_OPEN,
   BLOCK_CLOSE,
   BLOCK_OPEN,
-  isNamedArg,
-  KWARG_OP,
-  SPLAT_OP,
+  KWARG_OPERATOR,
+  SPREAD_OPERATOR,
 } from '../grammars'
 import {Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -84,11 +85,11 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
 
       let isSpreadArg = false
       let isKwarg = false
-      if (scanner.is(SPLAT_OP)) {
-        scanner.expectString(SPLAT_OP)
+      if (scanner.is(SPREAD_OPERATOR)) {
+        scanner.expectString(SPREAD_OPERATOR)
         isSpreadArg = true
-      } else if (scanner.is(KWARG_OP)) {
-        scanner.expectString(KWARG_OP)
+      } else if (scanner.is(KWARG_OPERATOR)) {
+        scanner.expectString(KWARG_OPERATOR)
         isKwarg = true
       }
 
@@ -100,7 +101,10 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
         // and test it in comments.test.ts
         argName = scanValidLocalName(scanner)
         scanner.scanAllWhitespace()
-        scanner.expectString(':', "Expected ':' followed by the argument type")
+        scanner.expectString(
+          ARG_SEPARATOR,
+          `Expected '${ARG_SEPARATOR}' followed by the argument type`,
+        )
         scanner.scanAllWhitespace()
       }
 
@@ -120,7 +124,7 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
         if (argName && isKwarg) {
           throw new ParseError(
             scanner,
-            `Keyword argument list operator ${KWARG_OP} cannot be applied to named arguments.`,
+            `Keyword argument list operator ${KWARG_OPERATOR} cannot be applied to named arguments.`,
           )
         }
 

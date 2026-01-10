@@ -1,5 +1,5 @@
 import * as Expressions from '../../expressions'
-import {IGNORE_TOKEN, isRef, isRefChar} from '../grammars'
+import {ATOM_START, IGNORE_TOKEN, isRef, isRefChar, STATE_START} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
 import {unexpectedToken} from './basics'
@@ -119,10 +119,10 @@ export function scanValidTypeName(scanner: Scanner): Expressions.Reference {
  * course).
  */
 export function scanValidClassPropertyName(scanner: Scanner): Expressions.Reference {
-  const isState = scanner.scanIfString('@')
+  const isState = scanner.scanIfString(STATE_START)
   const ref = scanValidName(scanner)
   if (!isValidLowercased(ref.name)) {
-    const name = (isState ? '@' : '') + ref.name
+    const name = (isState ? STATE_START : '') + ref.name
     throw new ParseError(
       scanner,
       `Invalid property name '${name}'. Property names must start with a lowercased letter.`,
@@ -143,7 +143,7 @@ export function scanValidClassPropertyName(scanner: Scanner): Expressions.Refere
 export function scanAtom(scanner: Scanner) {
   scanner.whereAmI('scanAtom')
   const range0 = scanner.charIndex
-  scanner.expectString(':')
+  scanner.expectString(ATOM_START)
 
   let currentToken = ''
   while (isRefChar(scanner)) {
@@ -170,7 +170,7 @@ export function scanAtom(scanner: Scanner) {
 export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
   scanner.whereAmI('scanIdentifier')
   const range0 = scanner.charIndex
-  const isState = scanner.scanIfString('@')
+  const isState = scanner.scanIfString(STATE_START)
 
   let currentToken = ''
   while (isRefChar(scanner)) {
@@ -248,7 +248,10 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
   // If it's a reserved word, it cannot be a state reference
   if (identifier) {
     if (isState) {
-      throw new ParseError(scanner, `Invalid identifier '${isState ? '@' : ''}${identifier.name}'`)
+      throw new ParseError(
+        scanner,
+        `Invalid identifier '${isState ? STATE_START : ''}${identifier.name}'`,
+      )
     }
 
     return identifier

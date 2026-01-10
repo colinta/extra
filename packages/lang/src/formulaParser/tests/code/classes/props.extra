@@ -1,0 +1,6 @@
+class Foo {
+  @name: String
+  @age = 0
+  @isActive = true
+  @title = ''
+}

@@ -9,6 +9,7 @@ import {
   GENERIC_OPEN,
   isArgumentStartChar,
   OVERRIDE_KEYWORD,
+  TYPE_START,
 } from '../grammars'
 
 import {scanArgumentType} from './argument_type'
@@ -125,6 +126,8 @@ function _scanFormula(
   }
 
   scanner.whereAmI(`scanFormula type = ${type}`)
+  // typeExpect used to sometimes be different from type - it no longer is, but
+  // you never know what the future will bring.
   const typeExpect = type
 
   const precedingComments = scanner.flushComments()
@@ -133,11 +136,9 @@ function _scanFormula(
   let isOverride = false
   // if we are scanning in the context of a class, and are scanning a 'fn' (not
   // a 'static' fn), check for the override keyword.
-  if (bodyExpressionType === 'class' && typeExpect === 'fn') {
-    isOverride = scanner.scanIfWord(OVERRIDE_KEYWORD)
-    if (isOverride) {
-      scanner.expectWhitespace()
-    }
+  if (bodyExpressionType === 'class' && type === 'fn' && scanner.scanIfWord(OVERRIDE_KEYWORD)) {
+    isOverride = true
+    scanner.expectWhitespace()
   }
 
   scanner.expectString(typeExpect, `Expected '${typeExpect}(' to start the formula expression`)
@@ -166,7 +167,7 @@ function _scanFormula(
   }
   scanner.scanAllWhitespace()
 
-  let generics: string[] = []
+  let generics: Expressions.GenericExpression[] = []
   if (scanner.scanIfString(GENERIC_OPEN)) {
     if (type === 'fn' || type === 'static') {
       generics = scanGenerics(scanner, parseNext)
@@ -224,17 +225,17 @@ export function finishScanningFormula(
   followingArgsComments: Comment[],
   isOverride: boolean,
   nameRef: Expressions.Reference | undefined,
-  generics: string[],
+  generics: Expressions.GenericExpression[],
   argDefinitions: Expressions.FormulaLiteralArgument[],
   type: 'fn' | 'static' | 'view' | 'render',
   bodyExpressionType: ExpressionType,
   isInView: boolean,
 ) {
   let returnType: Expression
-  if (type === 'fn' && scanner.scanIfString(':')) {
+  if (type === 'fn' && scanner.scanIfString(TYPE_START)) {
     scanner.scanAllWhitespace()
     returnType = scanArgumentType(scanner, 'argument_type', parseNext)
-  } else if (scanner.scanIfString(':')) {
+  } else if (scanner.scanIfString(TYPE_START)) {
     throw new ParseError(
       scanner,
       `Unexpected return type in ${type} function (${type} functions must return a View)`,
@@ -254,7 +255,7 @@ export function finishScanningFormula(
   const precedingReturnTypeComments = scanner.flushComments()
   scanner.expectString(
     FUNCTION_BODY_START,
-    `Expected '${FUNCTION_BODY_START}' followed by the function body, or ':' followed by the return type`,
+    `Expected '${FUNCTION_BODY_START}' followed by the function body, or '${TYPE_START}' followed by the return type`,
   )
 
   scanner.whereAmI(`scanFormulaArguments: scan body within ${bodyExpressionType}`)
@@ -305,7 +306,7 @@ export function finishScanningFormula(
         generics,
       )
     } else if (bodyExpressionType === 'class') {
-      return new Expressions.MemberFormulaExpression(
+      return new Expressions.InstanceFormulaExpression(
         [range0, scanner.charIndex],
         precedingComments,
         precedingNameComments,
@@ -356,15 +357,16 @@ export function finishScanningFormula(
  * Ends after it scans a closing '>'.
  */
 export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
-  const generics: string[] = []
+  const generics: Expressions.GenericExpression[] = []
   scanner.scanAllWhitespace()
   for (;;) {
-    const generic = scanValidTypeName(scanner).name
-    if (generics.includes(generic)) {
+    const genericRef = scanValidTypeName(scanner)
+    const genericName = genericRef.name
+    if (generics.some(generic => generic.name === genericName)) {
       throw new ParseError(
         scanner,
-        `Unexpected duplicate generic identifier <${generic}>`,
-        scanner.charIndex - generic.length,
+        `Unexpected duplicate generic identifier <${genericName}>`,
+        scanner.charIndex - genericName.length,
       )
     }
 
@@ -382,7 +384,13 @@ export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
       throw `TODO - support type on generic ${type}`
     }
 
-    generics.push(generic)
+    generics.push(
+      new Expressions.GenericExpression(
+        genericRef.range,
+        genericRef.precedingComments,
+        genericName,
+      ),
+    )
 
     const shouldBreak = scanner.scanCommaOrBreak(
       GENERIC_CLOSE,

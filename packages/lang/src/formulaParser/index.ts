@@ -1,18 +1,16 @@
 import {ok, err, attempt} from '@extra-lang/result'
 
-import * as Values from '../values'
-import * as Expressions from '../expressions'
-import {Expression} from '../expressions'
+import * as Values from '@/values'
+import * as Expressions from '@/expressions'
+import {Expression} from '@/expressions'
 
 import {
-  INCLUSION_OPERATOR,
   LOWEST_PRECEDENCE,
-  NULL_COALESCING_OPERATOR,
   binaryOperatorNamed,
   isOperator,
   NegateOperator,
   FunctionInvocationOperator,
-} from '../operators'
+} from '@/operators'
 import {
   ParseError,
   type ParseNext,
@@ -58,10 +56,17 @@ import {
   IS_KEYWORD,
   NOT_IS_KEYWORD,
   CASE_KEYWORD,
-  SPLAT_OP,
+  SPREAD_OPERATOR,
   SET_OPEN,
   DICT_OPEN,
   ARGS_OPEN,
+  INCLUSION_OPERATOR,
+  NULL_COALESCING_OPERATOR,
+  FUNCTION_INVOCATION_OPERATOR,
+  NULL_COALESCE_INVOCATION_OPEN,
+  NULL_COALESCE_ARRAY_OPEN,
+  NULL_COALESCE_ARRAY_ACCESS_OPERATOR,
+  NULL_COALESCE_INVOCATION_OPERATOR,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -383,7 +388,11 @@ function parseInternal(
     scanner.whereAmI(`specialAllowList: ${scanner.char}`)
     switch (scanner.char) {
       case '?':
-        return scanner.nextChar === '.'
+        return (
+          scanner.is(NULL_COALESCING_OPERATOR) || //   ?.
+          scanner.is(NULL_COALESCE_ARRAY_OPEN) || //   ?.[
+          scanner.is(NULL_COALESCE_INVOCATION_OPEN) // ?.(
+        )
       case '.':
       case '[':
       case '(':
@@ -408,7 +417,7 @@ function parseInternal(
       return false
     }
 
-    if (scanner.is(SPLAT_OP) && expressionSupportsSplat(expressionType)) {
+    if (scanner.is(SPREAD_OPERATOR) && expressionSupportsSplat(expressionType)) {
       return false
     }
 
@@ -540,18 +549,22 @@ function parseInternal(
       }
     } else {
       if (scanner.is(ARGS_OPEN)) {
-        processOperator(binaryOperatorNamed('fn', scanner.flushComments()))
+        processOperator(binaryOperatorNamed(FUNCTION_INVOCATION_OPERATOR, scanner.flushComments()))
         processExpression(scanInvocationArgs(scanner, parseNext))
-      } else if (scanner.is(NULL_COALESCING_OPERATOR + ARGS_OPEN)) {
+      } else if (scanner.is(NULL_COALESCE_INVOCATION_OPEN)) {
         scanner.expectString(NULL_COALESCING_OPERATOR)
-        processOperator(binaryOperatorNamed('?.()', scanner.flushComments()))
+        processOperator(
+          binaryOperatorNamed(NULL_COALESCE_INVOCATION_OPERATOR, scanner.flushComments()),
+        )
         processExpression(scanInvocationArgs(scanner, parseNext))
       } else if (scanner.is(ARRAY_OPEN)) {
         processOperator(binaryOperatorNamed('[]', scanner.flushComments()))
         processExpression(scanArrayAccess(scanner, parseNext))
-      } else if (scanner.is(NULL_COALESCING_OPERATOR + ARRAY_OPEN)) {
+      } else if (scanner.is(NULL_COALESCE_ARRAY_OPEN)) {
         scanner.expectString(NULL_COALESCING_OPERATOR)
-        processOperator(binaryOperatorNamed('?.[]', scanner.flushComments()))
+        processOperator(
+          binaryOperatorNamed(NULL_COALESCE_ARRAY_ACCESS_OPERATOR, scanner.flushComments()),
+        )
         processExpression(scanArrayAccess(scanner, parseNext))
       } else if (isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)) {
         processOperator(scanBinaryOperator(scanner))

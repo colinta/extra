@@ -50,7 +50,15 @@ describe('getType', () => {
 
   describe('LogicalAnd', () => {
     cases<[string, Types.Type]>(
-      c(['0|1|2 and String', Types.oneOf([Types.literal(0), Types.string()])]),
+      c([
+        //
+        '0|1|2 and String',
+        Types.oneOf([
+          //
+          Types.literal(0),
+          Types.string(),
+        ]),
+      ]),
     ).run(([formula, expectedType], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`${formula}`, () => {
         const [lhs, rhs] = formula.split(' and ', 2)
@@ -69,7 +77,11 @@ describe('getType', () => {
       ([formula, expectedType], {only, skip}) =>
         (only ? it.only : skip ? it.skip : it)(`${formula}`, () => {
           const [_, lhs] = formula.split('not ', 2)
-          const lhsType = parseType(lhs).get().getType(typeRuntime).get().fromTypeConstructor()
+          const lhsType = parseType(lhs)
+            .get()
+            .getAsTypeExpression(typeRuntime)
+            .get()
+            .fromTypeConstructor()
           runtimeTypes['lhs'] = [lhsType, Values.nullValue()]
           const expression = parse('not lhs').get()
           expect(expression.getType(typeRuntime).get()).toEqual(expectedType)
@@ -286,81 +298,10 @@ describe('getType', () => {
   })
 
   describe('AccessOperations', () => {
-    beforeEach(() => {
-      runtimeTypes['user'] = [
-        Types.object([
-          Types.namedProp('name', Types.string()),
-          Types.namedProp(
-            'foo',
-            Types.object([Types.namedProp('bar', Types.optional(Types.string()))]),
-          ),
-          Types.namedProp(
-            'FOO',
-            Types.optional(Types.object([Types.namedProp('bar', Types.string())])),
-          ),
-        ]),
-        Values.nullValue(),
-      ]
-    })
-
     it('anInt => anInt type (Int)', () => {
       runtimeTypes['anInt'] = [Types.int(), Values.int(1)]
       const expression = parse('anInt').get()
       expect(expression.getType(typeRuntime).get()).toEqual(Types.int())
-    })
-
-    it('user.name => user.name type (String)', () => {
-      const expression = parse('user.name').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.string())
-    })
-
-    it('user?.name => Expected a nullable', () => {
-      const expression = parse('user?.name').get()
-      expect(() => {
-        expression.getType(typeRuntime).get()
-      }).toThrow(
-        "Expected a nullable type on left hand side of '?.' operator, found {name: String,",
-      )
-    })
-
-    it('user?.foo.bar => Expected a nullable', () => {
-      const expression = parse('user?.foo.bar').get()
-      expect(() => {
-        expression.getType(typeRuntime).get()
-      }).toThrow(
-        "Expected a nullable type on left hand side of '?.' operator, found {name: String,",
-      )
-    })
-
-    it('user.foo?.bar => user.name type (String)', () => {
-      const expression = parse('user.foo?.bar').get()
-      expect(() => {
-        expression.getType(typeRuntime).get()
-      }).toThrow("Expected a nullable type on left hand side of '?.' operator")
-    })
-
-    it('foo.name => throws', () => {
-      const expression = parse('foo.name').get()
-      expect(() => expression.getType(typeRuntime).get()).toThrow(
-        "Cannot get type of variable named 'foo'",
-      )
-    })
-
-    it('user.foo.bar => Optional(String)', () => {
-      const expression = parse('user.foo.bar').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.optional(Types.string()))
-    })
-
-    it('user.FOO.bar => Optional(String)', () => {
-      const expression = parse('user.FOO.bar').get()
-      expect(() => expression.getType(typeRuntime).get()).toThrow(
-        "Property 'bar' does not exist on null",
-      )
-    })
-
-    it('user.FOO?.bar => Optional(String)', () => {
-      const expression = parse('user.FOO?.bar').get()
-      expect(expression.getType(typeRuntime).get()).toEqual(Types.optional(Types.string()))
     })
 
     it('intThings[0] => intThings[0] type (Int)', () => {

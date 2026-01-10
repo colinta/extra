@@ -150,7 +150,7 @@ describe('complicated relationships', () => {
     )
   })
 
-  it.only('can infer safe array access with literals', () => {
+  it('can infer safe array access with literals', () => {
     runtimeTypes['items'] = [
       Types.array(Types.int()),
       Values.array([Values.int(-1), Values.int(1), Values.int(3)]),

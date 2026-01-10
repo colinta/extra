@@ -50,7 +50,7 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
     const lastComments = scanner.flushComments()
 
     return new Expressions.ViewClassDefinition(
-      [range0, scanner.charIndex],
+      [range0, scanner.charIndex] as const,
       precedingComments,
       lastComments,
       precedingArgsComments,

@@ -17,11 +17,15 @@ class Arguments extends Expression {
   }
 
   getType() {
-    return [] as any
+    return null as any
   }
 
   eval() {
-    return [] as any
+    return null as any
+  }
+
+  compile() {
+    return null as any
   }
 }
 

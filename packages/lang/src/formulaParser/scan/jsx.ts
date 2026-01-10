@@ -230,7 +230,7 @@ export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
 }
 
 /**
- * Any valid name character, _plus_ ':'
+ * Any valid name character, _plus_ ':', which is to support xml-style attribute names.
  */
 function scanPropName(scanner: Scanner) {
   let name = ''

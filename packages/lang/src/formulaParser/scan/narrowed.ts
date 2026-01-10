@@ -1,6 +1,13 @@
 import * as Narrowed from '../../narrowed'
 import * as Values from '../../values'
-import {ARRAY_CLOSE, ARRAY_OPEN, PARENS_CLOSE, isNumberChar, isNumberStart} from '../grammars'
+import {
+  ARG_SEPARATOR,
+  ARRAY_CLOSE,
+  ARRAY_OPEN,
+  PARENS_CLOSE,
+  isNumberChar,
+  isNumberStart,
+} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
 
@@ -40,10 +47,7 @@ export function scanNarrowedFloat(scanner: Scanner): Narrowed.NarrowedFloat {
     scanner.scanAllWhitespace()
     const count = (scanNumber(scanner, 'float').value as Values.FloatValue).value
     return {min: [count], max: undefined}
-  } else if (
-    scanner.is('-') ||
-    (isNumberChar(scanner.char) && isNumberStart(scanner))
-  ) {
+  } else if (scanner.is('-') || (isNumberChar(scanner.char) && isNumberStart(scanner))) {
     let min = (scanNumber(scanner, 'float').value as Values.FloatValue).value
     let max: number | undefined
     scanner.scanAllWhitespace()
@@ -108,10 +112,7 @@ export function scanNarrowedInt(scanner: Scanner): Narrowed.NarrowedInt {
     scanner.scanAllWhitespace()
     const count = Math.floor((scanNumber(scanner, 'int').value as Values.IntValue).value)
     return {min: count + 1, max: undefined}
-  } else if (
-    scanner.is('-') ||
-    (isNumberChar(scanner.char) && isNumberStart(scanner))
-  ) {
+  } else if (scanner.is('-') || (isNumberChar(scanner.char) && isNumberStart(scanner))) {
     let min = Math.floor((scanNumber(scanner, 'int').value as Values.IntValue).value)
     let max: number | undefined
     scanner.scanAllWhitespace()
@@ -176,7 +177,7 @@ export function scanNarrowedString(scanner: Scanner): Narrowed.NarrowedString {
       didSetNarrowedLength = true
 
       scanner.scanAllWhitespace()
-      scanner.expectString(':')
+      scanner.expectString(ARG_SEPARATOR)
       scanner.scanAllWhitespace()
       narrowedLength = scanNarrowedLength(scanner)
       scanner.scanAllWhitespace()
@@ -185,7 +186,7 @@ export function scanNarrowedString(scanner: Scanner): Narrowed.NarrowedString {
       didSetNarrowedRegex = true
 
       scanner.scanAllWhitespace()
-      scanner.expectString(':')
+      scanner.expectString(ARG_SEPARATOR)
       scanner.scanAllWhitespace()
       if (scanner.scanIfString(ARRAY_OPEN)) {
         scanner.scanAllWhitespace()

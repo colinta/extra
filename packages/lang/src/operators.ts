@@ -1,5 +1,6 @@
 import {err, mapAll, ok, type Result} from '@extra-lang/result'
 import * as Types from './types'
+import * as Nodes from './nodes'
 import * as Values from './values'
 import {
   MutableTypeRuntime,
@@ -22,6 +23,8 @@ import {
   expectedNumberMessage,
   expectedType,
   getChildType,
+  getChildNode,
+  toSource,
   Operation,
   RuntimeError,
   type Expression,
@@ -29,6 +32,7 @@ import {
 } from './expressions'
 import {stringSort} from './stringSort'
 import {
+  GetNodeResult,
   type AbstractOperator,
   type Comment,
   type GetRuntimeResult,
@@ -37,98 +41,28 @@ import {
   type GetValueRuntimeResult,
   type Operator,
 } from './formulaParser/types'
-import {KWARG_OP} from './types'
-
-export const BINARY_OP_NAMES = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
-export const BINARY_OP_ALIASES = {
-  '&&': 'and',
-  '||': 'or',
-  '!?': 'onlyif',
-  '?!': 'onlyif',
-  '≤': '<=',
-  '≥': '>=',
-  '≠': '!=',
-} as const
-export const UNARY_OP_NAMES = ['not'] as const
-export const UNARY_OP_ALIASES = {
-  '!': 'not',
-} as const
+import {
+  BINARY_ASSIGN_OPERATORS,
+  BINARY_OP_NAMES,
+  KWARG_OPERATOR,
+  ENUM_START,
+  FUNCTION_INVOCATION_OPERATOR,
+  INCLUSION_OPERATOR,
+  NULL_COALESCE_ARRAY_ACCESS_OPERATOR,
+  NULL_COALESCE_INVOCATION_OPERATOR,
+  NULL_COALESCING_OPERATOR,
+  PROPERTY_ACCESS_OPERATOR,
+  SPREAD_OPERATOR,
+  STRING_CONCAT_OPERATOR,
+  UNARY_OP_NAMES,
+} from './formulaParser/grammars'
 
 export const LOWEST_PRECEDENCE = -1
 export const HIGHEST_PRECEDENCE = 100
 
-export const SPREAD_OPERATOR = '...'
-export const STRING_CONCAT_OPERATOR = '..'
-export const INCLUSION_OPERATOR = 'onlyif'
-export const NULL_COALESCING_OPERATOR = '?.'
-
-export const BINARY_ASSIGN_OPERATORS = [
-  {name: 'logical-and-assign', symbol: '&=', binarySymbol: '&'},
-  {name: 'logical-or-assign', symbol: '|=', binarySymbol: '|'},
-  {name: 'logical-xor-assign', symbol: '^=', binarySymbol: '^'},
-  {name: 'array-concat-assign', symbol: '++=', binarySymbol: '++'},
-  {name: 'string-concat-assign', symbol: '..=', binarySymbol: '..'},
-  {name: 'object-merge-assign', symbol: '~~=', binarySymbol: '~~'},
-  {name: 'left-shift-assign', symbol: '<<=', binarySymbol: '<<'},
-  {name: 'right-shift-assign', symbol: '>>=', binarySymbol: '>>'},
-  {name: 'addition-assign', symbol: '+=', binarySymbol: '+'},
-  {name: 'subtraction-assign', symbol: '-=', binarySymbol: '-'},
-  {name: 'multiplication-assign', symbol: '*=', binarySymbol: '*'},
-  {name: 'division-assign', symbol: '/=', binarySymbol: '/'},
-  {name: 'floor-division-assign', symbol: '//=', binarySymbol: '//'},
-  {name: 'modulo-assign', symbol: '%=', binarySymbol: '%'},
-  {name: 'exponentiation-assign', symbol: '**=', binarySymbol: '**'},
-] as const
-
-export const BINARY_ASSIGN_SYMBOLS = BINARY_ASSIGN_OPERATORS.map(({symbol}) => symbol)
-export const BINARY_OP_SYMBOLS = [
-  '=',
-  '|>',
-  '?|>',
-  '??',
-  '^',
-  '|',
-  '&',
-  '==',
-  '!=',
-  '>',
-  '>=',
-  '<',
-  '<=',
-  '<=>',
-  '::',
-  '++',
-  '..',
-  '~~',
-  '...',
-  '<..',
-  '..<',
-  '<.<',
-  '<<',
-  '>>',
-  '+',
-  '-',
-  '*',
-  '/',
-  '//',
-  '%',
-  '**',
-  '.',
-  '?.',
-  '&&',
-  '||',
-  '!?',
-  '?!',
-  '≤',
-  '≥',
-  '≠',
-] as const
-
-export const UNARY_OP_SYMBOLS = ['=', '>', '>=', '<', '<=', '-', '~', '$', '.', '!'] as const
-
 const PRECEDENCE = {
   BINARY: {
-    onlyif: 0,
+    [INCLUSION_OPERATOR]: 0,
     '=': 1,
     '|>': 2,
     '?|>': 2,
@@ -154,7 +88,7 @@ const PRECEDENCE = {
     '<=>': 12,
     '::': 13,
     '++': 13,
-    '..': 13,
+    [STRING_CONCAT_OPERATOR]: 13,
     '~~': 13,
     '...': 13,
     '<..': 13,
@@ -173,11 +107,11 @@ const PRECEDENCE = {
     has: 17,
     '!has': 17,
     '[]': 18,
-    '?.[]': 18,
-    fn: 18,
-    '?.()': 18,
-    '.': 18,
-    '?.': 18,
+    [NULL_COALESCE_ARRAY_ACCESS_OPERATOR]: 18,
+    [FUNCTION_INVOCATION_OPERATOR]: 18,
+    [NULL_COALESCE_INVOCATION_OPERATOR]: 18,
+    [PROPERTY_ACCESS_OPERATOR]: 18,
+    [NULL_COALESCING_OPERATOR]: 18,
   } as const,
   UNARY: {
     // unary range operators
@@ -198,7 +132,7 @@ const PRECEDENCE = {
     $: 19,
     // enum shorthand - this _only_ works when the type can be inferred...
     // if you are applying operators, the type _cannot_ be inferred.
-    '.': 20,
+    [ENUM_START]: 20,
   } as const,
 } as const
 
@@ -273,9 +207,15 @@ function numericType(expr: Operation, lhs: Types.Type, rhs?: Types.Type): GetTyp
   }
 
   if (lhs.isFloat() && rhs) {
-    return err(new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1], rhs)))
+    return decorateError(
+      expr,
+      new RuntimeError(expr.args[1], expectedNumberMessage(expr.args[1], rhs)),
+    )
   } else {
-    return err(new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0], lhs)))
+    return decorateError(
+      expr,
+      new RuntimeError(expr.args[0], expectedNumberMessage(expr.args[0], lhs)),
+    )
   }
 }
 
@@ -388,6 +328,10 @@ abstract class OperatorOperation extends Operation {
     return this.formatCode(this.args.map(it => it.toCode(this.operator.precedence)))
   }
 
+  getType(runtime: TypeRuntime): GetTypeResult {
+    return this.compile(runtime).map(node => node.type)
+  }
+
   replaceWithType(runtime: TypeRuntime, withType: Types.Type) {
     const [lhsExpr] = this.args
     return lhsExpr.replaceWithType(runtime, withType)
@@ -414,12 +358,8 @@ abstract class UnaryOperator extends OperatorOperation {
     return this.toCode()
   }
 
-  /**
-   * Gives some operators - `not` in particular - a chance to early-exit if
-   * the lhs is always true or always false.
-   */
-  checkLhsType(_lhs: Types.Type, _lhsExpr: Expression): GetRuntimeResult<Types.Type | undefined> {
-    return ok(undefined)
+  lhsCompile(runtime: TypeRuntime, lhsExpr: Expression): GetNodeResult {
+    return getChildNode(this, lhsExpr, runtime)
   }
 
   abstract operatorType(
@@ -429,29 +369,24 @@ abstract class UnaryOperator extends OperatorOperation {
     originalLhs: Types.Type,
   ): GetTypeResult
 
-  getType(runtime: TypeRuntime): GetTypeResult {
+  getNodeInfo(runtime: TypeRuntime): GetRuntimeResult<[Types.Type, Nodes.Node]> {
     const [lhsExpr] = this.args
-    return getChildType(this, lhsExpr, runtime).map(lhType => {
-      return this.checkLhsType(lhType, lhsExpr).map(checkType => {
-        if (checkType) {
-          return checkType
-        }
+    return this.lhsCompile(runtime, lhsExpr).map(lhNode => {
+      const lhType = lhNode.type
+      if (lhType instanceof Types.OneOfType) {
+        return mapAll(
+          lhType.of.map(
+            oneLhType =>
+              guardNeverType(oneLhType) ?? this.operatorType(runtime, oneLhType, lhsExpr, lhType),
+          ),
+        )
+          .map(Types.oneOf)
+          .map(type => [type, lhNode])
+      }
 
-        if (lhType instanceof Types.OneOfType) {
-          return mapAll(
-            lhType.of.map(
-              oneLhType =>
-                guardNeverType(oneLhType) ?? this.operatorType(runtime, oneLhType, lhsExpr, lhType),
-            ),
-          ).map(Types.oneOf)
-        }
-
-        if (lhType === Types.NeverType) {
-          return ok(Types.NeverType)
-        }
-
-        return guardNeverType(lhType) ?? this.operatorType(runtime, lhType, lhsExpr, lhType)
-      })
+      return (guardNeverType(lhType) ?? this.operatorType(runtime, lhType, lhsExpr, lhType)).map(
+        type => [type, lhNode],
+      )
     })
   }
 
@@ -489,27 +424,30 @@ abstract class BinaryOperator extends OperatorOperation {
   }
 
   /**
+   * Used by property access operators to short-circuit the evaluation of
+   * null-coalescing operators. Otherwise calls getType() on lhsExpr.
+   */
+  lhsCompile(runtime: TypeRuntime, lhsExpr: Expression): GetNodeResult {
+    return getChildNode(this, lhsExpr, runtime)
+  }
+
+  /**
    * The RHS type can be affected in many ways by the evaluation of the LHS.
    * - |>/?|> pipe operators provide the LHS type as the #pipe type
    * - `and / or` use the truthy/falsey type of the lhs in the evaluation of the RHS
    */
-  rhsType(
+  rhsCompile(
     runtime: TypeRuntime,
     _lhsType: Types.Type,
     _lhsExpr: Expression,
     rhsExpr: Expression,
-  ): GetTypeResult {
-    return getChildType(this, rhsExpr, runtime)
+  ): GetNodeResult {
+    return getChildNode(this, rhsExpr, runtime)
   }
 
   /**
-   * Gives some operators - `or` `and` in particular - a chance to early-exit if
-   * the lhs is always true or always false.
+   * Returns the type after applying this operator to lhs and rhs types.
    */
-  checkLhsType(_lhs: Types.Type, _lhsExpr: Expression): GetRuntimeResult<Types.Type | undefined> {
-    return ok(undefined)
-  }
-
   abstract operatorType(
     runtime: TypeRuntime,
     lhs: Types.Type,
@@ -520,64 +458,74 @@ abstract class BinaryOperator extends OperatorOperation {
     originalRhs: Types.Type,
   ): GetTypeResult
 
-  getType(runtime: TypeRuntime): GetTypeResult {
+  getNodeInfo(runtime: TypeRuntime): GetRuntimeResult<[Types.Type, Nodes.Node, Nodes.Node]> {
     const [lhsExpr, rhsExpr] = this.args
-    return getChildType(this, lhsExpr, runtime).map(lhType => {
-      return this.checkLhsType(lhType, lhsExpr).map(type => {
-        if (type) {
-          return type
-        }
-
-        return this.rhsType(runtime, lhType, lhsExpr, rhsExpr).map((rhType): GetTypeResult => {
-          // if we have a OneOfType, we need to map every combination into op.getType, and
-          // then collect all the errors, or return Types.oneOf()
-          if (lhType instanceof Types.OneOfType && rhType instanceof Types.OneOfType) {
-            return mapAll(
-              lhType.of.flatMap(oneLhType =>
-                rhType.of.map(
-                  oneRhType =>
-                    guardNeverType(oneLhType, oneRhType) ??
-                    this.operatorType(
-                      runtime,
-                      oneLhType,
-                      oneRhType,
-                      lhsExpr,
-                      rhsExpr,
-                      lhType,
-                      rhType,
-                    ),
-                ),
-              ),
-            ).map(Types.oneOf)
-          }
-
-          if (lhType instanceof Types.OneOfType) {
-            return mapAll(
-              lhType.of.map(
-                oneLhType =>
-                  guardNeverType(oneLhType, rhType) ??
-                  this.operatorType(runtime, oneLhType, rhType, lhsExpr, rhsExpr, lhType, rhType),
-              ),
-            ).map(Types.oneOf)
-          }
-
-          if (rhType instanceof Types.OneOfType) {
-            return mapAll(
-              rhType.of.map(
-                oneRhType =>
-                  guardNeverType(lhType, oneRhType) ??
-                  this.operatorType(runtime, lhType, oneRhType, lhsExpr, rhsExpr, lhType, rhType),
-              ),
-            ).map(Types.oneOf)
-          }
-
-          return (
-            guardNeverType(lhType, rhType) ??
-            this.operatorType(runtime, lhType, rhType, lhsExpr, rhsExpr, lhType, rhType)
-          )
-        })
-      })
+    return this.lhsCompile(runtime, lhsExpr).map(lhNode => {
+      const lhType = lhNode.type
+      return this.rhsCompile(runtime, lhType, lhsExpr, rhsExpr).map(
+        (rhNode): GetRuntimeResult<[Types.Type, Nodes.Node, Nodes.Node]> =>
+          this.resolveOperatorType(runtime, lhsExpr, rhsExpr, lhNode, rhNode).map(type => [
+            type,
+            lhNode,
+            rhNode,
+          ]),
+      )
     })
+  }
+
+  private resolveOperatorType(
+    runtime: TypeRuntime,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+    lhNode: Nodes.Node,
+    rhNode: Nodes.Node,
+  ): GetTypeResult {
+    const lhType = lhNode.type
+    const rhType = rhNode.type
+    // if we have a OneOfType, we need to map every combination into op.getType, and
+    // then collect all the errors, or return Types.oneOf()
+    if (lhType instanceof Types.OneOfType && rhType instanceof Types.OneOfType) {
+      return mapAll(
+        lhType.of.flatMap(oneLhType =>
+          rhType.of.map(
+            oneRhType =>
+              guardNeverType(oneLhType, oneRhType) ??
+              this.operatorType(runtime, oneLhType, oneRhType, lhsExpr, rhsExpr, lhType, rhType),
+          ),
+        ),
+      ).map(Types.oneOf)
+    }
+
+    if (lhType instanceof Types.OneOfType) {
+      return mapAll(
+        lhType.of.map(
+          oneLhType =>
+            guardNeverType(oneLhType, rhType) ??
+            this.operatorType(runtime, oneLhType, rhType, lhsExpr, rhsExpr, lhType, rhType),
+        ),
+      ).map(Types.oneOf)
+    }
+
+    if (rhType instanceof Types.OneOfType) {
+      return mapAll(
+        rhType.of.map(
+          oneRhType =>
+            guardNeverType(lhType, oneRhType) ??
+            this.operatorType(runtime, lhType, oneRhType, lhsExpr, rhsExpr, lhType, rhType),
+        ),
+      ).map(Types.oneOf)
+    }
+
+    return (
+      guardNeverType(lhType, rhType) ??
+      this.operatorType(runtime, lhType, rhType, lhsExpr, rhsExpr, lhType, rhType)
+    )
+  }
+
+  defaultCompile(runtime: TypeRuntime, ctor: NodeConstructor): GetNodeResult {
+    return this.getNodeInfo(runtime).map(
+      ([type, lhNode, rhNode]) => new ctor(toSource(this), type, [lhNode, rhNode]),
+    )
   }
 
   rhsEval(
@@ -611,18 +559,26 @@ abstract class BinaryOperator extends OperatorOperation {
   }
 }
 
+type NodeConstructor = {
+  new (source: Nodes.Source, type: Types.Type, args: Nodes.Node[]): Nodes.Node
+}
+
 class PipeOperator extends BinaryOperator {
   symbol = '|>'
 
-  rhsType(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
+  rhsCompile(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
     let myRuntime = new MutableTypeRuntime(runtime)
     myRuntime.setPipeType(lhs)
 
-    return getChildType(this, rhsExpr, myRuntime)
+    return getChildNode(this, rhsExpr, myRuntime)
   }
 
   operatorType(_runtime: TypeRuntime, _lhs: Types.Type, rhs: Types.Type) {
     return ok(rhs)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.PipeOperator)
   }
 
   rhsEval(runtime: ValueRuntime, lhs: Values.Value, _lhsExpr: Expression, rhsExpr: Expression) {
@@ -656,7 +612,7 @@ addBinaryOperator({
 class NullColescingPipeOperator extends BinaryOperator {
   symbol = '?|>'
 
-  rhsType(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
+  rhsCompile(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
     const hasNullType =
       lhs instanceof Types.OneOfType && lhs.of.some(type => type === Types.NullType)
     if (!hasNullType) {
@@ -672,7 +628,7 @@ class NullColescingPipeOperator extends BinaryOperator {
     let myRuntime = new MutableTypeRuntime(runtime)
     myRuntime.setPipeType(safeTypes)
 
-    return getChildType(this, rhsExpr, myRuntime)
+    return getChildNode(this, rhsExpr, myRuntime)
   }
 
   operatorType(
@@ -686,7 +642,8 @@ class NullColescingPipeOperator extends BinaryOperator {
     const hasNullType =
       originalLhs instanceof Types.OneOfType && originalLhs.of.some(type => type === Types.NullType)
     if (!hasNullType) {
-      return err(
+      return decorateError(
+        this,
         new RuntimeError(
           lhsExpr,
           `Left hand side of '?|>' operator must be a nullable-type. Found '${originalLhs}'`,
@@ -695,6 +652,10 @@ class NullColescingPipeOperator extends BinaryOperator {
     }
 
     return ok(Types.optional(rhs))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.NullCoalescingPipeOperator)
   }
 
   rhsEval(runtime: ValueRuntime, lhs: Values.Value, _lhsExpr: Expression, rhsExpr: Expression) {
@@ -741,7 +702,7 @@ addBinaryOperator({
 class NullCoalescingOperator extends BinaryOperator {
   symbol = '??'
 
-  rhsType(runtime: TypeRuntime, lhs: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+  rhsCompile(runtime: TypeRuntime, lhs: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
     const hasNullType =
       lhs instanceof Types.OneOfType && lhs.of.some(type => type === Types.NullType)
     if (!hasNullType) {
@@ -753,7 +714,11 @@ class NullCoalescingOperator extends BinaryOperator {
       )
     }
 
-    return super.rhsType(runtime, lhs, lhsExpr, rhsExpr)
+    return super.rhsCompile(runtime, lhs, lhsExpr, rhsExpr)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.NullCoalescingOperator)
   }
 
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
@@ -848,36 +813,61 @@ class LogicalOrOperator extends BinaryOperator {
     return lhsAssigns.concat(rhsAssigns.filter(assign => !lhsAssigns.includes(assign)))
   }
 
-  checkLhsType(lhs: Types.Type, lhsExpr: Expression) {
-    if (lhs.isOnlyTruthyType()) {
-      return err(
-        new RuntimeError(
-          this,
-          `Left hand side of 'or' operator is always true. '${lhsExpr}' is of type '${lhs}', which is never false.`,
-        ),
-      )
-    }
-    if (lhs.isOnlyFalseyType()) {
-      return err(
-        new RuntimeError(
-          this,
-          `Left hand side of 'or' operator is always false. '${lhsExpr}' is of type '${lhs}', which is never true.`,
-        ),
-      )
-    }
-    return ok(undefined)
-  }
-
   /**
    * rhs needs to be run assuming lhs is false.
    */
-  rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+  rhsCompile(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
     return lhsExpr
       .assumeFalse(runtime)
-      .map(falseyRuntime => getChildType(this, rhsExpr, falseyRuntime))
+      .map(falseyRuntime => getChildNode(this, rhsExpr, falseyRuntime))
   }
 
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
+  operatorType(
+    _runtime: TypeRuntime,
+    lhs: Types.Type,
+    rhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+    originalLhs: Types.Type,
+    originalRhs: Types.Type,
+  ) {
+    if (originalLhs.isOnlyTruthyType()) {
+      return decorateError(
+        this,
+        new RuntimeError(
+          this,
+          `Left hand side of 'or' operator is always true. '${lhsExpr}' is of type '${originalLhs}', which is never false.`,
+        ),
+      )
+    }
+
+    if (originalLhs.isOnlyFalseyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Left hand side of 'or' operator is always false. '${lhsExpr}' is of type '${originalLhs}', which is never true.`,
+        ),
+      )
+    }
+
+    if (originalRhs.isOnlyTruthyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Right hand side of 'or' operator is always true. '${rhsExpr}' is of type '${originalRhs}', which is never false.`,
+        ),
+      )
+    }
+
+    if (originalRhs.isOnlyFalseyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Right hand side of 'or' operator is always false. '${rhsExpr}' is of type '${originalRhs}', which is never true.`,
+        ),
+      )
+    }
+
     if (lhs.isLiteral()) {
       if (lhs.value) {
         return ok(lhs)
@@ -891,6 +881,10 @@ class LogicalOrOperator extends BinaryOperator {
     }
 
     return ok(Types.oneOf([lhs.toTruthyType(), rhs]))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.LogicalOrOperator)
   }
 
   operatorEval(): GetValueResult {
@@ -985,6 +979,10 @@ class LogicalAndOperator extends BinaryOperator {
     return lhsAssigns.concat(rhsAssigns)
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.LogicalAndOperator)
+  }
+
   /**
    * Reverse of the default implementation of eval/evalReturningRuntime. Most
    * operations call `eval`, so we need to intercept here to do the right thing.
@@ -1008,36 +1006,60 @@ class LogicalAndOperator extends BinaryOperator {
     })
   }
 
-  checkLhsType(lhs: Types.Type, lhsExpr: Expression) {
-    if (lhs.isOnlyTruthyType()) {
-      return err(
-        new RuntimeError(
-          this,
-          `Left hand side of 'and' operator is always true. '${lhsExpr}' is of type '${lhs}', which is never false.`,
-        ),
-      )
-    }
-    if (lhs.isOnlyFalseyType()) {
-      return err(
-        new RuntimeError(
-          this,
-          `Left hand side of 'or' operator is always false. '${lhsExpr}' is of type '${lhs}', which is never true.`,
-        ),
-      )
-    }
-    return ok(undefined)
-  }
-
   /**
    * rhs needs to be run assuming lhs is true.
    */
-  rhsType(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
+  rhsCompile(runtime: TypeRuntime, _lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
     return lhsExpr
       .assumeTrue(runtime)
-      .map(falseyRuntime => getChildType(this, rhsExpr, falseyRuntime))
+      .map(falseyRuntime => getChildNode(this, rhsExpr, falseyRuntime))
   }
 
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
+  operatorType(
+    _runtime: TypeRuntime,
+    lhs: Types.Type,
+    rhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+    originalLhs: Types.Type,
+    originalRhs: Types.Type,
+  ) {
+    if (originalLhs.isOnlyTruthyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Left hand side of 'and' operator is always true. '${lhsExpr}' is of type '${originalLhs}', which is never false.`,
+        ),
+      )
+    }
+
+    if (originalLhs.isOnlyFalseyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Left hand side of 'or' operator is always false. '${lhsExpr}' is of type '${originalLhs}', which is never true.`,
+        ),
+      )
+    }
+
+    if (originalRhs.isOnlyTruthyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Right hand side of 'and' operator is always true. '${rhsExpr}' is of type '${originalRhs}', which is never false.`,
+        ),
+      )
+    }
+
+    if (originalRhs.isOnlyFalseyType()) {
+      return err(
+        new RuntimeError(
+          this,
+          `Right hand side of 'or' operator is always false. '${rhsExpr}' is of type '${originalRhs}', which is never true.`,
+        ),
+      )
+    }
+
     return ok(Types.oneOf([lhs.toFalseyType(), rhs]))
   }
 
@@ -1079,6 +1101,10 @@ class BinaryXorOperator extends BinaryOperator {
     return numericType(this, lhs, rhs)
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.BinaryXorOperator)
+  }
+
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
     return rhs().map(rhs => numericOperation(this, lhs, rhs, (a, b) => a ^ b))
   }
@@ -1117,6 +1143,10 @@ class BinaryOrOperator extends BinaryOperator {
     return numericType(this, lhs, rhs)
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.BinaryOrOperator)
+  }
+
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
     return rhs().map(rhs => numericOperation(this, lhs, rhs, (a, b) => a | b))
   }
@@ -1147,6 +1177,10 @@ class BinaryAndOperator extends BinaryOperator {
     }
 
     return numericType(this, lhs, rhs)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.BinaryAndOperator)
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
@@ -1215,6 +1249,10 @@ abstract class EqualityOperator extends ComparisonOperator {
     return ok(Types.literal(false))
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.EqualsOperator)
+  }
+
   operatorEval(
     _runtime: ValueRuntime,
     lhs: Values.Value,
@@ -1259,6 +1297,10 @@ class NotEqualsOperator extends EqualityOperator {
     })
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.NotEqualsOperator)
+  }
+
   operatorEval(runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
     return super.operatorEval(runtime, lhs, rhs).map(value => ok(Values.booleanValue(!value.value)))
   }
@@ -1296,6 +1338,10 @@ class GreaterThanOperator extends ComparisonOperator {
     }
 
     return numericType(this, lhs, rhs).map(() => Types.BooleanType)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.GreaterThanOperator)
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
@@ -1337,6 +1383,10 @@ class GreaterOrEqualOperator extends ComparisonOperator {
     return numericType(this, lhs, rhs).map(() => Types.BooleanType)
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.GreaterOrEqualOperator)
+  }
+
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
     return rhs().map(rhs => comparisonOperation(this, lhs, rhs, (a, b) => a >= b))
   }
@@ -1376,6 +1426,10 @@ class LessThanOperator extends ComparisonOperator {
     return numericType(this, lhs, rhs).map(() => Types.BooleanType)
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.LessThanOperator)
+  }
+
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
     return rhs().map(rhs => comparisonOperation(this, lhs, rhs, (a, b) => a < b))
   }
@@ -1407,6 +1461,10 @@ class LessOrEqualOperator extends ComparisonOperator {
     }
 
     return numericType(this, lhs, rhs).map(() => Types.BooleanType)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.LessOrEqualOperator)
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
@@ -1458,6 +1516,10 @@ class SortOperator extends BinaryOperator {
     }
 
     return ok(Types.oneOf([Types.literal(-1), Types.literal(0), Types.literal(1)]))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.SortOperator)
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
@@ -1543,6 +1605,10 @@ class PropertyExistsOperator extends BinaryOperator {
         ),
       )
     }
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.PropertyExistsOperator)
   }
 
   operatorEval(
@@ -1631,6 +1697,10 @@ class PropertyMissingOperator extends PropertyExistsOperator {
     })
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.PropertyMissingOperator)
+  }
+
   operatorEval(
     runtime: ValueRuntime,
     lhs: Values.Value,
@@ -1669,8 +1739,8 @@ addBinaryOperator({
 abstract class MatchOperator extends BinaryOperator {
   abstract symbol: 'is' | '!is'
 
-  rhsType(): GetTypeResult {
-    return ok(Types.AllType)
+  rhsCompile() {
+    return ok(Nodes.Ignored)
   }
 
   gimmeTrueStuff(runtime: TypeRuntime) {
@@ -1705,6 +1775,10 @@ abstract class MatchOperator extends BinaryOperator {
         return rhsExpr.gimmeTrueStuffWith(runtime, formula, lhsType)
       }
     })
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.MatchOperator)
   }
 
   operatorType(
@@ -1763,6 +1837,7 @@ class MatchAssertionOperator extends MatchOperator {
 
 class MatchRefutationOperator extends MatchOperator {
   readonly symbol = '!is'
+
   evalReturningRuntime(runtime: ValueRuntime): GetValueRuntimeResult {
     const [lhsExpr, rhsExpr] = this.args
     if (!(rhsExpr instanceof Expressions.MatchExpression)) {
@@ -1830,6 +1905,10 @@ class BinaryShiftLeftOperator extends BinaryOperator {
     return numericType(this, lhs, rhs)
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.BinaryShiftLeftOperator)
+  }
+
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
     return rhs().map(rhs =>
       numericOperation(this, lhs, rhs, (a, b) => {
@@ -1871,6 +1950,10 @@ class BinaryShiftRightOperator extends BinaryOperator {
     }
 
     return numericType(this, lhs, rhs)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.BinaryShiftRightOperator)
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
@@ -1934,6 +2017,10 @@ class AdditionOperator extends BinaryOperator {
     return ok(Types.numericAdditionType(lhs, rhs))
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.AdditionOperator)
+  }
+
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
     if (lhs instanceof Values.SetValue && rhs instanceof Values.SetValue) {
       return ok(new Values.SetValue(lhs.values.concat(rhs.values)))
@@ -1992,6 +2079,10 @@ class SubtractionOperator extends BinaryOperator {
     return ok(Types.numericSubtractionType(lhs, rhs))
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.SubtractionOperator)
+  }
+
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
     return rhs().map(rhs => numericOperation(this, lhs, rhs, (a, b) => a - b))
   }
@@ -2010,6 +2101,255 @@ addBinaryOperator({
     args: Expression[],
   ) {
     return new SubtractionOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class MultiplicationOperator extends BinaryOperator {
+  symbol = '*'
+
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
+    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
+      return ok(Types.literal(lhs.value * rhs.value, anyFloaters(lhs, rhs)))
+    }
+
+    return numericType(this, lhs, rhs)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.MultiplicationOperator)
+  }
+
+  operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
+    return rhs().map(rhs => numericOperation(this, lhs, rhs, (a, b) => a * b))
+  }
+}
+
+addBinaryOperator({
+  name: 'multiplication',
+  symbol: '*',
+  precedence: PRECEDENCE.BINARY['*'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new MultiplicationOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+/**
+ * Always returns a float, because 5/2 --> float, except when dividing two literal
+ * ints and the result is an int, e.g.
+ *
+ *     let
+ *       a = 16 / 2 --> a: 8
+ */
+class DivisionOperator extends BinaryOperator {
+  symbol = '/'
+
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
+    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
+      return ok(Types.literal(lhs.value / rhs.value, anyFloaters(lhs, rhs, lhs.value / rhs.value)))
+    }
+
+    return numericType(this, lhs, rhs).map(() => Types.FloatType)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.DivisionOperator)
+  }
+
+  operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
+    return rhs().map(rhs =>
+      numericOperation(this, lhs, rhs, (a, b) => {
+        if (b === 0) {
+          return Values.NaNValue
+        } else {
+          return a / b
+        }
+      }),
+    )
+  }
+}
+
+addBinaryOperator({
+  name: 'division',
+  symbol: '/',
+  precedence: PRECEDENCE.BINARY['/'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new DivisionOperator(range, precedingComments, followingOperatorComments, operator, args)
+  },
+})
+
+/**
+ * Requires number arguments, always returns an integer.
+ *
+ *  15 // 4   =  3  // 15/4 = 3.75, round down to 3
+ *  15 // 4.1 =  3  // always returns an int
+ * -15 // 4   = -4  // always round towards -Infinity
+ */
+class FloorDivisionOperator extends BinaryOperator {
+  symbol = '//'
+
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type, lhsExpr: Expression) {
+    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
+      return ok(Types.literal(Math.floor(lhs.value / rhs.value)))
+    }
+
+    if (lhs.isFloat() && rhs.isFloat()) {
+      return ok(Types.IntType)
+    }
+
+    return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr, lhs)))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.FloorDivisionOperator)
+  }
+
+  operatorEval(
+    _runtime: ValueRuntime,
+    lhs: Values.Value,
+    rhs: () => GetValueResult,
+    lhsExpr: Expression,
+  ) {
+    return rhs().map(rhs => {
+      if (lhs.isFloat() && rhs.isFloat()) {
+        if (rhs.value === 0) {
+          return Values.NaNValue
+        }
+
+        return ok(Values.int(Math.floor(lhs.value / rhs.value)))
+      }
+
+      return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr, lhs)))
+    })
+  }
+}
+
+addBinaryOperator({
+  name: 'floor division',
+  symbol: '//',
+  precedence: PRECEDENCE.BINARY['//'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new FloorDivisionOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class ModuloRemainderOperator extends BinaryOperator {
+  symbol = '%'
+
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
+    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
+      return ok(Types.literal(lhs.value % rhs.value, anyFloaters(lhs, rhs)))
+    }
+
+    return numericType(this, lhs, rhs)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.ModuloRemainderOperator)
+  }
+
+  operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
+    return rhs().map(rhs => numericOperation(this, lhs, rhs, (a, b) => a % b))
+  }
+}
+
+addBinaryOperator({
+  name: 'modulo remainder',
+  symbol: '%',
+  precedence: PRECEDENCE.BINARY['%'],
+  associativity: 'left',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new ModuloRemainderOperator(
+      range,
+      precedingComments,
+      followingOperatorComments,
+      operator,
+      args,
+    )
+  },
+})
+
+class ExponentiationOperator extends BinaryOperator {
+  symbol = '**'
+
+  joiner() {
+    return this.symbol
+  }
+
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
+    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
+      return ok(Types.literal(lhs.value ** rhs.value, anyFloaters(lhs, rhs)))
+    }
+
+    return numericType(this, lhs, rhs)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.ExponentiationOperator)
+  }
+
+  operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
+    return rhs().map(rhs => numericOperation(this, lhs, rhs, (a, b) => a ** b))
+  }
+}
+
+addBinaryOperator({
+  name: 'exponentiation',
+  symbol: '**',
+  precedence: PRECEDENCE.BINARY['**'],
+  associativity: 'right',
+  create(
+    range: [number, number],
+    precedingComments: Comment[],
+    followingOperatorComments: Comment[],
+    operator: Operator,
+    args: Expression[],
+  ) {
+    return new ExponentiationOperator(
       range,
       precedingComments,
       followingOperatorComments,
@@ -2039,6 +2379,10 @@ class ArrayConcatenationOperator extends BinaryOperator {
 
     const concatLength = combineConcatLengths(lhs.narrowedLength, rhs.narrowedLength)
     return ok(Types.array(Types.compatibleWithBothTypes(lhs.of, rhs.of), concatLength))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.ArrayConcatenationOperator)
   }
 
   operatorEval(
@@ -2080,7 +2424,7 @@ addBinaryOperator({
   },
 })
 
-class ArrayConsOperator extends BinaryOperator {
+class ArrayConstructorOperator extends BinaryOperator {
   symbol = '::'
 
   operatorType(
@@ -2096,6 +2440,10 @@ class ArrayConsOperator extends BinaryOperator {
 
     const concatLength = combineConcatLengths({min: 1, max: 1}, rhs.narrowedLength)
     return ok(Types.array(Types.compatibleWithBothTypes(lhs, rhs.of), concatLength))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.ArrayConstructorOperator)
   }
 
   operatorEval(
@@ -2127,7 +2475,7 @@ addBinaryOperator({
     operator: Operator,
     args: Expression[],
   ) {
-    return new ArrayConsOperator(
+    return new ArrayConstructorOperator(
       range,
       precedingComments,
       followingOperatorComments,
@@ -2138,7 +2486,7 @@ addBinaryOperator({
 })
 
 class StringConcatenationOperator extends BinaryOperator {
-  symbol = '..'
+  symbol = STRING_CONCAT_OPERATOR
 
   relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
     const lhsFormula = this.args[0].relationshipFormula(runtime)
@@ -2166,6 +2514,10 @@ class StringConcatenationOperator extends BinaryOperator {
     return ok(Types.stringConcatenationType(lhs, rhs))
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.StringConcatenationOperator)
+  }
+
   operatorEval(
     _runtime: ValueRuntime,
     lhs: Values.Value,
@@ -2188,8 +2540,8 @@ class StringConcatenationOperator extends BinaryOperator {
 
 addBinaryOperator({
   name: 'string-concatenation',
-  symbol: '..',
-  precedence: PRECEDENCE.BINARY['..'],
+  symbol: STRING_CONCAT_OPERATOR,
+  precedence: PRECEDENCE.BINARY[STRING_CONCAT_OPERATOR],
   associativity: 'left',
   create(
     range: [number, number],
@@ -2227,6 +2579,10 @@ class ObjectMergeOperator extends BinaryOperator {
     }
 
     return ok(Types.object([...lhs.props, ...rhs.props]))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.ObjectMergeOperator)
   }
 
   operatorEval(
@@ -2346,6 +2702,13 @@ class RangeOperator extends BinaryOperator {
     }
 
     return err(new RuntimeError(rhsExpr, expectedType('Float or Int', rhsExpr, rhs)))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.getNodeInfo(runtime).map(
+      ([type, lhNode, rhNode]) =>
+        new Nodes.RangeOperator(toSource(this), type, [lhNode, rhNode], this.symbol),
+    )
   }
 
   operatorEval(
@@ -2477,234 +2840,6 @@ addBinaryOperator({
   },
 })
 
-class MultiplicationOperator extends BinaryOperator {
-  symbol = '*'
-
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
-    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
-      return ok(Types.literal(lhs.value * rhs.value, anyFloaters(lhs, rhs)))
-    }
-
-    return numericType(this, lhs, rhs)
-  }
-
-  operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
-    return rhs().map(rhs => numericOperation(this, lhs, rhs, (a, b) => a * b))
-  }
-}
-
-addBinaryOperator({
-  name: 'multiplication',
-  symbol: '*',
-  precedence: PRECEDENCE.BINARY['*'],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new MultiplicationOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
-/**
- * Always returns a float, because 5/2 --> float, except when dividing two literal
- * ints and the result is an int, e.g.
- *
- * 16 / 2 --> int(=8)
- */
-class DivisionOperator extends BinaryOperator {
-  symbol = '/'
-
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
-    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
-      return ok(Types.literal(lhs.value / rhs.value, anyFloaters(lhs, rhs, lhs.value / rhs.value)))
-    }
-
-    return numericType(this, lhs, rhs).map(() => Types.FloatType)
-  }
-
-  operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
-    return rhs().map(rhs =>
-      numericOperation(this, lhs, rhs, (a, b) => {
-        if (b === 0) {
-          return Values.NaNValue
-        } else {
-          return a / b
-        }
-      }),
-    )
-  }
-}
-
-addBinaryOperator({
-  name: 'division',
-  symbol: '/',
-  precedence: PRECEDENCE.BINARY['/'],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new DivisionOperator(range, precedingComments, followingOperatorComments, operator, args)
-  },
-})
-
-/**
- * Requires number arguments, always returns an integer.
- *
- *  15 // 4   =  3  // 15/4 = 3.75, round down to 3
- *  15 // 4.1 =  3  // always returns an int
- * -15 // 4   = -4  // always round towards -Infinity
- */
-class FloorDivisionOperator extends BinaryOperator {
-  symbol = '//'
-
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type, lhsExpr: Expression) {
-    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
-      return ok(Types.literal(Math.floor(lhs.value / rhs.value)))
-    }
-
-    if (lhs.isFloat() && rhs.isFloat()) {
-      return ok(Types.IntType)
-    }
-
-    return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr, lhs)))
-  }
-
-  operatorEval(
-    _runtime: ValueRuntime,
-    lhs: Values.Value,
-    rhs: () => GetValueResult,
-    lhsExpr: Expression,
-  ) {
-    return rhs().map(rhs => {
-      if (lhs.isFloat() && rhs.isFloat()) {
-        if (rhs.value === 0) {
-          return Values.NaNValue
-        }
-
-        return ok(Values.int(Math.floor(lhs.value / rhs.value)))
-      }
-
-      return err(new RuntimeError(lhsExpr, expectedNumberMessage(lhsExpr, lhs)))
-    })
-  }
-}
-
-addBinaryOperator({
-  name: 'floor division',
-  symbol: '//',
-  precedence: PRECEDENCE.BINARY['//'],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new FloorDivisionOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
-class ModuloRemainderOperator extends BinaryOperator {
-  symbol = '%'
-
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
-    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
-      return ok(Types.literal(lhs.value % rhs.value, anyFloaters(lhs, rhs)))
-    }
-
-    return numericType(this, lhs, rhs)
-  }
-
-  operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
-    return rhs().map(rhs => numericOperation(this, lhs, rhs, (a, b) => a % b))
-  }
-}
-
-addBinaryOperator({
-  name: 'modulo remainder',
-  symbol: '%',
-  precedence: PRECEDENCE.BINARY['%'],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new ModuloRemainderOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
-class ExponentiationOperator extends BinaryOperator {
-  symbol = '**'
-
-  joiner() {
-    return this.symbol
-  }
-
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
-    if (lhs.isLiteral('float') && rhs.isLiteral('float')) {
-      return ok(Types.literal(lhs.value ** rhs.value, anyFloaters(lhs, rhs)))
-    }
-
-    return numericType(this, lhs, rhs)
-  }
-
-  operatorEval(_runtime: ValueRuntime, lhs: Values.Value, rhs: () => GetValueResult) {
-    return rhs().map(rhs => numericOperation(this, lhs, rhs, (a, b) => a ** b))
-  }
-}
-
-addBinaryOperator({
-  name: 'exponentiation',
-  symbol: '**',
-  precedence: PRECEDENCE.BINARY['**'],
-  associativity: 'right',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new ExponentiationOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
-    )
-  },
-})
-
 /**
  * This class groups together all the operators that "chain" at the same operator
  * precedence:
@@ -2756,6 +2891,21 @@ abstract class PropertyChainOperator extends BinaryOperator {
     return false
   }
 
+  lhsCompile(runtime: TypeRuntime, lhsExpr: Expression): GetNodeResult {
+    return getChildNode(this, lhsExpr, runtime).map(actualNode => {
+      let lhsResult: GetTypeResult
+      if (lhsExpr instanceof PropertyChainOperator) {
+        lhsResult = lhsExpr.getChainType(runtime)
+      } else {
+        lhsResult = ok(actualNode.type)
+      }
+
+      return lhsResult.map(
+        perceivedType => new Nodes.PropertyChainInfo(actualNode.source, actualNode, perceivedType),
+      )
+    })
+  }
+
   abstract chainOperatorType(
     runtime: TypeRuntime,
     lhs: Types.Type,
@@ -2763,6 +2913,10 @@ abstract class PropertyChainOperator extends BinaryOperator {
     rhsExpr: Expression,
   ): GetTypeResult
 
+  /**
+   * the lhs: Type that is passed is created from lhsCompile above - it is the
+   * `perceivedType` that is passed here, not the actualNode.
+   */
   operatorType(
     runtime: TypeRuntime,
     lhs: Types.Type,
@@ -2771,24 +2925,43 @@ abstract class PropertyChainOperator extends BinaryOperator {
     rhsExpr: Expression,
     originalLhs: Types.Type,
   ) {
-    if (
-      this.isNullCoalescing() &&
-      (!(originalLhs instanceof Types.OneOfType) || !originalLhs.of.some(of => of.isNull()))
-    ) {
-      return err(
-        new RuntimeError(
-          this,
-          `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${originalLhs}`,
-        ),
-      )
-    }
-
     return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
   }
 
+  defaultCompile(runtime: TypeRuntime, ctor: NodeConstructor): GetNodeResult {
+    // follow the bouncing ball...
+    //
+    // - in getNodeInfo, we call lhsCompile to get the lhsNode and type.
+    // - `PropertyChainOperator` intercepts this method to return a
+    //   `PropertyChainInfo` Node, storing both the "actual" node and the
+    //   "chain" type, which is the type of the lhs *if* the rhs is invoked.
+    //   Null-coalescing operators filter the `null` type, making both types
+    //   required in order for chaining to work properly
+    // - the *type* of lhsCompile is passed to operatorType - but not the node
+    //   itself, so PropertyChainInfo returns the "chain type" as the node type.
+    //   If `lhs` was nullable (but ignored due to null-coalescing), that
+    //   information never makes its way to the operator.
+    // - Finally, after the type has been resolved, we need to correct the type
+    //   information: if a null-coalescing operation is anywhere in the property
+    //   access chain, make the return type nullable.
+    return this.getNodeInfo(runtime).map(([type, lhNode, rhNode]) => {
+      if (!(lhNode instanceof Nodes.PropertyChainInfo)) {
+        throw 'Unexpected state: lhNode !is Nodes.PropertyChainInfo'
+      }
+
+      let actualType = type
+      if (this.hasNullCoalescing()) {
+        actualType = Types.optional(actualType)
+      }
+
+      return new ctor(toSource(this), actualType, [lhNode, rhNode])
+    })
+  }
+
   /**
-   * Like getType(), but null-coalescing operators exclude 'null'. Default
-   * implementation just returns `getType(runtime)`.
+   * Null-coalescing operators return the type assuming lhs is not null. The
+   * `defaultCompile` method checks for `hasNullCoalescing()`, and adds `null`
+   * as a possible type.
    */
   getChainType(runtime: TypeRuntime): GetTypeResult {
     const [lhsExpr, rhsExpr] = this.args
@@ -2800,16 +2973,30 @@ abstract class PropertyChainOperator extends BinaryOperator {
     }
 
     return lhsResult.mapResult(decorateError(this)).map(lhsType => {
-      if (
-        this.isNullCoalescing() &&
-        (!(lhsType instanceof Types.OneOfType) || !lhsType.of.some(of => of.isNull()))
-      ) {
-        return err(
-          new RuntimeError(
-            this,
-            `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${lhsType}`,
-          ),
-        )
+      if (this.isNullCoalescing()) {
+        // the null coalescing operators are meant to be executed on values that
+        // are *sometimes* null, but not always null, and not never null.
+        //     null         --> always null    ❌
+        //     Int          --> never null     ❌
+        //     Int | String --> never null     ❌
+        //     Int | null   --> sometimes null ✅
+        if (lhsType === Types.NullType) {
+          return err(
+            new RuntimeError(
+              this,
+              `Expected a nullable type on left hand side of '${this.symbol}' operator, found '${lhsType}' which is always null.`,
+            ),
+          )
+        }
+
+        if (!(lhsType instanceof Types.OneOfType) || !lhsType.of.some(of => of.isNull())) {
+          return err(
+            new RuntimeError(
+              this,
+              `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${lhsType} which is never null.`,
+            ),
+          )
+        }
       }
 
       if (lhsType instanceof Types.OneOfType) {
@@ -2828,32 +3015,23 @@ abstract class PropertyChainOperator extends BinaryOperator {
       return this.chainOperatorType(runtime, lhsType, lhsExpr, rhsExpr)
     })
   }
-
-  getType(runtime: TypeRuntime): GetTypeResult {
-    return this.getChainType(runtime).map(lhs => {
-      if (this.hasNullCoalescing()) {
-        return Types.optional(lhs)
-      }
-
-      return lhs
-    })
-  }
 }
 
 class PropertyAccessOperator extends PropertyChainOperator {
-  symbol = '.'
+  symbol = PROPERTY_ACCESS_OPERATOR
 
   /**
    * Unlike most operators, the rhs is not a dependency
    *
    *     foo.bar <-- 'bar' is not a reference
+   *     foo.bar.baz <-- only 'foo' is a reference/dependency
    */
   dependencies() {
     return this.args[0].dependencies()
   }
 
-  renderDependencies(runtime: ValueRuntime) {
-    return this.args[0].renderDependencies(runtime)
+  childExpressions() {
+    return [this.args[0]]
   }
 
   relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
@@ -2883,8 +3061,9 @@ class PropertyAccessOperator extends PropertyChainOperator {
     )
   }
 
-  rhsType(): GetTypeResult {
-    return ok(Types.AllType)
+  rhsCompile() {
+    const [, rhsExpr] = this.args
+    return this.rhsName().map(rhsName => new Nodes.PropertyName(toSource(rhsExpr), rhsName))
   }
 
   rhsName(): GetRuntimeResult<string> {
@@ -2896,21 +3075,32 @@ class PropertyAccessOperator extends PropertyChainOperator {
   }
 
   chainOperatorType(
-    _runtime: TypeRuntime,
+    runtime: TypeRuntime,
     lhs: Types.Type,
-    _lhsExpr: Expression,
+    lhsExpr: Expression,
     rhsExpr: Expression,
   ): GetTypeResult {
     return this.rhsName().map(rhsName => {
       const rhType = lhs.propAccessType(rhsName)
       if (!rhType) {
-        return err(
-          new RuntimeError(rhsExpr, `Property '${rhsName}' does not exist on ${lhs.toCode()}`),
+        return decorateError(
+          this,
+          new Expressions.PropertyAccessRuntimeError(
+            lhsExpr,
+            lhs,
+            rhsExpr,
+            rhsName,
+            `Property '${rhsName}' does not exist on ${lhs.toCode()}`,
+          ),
         )
       }
 
       return ok(rhType)
     })
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.PropertyAccessOperator)
   }
 
   operatorEval(
@@ -2951,8 +3141,8 @@ class PropertyAccessOperator extends PropertyChainOperator {
 
 addBinaryOperator({
   name: 'property access',
-  symbol: '.',
-  precedence: PRECEDENCE.BINARY['.'],
+  symbol: PROPERTY_ACCESS_OPERATOR,
+  precedence: PRECEDENCE.BINARY[PROPERTY_ACCESS_OPERATOR],
   associativity: 'left',
   create(
     range: [number, number],
@@ -2972,7 +3162,7 @@ addBinaryOperator({
 })
 
 class NullCoalescingPropertyAccessOperator extends PropertyAccessOperator {
-  symbol = '?.'
+  symbol = NULL_COALESCING_OPERATOR
 
   isNullCoalescing() {
     return true
@@ -2989,6 +3179,10 @@ class NullCoalescingPropertyAccessOperator extends PropertyAccessOperator {
     }
 
     return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.NullCoalescingPropertyAccessOperator)
   }
 
   operatorEval(
@@ -3008,8 +3202,8 @@ class NullCoalescingPropertyAccessOperator extends PropertyAccessOperator {
 
 addBinaryOperator({
   name: 'nullable property access',
-  symbol: '?.',
-  precedence: PRECEDENCE.BINARY['?.'],
+  symbol: NULL_COALESCING_OPERATOR,
+  precedence: PRECEDENCE.BINARY[NULL_COALESCING_OPERATOR],
   associativity: 'left',
   create(
     range: [number, number],
@@ -3219,6 +3413,10 @@ class ArrayAccessOperator extends PropertyChainOperator {
     )
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.ArrayAccessOperator)
+  }
+
   operatorEval(
     _runtime: ValueRuntime,
     lhs: Values.Value,
@@ -3329,7 +3527,7 @@ addBinaryOperator({
 })
 
 class NullCoalescingArrayAccessOperator extends ArrayAccessOperator {
-  symbol = '?.[]'
+  symbol = NULL_COALESCE_ARRAY_ACCESS_OPERATOR
 
   isNullCoalescing() {
     return true
@@ -3346,6 +3544,10 @@ class NullCoalescingArrayAccessOperator extends ArrayAccessOperator {
     }
 
     return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.NullCoalescingArrayAccessOperator)
   }
 
   operatorEval(
@@ -3365,8 +3567,8 @@ class NullCoalescingArrayAccessOperator extends ArrayAccessOperator {
 
 addBinaryOperator({
   name: 'null coalescing array access',
-  symbol: '?.[]',
-  precedence: PRECEDENCE.BINARY['?.[]'],
+  symbol: NULL_COALESCE_ARRAY_ACCESS_OPERATOR,
+  precedence: PRECEDENCE.BINARY[NULL_COALESCE_ARRAY_ACCESS_OPERATOR],
   associativity: 'left',
   create(
     range: [number, number],
@@ -3386,7 +3588,7 @@ addBinaryOperator({
 })
 
 export class FunctionInvocationOperator extends PropertyChainOperator {
-  symbol = 'fn'
+  symbol = FUNCTION_INVOCATION_OPERATOR
 
   /**
    * No need to enclose function invocations in `(…)`
@@ -3417,9 +3619,8 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
     return `(${lhsCode})${argListCode}`
   }
 
-  // unused in 'chain' operations
-  rhsType(): GetTypeResult {
-    return ok(Types.AllType)
+  rhsCompile() {
+    return ok(Nodes.Ignored)
   }
 
   /**
@@ -3459,6 +3660,10 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
       lhFormulaExpression,
       rhArgsExpression,
     )
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.FunctionInvocationOperator)
   }
 
   operatorEval(
@@ -3507,7 +3712,7 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
 }
 
 export class NullCoalescingFunctionInvocationOperator extends FunctionInvocationOperator {
-  symbol = '?.()'
+  symbol = NULL_COALESCE_INVOCATION_OPERATOR
 
   /**
    * No need to enclose function invocations in `(…)`
@@ -3546,8 +3751,8 @@ export class NullCoalescingFunctionInvocationOperator extends FunctionInvocation
 
 addBinaryOperator({
   name: 'function invocation',
-  symbol: 'fn',
-  precedence: PRECEDENCE.BINARY['fn'],
+  symbol: FUNCTION_INVOCATION_OPERATOR,
+  precedence: PRECEDENCE.BINARY[FUNCTION_INVOCATION_OPERATOR],
   associativity: 'left',
   create(
     range: [number, number],
@@ -3568,8 +3773,8 @@ addBinaryOperator({
 
 addBinaryOperator({
   name: 'null coalescing function invocation',
-  symbol: '?.()',
-  precedence: PRECEDENCE.BINARY['?.()'],
+  symbol: NULL_COALESCE_INVOCATION_OPERATOR,
+  precedence: PRECEDENCE.BINARY[NULL_COALESCE_INVOCATION_OPERATOR],
   associativity: 'left',
   create(
     range: [number, number],
@@ -3597,7 +3802,7 @@ addBinaryOperator({
  * and picked up by ArrayExpression.
  */
 class InclusionOperator extends BinaryOperator {
-  symbol = 'onlyif'
+  symbol = INCLUSION_OPERATOR
 
   isInclusionOp(): this is Operation {
     return true
@@ -3617,8 +3822,8 @@ class InclusionOperator extends BinaryOperator {
 
 addBinaryOperator({
   name: 'inclusion operator',
-  symbol: 'onlyif',
-  precedence: PRECEDENCE.BINARY['onlyif'],
+  symbol: INCLUSION_OPERATOR,
+  precedence: PRECEDENCE.BINARY[INCLUSION_OPERATOR],
   associativity: 'left',
   create(
     range: [number, number],
@@ -3648,7 +3853,7 @@ class LogicalNotOperator extends UnaryOperator {
     return this.args[0].assumeTrue(runtime)
   }
 
-  checkLhsType(lhs: Types.Type, lhsExpr: Expression) {
+  operatorType(_runtime: TypeRuntime, lhs: Types.Type, lhsExpr: Expression) {
     if (lhs.isOnlyTruthyType()) {
       return err(
         new RuntimeError(
@@ -3657,6 +3862,7 @@ class LogicalNotOperator extends UnaryOperator {
         ),
       )
     }
+
     if (lhs.isOnlyFalseyType()) {
       return err(
         new RuntimeError(
@@ -3665,10 +3871,7 @@ class LogicalNotOperator extends UnaryOperator {
         ),
       )
     }
-    return ok(undefined)
-  }
 
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type) {
     if (lhs.isLiteral()) {
       return ok(Types.literal(!lhs.value))
     }
@@ -3680,6 +3883,12 @@ class LogicalNotOperator extends UnaryOperator {
     }
 
     return ok(Types.BooleanType)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.getNodeInfo(runtime).map(
+      ([type, lhsNode]) => new Nodes.LogicalNotOperator(toSource(this), type, [lhsNode]),
+    )
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
@@ -3725,6 +3934,12 @@ export class NegateOperator extends UnaryOperator {
     return numericType(this, lhs)
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.getNodeInfo(runtime).map(
+      ([type, lhsNode]) => new Nodes.NegateOperator(toSource(this), type, [lhsNode]),
+    )
+  }
+
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
     return numericOperation(this, lhs, a => -a)
   }
@@ -3764,6 +3979,12 @@ class BinaryNegateOperator extends UnaryOperator {
     return numericType(this, lhs)
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.getNodeInfo(runtime).map(
+      ([type, lhsNode]) => new Nodes.BinaryNegateOperator(toSource(this), type, [lhsNode]),
+    )
+  }
+
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
     return numericOperation(this, lhs, a => ~a)
   }
@@ -3797,6 +4018,12 @@ class StringCoercionOperator extends UnaryOperator {
   operatorType(_runtime: TypeRuntime, _lhs: Types.Type) {
     // todo be smarter about this (just about printable has String(length: >0))
     return ok(Types.StringType)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.getNodeInfo(runtime).map(
+      ([type, lhsNode]) => new Nodes.StringCoercionOperator(toSource(this), type, [lhsNode]),
+    )
   }
 
   operatorEval(_runtime: ValueRuntime, lhs: Values.Value) {
@@ -3892,6 +4119,13 @@ class UnaryRangeOperator extends UnaryOperator {
     }
 
     return err(new RuntimeError(expr, expectedType('Float or Int', expr, type)))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.getNodeInfo(runtime).map(
+      ([type, lhsNode]) =>
+        new Nodes.UnaryRangeOperator(toSource(this), type, [lhsNode], this.symbol),
+    )
   }
 
   operatorEval(_runtime: ValueRuntime, value: Values.Value, expr: Expression) {
@@ -4034,8 +4268,16 @@ addUnaryOperator({
   },
 })
 
+/**
+ * Creates an enum value from context, ie `.enumValue`. Context can be  function
+ * return value, function argument, or explicit type on a let assignment, or if
+ * the enum case name is unique in the module context it will be resolved to
+ * that value.
+ * @example let a = .uniqueEnumName in ...
+ * @example fn color(): Color => .red
+ */
 class EnumLookupOperator extends UnaryOperator {
-  symbol = '.'
+  symbol = ENUM_START
 
   operatorType(_runtime: TypeRuntime, _: Types.Type, arg: Expression) {
     if (!(arg instanceof Expressions.Identifier)) {
@@ -4043,6 +4285,12 @@ class EnumLookupOperator extends UnaryOperator {
     }
 
     return err(new RuntimeError(arg, `No enum value named ${this.symbol}${arg.name}`))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.getNodeInfo(runtime).map(
+      ([type, lhsNode]) => new Nodes.EnumLookupOperator(toSource(this), type, [lhsNode]),
+    )
   }
 
   operatorEval(_runtime: ValueRuntime, _: Values.Value, arg: Expression) {
@@ -4056,8 +4304,8 @@ class EnumLookupOperator extends UnaryOperator {
 
 addUnaryOperator({
   name: 'enum lookup',
-  symbol: '.',
-  precedence: PRECEDENCE.UNARY['.'],
+  symbol: ENUM_START,
+  precedence: PRECEDENCE.UNARY[ENUM_START],
   associativity: 'left',
   create(
     range: [number, number],
@@ -4096,6 +4344,12 @@ class AssignmentOperator extends BinaryOperator {
     }
 
     return ok(new Types.MessageType())
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.getNodeInfo(runtime).map(
+      ([type, lhsNode]) => new Nodes.AssignmentOperator(toSource(this), type, [lhsNode]),
+    )
   }
 
   eval(runtime: ValueRuntime) {
@@ -4259,13 +4513,14 @@ function functionInvocationOperatorType(
           positionIndex += 1
         }
 
-        // Guard for no argument expected
+        // Guard for unexpected argument
         if (!expectedFormulaType) {
           let message = 'Unexpected argument '
           if (providedArg instanceof Expressions.NamedArgument) {
             message += `'${providedArg.alias}'`
           } else if (providedArg instanceof Expressions.PositionalArgument) {
-            message += `at position #${currentPosition + 1}`
+            // positionIndex has already been bumped +1
+            message += `at position #${currentPosition}`
           }
 
           return err(new RuntimeError(providedArg, message))
@@ -4277,7 +4532,7 @@ function functionInvocationOperatorType(
           if (providedArg instanceof Expressions.NamedArgument) {
             message += `'${providedArg.alias}'`
           } else if (providedArg instanceof Expressions.PositionalArgument) {
-            message += `at position #${currentPosition + 1}`
+            message += `at position #${currentPosition}`
           }
 
           return err(new RuntimeError(providedArg, message))
@@ -4442,7 +4697,12 @@ function spreadArrayArg(
     return [
       false,
       undefined,
-      err(new RuntimeError(providedArg, `Cannot use spread operator '...' on type ${type}`)),
+      err(
+        new RuntimeError(
+          providedArg,
+          `Cannot use spread operator '${SPREAD_OPERATOR}' on type ${type}`,
+        ),
+      ),
     ]
   }
 }
@@ -4484,7 +4744,7 @@ function spreadKeywordArg(
       err(
         new RuntimeError(
           providedArg,
-          `Cannot use keyword list operator '${KWARG_OP}' on type ${type}`,
+          `Cannot use keyword list operator '${KWARG_OPERATOR}' on type ${type}`,
         ),
       ),
     ]
@@ -4508,11 +4768,23 @@ function anyFloaters(
   return lhs.is === 'literal-float' || rhs.is === 'literal-float' ? 'float' : undefined
 }
 
-function decorateError(expr: Expression) {
-  return function mapError(result: GetTypeResult): GetTypeResult {
-    if (result.isErr() && result.error instanceof RuntimeError) {
+function decorateError(expr: Expression, error: RuntimeError): GetTypeResult
+function decorateError(expr: Expression): (_: GetTypeResult) => GetTypeResult
+function decorateError(expr: Expression, error?: RuntimeError) {
+  function mapError(result: GetTypeResult): GetTypeResult {
+    if (
+      result.isErr() &&
+      result.error instanceof RuntimeError &&
+      result.error.parents.length === 0
+    ) {
       result.error.pushParent(expr)
     }
     return result
   }
+
+  if (error) {
+    return mapError(err(error))
+  }
+
+  return mapError
 }

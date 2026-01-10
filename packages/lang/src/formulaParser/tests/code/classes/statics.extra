@@ -1,0 +1,6 @@
+class Foo {
+  static DefaultName = 'John Doe'
+  static DefaultAge = 0
+  static DefaultCalc = DefaultAge + 1
+  static DefaultTitle = DefaultName + ': ' + $DefaultAge
+}

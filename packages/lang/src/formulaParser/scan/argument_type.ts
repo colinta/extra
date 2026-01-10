@@ -21,6 +21,9 @@ import {
   ENUM_KEYWORD,
   CLASS_KEYWORD,
   MSG_TYPE,
+  TYPE_START,
+  DICT_SEPARATOR,
+  PROPERTY_ACCESS_OPERATOR,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {type ArgumentType, ParseError, type ParseNext} from '../types'
@@ -74,7 +77,7 @@ export function scanArgumentType(
   let argType: Expression | undefined
   const range0 = scanner.charIndex
   const oneOfExpressions: Expression[] = []
-  const enumExpressions: Expressions.EnumShorthandExpression[] = []
+  const enumExpressions: Expressions.EnumMemberExpression[] = []
   let extendsExpressions: Expression[] = []
   let hasOptional = false
   let rewind = scanner.charIndex
@@ -136,7 +139,7 @@ export function scanArgumentType(
       }
 
       enumExpressions.push(
-        new Expressions.EnumShorthandExpression(
+        new Expressions.EnumMemberExpression(
           [arg0, scanner.charIndex],
           scanner.flushComments(),
           enumCaseName,
@@ -148,7 +151,7 @@ export function scanArgumentType(
         continue
       }
 
-      argType = new Expressions.EnumShorthandTypeExpression(
+      argType = new Expressions.AnonymousEnumTypeExpression(
         [range0, scanner.charIndex],
         scanner.flushComments(),
         enumExpressions,
@@ -256,7 +259,7 @@ export function scanArgumentType(
             scanner.charIndex - 1,
           )
         }
-      } else if (scanner.scanAhead('.')) {
+      } else if (scanner.scanAhead(PROPERTY_ACCESS_OPERATOR)) {
         // parsing foo.type.Type
         // TODO: currently, only _concrete types_ are supported here.
         // i.e. if `Type` is generic (`Type(a)`) this will fail.
@@ -270,7 +273,7 @@ export function scanArgumentType(
             childArgType ?? typeName,
             childIdentifier,
           )
-        } while (scanner.scanAhead('.'))
+        } while (scanner.scanAhead(PROPERTY_ACCESS_OPERATOR))
 
         return childArgType
       } else {
@@ -331,7 +334,7 @@ export function scanArgumentType(
 
       extendsExpressions.push(argType)
 
-      argType = new Expressions.ExtendsExpression(
+      argType = new Expressions.CombineTypeExpression(
         [extendsExpressions[0].range[0], argType.range[1]],
         scanner.flushComments(),
         extendsExpressions,
@@ -354,8 +357,8 @@ export function scanArgumentType(
     break
   }
 
-  if (enumExpressions.length && !(argType instanceof Expressions.EnumShorthandTypeExpression)) {
-    const enumType = new Expressions.EnumShorthandTypeExpression(
+  if (enumExpressions.length && !(argType instanceof Expressions.AnonymousEnumTypeExpression)) {
+    const enumType = new Expressions.AnonymousEnumTypeExpression(
       [range0, scanner.charIndex],
       scanner.flushComments(),
       enumExpressions,
@@ -366,7 +369,7 @@ export function scanArgumentType(
 
   if (hasOptional) {
     if (oneOfExpressions.length === 0) {
-      oneOfExpressions.push(argType)
+      oneOfExpressions.push(argType!)
     }
     oneOfExpressions.push(
       new Expressions.LiteralNull(
@@ -384,8 +387,8 @@ export function scanArgumentType(
     )
   }
 
-  scanner.whereAmI(`scanArgumentType: ${argType.toCode()}`)
-  return argType
+  scanner.whereAmI(`scanArgumentType: ${argType!.toCode()}`)
+  return argType!
 }
 
 /**
@@ -400,7 +403,7 @@ function scanFormulaType(
   parseNext: ParseNext,
   moduleOrArgument: ArgumentType,
 ) {
-  let generics: string[]
+  let generics: Expressions.GenericExpression[]
   if (scanner.scanIfString('<')) {
     generics = scanGenerics(scanner, parseNext)
   } else {
@@ -409,7 +412,7 @@ function scanFormulaType(
   const argDefinitions = scanFormulaTypeArguments(scanner, parseNext)
 
   let returnType: Expression
-  if (scanner.scanAhead(':')) {
+  if (scanner.scanAhead(TYPE_START)) {
     scanner.scanAllWhitespace()
     returnType = scanArgumentType(scanner, moduleOrArgument, parseNext)
   } else {
@@ -452,8 +455,8 @@ function scanObjectType(
     //     {
     //       foo: fn(): Value
     //     }
-    // if (scanner.isWord('fn')) {
-    //   scanner.expectString('fn')
+    // if (scanner.isWord(FN_KEYWORD)) {
+    //   scanner.expectString(FN_KEYWORD)
     //   scanner.expectWhitespace()
     //   name = scanValidName(scanner).name
     //   scanner.scanAllWhitespace()
@@ -471,7 +474,7 @@ function scanObjectType(
     if (isNamedArg(scanner)) {
       name = scanValidName(scanner).name
       scanner.scanAllWhitespace()
-      scanner.expectString(':')
+      scanner.expectString(TYPE_START)
       scanner.scanAllWhitespace()
     }
 
@@ -545,7 +548,7 @@ function scanDictType(
       didSetNarrowedLength = true
 
       scanner.scanAllWhitespace()
-      scanner.expectString(':')
+      scanner.expectString(DICT_SEPARATOR)
       scanner.scanAllWhitespace()
       narrowedLength = scanNarrowedLength(scanner)
       scanner.scanAllWhitespace()
@@ -554,7 +557,7 @@ function scanDictType(
       didSetNarrowedNames = true
 
       scanner.scanAllWhitespace()
-      scanner.expectString(':')
+      scanner.expectString(DICT_SEPARATOR)
       scanner.scanAllWhitespace()
       scanner.expectString(ARRAY_OPEN)
       scanner.scanAllWhitespace()
@@ -628,7 +631,7 @@ function scanOfAndLength(scanner: Scanner, moduleOrArgument: ArgumentType, parse
     scanner.scanAllWhitespace()
     scanner.expectString('length')
     scanner.scanAllWhitespace()
-    scanner.expectString(':')
+    scanner.expectString(DICT_SEPARATOR)
     scanner.scanAllWhitespace()
 
     narrowedLength = scanNarrowedLength(scanner)

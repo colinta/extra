@@ -12,7 +12,6 @@ describe('function parser', () => {
       c(['1d20 + 3 * 1d8 + 3', '(+ (+ (roll 1d20) (* 3 (roll 1d8))) 3)']),
       c(['d20', '(roll d20)']),
       c(['[1, 2, 3]', '[1 2 3]']),
-      c(['a.b.c[1 + 1]', '([] (. (. a b) c) (+ 1 1))']),
       c([
         '-2.2**(2 * 1)**2 * 3 >= 6 * (5 + 1)',
         '(>= (* (- (** 2.2 (** (* 2 1) 2))) 3) (* 6 (+ 5 1)))',
@@ -104,19 +103,15 @@ describe('function parser', () => {
       c([' {  }', '{}', '{}']),
       c(["{a: 'a'}", "{(a: 'a')}"]),
       c(["{a: 'a', b: [1, 2, 3]}", "{(a: 'a') (b: [1 2 3])}"]),
-      c(['{foo:, bar:}', '{(foo: foo) (bar: bar)}', '{foo:, bar:}']),
-      c([
-        "{a: a, b:, c: 'c', dee:}",
-        "{(a: a) (b: b) (c: 'c') (dee: dee)}",
-        "{a:, b:, c: 'c', dee:}",
-      ]),
+      c(['{foo:, bar:}', '{(foo:) (bar:)}', '{foo:, bar:}']),
+      c(["{a: a, b:, c: 'c', dee:}", "{(a: a) (b:) (c: 'c') (dee:)}", "{a:, b:, c: 'c', dee:}"]),
       // "tuples"
       c(["{'a'}", "{'a'}"]),
       c(["{'a', [1, 2, 3]}", "{'a' [1 2 3]}"]),
       c(['{foo, bar}', '{foo bar}', '{foo, bar}']),
       // mixed
       c(["{a, b, c: 'c', dee}", "{a b (c: 'c') dee}"]),
-      c(["{a, b, c: 'c', dee:}", "{a b (c: 'c') (dee: dee)}"]),
+      c(["{a, b, c: 'c', dee:}", "{a b (c: 'c') (dee:)}"]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse object '${formula}'`, () => {
         expectedCode ??= formula

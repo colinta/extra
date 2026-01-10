@@ -1,6 +1,6 @@
 import * as Expressions from '../../expressions'
 import {type Expression} from '../../expressions'
-import {ATOM_START, isRefStartChar} from '../grammars'
+import {ATOM_START, isRefStartChar, STATE_START} from '../grammars'
 import {binaryOperatorNamed} from '../../operators'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -160,7 +160,10 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
       escaping = 'single'
     } else if (
       quoteSupportsInterpolation &&
-      scanner.test(() => scanner.scanIfString('$') && isRefStartChar(scanner) && !scanner.is('@'))
+      // test for `...$foo...`
+      scanner.test(
+        () => scanner.scanIfString('$') && isRefStartChar(scanner) && !scanner.is(STATE_START),
+      )
     ) {
       if (!enableInterpolation) {
         throw new ParseError(scanner, `Interpolation is not enabled in this context`)
