@@ -589,36 +589,53 @@ export abstract class EnumDefinition extends Node {
 }
 
 /**
- * enum Foo {
+ *       -- ↓generics
+ * enum Foo<T> {
+ *   -- ↑name
  *   case A
  *   case B(Int)
+ *   -- ↑members
+ *
+ *   static default-int = 5
+ *   static calc(input: Int) => input + default-int
+ *   -- ↑staticProperties
+ *
+ *   fn value() =>
+ *     switch (this) {
+ *       case .A: 0
+ *       case .B(val): val
+ *     }
+ *   -- ↑memberFunctions
+ *
+ *   -- unlike classes, state/instance properties are not allowed
  * }
  */
 export class NamedEnumDefinition extends EnumDefinition {
   constructor(
     readonly source: Source,
     readonly name: string,
-    readonly type: Types.AnonymousEnumType | Types.NamedEnumType,
+    readonly type: Types.NamedEnumType,
     readonly members: EnumMember[],
     /**
-     * Array of static properties. Ordering is determined first by dependencies
-     * and then source.
+     * Statics: functions and properties.
      */
     readonly staticProperties: [string, Node][],
-    readonly staticFunctions: [string, Node][],
     readonly memberFunctions: [string, Node][],
+    readonly generics: Generic[],
+    readonly isExport: boolean,
   ) {
     super(source, type, members)
   }
 }
 
 /**
- * fn foo(# arg: .a | .b | .c(Int))
+ * fn foo(arg: .a | .b | .c(Int))
+ *          -- ↑ AnonymousEnumDefinition.members
  */
 export class AnonymousEnumDefinition extends EnumDefinition {
   constructor(
     readonly source: Source,
-    readonly type: Types.AnonymousEnumType | Types.NamedEnumType,
+    readonly type: Types.AnonymousEnumType,
     readonly members: EnumMember[],
   ) {
     super(source, type, members)

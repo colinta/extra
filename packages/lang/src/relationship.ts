@@ -573,9 +573,11 @@ function collapsedTypeRuntimeAdditions(runtime: TypeRuntime) {
   >
 }
 
-// 'or' conditions require both sides to have the same match assignments
+// 'or' conditions require both sides to have compatible match assignments
 //     foo is [bar] or foo is [bar, _] 👌
 //     foo is [bar] or foo is [] ❌
+// So the return value expresses this, returning 'missing-lhs' or 'missing-rhs'
+// if something is amiss.
 export function combineEitherTypeRuntimes(
   prevRuntime: TypeRuntime,
   lhsRuntime: TypeRuntime,
