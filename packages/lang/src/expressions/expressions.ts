@@ -1021,7 +1021,7 @@ export class ObjectExpression extends Expression {
      */
     readonly lastComments: Comment[],
     // values can be:
-    // - NamedArgument (most "common" key-value pair for an object type)
+    // - DictEntry (most "common" key-value pair for an object type)
     // - SpreadObjectArgument (returns ObjectProp[] and is merged into this object)
     // - all other Expressions => Tuple values
     readonly values: Expression[],
@@ -1054,11 +1054,11 @@ export class ObjectExpression extends Expression {
 
         if (arg instanceof DictEntry) {
           const key = arg.name
-          if (!(key instanceof Reference)) {
+          if (!(key instanceof LiteralString)) {
             return err(
               new RuntimeError(
                 key,
-                'Expected a literal key, object does not support arbitrary keys',
+                `Expected a literal key, object does not support arbitrary key ${key}`,
               ),
             )
           }
@@ -1067,7 +1067,7 @@ export class ObjectExpression extends Expression {
           return getChildType(this, value, runtime).map(type => [
             {
               is: 'named',
-              name: key.name,
+              name: key.value.value,
               type,
             },
           ])
@@ -1094,11 +1094,11 @@ export class ObjectExpression extends Expression {
 
         if (arg instanceof DictEntry) {
           const key = arg.name
-          if (!(key instanceof Reference)) {
+          if (!(key instanceof LiteralString)) {
             return err(
               new RuntimeError(
                 key,
-                'Expected a literal key, object does not support arbitrary keys',
+                `Expected a literal key, object does not support arbitrary key ${key}`,
               ),
             )
           }
@@ -1108,7 +1108,10 @@ export class ObjectExpression extends Expression {
             .eval(runtime)
             .map(
               value =>
-                [[], new Map([[key.name, value]])] as [Values.Value[], Map<string, Values.Value>],
+                [[], new Map([[key.value.value, value]])] as [
+                  Values.Value[],
+                  Map<string, Values.Value>,
+                ],
             )
         } else {
           return arg
