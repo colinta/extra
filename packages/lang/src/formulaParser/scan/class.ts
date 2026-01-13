@@ -68,7 +68,11 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
     followingArgsComments = scanner.flushComments()
   }
 
-  const {properties, formulas} = scanClassBody(scanner, parseNext, 'class')
+  const {properties, staticProperties, formulas, staticFormulas} = scanClassBody(
+    scanner,
+    parseNext,
+    'class',
+  )
 
   const lastComments = scanner.flushComments()
   return new Expressions.ClassDefinition(
@@ -82,7 +86,9 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
     extendsExpression,
     argDefinitions,
     properties,
+    staticProperties,
     formulas,
+    staticFormulas,
     isExport,
   )
 }
@@ -93,14 +99,16 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
 
   scanner.whereAmI(type === 'class' ? 'scanClassBody' : 'scanViewBody')
 
-  const properties: Expressions.ClassPropertyExpression[] = []
+  const properties: Expressions.ClassStatePropertyExpression[] = []
+  const staticProperties: Expressions.ClassStaticPropertyExpression[] = []
   let renderFormula: Expressions.ViewFormulaExpression | undefined
-  const formulas: Expressions.NamedFormulaExpression[] = []
+  const formulas: Expressions.InstanceFormulaExpression[] = []
+  const staticFormulas: Expressions.NamedFormulaExpression[] = []
   const staticNames = new Set<string>()
   const memberNames = new Set<string>()
   for (;;) {
     if (scanner.test(isFnStart)) {
-      const formula = scanNamedFormula(scanner, parseNext, 'class')
+      const formula = scanInstanceFormula(scanner, parseNext)
       if (memberNames.has(formula.name)) {
         throw new ParseError(scanner, `Found duplicate property '${formula.name}'.`)
       }
@@ -125,7 +133,11 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
     } else if (scanner.test(isClassProperty)) {
       const isStatic = scanner.isWord(STATIC)
       const property = scanClassProperty(scanner, parseNext, isStatic)
-      properties.push(property)
+      if (isStatic) {
+        staticProperties.push(property as Expressions.ClassStaticPropertyExpression)
+      } else {
+        properties.push(property as Expressions.ClassStatePropertyExpression)
+      }
 
       if (isStatic) {
         if (staticNames.has(property.name)) {
@@ -144,7 +156,7 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
         throw new ParseError(scanner, `Found duplicate function named '${formula.name}'.`)
       }
       staticNames.add(formula.name)
-      formulas.push(formula)
+      staticFormulas.push(formula)
     } else if (scanner.isWord(STATIC)) {
       scanner.expectWord(STATIC)
 
@@ -172,7 +184,7 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
     throw new ParseError(scanner, `All views must have a render function.`)
   }
 
-  return {properties, formulas}
+  return {properties, staticProperties, formulas, staticFormulas}
 }
 
 //     -- static properties (constants)

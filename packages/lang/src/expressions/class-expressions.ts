@@ -270,10 +270,12 @@ export class ClassDefinition extends Expression {
      * are considered static and must be initialized.
      */
     readonly properties: ClassPropertyExpression[],
+    readonly staticProperties: ClassPropertyExpression[],
     /**
      * Static *and* member formulas
      */
     readonly formulas: NamedFormulaExpression[],
+    readonly staticFormulas: NamedFormulaExpression[],
     readonly isExport: boolean,
   ) {
     super(range, precedingComments)
@@ -289,6 +291,9 @@ export class ClassDefinition extends Expression {
       provides = union(provides, allProvides(this.argDefinitions))
     }
     for (const expr of this.properties) {
+      provides = union(provides, expr.provides())
+    }
+    for (const expr of this.staticProperties) {
       provides = union(provides, expr.provides())
     }
     for (const expr of this.formulas) {
@@ -311,6 +316,10 @@ export class ClassDefinition extends Expression {
       const exprDeps = expr.dependencies()
       deps = union(deps, exprDeps)
     }
+    for (const expr of this.staticProperties) {
+      const exprDeps = expr.dependencies()
+      deps = union(deps, exprDeps)
+    }
     for (const expr of this.formulas) {
       const exprDeps = expr.dependencies()
       deps = union(deps, exprDeps)
@@ -327,30 +336,14 @@ export class ClassDefinition extends Expression {
       children.push(...this.argDefinitions)
     }
     children.push(...this.properties)
+    children.push(...this.staticProperties)
     children.push(...this.formulas)
+    children.push(...this.staticFormulas)
     return children
   }
 
   get name() {
     return this.nameRef.name
-  }
-
-  staticProperties() {
-    return this.properties.filter(prop => prop instanceof ClassStaticPropertyExpression)
-  }
-
-  stateProperties() {
-    return this.properties.filter(prop => prop instanceof ClassStatePropertyExpression)
-  }
-
-  staticFormulas() {
-    return this.formulas.filter(fn => fn instanceof StaticFormulaExpression)
-  }
-
-  memberFormulas() {
-    return this.formulas.filter(
-      fn => fn instanceof InstanceFormulaExpression || fn instanceof ViewFormulaExpression,
-    )
   }
 
   toLisp() {
@@ -371,8 +364,14 @@ export class ClassDefinition extends Expression {
     if (this.properties.length) {
       code += ' (' + this.properties.map(m => m.toLisp()).join(' ') + ')'
     }
+    if (this.staticProperties.length) {
+      code += ' (' + this.staticProperties.map(m => m.toLisp()).join(' ') + ')'
+    }
     if (this.formulas.length) {
       code += ' (' + this.formulas.map(f => f.toLisp()).join(' ') + ')'
+    }
+    if (this.staticFormulas.length) {
+      code += ' (' + this.staticFormulas.map(f => f.toLisp()).join(' ') + ')'
     }
     return `(${code})`
   }
@@ -395,28 +394,33 @@ export class ClassDefinition extends Expression {
     code += ' {\n'
     let body = ''
     // TODO: if (this.initializer)
-    for (const prop of this.stateProperties()) {
+    for (const prop of this.properties) {
       body += prop.toCode() + '\n'
     }
-    if (this.stateProperties().length && this.staticProperties().length) {
+    if (this.properties.length && this.staticProperties.length) {
       body += '\n'
     }
-    for (const prop of this.staticProperties()) {
+    for (const prop of this.staticProperties) {
       body += 'static ' + prop.toCode() + '\n'
     }
 
-    if (this.properties.length && this.formulas.length) {
+    if (
+      (this.properties.length || this.staticProperties.length) &&
+      (this.formulas.length || this.staticFormulas.length)
+    ) {
       body += '\n'
     }
 
-    const formulas = [...this.memberFormulas(), ...this.staticFormulas()]
-    for (const formula of formulas) {
-      const formulaCode = formula.toCodePrefixed(true, true)
-      body += formulaCode + '\n'
-      if (formula !== formulas.at(-1)) {
-        body += '\n'
-      }
+    for (const formula of this.formulas) {
+      body += formula.toCodePrefixed(true, true) + '\n'
     }
+    if (this.formulas.length && this.staticFormulas.length) {
+      body += '\n'
+    }
+    for (const formula of this.staticFormulas) {
+      body += formula.toCodePrefixed(true, true) + '\n'
+    }
+
     code += indent(body)
     code += '}'
 
@@ -448,7 +452,8 @@ export class ClassDefinition extends Expression {
     // least we have a starting point
     const parentMetaClass: GetRuntimeResult<Nodes.Node | undefined> =
       this.extendsExpression?.compile(runtime) ?? ok(undefined)
-    return parentMetaClass.map(parentMetaClass => {
+    return parentMetaClass.map(extendsNode => {
+      const parentMetaClass = extendsNode?.type
       if (parentMetaClass && !(parentMetaClass instanceof Nodes.ClassDefinition)) {
         return err(
           new RuntimeError(
@@ -460,9 +465,9 @@ export class ClassDefinition extends Expression {
 
       const parentInstanceClass = parentMetaClass?.type.returnClassType
 
-      const allStatics: (ClassStaticPropertyExpression | StaticFormulaExpression)[] =
-        this.staticProperties()
-      allStatics.push(...this.staticFormulas())
+      const allStatics = (
+        this.staticProperties as (ClassStaticPropertyExpression | StaticFormulaExpression)[]
+      ).concat(this.staticFormulas)
 
       // This code is ordering the initialization of the static properties and
       // formulas. First, any static that uses the `User()` constructor *must*
@@ -518,7 +523,7 @@ export class ClassDefinition extends Expression {
       const stateProperties = new Map<string, Nodes.Node>()
       const statePropsTypes = new Map<string, Types.Type>()
       const defaultPropertyNames = new Set<string>()
-      for (const propertyExpr of this.stateProperties()) {
+      for (const propertyExpr of this.properties) {
         // TODO: I'm pretty sure that overriding properties from a parent class
         // should not be allowed. At first glance, it seems like narrowing
         // should be fine (overridng with a property that is a subtype of the
@@ -601,7 +606,7 @@ export class ClassDefinition extends Expression {
       classLocalRuntime.addLocalType(this.name, metaClassType)
 
       // gather the remaining items: remainingStaticDependencies and
-      // memberFormulas(). Whatever is in remainingStaticDependencies depends
+      // formulas. Whatever is in remainingStaticDependencies depends
       // on 'User', and we don't know what methods it might call on a User
       // instance... so we try to get the type, and if it fails we look at the
       // error to see if it is related to our class - if so, put the expression
@@ -620,7 +625,7 @@ export class ClassDefinition extends Expression {
         return err(remainingStaticDependenciesResult.error)
       }
       const remainingStaticDependencies = remainingStaticDependenciesResult.value
-      const remainingMemberFormulas = this.memberFormulas()
+      const remainingMemberFormulas = this.formulas
 
       let remaining = new Set([...remainingStaticDependencies, ...remainingMemberFormulas])
       let next: typeof remaining = new Set()
@@ -754,17 +759,17 @@ export class ClassDefinition extends Expression {
     return mapMany(
       parentClass,
       mapAll(
-        this.staticProperties().map(expr =>
+        this.staticProperties.map(expr =>
           expr.eval(runtime).map(value => [expr.nameRef.name, value] as const),
         ),
       ),
       mapAll(
-        this.staticFormulas().map(expr =>
+        this.staticFormulas.map(expr =>
           expr.eval(runtime).map(value => [expr.nameRef.name, value] as const),
         ),
       ),
       mapAll(
-        this.memberFormulas().map(expr =>
+        this.formulas.map(expr =>
           expr.eval(runtime).map(value => [expr.nameRef.name, value] as const),
         ),
       ),
@@ -880,8 +885,10 @@ export class ViewClassDefinition extends ClassDefinition {
     followingArgumentsComments: Comment[],
     nameRef: Reference,
     argDefinitions: FormulaLiteralArgument[] | undefined,
-    properties: ClassPropertyExpression[],
-    formulas: NamedFormulaExpression[],
+    properties: ClassStatePropertyExpression[],
+    staticProperties: ClassStaticPropertyExpression[],
+    formulas: InstanceFormulaExpression[],
+    staticFormulas: StaticFormulaExpression[],
     isExport: boolean,
   ) {
     super(
@@ -897,7 +904,9 @@ export class ViewClassDefinition extends ClassDefinition {
       undefined,
       argDefinitions,
       properties,
+      staticProperties,
       formulas,
+      staticFormulas,
       isExport,
     )
     const renderFormula = formulas.find(formula => formula instanceof RenderFormulaExpression)

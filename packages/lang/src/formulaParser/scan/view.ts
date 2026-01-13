@@ -45,7 +45,11 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
   }
 
   if (scanner.is(CLASS_OPEN)) {
-    const {properties, formulas} = scanClassBody(scanner, parseNext, 'view')
+    const {properties, staticProperties, formulas, staticFormulas} = scanClassBody(
+      scanner,
+      parseNext,
+      'view',
+    )
 
     const lastComments = scanner.flushComments()
 
@@ -58,7 +62,9 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
       nameRef,
       argDefinitions,
       properties,
+      staticProperties,
       formulas,
+      staticFormulas,
       isExport,
     )
   }
