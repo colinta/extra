@@ -46,10 +46,11 @@ export function scanNamedEnum(
   scanner.whereAmI('scanEnum')
 
   const members: Expressions.EnumMemberExpression[] = []
-  const staticProperties: Expressions.ClassStaticPropertyExpression[] = []
   const staticNames = new Set<string>()
   const memberNames = new Set<string>()
-  const formulas: Expressions.NamedFormulaExpression[] = []
+  const memberFormulas: Expressions.NamedFormulaExpression[] = []
+  const staticProperties: Expressions.ClassStaticPropertyExpression[] = []
+  const staticFormulas: Expressions.NamedFormulaExpression[] = []
   while (!scanner.scanIfString(ENUM_CLOSE)) {
     if (scanner.scanIfString(ENUM_START)) {
       scanner.scanAllWhitespace()
@@ -95,7 +96,7 @@ export function scanNamedEnum(
       }
 
       memberNames.add(formula.name)
-      formulas.push(formula)
+      memberFormulas.push(formula)
     } else if (scanner.test(isStaticProperty)) {
       const property = scanEnumProperty(scanner, parseNext)
 
@@ -113,7 +114,7 @@ export function scanNamedEnum(
       }
 
       staticNames.add(formula.name)
-      formulas.push(formula)
+      staticFormulas.push(formula)
     } else {
       throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
     }
@@ -131,7 +132,8 @@ export function scanNamedEnum(
     nameRef,
     members,
     staticProperties,
-    formulas,
+    memberFormulas,
+    staticFormulas,
     generics,
     isExport,
   )
