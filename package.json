@@ -4,15 +4,16 @@
     "repl": "bun apps/repl/src/index.tsx",
     "publish": "bun publish TODO"
   },
-  "workspaces": [
-    "shared",
-    "packages/cases",
-    "packages/inspect",
-    "packages/lang",
-    "packages/parse",
-    "packages/result",
-    "apps/repl"
-  ],
+  "workspaces": {
+    "packages": [
+      "shared",
+      "packages/*",
+      "apps/repl"
+    ],
+    "catalog": {
+      "typescript": "^5.7.3"
+    }
+  },
   "dependencies": {},
   "devDependencies": {}
 }
