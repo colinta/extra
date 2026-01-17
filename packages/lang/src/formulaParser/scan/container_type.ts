@@ -103,7 +103,12 @@ export function scanObject(
     } else if (isNamedObjectArgument(scanner)) {
       const nameComments = scanner.flushComments()
       scanner.whereAmI('nameComments: ' + nameComments)
-      const propName = scanAnyReference(scanner)
+      const dictName = scanAnyReference(scanner)
+      const dictKey = new Expressions.LiteralString(
+        dictName.range,
+        [],
+        Values.string(dictName.name),
+      )
       // TODO: this is a weird place for comments to hide
       scanner.scanAllWhitespace()
       scanner.expectString(DICT_SEPARATOR)
@@ -123,16 +128,16 @@ export function scanObject(
         entry = new Expressions.DictEntry(
           [argRange0, scanner.charIndex],
           nameComments,
-          propName,
+          dictKey,
           undefined,
         )
-        scanner.whereAmI(`scanObjectArg: {${propName.name}:} shorthand`)
+        scanner.whereAmI(`scanObjectArg: {${dictKey}:} shorthand`)
       } else {
         const expression = parseNext(type)
         entry = new Expressions.DictEntry(
           [argRange0, scanner.charIndex],
           nameComments.concat(scanner.flushComments()),
-          propName,
+          dictKey,
           expression,
         )
         scanner.whereAmI('scanObjectArg: ' + expression.toCode())
@@ -269,35 +274,6 @@ export function scanArray(
     args,
     generic,
   )
-}
-
-function scanDictKey(
-  scanner: Scanner,
-  parseNext: ParseNext,
-): [Expression] | [Expression, Expression] {
-  const range0 = scanner.charIndex
-  if (isNumberStart(scanner)) {
-    return [scanNumber(scanner, 'float')]
-  } else if (isStringStartChar(scanner)) {
-    return [scanString(scanner, true, parseNext)]
-  } else if (scanner.is(PARENS_OPEN)) {
-    return [scanParensGroup(scanner, parseNext)]
-  } else if (scanner.isWord('null')) {
-    scanner.expectString('null')
-    return [new Expressions.LiteralNull([range0, scanner.charIndex], scanner.flushComments())]
-  } else if (scanner.isWord('true')) {
-    scanner.expectString('true')
-    return [new Expressions.LiteralTrue([range0, scanner.charIndex], scanner.flushComments())]
-  } else if (scanner.isWord('false')) {
-    scanner.expectString('false')
-    return [new Expressions.LiteralFalse([range0, scanner.charIndex], scanner.flushComments())]
-  } else {
-    const dictName = scanAnyReference(scanner)
-    return [
-      new Expressions.LiteralString(dictName.range, [], Values.string(dictName.name)),
-      dictName,
-    ]
-  }
 }
 
 export function scanDict(
@@ -497,4 +473,33 @@ export function scanSet(scanner: Scanner, parseNext: ParseNext, type: 'set-symbo
     args,
     generic,
   )
+}
+
+function scanDictKey(
+  scanner: Scanner,
+  parseNext: ParseNext,
+): [Expression] | [Expression, Expression] {
+  const range0 = scanner.charIndex
+  if (isNumberStart(scanner)) {
+    return [scanNumber(scanner, 'float')]
+  } else if (isStringStartChar(scanner)) {
+    return [scanString(scanner, true, parseNext)]
+  } else if (scanner.is(PARENS_OPEN)) {
+    return [scanParensGroup(scanner, parseNext)]
+  } else if (scanner.isWord('null')) {
+    scanner.expectString('null')
+    return [new Expressions.LiteralNull([range0, scanner.charIndex], scanner.flushComments())]
+  } else if (scanner.isWord('true')) {
+    scanner.expectString('true')
+    return [new Expressions.LiteralTrue([range0, scanner.charIndex], scanner.flushComments())]
+  } else if (scanner.isWord('false')) {
+    scanner.expectString('false')
+    return [new Expressions.LiteralFalse([range0, scanner.charIndex], scanner.flushComments())]
+  } else {
+    const dictName = scanAnyReference(scanner)
+    return [
+      new Expressions.LiteralString(dictName.range, [], Values.string(dictName.name)),
+      dictName,
+    ]
+  }
 }
