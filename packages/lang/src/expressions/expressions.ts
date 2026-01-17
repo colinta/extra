@@ -911,10 +911,12 @@ export class Reference extends Identifier {
   }
 
   /**
-   * Let's say we're looking at `x: Foo`. `Foo` will be stored in TypeRuntime as
-   * a Type instance, maybe ClassDefinitionType. But `x` is not a
+   * Explanation for declaring a reference as an instance of a class: Let's say
+   * we're looking at `x: Foo`, and 'Foo' is the type expression we're
+   * interested in. `Foo` will be stored in TypeRuntime as a Type instance,
+   * ie `ClassDefinitionType`. But `x` is not an instance of
    * `ClassDefinitionType`, it's a `ClassInstanceType`, which is the value
-   * returned by `fromTypeConstructor()`
+   * returned by `fromTypeConstructor()`.
    */
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     // get the type from runtime, this should be a named type, like

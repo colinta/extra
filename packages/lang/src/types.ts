@@ -3661,15 +3661,15 @@ export class ClassInstanceType extends Type {
       for (const [key, type] of parent.allProps) {
         const existing = allProps.get(key)
         if (existing) {
+          // We don't support overriding properties - any methods in the parent
+          // class that mutate the property are not guaranteed to work with the
+          // overridden property.
+          // I *suppose* we could allow properties to be overridden if the
+          // parent type is assignable to the child type... but I can't even
+          // think of an example where this would be both possible and useful
           throw `Should not be: property '${key}: ${type}' is defined on ${parent.name}, but also defined on ${this.name} (with type ${existing})`
         }
-        // if the parent prop is not defined in props, add it.
-        // but also, if the parent prop is defined in props, *but not assignable*,
-        // we assign the parent prop type instead
-        // (this is a compile-time error that should've been caught already)
-        if (!existing || !canBeAssignedTo(existing, type)) {
-          allProps.set(key, type)
-        }
+        allProps.set(key, type)
       }
     }
 
@@ -3728,6 +3728,16 @@ export class ClassInstanceType extends Type {
     })
   }
 
+  addFormula(name: string, formula: Type) {
+    this.allProps.set(name, formula)
+    this.formulas.set(name, formula)
+  }
+
+  /**
+   * This doesn't have a meaningful code output, as far as I can tell... I guess
+   * maybe it would output the class name and constructor invocation, but the
+   * constructor can be customized, so we can't even do that.
+   */
   toCode() {
     return this.name
   }
@@ -3743,6 +3753,10 @@ export class ClassInstanceType extends Type {
       const props = new Map(this.myProps)
       props.set(prop, type)
       return ok(new ClassInstanceType(this.name, this.parent, props, this.formulas))
+    } else if (this.formulas.has(prop)) {
+      const formulas = new Map(this.formulas)
+      formulas.set(prop, type)
+      return ok(new ClassInstanceType(this.name, this.parent, this.myProps, formulas))
     } else if (this.parent) {
       return this.parent
         .replacingProp(prop, type)
@@ -3753,7 +3767,7 @@ export class ClassInstanceType extends Type {
   }
 
   propAccessType(prop: string): Type | undefined {
-    return this.allProps.get(prop) ?? this.formulas.get(prop)
+    return this.allProps.get(prop) ?? this.formulas.get(prop) ?? this.parent?.propAccessType(prop)
   }
 
   /**

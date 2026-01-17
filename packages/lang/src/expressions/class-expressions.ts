@@ -177,6 +177,17 @@ export class ClassStatePropertyExpression extends ClassPropertyExpression {
   }
 }
 
+/**
+ * A static property on a class or enum.
+ *
+ *     class User {
+ *       static default-name = 'Guest'
+ *     }
+ *
+ *     enum Colour {
+ *       static background: Colour = .gray
+ *     }
+ */
 export class ClassStaticPropertyExpression extends ClassPropertyExpression {
   constructor(
     readonly range: Range,
