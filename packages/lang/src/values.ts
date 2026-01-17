@@ -1427,20 +1427,34 @@ export class TypeValue extends Value {
 export class FormulaArgs {
   private _positional: Value[] = []
   private _named: Map<string, Value[]> = new Map()
+  private _possibleSpread: Map<string, ArrayValue[]> = new Map()
   readonly length: number
   readonly names: Set<string>
 
-  constructor(readonly args: [string | undefined, Value][]) {
-    for (const [alias, arg] of args) {
+  constructor(readonly args: [string | undefined, Value, 'spread' | 'arg'][]) {
+    for (const [alias, arg, argType] of args) {
       if (!alias) {
         this._positional.push(arg)
         continue
       }
+
       const prevNamed = this._named.get(alias)
       if (prevNamed) {
         prevNamed.push(arg)
       } else {
         this._named.set(alias, [arg])
+      }
+
+      // if this spread-argument is being used in the context of a repeated-named-argument,
+      // then `safeAllNamed` will be used to fetch all the values. In that case,
+      // we "spread" this array, rather than return it as *one* of the values.
+      if (argType === 'spread' && arg instanceof ArrayValue) {
+        const prevPossibleSpread = this._possibleSpread.get(alias)
+        if (prevPossibleSpread) {
+          prevPossibleSpread.push(arg)
+        } else {
+          this._possibleSpread.set(alias, [arg])
+        }
       }
     }
 
@@ -1450,6 +1464,7 @@ export class FormulaArgs {
     Object.defineProperty(this, 'names', {enumerable: false})
     Object.defineProperty(this, '_positional', {enumerable: false})
     Object.defineProperty(this, '_named', {enumerable: false})
+    Object.defineProperty(this, '_possibleSpread', {enumerable: false})
   }
 
   has(index: number | string) {
@@ -1505,6 +1520,11 @@ export class FormulaArgs {
   }
 
   safeAllNamed(name: string): Value[] {
+    const possibleSpread = this._possibleSpread.get(name)
+    if (possibleSpread) {
+      return possibleSpread.flatMap(v => v.values)
+    }
+
     return this._named.get(name) ?? []
   }
 

@@ -2224,6 +2224,8 @@ export class TypeConstructorExpression extends TypeExpression {
 //|  Argument and Spread Expressions
 //|
 
+type SpreadArgumentInfo = [string | undefined, Values.Value, 'spread' | 'arg']
+
 /**
  * Either the positional or named argument to a function.
  */
@@ -2297,23 +2299,25 @@ export abstract class Argument extends Expression {
   private evalToSpreadArguments(value: Values.Value) {
     if (value instanceof Values.ObjectValue) {
       return value.tupleValues
-        .map(value => [undefined, value] as [string | undefined, Values.Value])
+        .map(value => [undefined, value, 'spread'] as SpreadArgumentInfo)
         .concat(
           Array.from(value.namedValues).map(
-            ([alias, value]) => [alias, value] as [string | undefined, Values.Value],
+            ([alias, value]) => [alias, value, 'spread'] as SpreadArgumentInfo,
           ),
         )
     }
 
     if (value instanceof Values.ArrayValue) {
-      return value.values.map(value => [this.alias, value] as [string | undefined, Values.Value])
+      return value.values.map(value => [this.alias, value, 'spread'] as SpreadArgumentInfo)
     }
 
-    return err(new RuntimeError(this, 'Expected an Object, found ' + value.constructor.name))
+    return err(
+      new RuntimeError(this, 'Expected an Object or Array, found ' + value.constructor.name),
+    )
   }
 
   private evalToKwargsArguments(value: Values.Value) {
-    return [[this.alias, value] as [string | undefined, Values.Value]]
+    return [[this.alias, value, 'spread'] as SpreadArgumentInfo]
   }
 
   /**
@@ -2323,14 +2327,14 @@ export abstract class Argument extends Expression {
   evalToArguments(
     runtime: ValueRuntime,
     spreadArg: 'spread' | 'kwargs' | undefined = undefined,
-  ): GetRuntimeResult<[string | undefined, Values.Value][]> {
+  ): GetRuntimeResult<SpreadArgumentInfo[]> {
     return this.eval(runtime).map(value => {
       if (spreadArg === 'spread') {
         return this.evalToSpreadArguments(value)
       } else if (spreadArg === 'kwargs') {
         return this.evalToKwargsArguments(value)
       } else {
-        return [[this.alias, value] as [string | undefined, Values.Value]]
+        return [[this.alias, value, 'arg'] as SpreadArgumentInfo]
       }
     })
   }
@@ -2573,7 +2577,7 @@ export class SpreadFunctionArgument extends SpreadArgument {
     })
   }
 
-  evalToArguments(runtime: ValueRuntime): GetRuntimeResult<[string | undefined, Values.Value][]> {
+  evalToArguments(runtime: ValueRuntime): GetRuntimeResult<SpreadArgumentInfo[]> {
     return super.evalToArguments(runtime, this.spread)
   }
 }

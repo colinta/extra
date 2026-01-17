@@ -4477,6 +4477,15 @@ for (const {name, symbol, binarySymbol} of BINARY_ASSIGN_OPERATORS) {
 type _IntermediateArgs =
   | ['positional', undefined, Types.Type]
   | ['named', string, Types.Type]
+  // named-and-spread arguments are usually interpreted the same as named, except for the
+  // special case where the function expects a repeated-named argument and the object
+  // that was spread has a matching key - that entry is required to be an array of items
+  // that match the repeated-named argument type.
+  //     -- foo: fn(...sum: Array(Int)) => sum.reduce(0, fn(s, v) => s + v)
+  //     let numbers = {sum: [1,2,3,60]}
+  //     in
+  //       foo(...numbers) --> 66
+  | ['named-and-spread', string, Types.Type]
   | ['spread-array', undefined, Types.Type]
   | ['spread-dict', string, Types.Type]
   | ['keyword-list', undefined, Types.Type]
@@ -4607,6 +4616,24 @@ function functionInvocationOperatorType(
       } else {
         spreadDictArguments.set(alias, [type])
       }
+    } else if (is === 'named-and-spread' && alias) {
+      // look in formulaType for an argument named 'alias', if it is a
+      // repeated-named-argument, treat this entry as an array of repeated
+      // entries
+      const repeatedNamedArg = formulaType.args.find(
+        arg => arg.is === 'repeated-named-argument' && arg.alias === alias,
+      )
+      if (repeatedNamedArg && type instanceof Types.ArrayType) {
+        named.set(alias, [type.of])
+        names.push(alias)
+      } else {
+        if (named.has(alias)) {
+          named.get(alias)!.push(type)
+        } else {
+          named.set(alias, [type])
+        }
+        names.push(alias)
+      }
     } else if (alias) {
       if (named.has(alias)) {
         named.get(alias)!.push(type)
@@ -4685,7 +4712,9 @@ function spreadArrayArg(
       undefined,
       ok(
         type.props.map(prop =>
-          prop.name ? ['named', prop.name, prop.type] : ['positional', undefined, prop.type],
+          prop.name
+            ? ['named-and-spread', prop.name, prop.type]
+            : ['positional', undefined, prop.type],
         ),
       ),
     ]
@@ -4729,6 +4758,7 @@ function spreadDictArg(
   }
 }
 
+// what to do with foo(**value)
 function spreadKeywordArg(
   providedArg: Expressions.SpreadFunctionArgument,
   type: Types.Type,
