@@ -26,7 +26,7 @@ describe('class', () => {
       //
       c([
         `\
-class User {
+class User { -- first, the name
   @name: String = ''
 
   static default-name = ''
@@ -36,6 +36,19 @@ class User {
 
   static create(name: String) =>
     User(name:)
+}
+`,
+        `\
+class User {
+  static default-name = ''
+
+  static create(name: String) => User(name:)
+
+  -- first, the name
+  @name: String = ''
+
+  fn rename(# name: String) =>
+    @name = name
 }
 `,
       ]),
@@ -74,32 +87,99 @@ class User {
 `,
         `\
 class User {
+  static default-name = ''
+  static default = User(name: default-name)
+  static secret-name = ''
+
+  static create(name: String) => User(name:)
+
+  static addAge(user: User, age: Int) => User(name: user.name, age: user.age + age)
+
   @name: String = ''
   @age: Int = 0
-
-  static default = User(name: default-name)
-  static default-name = ''
-  static secret-name = ''
 
   fn rename(# name: String) =>
     @name = name
 
   fn set-age(# age: String) =>
     @age = age
+}
+`,
+      ]),
+      c([
+        `\
+class User {
+  static default-name = ''
+  static create(name: String) => User(name:)
+}
+`,
+        `\
+class User {
+  static default-name = ''
 
-  static create(name: String) =>
-    User(name:)
-
-  static addAge(user: User, age: Int) =>
-    User(name: user.name, age: user.age + age)
+  static create(name: String) => User(name:)
+}
+`,
+      ]),
+      // no need to sort static properties
+      c([
+        `\
+class User {
+  static a = ''
+  static b = a
+}
+`,
+      ]),
+      // sort static properties
+      c([
+        `\
+class User {
+  static d = b
+  static b = a
+  static a = ''
+  static c = a
+  static e = d
+}
+`,
+        `\
+class User {
+  static a = ''
+  static b = a
+  static d = b
+  static c = a
+  static e = d
+}
+`,
+      ]),
+      // sort qualified names
+      c([
+        `\
+class User {
+  static d = User.b
+  static b = User.a
+  static a = ''
+  static c = User.a
+  static e = User.d
+}
+`,
+        `\
+class User {
+  static a = ''
+  static b = User.a
+  static d = User.b
+  static c = User.a
+  static e = User.d
 }
 `,
       ]),
     ).run(([classDefinition, expectedCode], {only, skip}) =>
-      (only ? it : skip ? it.skip : it)(`should parse class '${desc(classDefinition)}'`, () => {
-        const classDef = parseModule(classDefinition).get()
-        expect(classDef.toCode()).toEqual(expectedCode ?? classDefinition)
-      }),
+      (only ? it.only : skip ? it.skip : it)(
+        `should parse class '${desc(classDefinition)}'`,
+        () => {
+          const classDef = parseModule(classDefinition).get()
+          expect(classDef.toCode()).toEqual(expectedCode ?? classDefinition)
+        },
+      ),
     )
   })
 
@@ -110,7 +190,7 @@ class User {
 class User { -- inferred @name
   @name = 'name'
 }`,
-        Types.metaClass({
+        Types.classDefinition({
           name: 'User',
           class: Types.classType({
             name: 'User',
@@ -139,7 +219,7 @@ class User { -- explicit name
   fn rename(# name: String) =>
     @name = name
 }`,
-        Types.metaClass({
+        Types.classDefinition({
           name: 'User',
           class: Types.classType({
             name: 'User',
@@ -201,7 +281,7 @@ class User { -- default 'name'
   fn rename(# name: String) =>
     @name = name
 }`,
-        Types.metaClass({
+        Types.classDefinition({
           name: 'User',
           class: Types.classType({
             name: 'User',
@@ -254,7 +334,7 @@ class User(howdy: String) {
   fn rename(# name: String) =>
     @name = name
 }`,
-        Types.metaClass({
+        Types.classDefinition({
           name: 'User',
           class: Types.classType({
             name: 'User',
@@ -300,7 +380,7 @@ class User(howdy: String) {
         ],
       ]),
     ).run(([classDefinition, expectedClassType, moreTests], {only, skip}) =>
-      (only ? it : skip ? it.skip : it)(
+      (only ? it.only : skip ? it.skip : it)(
         `should getType class '${desc(classDefinition)}'` +
           (moreTests ? ' : ' + moreTests.map(([name]) => name).join(',') : ''),
         () => {
@@ -348,7 +428,7 @@ class User(howdy: String) { -- howdy: string
         [['User(howdy: "fella").name', Values.string('fella')]],
       ]),
     ).run(([classDefinition, expectedClassType, moreTests], {only, skip}) =>
-      (only ? it : skip ? it.skip : it)(
+      (only ? it.only : skip ? it.skip : it)(
         `should eval class '${desc(classDefinition)}'` +
           (moreTests ? ' : ' + moreTests.map(([name]) => name).join(',') : ''),
         () => {
@@ -380,7 +460,7 @@ class User {
         "Expected argument named 'name' of type 'String'",
       ]),
     ).run(([classDefinition, code, message], {only, skip}) =>
-      (only ? it : skip ? it.skip : it)(
+      (only ? it.only : skip ? it.skip : it)(
         `should not get type of ${code} after defining ${desc(classDefinition)}`,
         () => {
           expect(() => {

@@ -53,6 +53,18 @@ export function scanNamedFormula(
   }) as Expressions.NamedFormulaExpression
 }
 
+export function scanInstanceFormula(
+  scanner: Scanner,
+  parseNext: ParseNext,
+  bodyExpressionType: 'class' | 'enum',
+) {
+  return _scanFormula(scanner, 'expression', parseNext, {
+    type: 'fn',
+    isNamedFn: true,
+    bodyExpressionType,
+  }) as Expressions.InstanceFormulaExpression
+}
+
 export function scanRenderFormula(scanner: Scanner, parseNext: ParseNext) {
   const value = _scanFormula(scanner, 'class', parseNext, {
     type: 'render',
@@ -95,7 +107,8 @@ function _scanFormula(
     bodyExpressionType: ExpressionType | undefined
   },
 ) {
-  const {type, isNamedFn} = options
+  const {type} = options
+  let {isNamedFn} = options
   let {bodyExpressionType} = options
   const isInView = type === 'view' || type === 'render'
   // not all expressionTypes are supported as scanFormula expression types
@@ -125,7 +138,7 @@ function _scanFormula(
     }
   }
 
-  scanner.whereAmI(`scanFormula type = ${type}`)
+  scanner.whereAmI(`scanFormula type = ${type}, isNamedFn = ${isNamedFn}`)
   // typeExpect used to sometimes be different from type - it no longer is, but
   // you never know what the future will bring.
   const typeExpect = type
@@ -144,6 +157,14 @@ function _scanFormula(
   scanner.expectString(typeExpect, `Expected '${typeExpect}(' to start the formula expression`)
   if (isNamedFn && type !== 'render') {
     scanner.expectWhitespace()
+  } else if (
+    scanner.test(() => {
+      scanner.scanAllWhitespace()
+      return isArgumentStartChar(scanner)
+    })
+  ) {
+    isNamedFn = true
+    scanner.scanAllWhitespace()
   }
 
   let nameRef: Expressions.Reference | undefined
@@ -178,7 +199,7 @@ function _scanFormula(
   }
   scanner.whereAmI(`scanFormula generics = [${generics.join(', ')}]`)
 
-  let argDefinitions: Expressions.FormulaLiteralArgument[]
+  let argDefinitions: Expressions.FormulaArgumentDefinition[]
   let precedingArgsComments: Comment[] = []
   let followingArgsComments: Comment[] = []
   // support fn => 'value' (parentheses are optional when no args)
@@ -226,7 +247,7 @@ export function finishScanningFormula(
   isOverride: boolean,
   nameRef: Expressions.Reference | undefined,
   generics: Expressions.GenericExpression[],
-  argDefinitions: Expressions.FormulaLiteralArgument[],
+  argDefinitions: Expressions.FormulaArgumentDefinition[],
   type: 'fn' | 'static' | 'view' | 'render',
   bodyExpressionType: ExpressionType,
   isInView: boolean,
@@ -305,7 +326,7 @@ export function finishScanningFormula(
         body,
         generics,
       )
-    } else if (bodyExpressionType === 'class') {
+    } else if (bodyExpressionType === 'class' || bodyExpressionType === 'enum') {
       return new Expressions.InstanceFormulaExpression(
         [range0, scanner.charIndex],
         precedingComments,

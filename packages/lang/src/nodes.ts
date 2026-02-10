@@ -1,7 +1,7 @@
 import {type Type} from './types'
 import {type Comment} from './formulaParser/types'
 import * as Types from './types'
-import {STATE_START} from './formulaParser/grammars'
+import {ENUM_START, STATE_START} from './formulaParser/grammars'
 
 export type Source = {
   start: number
@@ -15,6 +15,14 @@ export abstract class Node {
     readonly source: Source,
     readonly type: Type,
   ) {}
+
+  propAccessNode(name: string): Node | undefined {
+    return undefined
+  }
+
+  arrayAccessNode(name: string): Node | undefined {
+    return undefined
+  }
 }
 
 /**
@@ -495,7 +503,7 @@ export class AnonymousFunction extends Node {
 export class NamedFunction extends AnonymousFunction {
   constructor(
     readonly source: Source,
-    readonly type: Types.FormulaType,
+    readonly type: Types.NamedFormulaType,
     readonly name: string,
     readonly generics: Generic[],
     readonly args: Argument[],
@@ -524,6 +532,24 @@ export abstract class ClassProperty extends Node {
 export class ClassStateProperty extends ClassProperty {}
 export class ClassStaticProperty extends ClassProperty {}
 
+/**
+ *                        ↓ generics
+ *     [export] class Foo<T> [extends Bar] {
+ *                    ↑ name          ^ parent class
+ *
+ *       ↓ static properties
+ *       static a = 'a'
+ *       static fn b() => a
+ *
+ *       ↓ state properties
+ *       @first-name = ''
+ *       @last-name = ''
+ *
+ *       ↓ formula properties
+ *       fn full-name() =>
+ *         @first-name .. @last-name
+ *     }
+ */
 export class ClassDefinition extends Node {
   constructor(
     readonly source: Source,
@@ -536,6 +562,9 @@ export class ClassDefinition extends Node {
      */
     readonly staticProperties: Map<string, Node>,
     readonly stateProperties: Map<string, Node>,
+    readonly formulaProperties: Map<string, Node>,
+    readonly generics: Generic[],
+    readonly isExport: boolean,
   ) {
     super(source, type)
   }
@@ -553,8 +582,32 @@ export class ViewClassDefinition extends ClassDefinition {
      */
     readonly staticProperties: Map<string, Node>,
     readonly stateProperties: Map<string, Node>,
+    readonly formulaProperties: Map<string, Node>,
+    readonly generics: Generic[],
+    readonly isExport: boolean,
   ) {
-    super(source, name, parentClass, type, staticProperties, stateProperties)
+    super(
+      source,
+      name,
+      parentClass,
+      type,
+      staticProperties,
+      stateProperties,
+      formulaProperties,
+      generics,
+      isExport,
+    )
+  }
+}
+
+export class ClassInstance extends Node {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+    readonly parentClass: ClassInstance | undefined,
+    readonly type: Types.ClassInstanceType,
+  ) {
+    super(source, type)
   }
 }
 
@@ -566,6 +619,7 @@ export class EnumMember extends Node {
   constructor(
     readonly source: Source,
     readonly name: string,
+    readonly args: Argument[],
   ) {
     super(source, Types.NeverType)
   }
@@ -581,7 +635,7 @@ export class EnumMember extends Node {
 export abstract class EnumDefinition extends Node {
   constructor(
     readonly source: Source,
-    readonly type: Types.AnonymousEnumType | Types.NamedEnumType,
+    readonly type: Types.AnonymousEnumDefinitionType | Types.NamedEnumDefinitionType,
     readonly members: EnumMember[],
   ) {
     super(source, type)
@@ -614,13 +668,11 @@ export class NamedEnumDefinition extends EnumDefinition {
   constructor(
     readonly source: Source,
     readonly name: string,
-    readonly type: Types.NamedEnumType,
+    readonly type: Types.NamedEnumDefinitionType,
     readonly members: EnumMember[],
-    /**
-     * Statics: functions and properties.
-     */
-    readonly staticProperties: [string, Node][],
-    readonly memberFunctions: [string, Node][],
+    readonly instanceType: Types.EnumInstanceType,
+    readonly staticProperties: Map<string, Node>,
+    readonly memberFunctions: Map<string, Node>,
     readonly generics: Generic[],
     readonly isExport: boolean,
   ) {
@@ -635,7 +687,7 @@ export class NamedEnumDefinition extends EnumDefinition {
 export class AnonymousEnumDefinition extends EnumDefinition {
   constructor(
     readonly source: Source,
-    readonly type: Types.AnonymousEnumType,
+    readonly type: Types.AnonymousEnumDefinitionType,
     readonly members: EnumMember[],
   ) {
     super(source, type, members)
@@ -670,7 +722,6 @@ export class UnaryRangeOperator extends Operator {
     super(source, type, args)
   }
 }
-export class EnumLookupOperator extends Operator {}
 
 //|
 //| Binary operators
@@ -756,5 +807,15 @@ export class EnumCase extends Node {
     readonly args: (PositionalArgument | NamedArgument)[],
   ) {
     super(source, Types.AlwaysType)
+  }
+}
+
+export class EnumLookup extends Node {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
   }
 }

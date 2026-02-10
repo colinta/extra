@@ -9,7 +9,7 @@ export abstract class ResultClass<OK, ERR> {
   abstract get(): OK
   abstract getError(): ERR | undefined
 
-  safeGet(): OK | undefined {
+  getOr(): OK | undefined {
     if (this.isOk()) {
       return this.get()
     }
@@ -170,7 +170,9 @@ export function attempt<OK, ERR>(
   }
 }
 
-export function mapOr<OK, ERR>(value: Result<OK, ERR> | undefined): Result<OK | undefined, ERR> {
+export function mapOptional<OK, ERR>(
+  value: Result<OK, ERR> | undefined,
+): Result<OK | undefined, ERR> {
   return value === undefined ? ok(undefined) : value
 }
 

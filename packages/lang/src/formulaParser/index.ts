@@ -10,7 +10,7 @@ import {
   isOperator,
   NegateOperator,
   FunctionInvocationOperator,
-} from '@/operators'
+} from '@/expressions'
 import {
   ParseError,
   type ParseNext,
@@ -67,6 +67,7 @@ import {
   NULL_COALESCE_ARRAY_OPEN,
   NULL_COALESCE_ARRAY_ACCESS_OPERATOR,
   NULL_COALESCE_INVOCATION_OPERATOR,
+  ENUM_START,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -88,6 +89,7 @@ import {scanUnaryOperator} from './scan/unary_operator'
 import {scanLet} from './scan/let'
 import {scanCase, scanMatch} from './scan/match'
 import {scanArgumentType} from './scan/argument_type'
+import {scanEnumLookup} from './scan/enum'
 
 const LOWEST_OP: Operator = {
   name: 'lowest op',
@@ -111,7 +113,7 @@ export function parse(input: string, debug = 0): GetParserResult<Expression> {
 
   if (result.isOk()) {
     const expression = result.value
-    scanner.scanAllWhitespace()
+    scanner.scanAllWhitespace('1')
     if (scanner.charIndex < input.length) {
       return err(new ParseError(scanner, 'Unexpected end of formula before the input was parsed'))
     }
@@ -169,7 +171,7 @@ function scan(
 }
 
 function prepareParseNext(scanner: Scanner) {
-  scanner.scanAllWhitespace()
+  scanner.scanAllWhitespace('2')
   return function parseNext(
     expressionType: ExpressionType,
     options: Pick<Options, 'isInPipe' | 'isInView'> = {},
@@ -411,7 +413,7 @@ function parseInternal(
   // 3. check for an 'if' inclusion operator inside of array/object/set/dict.
   // 4. finally, check for a binary operator.
   function continueScanningAfterNewline() {
-    scanner.scanAllWhitespace()
+    scanner.scanAllWhitespace('3')
     if (scanner.is(/[-~$][^ \n\t]/)) {
       scanner.whereAmI('scanning a negative number')
       return false
@@ -425,6 +427,10 @@ function parseInternal(
       return true
     }
 
+    if (scanner.scanIfString(ENUM_START) && isRefStartChar(scanner)) {
+      return false
+    }
+
     return isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)
   }
 
@@ -433,7 +439,7 @@ function parseInternal(
     if (!isMatchingExpression) {
       if (treatNewlineAsComma(expressionType) && scanner.is('\n')) {
         if (scanner.test(continueScanningAfterNewline)) {
-          scanner.scanAllWhitespace()
+          scanner.scanAllWhitespace('4')
         } else {
           const comments = scanner.flushComments()
           const commentExpr = expressionStack.at(-1)
@@ -449,7 +455,7 @@ function parseInternal(
       if (expressionType === 'let') {
         if (
           scanner.test(() => {
-            scanner.scanAllWhitespace()
+            scanner.scanAllWhitespace('5')
             return scanner.isWord('in')
           })
         ) {
@@ -487,6 +493,13 @@ function parseInternal(
       if (isOperator(prevOperator, IS_KEYWORD, 2) || isOperator(prevOperator, NOT_IS_KEYWORD, 2)) {
         processExpression(scanMatch(scanner, parseNext))
       } else if (
+        // TODO: this can't be right... this matches *all* arguments named
+        // 'case', regardless of whether we are scanning a 'switch' statement.
+        //
+        // this *could* be useful - if 'case' is considered a keyword, and we
+        // expose its type to userland, you could write functions that expect
+        // case/match expressions... for now I'm leaving it as-is. Another fix
+        // would be to check the expression stack for the 'switch' identifier
         scanner.is(CASE_KEYWORD) &&
         (expressionType === 'block_argument' || expressionType === 'argument')
       ) {
@@ -521,6 +534,8 @@ function parseInternal(
         processExpression(scanDict(scanner, parseNext, 'dict-symbol'))
       } else if (scanner.isWord(DICT_WORD_START)) {
         processExpression(scanDict(scanner, parseNext, 'dict-word'))
+      } else if (scanner.is(ENUM_START)) {
+        processExpression(scanEnumLookup(scanner))
       } else if (isUnaryOperatorChar(scanner.char) || isUnaryOperatorName(scanner.remainingInput)) {
         processOperator(scanUnaryOperator(scanner))
       } else if (isStringStartChar(scanner)) {
@@ -541,7 +556,7 @@ function parseInternal(
         if (
           expressionType === LET_KEYWORD &&
           scanner.test(() => {
-            scanner.scanAllWhitespace()
+            scanner.scanAllWhitespace('6')
             return scanner.isWord(LET_IN)
           })
         ) {
@@ -604,10 +619,6 @@ function parseInternal(
       break
     }
 
-    scanner.whereAmI(
-      `treatNewlineAsComma(${expressionType}) ? ${treatNewlineAsComma(expressionType)}. isMatchingExpression ? ${isMatchingExpression}`,
-    )
-
     // after an expression or operator, scan the remaining line (esp same-line comments)
     scanner.scanSpaces()
 
@@ -637,10 +648,16 @@ function parseInternal(
       }
     }
 
+    scanner.whereAmI(
+      `treatNewlineAsComma(${expressionType}) ? ${treatNewlineAsComma(expressionType)}. isMatchingExpression ? ${isMatchingExpression}`,
+    )
+
     // after an operator, or expressions that don't expect comma/newlines, scan all
     // available whitespace.
     if (isMatchingExpression || !treatNewlineAsComma(expressionType)) {
-      scanner.scanAllWhitespace()
+      scanner.scanAllWhitespace(
+        isMatchingExpression ? 'isMatchingExpression' : 'treatNewlineAsComma: false',
+      )
     }
   }
 

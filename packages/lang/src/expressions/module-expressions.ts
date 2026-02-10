@@ -1,6 +1,7 @@
 import {err, mapAll} from '@extra-lang/result'
 
 import {difference, union} from '@/util'
+import {type Scope} from '@/scope'
 import {
   type TypeRuntime,
   type ValueRuntime,
@@ -8,12 +9,10 @@ import {
   MutableValueRuntime,
 } from '@/runtime'
 import * as Types from '@/types'
-import * as Nodes from '@/nodes'
 import * as Values from '@/values'
 import {
   type Comment,
   type GetTypeResult,
-  type GetNodeResult,
   type GetValueResult,
   type GetRuntimeResult,
 } from '@/formulaParser/types'
@@ -25,12 +24,11 @@ import {
   type Reference,
   RuntimeError,
   dependencySort,
-  toSource,
   formatComments,
   wrapValues,
   getChildType,
 } from './expressions'
-import {type ViewDefinition} from './view-expressions'
+import {type ViewFormulaDefinition} from './view-expressions'
 import {type ClassDefinition} from './class-expressions'
 import {type NamedEnumDefinition} from './enum-expressions'
 import {EXPORT_KEYWORD, VERSION_START} from '@/formulaParser/grammars'
@@ -306,8 +304,9 @@ export class TypeDefinition extends Expression {
     return this.nameRef.name
   }
 
-  dependencies() {
-    return this.type.dependencies()
+  dependencies(parentScopes: Scope[]) {
+    const filteredScopes = parentScopes.filter(scope => scope.name !== this.name)
+    return this.type.dependencies(filteredScopes)
   }
 
   provides() {
@@ -379,8 +378,9 @@ export class HelperDefinition extends Expression {
     return this.value.nameRef.name
   }
 
-  dependencies() {
-    return this.value.dependencies()
+  dependencies(parentScopes: Scope[]) {
+    const filteredScopes = parentScopes.filter(scope => scope.name !== this.name)
+    return this.value.dependencies(filteredScopes)
   }
 
   provides() {
@@ -434,7 +434,7 @@ export class Module extends Expression {
     readonly expressions: (
       | TypeDefinition
       | HelperDefinition
-      | ViewDefinition
+      | ViewFormulaDefinition
       | ClassDefinition
       | NamedEnumDefinition
     )[],
@@ -462,7 +462,7 @@ export class Module extends Expression {
     })
   }
 
-  dependencies() {
+  dependencies(parentScopes: Scope[]) {
     let deps = new Set<string>()
     if (this.providesStmt) {
       deps = union(deps, this.providesStmt.dependencies())
@@ -472,16 +472,16 @@ export class Module extends Expression {
     }
 
     for (const expr of this.imports) {
-      if (expr.dependencies()) {
+      if (expr.dependencies(parentScopes)) {
         throw `Unexpected error: ${expr.constructor.name} should not have dependencies`
       }
       deps = difference(deps, expr.provides())
     }
     for (const expr of this.expressions) {
-      if (expr.dependencies()) {
+      if (expr.dependencies(parentScopes)) {
         throw `Unexpected error: ${expr.constructor.name} should not have dependencies`
       }
-      deps = difference(deps, expr.dependencies())
+      deps = difference(deps, expr.dependencies(parentScopes))
     }
 
     return deps
@@ -551,6 +551,7 @@ export class Module extends Expression {
       this.expressions.map(typeExpr => [typeExpr.name, typeExpr]),
       // TODO: this.imports also provides names that should be considered resolved
       name => moduleRuntime.has(name),
+      runtime.parentScopes(),
     )
     if (sorted.isErr()) {
       return err(sorted.error)
@@ -585,6 +586,7 @@ export class Module extends Expression {
     const sorted = dependencySort(
       this.expressions.map(typeExpr => [typeExpr.name, typeExpr]),
       name => moduleRuntime.has(name), // TODO: imports would help here
+      runtime.parentScopes(),
     )
     if (sorted.isErr()) {
       return err(sorted.error)

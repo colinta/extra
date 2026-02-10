@@ -89,22 +89,14 @@ export function classDefinition({
   name,
   constructor,
   parent,
-  props: staticProps,
-  formulas: staticFormulas,
+  statics,
 }: {
   name: string
   constructor: (_: ClassDefinitionValue) => NamedFormulaValue
   parent?: ClassDefinitionValue
-  props?: Map<string, Value>
-  formulas?: Map<string, NamedFormulaValue>
+  statics?: Map<string, Value>
 }) {
-  return new ClassDefinitionValue(
-    name,
-    constructor,
-    parent,
-    staticProps ?? new Map(),
-    staticFormulas ?? new Map(),
-  )
+  return new ClassDefinitionValue(name, constructor, parent, statics ?? new Map())
 }
 
 export function classInstance({
@@ -117,6 +109,10 @@ export function classInstance({
   formulas?: Map<string, NamedFormulaValue>
 }) {
   return new ClassInstanceValue(klass, props ?? new Map(), formulas ?? new Map())
+}
+
+export function enumDefinition({name, statics}: {name: string; statics?: Map<string, Value>}) {
+  return new EnumDefinitionValue(name, statics ?? new Map())
 }
 
 export abstract class Value {
@@ -603,7 +599,9 @@ export class StringValue extends BasicValue {
       'mapChars',
       value =>
         namedFormula('mapChars', (args: FormulaArgs) =>
-          args.at(0, FormulaValue).map(mapFn => mapFn.call(new FormulaArgs([[undefined, value]]))),
+          args
+            .at(0, FormulaValue)
+            .map(mapFn => mapFn.call(new FormulaArgs([[undefined, value, 'arg']]))),
         ),
     ],
     [
@@ -1626,11 +1624,14 @@ export class NamedFormulaValue extends FormulaValue {
  *       role: UserRole = .admin -- .admin is "decorated" with the namespace during compilation
  *     in …
  */
-export class Enum extends Value {
-  readonly is = 'enum-value'
+export class EnumDefinitionValue extends Value {
+  readonly is = 'enum-definition'
   readonly namespaceType: Types.NamespaceType
 
-  constructor(readonly name: string) {
+  constructor(
+    readonly name: string,
+    readonly statics: Map<string, Value>,
+  ) {
     super()
     this.namespaceType = new Types.NamespaceType(name, new Map())
   }
@@ -1670,7 +1671,7 @@ export class EnumValue extends Value {
   readonly is = 'enum-value'
 
   constructor(
-    readonly namespace: Enum,
+    readonly namespace: EnumDefinitionValue,
     readonly name: string,
     readonly args: Map<string, Value>,
   ) {
@@ -1823,8 +1824,7 @@ export class ClassDefinitionValue extends Value {
     readonly name: string,
     readonly konstructor: (_: ClassDefinitionValue) => NamedFormulaValue,
     readonly parent: ClassDefinitionValue | undefined,
-    readonly staticProps: Map<string, Value>,
-    readonly staticFormulas: Map<string, NamedFormulaValue>,
+    readonly statics: Map<string, Value>,
   ) {
     super()
   }
@@ -1833,8 +1833,17 @@ export class ClassDefinitionValue extends Value {
    * The type of a class is a ClassDefinitionType, the type of a class instance
    * is the ClassInstanceType. I think that's how it works.
    */
-  getType() {
-    return Types.NeverType
+  getType(): Types.ClassDefinitionType {
+    const allStatics = new Map(
+      this.statics.entries().map(([name, value]) => [name, value.getType()] as const),
+    )
+    return new Types.ClassDefinitionType(
+      this.name,
+      this.parent?.getType(),
+      allStatics,
+      // generics?
+      [],
+    )
   }
 
   isEqual(rhs: Value): boolean {
@@ -1863,10 +1872,9 @@ export class ViewClassDefinitionValue extends ClassDefinitionValue {
     name: string,
     konstructor: (_: ViewClassDefinitionValue) => NamedFormulaValue,
     readonly parent: ViewClassDefinitionValue | undefined,
-    staticProps: Map<string, Value>,
-    staticFormulas: Map<string, NamedFormulaValue>,
+    statics: Map<string, Value>,
   ) {
-    super(name, konstructor, parent, staticProps, staticFormulas)
+    super(name, konstructor, parent, statics)
   }
 }
 
@@ -2022,8 +2030,8 @@ export class MessageValue extends Value {
           array.values.map((val, index) =>
             apply.call(
               new FormulaArgs([
-                [undefined, val],
-                [undefined, int(index)],
+                [undefined, val, 'arg'],
+                [undefined, int(index), 'arg'],
               ]),
             ),
           ),

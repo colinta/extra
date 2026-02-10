@@ -4,13 +4,7 @@ import {
   simplifyRelationships,
   isEqualRelationship,
 } from './relationship'
-import {
-  type Type,
-  type ClassInstanceType,
-  ViewClassDefinitionType,
-  ViewFormulaType,
-  ViewType,
-} from './types'
+import {type Type, ViewClassDefinitionType, ViewFormulaType, ViewType} from './types'
 import {
   type Value,
   ViewClassDefinitionValue,
@@ -20,6 +14,7 @@ import {
 } from './values'
 import {type Node} from './nodes'
 import {uid} from './uid'
+import {Scope} from './scope'
 
 export type TypeRuntime = Omit<
   MutableTypeRuntime,
@@ -60,7 +55,7 @@ const THIS_PREFIX = '@'
 export class MutableTypeRuntime {
   readonly _id = uid()
   public viewRuntime?: ViewRuntime
-  thisType: ClassInstanceType | undefined
+  thisType: Type | undefined
 
   get id(): string {
     if (this.parent) {
@@ -84,15 +79,38 @@ export class MutableTypeRuntime {
    * Maps id to relationships
    */
   private relationships: Map<string, AssignedRelationship[]> = new Map()
-  // namespaces is only half-baked so far
+  // namespaces is only half-baked so far. This stores "modules", which are
+  // namespaces, class, or enum types, each of which can contain other types
+  // and static properties.
   private namespaces: Map<string, Map<string, Type>> = new Map()
+  /**
+   * The name of the parent modules. In the body of namespaces, classes, and
+   * enums, the parent module names can still be used to reference static
+   * properties - but these names should have no bearing on the ordering.
+   *
+   *     namespace Buux {
+   *       class Foo {
+   *         static b = Buux.Foo.a .. '!'  -- resolves after 'Buux.Foo.a'
+   *         static a = 'a'
+   *       }
+   *     }
+   */
+  private _scopes: Scope[] = []
 
   constructor(
     readonly parent?: TypeRuntime,
-    thisType?: ClassInstanceType | undefined,
+    thisType?: Type | undefined,
   ) {
     this.viewRuntime = parent?.viewRuntime
     this.thisType = thisType
+  }
+
+  pushScope(name: string) {
+    this._scopes.push(new Scope(name))
+  }
+
+  parentScopes(): Scope[] {
+    return (this.parent?.parentScopes() ?? []).concat(this._scopes)
   }
 
   resolved(): Set<string> {
@@ -176,7 +194,7 @@ export class MutableTypeRuntime {
    *         this.firstName ++ this.lastName
    *     }
    */
-  getThisType(): ClassInstanceType | undefined {
+  getThisType(): Type | undefined {
     // I had originally wanted to avoid accidentally setting 'this' when
     // creating a new runtime, but when I thought about it later, I couldn't
     // imagine a scenario where this would be the desired behavior. Certainly

@@ -92,7 +92,7 @@ describe('match operator', () => {
   })
 
   describe('getType / eval', () => {
-    const Ints = Types.enumType([Types.enumCase('zero'), Types.enumCase('one')])
+    const Ints = Types.anonymousEnumDefinition([Types.enumCase('zero'), Types.enumCase('one')])
     const LiteralInts = Types.oneOf([Types.literal(0), Types.literal(1)])
     beforeEach(() => {
       runtimeTypes['Ints'] = [Types.typeConstructor('Ints', Ints), Values.string('test')]

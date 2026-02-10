@@ -6,14 +6,14 @@ import {type Comment, ParseError, type ParseNext} from '../types'
 import {scanGenerics, scanNamedFormula} from './formula'
 import {
   AS_KEYWORD,
+  BLOCK_OPEN,
+  BLOCK_CLOSE,
   CLASS_KEYWORD,
   ENUM_KEYWORD,
   EXPORT_KEYWORD,
   FN_KEYWORD,
   IMPORT_KEYWORD,
   IMPORT_ONLY_KEYWORD,
-  IMPORTS_CLOSE,
-  IMPORTS_OPEN,
   PROVIDES_KEYWORD,
   REQUIRES_KEYWORD,
   TYPE_KEYWORD,
@@ -35,7 +35,7 @@ export function scanModule(scanner: Scanner, parseNext: ParseNext) {
     expressions: (
       | Expressions.TypeDefinition
       | Expressions.HelperDefinition
-      | Expressions.ViewDefinition
+      | Expressions.ViewFormulaDefinition
       | Expressions.ClassDefinition
       | Expressions.NamedEnumDefinition
     )[]
@@ -90,31 +90,18 @@ export function scanModule(scanner: Scanner, parseNext: ParseNext) {
     } else if (scanner.test(isExport(ENUM_KEYWORD))) {
       const enumExpr = scanNamedEnum(scanner, parseNext)
       moduleTokens.expressions.push(enumExpr as Expressions.NamedEnumDefinition)
-    } else if (scanner.isWord(FN_KEYWORD)) {
+    } else if (scanner.test(isExport(FN_KEYWORD))) {
       //
       //  HELPER
       //
       const helper = scanHelperDefinition(scanner, parseNext)
       moduleTokens.expressions.push(helper as Expressions.HelperDefinition)
-    } else if (scanner.isWord(VIEW_KEYWORD)) {
+    } else if (scanner.test(isExport(VIEW_KEYWORD))) {
       //
       //  <VIEW>
       //
-      const range0 = scanner.charIndex
-      const precedingComments = scanner.flushComments()
-      const isExport = scanner.scanIfWord(EXPORT_KEYWORD)
-      if (isExport) {
-        scanner.expectWhitespace()
-      }
       const view = scanView(scanner, parseNext)
-      moduleTokens.expressions.push(
-        new Expressions.ViewDefinition(
-          [range0, scanner.charIndex],
-          precedingComments,
-          view,
-          isExport,
-        ),
-      )
+      moduleTokens.expressions.push(view)
     } else {
       throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
     }
@@ -266,7 +253,7 @@ export function scanImportStatement(scanner: Scanner) {
   if (scanner.scanIfString(IMPORT_ONLY_KEYWORD)) {
     scanner.scanAllWhitespace()
     precedingSpecifierComments = scanner.flushComments()
-    scanner.expectString(IMPORTS_OPEN)
+    scanner.expectString(BLOCK_OPEN)
     for (;;) {
       scanner.scanAllWhitespace()
 
@@ -301,7 +288,7 @@ export function scanImportStatement(scanner: Scanner) {
       importSpecifiers.push(importSpecifier)
 
       const shouldBreak = scanner.scanCommaOrBreak(
-        IMPORTS_CLOSE,
+        BLOCK_CLOSE,
         "Expected ',' separating items in the import list",
       )
 

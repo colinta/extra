@@ -27,9 +27,6 @@ export const CASE_SEPARATOR = ':'
 export const ARGS_OPEN = '('
 export const ARGS_CLOSE = ')'
 
-export const IMPORTS_OPEN = '{'
-export const IMPORTS_CLOSE = '}'
-
 export const SINGLE_BLOCK_OPEN = ':'
 export const BLOCK_OPEN = '{'
 export const BLOCK_CLOSE = '}'
@@ -62,13 +59,9 @@ export const FUNCTION_BODY_START = '=>'
 
 export const ENUM_KEYWORD = 'enum'
 export const ENUM_START = '.'
-export const ENUM_OPEN = '{'
-export const ENUM_CLOSE = '}'
 
 export const CLASS_KEYWORD = 'class'
 export const CLASS_EXTENDS = 'extends'
-export const CLASS_OPEN = '{'
-export const CLASS_CLOSE = '}'
 
 export const MSG_TYPE = '&'
 
@@ -237,7 +230,7 @@ export function isBinaryOperatorName(scanner: Scanner) {
 }
 
 export function isUnaryOperatorChar(char: string) {
-  return /^[!~$.<=>≤≥-]/.test(char)
+  return /^[!~$<=>≤≥-]/.test(char)
 }
 
 const namedUnaryOpRegex = new RegExp(`^(${UNARY_OP_NAMES.join('|')})\\b`)

@@ -1,6 +1,5 @@
 import {c, cases} from '@extra-lang/cases'
-import {testScan} from '../../formulaParser'
-import {scanJsx} from '../scan/jsx'
+import {parseJsx} from '../../formulaParser'
 
 // JSX is mostly tested via view.test.ts
 describe('jsx', () => {
@@ -14,7 +13,7 @@ describe('jsx', () => {
       (only ? it.only : skip ? it.skip : it)(
         `'${formula}' should parse as '${expectedCode}'`,
         () => {
-          const expression = testScan(formula, scanJsx).get()
+          const expression = parseJsx(formula).get()
           expect(expression.toCode()).toEqual(expectedCode)
         },
       ),

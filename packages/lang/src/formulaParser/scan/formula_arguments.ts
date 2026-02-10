@@ -46,7 +46,9 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
   type: 'view' | 'fn',
   parseNext: ParseNext,
   canInfer: boolean,
-): T extends 'formula' ? Expressions.FormulaLiteralArgument[] : Expressions.FormulaTypeArgument[] {
+): T extends 'formula'
+  ? Expressions.FormulaArgumentDefinition[]
+  : Expressions.FormulaTypeArgument[] {
   scanner.whereAmI(`_scanArguments is = ${is}, type = ${type}`)
 
   scanner.expectString(ARGS_OPEN, `Expected '${ARGS_OPEN}' to start arguments`)
@@ -70,7 +72,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
     /**
      * The name of the first (and only) keyword-arg
      *
-     *     fn(*foo: Dict(Int)): Int -> foo['dave'] ?? 0
+     *     fn(**foo: Dict(Int)): Int -> foo['dave'] ?? 0
      */
     let kwargsNamedArg: string | undefined
     for (;;) {
@@ -292,7 +294,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
 
       let arg: Expressions.ArgumentExpression
       if (is === 'formula') {
-        arg = new Expressions.FormulaLiteralArgument(
+        arg = new Expressions.FormulaArgumentDefinition(
           [argRange0, scanner.charIndex],
           [], // precedingComments
           argName,
@@ -333,7 +335,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
 
   scanner.whereAmI('_scanArguments: [' + args.map(arg => arg.toCode()).join(',') + ']')
   return args as T extends 'formula'
-    ? Expressions.FormulaLiteralArgument[]
+    ? Expressions.FormulaArgumentDefinition[]
     : Expressions.FormulaTypeArgument[]
 }
 
