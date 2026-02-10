@@ -2,9 +2,8 @@ import {c, cases} from '@extra-lang/cases'
 import * as Types from '../../types'
 import {type TypeRuntime} from '../../runtime'
 import * as Values from '../../values'
-import {testScan} from '../../formulaParser'
+import {parseType} from '../../formulaParser'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
-import {scanArgumentType} from '../scan/argument_type'
 
 let runtimeTypes: {[K in string]: [Types.Type, Values.Value]}
 
@@ -52,9 +51,7 @@ describe('type refinements', () => {
       ]),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
-        const expression = testScan(formula, (scanner, parseNext) =>
-          scanArgumentType(scanner, 'argument_type', parseNext),
-        ).get()
+        const expression = parseType(formula).get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
         const type = expression!.getAsTypeExpression(typeRuntime).get()
@@ -91,9 +88,7 @@ describe('type refinements', () => {
       c(['String(matches: /test1/, length: =3)', 'String(length: =3, matches: /test1/)']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
-        const expression = testScan(formula, (scanner, parseNext) =>
-          scanArgumentType(scanner, 'argument_type', parseNext),
-        ).get()
+        const expression = parseType(formula).get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
         const type = expression!.getAsTypeExpression(typeRuntime).get()
@@ -139,9 +134,7 @@ describe('type refinements', () => {
       c(['Float(-5 <.< -1)', 'Float(-5<.<-1)']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
-        const expression = testScan(formula, (scanner, parseNext) =>
-          scanArgumentType(scanner, 'argument_type', parseNext),
-        ).get()
+        const expression = parseType(formula).get()
 
         expect(expression!.toCode()).toEqual(expected ?? formula)
         const type = expression!.getAsTypeExpression(typeRuntime).get()

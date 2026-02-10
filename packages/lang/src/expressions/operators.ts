@@ -1,14 +1,15 @@
 import {err, mapAll, ok, type Result} from '@extra-lang/result'
-import * as Types from './types'
-import * as Nodes from './nodes'
-import * as Values from './values'
+import * as Types from '@/types'
+import * as Nodes from '@/nodes'
+import * as Values from '@/values'
+import {Scope} from '@/scope'
 import {
   MutableTypeRuntime,
   MutableValueRuntime,
   type TypeRuntime,
   type ValueRuntime,
-} from './runtime'
-import {combineConcatLengths, combineSetLengths} from './narrowed'
+} from '@/runtime'
+import {combineConcatLengths, combineSetLengths} from '@/narrowed'
 import {
   findEventualRef,
   verifyRelationship,
@@ -16,8 +17,34 @@ import {
   type RelationshipMathSymbol,
   type RelationshipFormula,
   combineEitherTypeRuntimes,
-} from './relationship'
+} from '@/relationship'
+import {stringSort} from '@/stringSort'
+import {
+  GetNodeResult,
+  type AbstractOperator,
+  type Comment,
+  type GetRuntimeResult,
+  type GetTypeResult,
+  type GetValueResult,
+  type GetValueRuntimeResult,
+  type Operator,
+} from '@/formulaParser/types'
+import {
+  BINARY_ASSIGN_OPERATORS,
+  BINARY_OP_NAMES,
+  KWARG_OPERATOR,
+  FUNCTION_INVOCATION_OPERATOR,
+  INCLUSION_OPERATOR,
+  NULL_COALESCE_ARRAY_ACCESS_OPERATOR,
+  NULL_COALESCE_INVOCATION_OPERATOR,
+  NULL_COALESCING_OPERATOR,
+  PROPERTY_ACCESS_OPERATOR,
+  SPREAD_OPERATOR,
+  STRING_CONCAT_OPERATOR,
+  UNARY_OP_NAMES,
+} from '@/formulaParser/grammars'
 import * as Expressions from './expressions'
+import {EnumLookupExpression} from './enum-expressions'
 import {
   comparisonOperation,
   expectedNumberMessage,
@@ -30,32 +57,6 @@ import {
   type Expression,
   type Range,
 } from './expressions'
-import {stringSort} from './stringSort'
-import {
-  GetNodeResult,
-  type AbstractOperator,
-  type Comment,
-  type GetRuntimeResult,
-  type GetTypeResult,
-  type GetValueResult,
-  type GetValueRuntimeResult,
-  type Operator,
-} from './formulaParser/types'
-import {
-  BINARY_ASSIGN_OPERATORS,
-  BINARY_OP_NAMES,
-  KWARG_OPERATOR,
-  ENUM_START,
-  FUNCTION_INVOCATION_OPERATOR,
-  INCLUSION_OPERATOR,
-  NULL_COALESCE_ARRAY_ACCESS_OPERATOR,
-  NULL_COALESCE_INVOCATION_OPERATOR,
-  NULL_COALESCING_OPERATOR,
-  PROPERTY_ACCESS_OPERATOR,
-  SPREAD_OPERATOR,
-  STRING_CONCAT_OPERATOR,
-  UNARY_OP_NAMES,
-} from './formulaParser/grammars'
 
 export const LOWEST_PRECEDENCE = -1
 export const HIGHEST_PRECEDENCE = 100
@@ -130,9 +131,6 @@ const PRECEDENCE = {
     // toString binds higher than property access
     //     $name.length --> ($name).length
     $: 19,
-    // enum shorthand - this _only_ works when the type can be inferred...
-    // if you are applying operators, the type _cannot_ be inferred.
-    [ENUM_START]: 20,
   } as const,
 } as const
 
@@ -2923,7 +2921,7 @@ abstract class PropertyChainOperator extends BinaryOperator {
     _rhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
-    originalLhs: Types.Type,
+    _originalLhs: Types.Type,
   ) {
     return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
   }
@@ -3021,13 +3019,43 @@ class PropertyAccessOperator extends PropertyChainOperator {
   symbol = PROPERTY_ACCESS_OPERATOR
 
   /**
-   * Unlike most operators, the rhs is not a dependency
+   * Unlike most operators, the rhs is not a dependency, unless we are
+   * referencing something from the containing module, in which case the static
+   * property is considered a *local* reference. This makes it much easier to
+   * sort dependencies of static properties that refer to fully-qualified names.
    *
+   * Simple case:
    *     foo.bar <-- 'bar' is not a reference
    *     foo.bar.baz <-- only 'foo' is a reference/dependency
+   * Module case:
+   *     class User {
+   *       static A = ''
+   *
+   *       -- B depends on 'A' (aka User.A, but A can be treated as a local)
+   *       static B = A
+   *
+   *       -- C depends on 'B', even though it's using the fully qualified name
+   *       static C = User.B
+   *     }
+   *
+   * Note that NullCoalescingPropertyAccessOperator inherits this behavior.
    */
-  dependencies() {
-    return this.args[0].dependencies()
+  dependencies(parentScopes: Scope[]) {
+    const [lhsExpr, rhsExpr] = this.args
+    if (lhsExpr instanceof Expressions.Reference) {
+      // finds the first occurrence of `lhsExpr` in the parentScopes
+      const parentScopeIndex = parentScopes.findIndex(scope => scope.name === lhsExpr.name)
+      if (parentScopeIndex >= 0) {
+        // lhs refers to something in scope. If rhs refers to a property of lhs,
+        // then *that* is considered the dependency. Otherwise we are depending
+        // on the lhs expression.
+        if (rhsExpr instanceof Expressions.Reference) {
+          return new Set([rhsExpr.name])
+        }
+      }
+    }
+
+    return this.args[0].dependencies(parentScopes)
   }
 
   childExpressions() {
@@ -3075,7 +3103,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
   }
 
   chainOperatorType(
-    runtime: TypeRuntime,
+    _runtime: TypeRuntime,
     lhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
@@ -3608,15 +3636,11 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
 
     const [lhsExpr, argListExpr] = this.args
     const [lhsCode, argListCode] = [lhsExpr.toCode(prevPrecedence), argListExpr.toCode(0)]
-    if (
-      lhsExpr instanceof PropertyChainOperator ||
-      lhsExpr instanceof Expressions.Identifier ||
-      lhsExpr instanceof EnumLookupOperator
-    ) {
-      return `${lhsCode}${argListCode}`
+    if (lhsExpr instanceof Expressions.FormulaExpression) {
+      return `(${lhsCode})${argListCode}`
     }
 
-    return `(${lhsCode})${argListCode}`
+    return `${lhsCode}${argListCode}`
   }
 
   rhsCompile() {
@@ -3633,13 +3657,15 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
     rhArgsExpression: Expression,
   ) {
     if (lhFormulaType instanceof Types.ClassDefinitionType) {
-      lhFormulaType = lhFormulaType.konstructor
+      lhFormulaType = lhFormulaType.konstructor!
     }
 
     if (!(lhFormulaType instanceof Types.FormulaType)) {
       return err(
-        new RuntimeError(
+        new Expressions.FunctionInvocationRuntimeError(
           lhFormulaExpression,
+          lhFormulaType,
+          rhArgsExpression,
           `Expected a formula, found '${lhFormulaExpression}' of type '${lhFormulaType}'`,
         ),
       )
@@ -4264,62 +4290,6 @@ addUnaryOperator({
       operator,
       args,
       '>=',
-    )
-  },
-})
-
-/**
- * Creates an enum value from context, ie `.enumValue`. Context can be  function
- * return value, function argument, or explicit type on a let assignment, or if
- * the enum case name is unique in the module context it will be resolved to
- * that value.
- * @example let a = .uniqueEnumName in ...
- * @example fn color(): Color => .red
- */
-class EnumLookupOperator extends UnaryOperator {
-  symbol = ENUM_START
-
-  operatorType(_runtime: TypeRuntime, _: Types.Type, arg: Expression) {
-    if (!(arg instanceof Expressions.Identifier)) {
-      return ok(Types.NeverType)
-    }
-
-    return err(new RuntimeError(arg, `No enum value named ${this.symbol}${arg.name}`))
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.getNodeInfo(runtime).map(
-      ([type, lhsNode]) => new Nodes.EnumLookupOperator(toSource(this), type, [lhsNode]),
-    )
-  }
-
-  operatorEval(_runtime: ValueRuntime, _: Values.Value, arg: Expression) {
-    if (!(arg instanceof Expressions.Identifier)) {
-      return err(new RuntimeError(arg, `Expected a variable name`))
-    }
-
-    return err(new RuntimeError(arg, `No enum value named ${this.symbol}${arg.name}`))
-  }
-}
-
-addUnaryOperator({
-  name: 'enum lookup',
-  symbol: ENUM_START,
-  precedence: PRECEDENCE.UNARY[ENUM_START],
-  associativity: 'left',
-  create(
-    range: [number, number],
-    precedingComments: Comment[],
-    followingOperatorComments: Comment[],
-    operator: Operator,
-    args: Expression[],
-  ) {
-    return new EnumLookupOperator(
-      range,
-      precedingComments,
-      followingOperatorComments,
-      operator,
-      args,
     )
   },
 })

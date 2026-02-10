@@ -200,9 +200,20 @@ Minor thing: `+` is a mathematical operator that adds two numbers. Did you know 
 
 Having distinct concatenation operators is either really nice for indicating intentionality, or an unnecessary distinction. I hate to side w/ PHP on this one, but I treat 'em differently. Or hey maybe I'm hitching my ride to PHP's weird and shocking resurgence!? Who knows!?
 
-Words (`and` `or` `not` `is` `has`) are used for logical operators, but not bitwise operators (`&` `|` `^` `~`).
+Words (`and` `or` `not` `is` `has`) are used for logical operators, but not bitwise operators (`&` `|` `^` `~`). But I like to think I'm a reasonable person, so I also treat the traditional operators as aliases (`&& → and`, `|| → or`, `! → not`, etc).
 
-Actually `is` is the "match" operation (see "Destructured Matching"), ie `if (x is .some(val))` will attempt to match the two sides. The left-hand side is evaluated, and must match with the right-hand side (`.some(x) is x` will not compile). In this case, in the scope of the `then:` branch, `x` will have the unwrapped value of (if `x: Maybe<T>` and `x = .some(T)` then `val: T`).
+You would be forgiven for thinking `is` is the *instanceof* operator... and you'd be right, even though you're wrong: it's the "match" operation (see "Destructured Matching"), ie `if (x is .some(val))` will attempt to match the two sides. The left-hand side is evaluated, and must match with the right-hand side (`.some(val) is x` will not compile). In this case, in the scope of the `then:` branch, `val` will have the unwrapped value of `x`.
+```extra
+let
+  x = .some(42)
+in
+  if (x is .some(val)) {
+  then:
+    val
+  else:
+    0
+  }
+```
 
 ## String coercion and interpolation
 
@@ -631,8 +642,8 @@ enum Result<Ok, Err> {
 
 enum Colour {
   .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
-  .hex(String(length: =6))
-  .name('red' | 'green' | 'blue')
+  .hex(# code: String(length: =6))
+  .name(# name: 'red' | 'green' | 'blue')
 }
 
 switch (colour) {
@@ -640,8 +651,8 @@ case .rgb(r, g, b):
   `rgb($r, $g, $b)`
 case .hex(hex):
   `hex(#$hex)`
-case .name(name):
-  `Colour named '$name'`
+case .name:
+  `Colour named '$(colour.name)'`
 }
 ```
 
@@ -660,6 +671,38 @@ fn print(
 ) =>
   if (color) { then: … }
 ```
+
+### Classes
+
+Even functional programming languages deserve classes! And in Extra, classes serve a very special purpose. While all types are immutable, *classes* can at least *appear* to be mutable...
+
+```extra
+class User {
+  -- class properties are prefixed with '@'
+  @name = ''
+  -- private properties are prefixed with '@@'
+  @@count = 0
+
+  fn change-name(# new-name: String) =>
+    @name = new-name
+
+  fn increase() =>
+    @@count += 1
+}
+```
+
+You would think, given the above, that mutating an instance of a class would be trivial, but recall that Extra follows the single-expression convention of most functional languages. Where, then, might this mutation go? I'll tell you! It's a return value. This may *look* like it's mutating `u`, but actually it's returning a `Message` to the runtime that *describes* how to mutate `u`. And what actually happens is `u` is replaced with a new instance of `User`, with the updated `@@count` value.
+
+```extra
+let
+  u = User()
+in
+  u.increase() --> `Message(clone u, setting @@count = u.count + 1)`
+```
+
+This turns out to be magic sauce, and it is *the mechanism* that powers UI updates. More in a bit.
+
+Classes have single-inheritance, support generics, and support static methods.
 
 # More formal language Design
 

@@ -1,6 +1,7 @@
+import {unaryOperatorNamed, isUnaryOperator} from '@/expressions'
+
 import {Scanner} from '../scanner'
 import {Operator, ParseError} from '../types'
-import {unaryOperatorNamed, isUnaryOperator} from '../../operators'
 import {isUnaryOperatorChar, UNARY_OP_NAMES, UNARY_OP_ALIASES} from '../grammars'
 
 export function scanUnaryOperator(scanner: Scanner): Operator {

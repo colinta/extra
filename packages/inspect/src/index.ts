@@ -93,7 +93,7 @@ export const colorize = {
       quote = "'"
       input = input.replaceAll("'", "\\'")
     }
-    input.replace(/\n/g, '\\n')
+    // input.replace(/\n/g, '\\n')
 
     return green(quote.concat(input, quote))
   },
@@ -208,7 +208,7 @@ for (const logLevel of ['log', 'warn', 'debug', 'info', 'error'] as const) {
         if (typeof message === 'string') {
           return message
         } else {
-          return inspect(message, true)
+          return inspect(message, false)
         }
       }),
     )

@@ -1,6 +1,6 @@
 {
-  "name": "@extra-lang/lang",
-  "description": "A wonderful programming language and declarative UI framework",
+  "name": "@extra-lang/util",
+  "description": "Utilities for Extra",
   "author": "Colin T.A. Gray <colinta@colinta.com>",
   "contributors": [],
   "version": "0.1.0",
@@ -20,19 +20,13 @@
     "url": "http://github.com/colinta/extra/issues"
   },
   "scripts": {},
-  "keywords": [
-    "programming language",
-    "declarative ui"
-  ],
+  "keywords": [],
   "tags": [],
   "engines": {
     "node": ">= 18.12.0"
   },
   "dependencies": {
-    "@extra-lang/parse": "workspace:*",
-    "@extra-lang/result": "workspace:*",
-    "@extra-lang/util": "workspace:*",
-    "grapheme-splitter": "^1.0.4"
+    "@extra-lang/result": "workspace:*"
   },
   "devDependencies": {
     "@extra-lang/cases": "workspace:*",

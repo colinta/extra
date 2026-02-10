@@ -1,6 +1,7 @@
+import {binaryOperatorNamed, isBinaryOperator} from '@/expressions'
+
 import {Scanner} from '../scanner'
 import {Operator, ParseError} from '../types'
-import {binaryOperatorNamed, isBinaryOperator} from '../../operators'
 import {BINARY_OP_ALIASES, BINARY_OP_NAMES, scanBinaryOperatorSymbol} from '../grammars'
 
 export function scanBinaryOperator(scanner: Scanner): Operator {

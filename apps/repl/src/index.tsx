@@ -16,7 +16,7 @@ import {
   run,
 } from '@teaui/react'
 
-import {Runtime, parse, Expressions, dependencySort} from '@extra-lang/lang'
+import {Runtime, parseModule, parse, Expressions, dependencySort} from '@extra-lang/lang'
 import {attempt} from '@extra-lang/result'
 import {
   decide,
@@ -32,6 +32,7 @@ import {
 } from '@extra-lang/parse'
 import {Socky} from './socky'
 import {parseType} from '@extra-lang/lang/src/formulaParser'
+import {GetRuntimeResult} from '@extra-lang/lang/src/formulaParser/types'
 
 const STATE_FILE = (() => {
   // start at process.cwd() and work up until repl exists, use that as "projectRoot"
@@ -168,7 +169,7 @@ function App() {
         }
 
         return json
-      }).safeGet() ?? {
+      }).getOr() ?? {
         version: 1,
         desc: '',
         formula: '',
@@ -312,7 +313,11 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       }
     }
 
-    const expressionsSorted = dependencySort(varExpressions, () => false)
+    const expressionsSorted: GetRuntimeResult<[string, Expressions.Expression][]> = dependencySort(
+      varExpressions,
+      () => false,
+      [],
+    )
     if (expressionsSorted.isErr()) {
       return {
         type: 'error',
@@ -365,7 +370,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       successText += '──╼━━━━╾──\n'
     }
 
-    const parsed = parse(formula)
+    const parsed = parseModule(formula)
     if (parsed.isErr()) {
       successText += red(parsed.error.toString())
       return {type: 'error', text: successText}

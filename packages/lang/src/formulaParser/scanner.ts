@@ -316,10 +316,10 @@ export class Scanner {
   }
 
   scanAllWhitespace(label?: string) {
-    return this._scanWhitespace(label)
+    return this._scanAllWhitespace(label)
   }
 
-  _scanWhitespace(label?: string) {
+  _scanAllWhitespace(label?: string) {
     let found = false
     while (isWhitespaceChar(this.char) || isCommentStart(this.remainingInput)) {
       if (isCommentStart(this.remainingInput)) {
@@ -331,7 +331,7 @@ export class Scanner {
     }
 
     if (found || label) {
-      this.whereAmI('scanWhitespace' + (label ? `: ${label}` : ''))
+      this.whereAmI('scanAllWhitespace' + (label ? `: ${label}` : ''))
     }
   }
 
@@ -348,7 +348,7 @@ export class Scanner {
       throw new ParseError(this, `Expected whitespace, found '${unexpectedToken(this)}'`)
     }
 
-    this._scanWhitespace()
+    this._scanAllWhitespace()
   }
 
   scanComment() {

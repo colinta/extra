@@ -10,6 +10,7 @@ import {
   union,
   SMALL_LEN,
 } from '@/util'
+import {type Scope} from '@/scope'
 import {
   type TypeRuntime,
   type ValueRuntime,
@@ -72,13 +73,13 @@ export class RuntimeError extends Error {
   parents: Expression[] = []
 
   constructor(
-    readonly expression: Expression,
+    readonly reference: Expression,
     public message: string,
     readonly children: RuntimeError[] = [],
   ) {
     super()
-    this.parents.push(expression)
-    this.message += `\n${expression.constructor.name}: ` + expression.toCode()
+    this.parents.push(reference)
+    this.message += `\n${reference.constructor.name}: ` + reference.toCode()
   }
 
   pushParent(parent: Expression) {
@@ -97,11 +98,11 @@ export class RuntimeError extends Error {
  */
 export class ReferenceRuntimeError extends RuntimeError {
   constructor(
-    readonly expression: Reference,
+    readonly reference: Reference,
     message: string,
     children: RuntimeError[] = [],
   ) {
-    super(expression, message, children)
+    super(reference, message, children)
   }
 }
 
@@ -115,6 +116,21 @@ export class PropertyAccessRuntimeError extends RuntimeError {
     readonly lhsType: Types.Type,
     readonly rhsExpression: Expression,
     readonly rhsName: string,
+    message: string,
+    children: RuntimeError[] = [],
+  ) {
+    super(rhsExpression, message, children)
+  }
+}
+
+/**
+ * Raised from FunctionInvocationOperator when the rhs is not invocable.
+ */
+export class FunctionInvocationRuntimeError extends RuntimeError {
+  constructor(
+    readonly lhsExpression: Expression,
+    readonly lhsType: Types.Type,
+    readonly rhsExpression: Expression,
     message: string,
     children: RuntimeError[] = [],
   ) {
@@ -158,8 +174,27 @@ export abstract class Expression {
 
   /**
    * Returns the names of all the variables this expression refers to.
+   *
+   * `parentScopes` is used to resolve static property access. ie.
+   *
+   *     namespace Extra {
+   *       class Special {
+   *         -- parentScopes => ['Extra', 'Special']
+   *         -- in this scope, all of these refer to (and depend on) the same
+   *         -- variable 'user'
+   *
+   *         static A = user
+   *                    --> Reference('user').dependencies() -> Set('user')
+   *         static A = Special.user
+   *                    --> Reference('user').dependencies() -> Set('user')
+   *         static A = Extra.Special.user
+   *                    --> Reference('user').dependencies() -> Set('user')
+   *       }
+   *     }
+   *
+   * This is used mostly in PropertyAccessOperator.
    */
-  dependencies(): Set<string> {
+  dependencies(_parentScopes: Scope[]): Set<string> {
     return new Set()
   }
 
@@ -183,23 +218,26 @@ export abstract class Expression {
    * Walks the expression tree and reduces the children to a single value - or
    * preforms a search. This function applies the search function to the current
    * Expression and its children, accumulating a return value. The search
-   * function returns the accumulator and a stop value of `true|false`, which
-   * indicates whether to stop searching that branch of the expression tree.
+   * function returns the accumulator and a stop value of `'stop'|'continue'`,
+   * which indicates whether to stop searching that branch of the expression
+   * tree.
+   *
+   * There is also a 'context' variable that is passed to child expressions.
    *
    * For example, if you are looking for references to a specific name, you
-   * should return `true` for the stop value when you reach a node that provides
+   * should return `'stop'` for the stop value when you reach a node that provides
    * that name.
    *
    *     if (expr.dependencies().has(searchName)) {
-   *       expr.searchExpressions((nextExpr, acc) => {
+   *       expr.searchExpressions((nextExpr, acc, _context) => {
    *         if (nextExpr.provides().has(searchName)) {
-   *           return [false, acc]
+   *           return ['continue', acc, _context]
    *         }
    *         if (nextExpr instanceof Reference && nextExpr.name == searchName) {
    *           // nextExpr refers to searchName
-   *           return [true, nextExpr]
+   *           return ['stop', nextExpr, _context]
    *         }
-   *         return [true, acc]
+   *         return ['stop', acc, _context]
    *     }
    *
    * The search function is called breadth-first. The current Expression will be
@@ -207,11 +245,11 @@ export abstract class Expression {
    * children of the second child, etc, until `[false, T]` is returned.
    */
   searchExpressions<T, C>(
-    searchFn: (expr: Expression, acc: T | undefined, context: C) => [boolean, T, C],
+    searchFn: (expr: Expression, acc: T | undefined, context: C) => ['stop' | 'continue', T, C],
     context: C,
   ): T {
     const [stop, firstAcc, nextContext] = searchFn(this, undefined, context)
-    if (stop) {
+    if (stop === 'stop') {
       return firstAcc
     }
 
@@ -226,7 +264,7 @@ export abstract class Expression {
       const [childStop, childAcc, nextContext] = searchFn(child, acc, context)
       acc = childAcc
 
-      if (!childStop) {
+      if (childStop === 'continue') {
         const next: [Expression, C][] = child.childExpressions().map(expr => [expr, nextContext])
         childExpressions.push(...next)
       }
@@ -453,8 +491,8 @@ export abstract class Operation extends Expression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return allDependencies(this.args)
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.args, parentScopes)
   }
 
   childExpressions() {
@@ -971,7 +1009,7 @@ export class StateReference extends Reference {
       return ok(type)
     }
 
-    return err(new RuntimeError(this, `Cannot get type of state variable '@${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get type of state variable '${this.stateName}'`))
   }
 
   eval(runtime: ValueRuntime) {
@@ -980,7 +1018,7 @@ export class StateReference extends Reference {
       return ok(value)
     }
 
-    return err(new RuntimeError(this, `Cannot get value of state variable '@${this.name}'`))
+    return err(new RuntimeError(this, `Cannot get value of state variable '${this.stateName}'`))
   }
 
   replaceWithType(runtime: TypeRuntime, withType: Types.Type): GetRuntimeResult<TypeRuntime> {
@@ -992,10 +1030,7 @@ export class StateReference extends Reference {
     return thisType
       .replacingProp(this.name, withType)
       .mapError(message => new RuntimeError(this, message))
-      .map(type => {
-        let nextRuntime = new MutableTypeRuntime(runtime, type)
-        return nextRuntime
-      })
+      .map(type => new MutableTypeRuntime(runtime, type))
   }
 
   compile(runtime: TypeRuntime) {
@@ -1031,8 +1066,8 @@ export class ObjectExpression extends Expression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return allDependencies(this.values)
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.values, parentScopes)
   }
 
   childExpressions() {
@@ -1179,8 +1214,8 @@ export class ArrayExpression extends Expression {
     super(range, precedingComments, [])
   }
 
-  dependencies() {
-    return allDependencies(this.values)
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.values, parentScopes)
   }
 
   childExpressions() {
@@ -1291,12 +1326,12 @@ export class DictEntry extends Expression {
     super(range, precedingComments)
   }
 
-  dependencies() {
+  dependencies(parentScopes: Scope[]) {
     if (!this.value) {
-      return this.name.dependencies()
+      return this.name.dependencies(parentScopes)
     }
 
-    return union(this.name.dependencies(), this.value.dependencies())
+    return union(this.name.dependencies(parentScopes), this.value.dependencies(parentScopes))
   }
 
   childExpressions() {
@@ -1379,8 +1414,8 @@ export class DictExpression extends Expression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return allDependencies(this.values)
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.values, parentScopes)
   }
 
   toLisp() {
@@ -1488,8 +1523,8 @@ export class SetExpression extends Expression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return allDependencies(this.values)
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.values, parentScopes)
   }
 
   childExpressions() {
@@ -1858,8 +1893,8 @@ export class OneOfTypeExpression extends TypeExpression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return allDependencies(this.of)
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.of, parentScopes)
   }
 
   childExpressions() {
@@ -1918,8 +1953,8 @@ export class CombineTypeExpression extends TypeExpression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return allDependencies(this.of)
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.of, parentScopes)
   }
 
   childExpressions() {
@@ -1962,8 +1997,8 @@ export class ObjectTypeExpression extends TypeExpression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return allDependencies(this.childExpressions())
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.childExpressions(), parentScopes)
   }
 
   childExpressions() {
@@ -2044,8 +2079,8 @@ export class ArrayTypeExpression extends TypeExpression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return this.of.dependencies()
+  dependencies(parentScopes: Scope[]) {
+    return this.of.dependencies(parentScopes)
   }
 
   childExpressions() {
@@ -2095,8 +2130,8 @@ export class DictTypeExpression extends TypeExpression {
     }
   }
 
-  dependencies() {
-    return this.of.dependencies()
+  dependencies(parentScopes: Scope[]) {
+    return this.of.dependencies(parentScopes)
   }
 
   childExpressions() {
@@ -2140,8 +2175,8 @@ export class SetTypeExpression extends TypeExpression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return this.of.dependencies()
+  dependencies(parentScopes: Scope[]) {
+    return this.of.dependencies(parentScopes)
   }
 
   childExpressions() {
@@ -2192,8 +2227,8 @@ export class TypeConstructorExpression extends TypeExpression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return allDependencies(this.types)
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.types, parentScopes)
   }
 
   childExpressions() {
@@ -2245,8 +2280,8 @@ export abstract class Argument extends Expression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return this.value.dependencies()
+  dependencies(parentScopes: Scope[]) {
+    return this.value.dependencies(parentScopes)
   }
 
   childExpressions() {
@@ -2643,8 +2678,8 @@ export class ArgumentsList extends Expression {
     return this.repeatedNamedArgs.get(name) ?? []
   }
 
-  dependencies() {
-    return allDependencies(this.allArgs)
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.allArgs, parentScopes)
   }
 
   childExpressions() {
@@ -2732,6 +2767,13 @@ export class LetAssign extends NamedArgument {
     super(range, precedingComments, alias, value)
   }
 
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(
+      this.typeExpression ? [this.typeExpression, this.value] : [this.value],
+      parentScopes,
+    )
+  }
+
   toLisp() {
     if (this.typeExpression === undefined) {
       return `(${this.alias} = ${this.value.toLisp()})`
@@ -2775,19 +2817,51 @@ export class LetExpression extends Expression {
     })
   }
 
-  private sortedBindings(ignoreExternal: (name: string) => boolean) {
-    return dependencySort(this.bindings, ignoreExternal)
+  /**
+   * In a 'let' assignment, we must take care to remove the assigments from
+   * the parent scope - ie
+   *
+   *     class User {
+   *       static foo = let
+   *           -- technically, references must be lower case and modules must be
+   *           -- uppercase... but I want to cover this situation anyway
+   *           User = { bla: 'bla' }
+   *         in
+   *           User.bla <-- 'User' refers to the let assignment,
+   *                     -- not the class from parent scope
+   *     }
+   *
+   * This is only really relevant to resolving static property resolution order,
+   * which here would not treat 'foo' as depending on any static property of the
+   * parent class User.
+   */
+  dependencies(parentScopes: Scope[]) {
+    const bindingExprs: Expression[] = this.bindings.map(([_, arg]) => arg)
+    const bindingNames = new Set(this.bindings.map(([name, _]) => name))
+    const filteredScopes = parentScopes.filter(scope => !bindingNames.has(scope.name))
+    return difference(
+      allDependencies(bindingExprs.concat([this.body]), filteredScopes),
+      this.provides(),
+    )
+  }
+
+  provides() {
+    return new Set(this.bindings.map(([name, _]) => name))
+  }
+
+  private sortedBindings(ignoreExternal: (name: string) => boolean, parentScopes: Scope[]) {
+    return dependencySort(this.bindings, ignoreExternal, parentScopes)
   }
 
   toLisp() {
-    const bindings = this.sortedBindings(() => true).safeGet() ?? this.bindings
+    const bindings = this.sortedBindings(() => true, []).getOr() ?? this.bindings
     const code = bindings.map(([_, arg]) => arg.toLisp()).join(' ')
     return `(let ${code} ${this.body.toLisp()})`
   }
 
   toCode() {
     let code = 'let\n'
-    const bindings = this.sortedBindings(() => true).safeGet() ?? this.bindings
+    const bindings = this.sortedBindings(() => true, []).getOr() ?? this.bindings
     for (const [alias, arg] of bindings) {
       let line: string
       let exprCode: string
@@ -2853,25 +2927,9 @@ export class LetExpression extends Expression {
     return this.compile(runtime).map(node => node.type)
   }
 
-  eval(runtime: ValueRuntime) {
-    let nextRuntime = new MutableValueRuntime(runtime)
-    return this.sortedBindings(name => runtime.has(name))
-      .map(deps =>
-        mapAll(
-          deps.map(([alias, dep]) =>
-            dep.eval(nextRuntime).map(value => {
-              nextRuntime.addLocalValue(alias, value)
-              return ok()
-            }),
-          ),
-        ),
-      )
-      .map(() => this.body.eval(nextRuntime))
-  }
-
   compile(runtime: TypeRuntime) {
     let nextRuntime = new MutableTypeRuntime(runtime)
-    return this.sortedBindings(name => runtime.has(name))
+    return this.sortedBindings(name => runtime.has(name), runtime.parentScopes())
       .map(deps =>
         mapAll(
           deps.map(
@@ -2919,6 +2977,22 @@ export class LetExpression extends Expression {
       .map(nodes =>
         this.body.compile(nextRuntime).map(body => new Nodes.Let(toSource(this), body, nodes)),
       )
+  }
+
+  eval(runtime: ValueRuntime) {
+    let nextRuntime = new MutableValueRuntime(runtime)
+    return this.sortedBindings(name => runtime.has(name), runtime.parentScopes())
+      .map(deps =>
+        mapAll(
+          deps.map(([alias, dep]) =>
+            dep.eval(nextRuntime).map(value => {
+              nextRuntime.addLocalValue(alias, value)
+              return ok()
+            }),
+          ),
+        ),
+      )
+      .map(() => this.body.eval(nextRuntime))
   }
 }
 
@@ -3368,8 +3442,8 @@ export abstract class ArgumentExpression extends Expression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    return this.argType.dependencies()
+  dependencies(parentScopes: Scope[]) {
+    return this.argType.dependencies(parentScopes)
   }
 
   provides(): Set<string> {
@@ -3378,6 +3452,10 @@ export abstract class ArgumentExpression extends Expression {
 
   childExpressions() {
     return [this.argType]
+  }
+
+  compile(runtime: TypeRuntime) {
+    return err(new RuntimeError(this, 'ArgumentExpression cannot be compiled'))
   }
 
   getType(): GetTypeResult {
@@ -3401,7 +3479,7 @@ export abstract class ArgumentExpression extends Expression {
  *     ...spread: Array(Type), default = []
  *     **kwargs: Dict(Type), default = #{}
  */
-export class FormulaLiteralArgument extends ArgumentExpression {
+export class FormulaArgumentDefinition extends ArgumentExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
@@ -3413,6 +3491,15 @@ export class FormulaLiteralArgument extends ArgumentExpression {
     readonly defaultValue: Expression | undefined,
   ) {
     super(range, precedingComments, nameRef, aliasRef, argType, spreadArg, isPositional)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    const superDeps = super.dependencies(parentScopes)
+    if (!this.defaultValue) {
+      return superDeps
+    }
+
+    return union(superDeps, allDependencies([this.defaultValue], parentScopes))
   }
 
   toLisp() {
@@ -3585,6 +3672,8 @@ export class FormulaTypeArgument extends ArgumentExpression {
  * be done) by the formula *value*.
  *
  *     type Fn = fn(a: Int): Int
+ *     --        ^^^^^^^^^^^^^^^
+ *     --        FormulaTypeExpression
  */
 export class FormulaTypeExpression extends Expression {
   constructor(
@@ -3597,8 +3686,11 @@ export class FormulaTypeExpression extends Expression {
     super(range, precedingComments)
   }
 
-  dependencies() {
-    const deps = union(allDependencies(this.argDefinitions), this.returnType.dependencies())
+  dependencies(parentScopes: Scope[]) {
+    const deps = union(
+      allDependencies(this.argDefinitions, parentScopes),
+      this.returnType.dependencies(parentScopes),
+    )
     return difference(deps, allProvides(this.argDefinitions))
   }
 
@@ -3703,7 +3795,7 @@ export class FormulaExpression extends Expression {
      */
     readonly precedingReturnTypeComments: Comment[],
     readonly nameRef: Reference | undefined,
-    readonly argDefinitions: FormulaLiteralArgument[],
+    readonly argDefinitions: FormulaArgumentDefinition[],
     readonly returnType: Expression,
     readonly body: Expression,
     readonly generics: GenericExpression[],
@@ -3715,14 +3807,27 @@ export class FormulaExpression extends Expression {
     if (this.nameRef) {
       return new Set([this.nameRef.name])
     }
-    return new Set()
+    return super.provides()
   }
 
-  dependencies() {
+  dependencies(parentScopes: Scope[]) {
+    const filteredScopes = parentScopes.filter(scope => {
+      if (this.nameRef && this.nameRef.name === scope.name) {
+        return false
+      }
+      if (this.generics.some(g => g.name === scope.name)) {
+        return false
+      }
+      if (this.argDefinitions.some(arg => arg.nameRef.name === scope.name)) {
+        return false
+      }
+
+      return true
+    })
     const deps = union(
-      this.returnType.dependencies(),
-      this.body.dependencies(),
-      allDependencies(this.argDefinitions),
+      allDependencies(this.argDefinitions, filteredScopes),
+      this.body.dependencies(filteredScopes),
+      this.returnType.dependencies(filteredScopes),
     )
     const generics = this.generics.map(g => g.name)
     const provides = union(allProvides(this.argDefinitions), new Set(generics))
@@ -3761,14 +3866,14 @@ export class FormulaExpression extends Expression {
   }
 
   toCode() {
-    return this.toCodePrefixed(true, false)
+    return this.toCodePrefixed(true)
   }
 
   toViewPropCode() {
     return `(${this.toCode()})`
   }
 
-  toCodePrefixed(prefixed: boolean, forceNewline: boolean) {
+  toCodePrefixed(prefixed: boolean) {
     let code = ''
     code += formatComments(this.precedingComments)
     if (prefixed) {
@@ -3786,15 +3891,6 @@ export class FormulaExpression extends Expression {
     }
 
     const argDefinitions = this.argDefinitions.map(expr => expr.toCode()).join(', ')
-    const returnTypeCode = this.returnType.toCode()
-    let hasNewline: boolean
-    if (forceNewline) {
-      hasNewline = true
-    } else {
-      const bodyCode = this.body.toCode()
-      const testCode = code + argDefinitions + returnTypeCode + bodyCode
-      hasNewline = testCode.includes('\n') || testCode.length > MAX_LEN
-    }
 
     if (!argDefinitions.length) {
       code += '()'
@@ -3812,7 +3908,7 @@ export class FormulaExpression extends Expression {
       code += ': ' + this.returnType.toCode()
     }
 
-    code += ' ' + this.toBodyCode(hasNewline ? 0 : MAX_LEN - code.length)
+    code += ' ' + this.toBodyCode(0)
 
     return code
   }
@@ -3948,39 +4044,17 @@ function resolveArgumentNodes(
 ): GetRuntimeResult<Nodes.Argument[]> {
   // for every arg, check the arg type _and_ the default type, and make sure
   // default type can be assigned to the arg type
+  let nextPosition = 0
   return mapAll(
-    expr.argDefinitions.map((argExpr, position) => {
-      let argType: GetTypeResult
-      if (argExpr.argType instanceof InferIdentifier) {
-        if (argExpr.spreadArg) {
-          throw `TODO: inferring type of ${argExpr.toCode()} in argumentTypes is not done`
-        }
+    expr.argDefinitions.map(argExpr => {
+      let argType = argumentToArgumentType(argExpr, runtime, formulaArgumentType, nextPosition)
 
-        let inferArgType: Types.Type | undefined
-        if (formulaArgumentType) {
-          inferArgType =
-            formulaArgumentType.positionalArg(position)?.type ??
-            formulaArgumentType.namedArg(argExpr.aliasRef.name)?.type
-        } else {
-          inferArgType = undefined
+      if (formulaArgumentType) {
+        const namedArg =
+          !argExpr.isPositional && formulaArgumentType.namedArg(argExpr.aliasRef.name)
+        if (!namedArg) {
+          nextPosition += 1
         }
-
-        if (!inferArgType) {
-          // I know some programming languages are able to infer the argument type
-          // based on how it's *used* but that just sounds like a ton of work,
-          // for mediocre results.
-          let message = 'Unable to infer type for argument '
-          if (argExpr instanceof NamedArgument) {
-            message += `'${argExpr.aliasRef.name}'`
-          } else if (argExpr instanceof PositionalArgument) {
-            message += `at position #${position + 1}`
-          }
-          return err(new RuntimeError(expr, message))
-        }
-
-        argType = ok(inferArgType)
-      } else {
-        argType = argExpr.argType.getAsTypeExpression(runtime)
       }
 
       return argType.map(type => {
@@ -4009,8 +4083,52 @@ function resolveArgumentNodes(
   )
 }
 
-function argumentToArgumentNode(
-  argExpr: FormulaLiteralArgument,
+export function argumentToArgumentType(
+  argExpr: FormulaArgumentDefinition,
+  runtime: TypeRuntime,
+  formulaArgumentType: Types.FormulaType | undefined,
+  // this is only incremented when the caller treats the argExpr as a named
+  // argument.
+  atPosition: number,
+) {
+  if (argExpr.argType instanceof InferIdentifier) {
+    if (argExpr.spreadArg) {
+      throw `TODO: inferring type of ${argExpr.toCode()} in argumentTypes is not done`
+    }
+
+    let inferArgType: Types.Type | undefined
+    if (formulaArgumentType) {
+      const namedArg = !argExpr.isPositional && formulaArgumentType.namedArg(argExpr.aliasRef.name)
+      if (namedArg) {
+        inferArgType = namedArg.type
+      } else {
+        inferArgType = formulaArgumentType.positionalArg(atPosition)?.type
+      }
+    } else {
+      inferArgType = undefined
+    }
+
+    if (!inferArgType) {
+      // I know some programming languages are able to infer the argument type
+      // based on how it's *used* but that just sounds like a ton of work,
+      // for mediocre results.
+      let message = 'Unable to infer type for argument '
+      if (argExpr.isPositional) {
+        message += `at position #${atPosition + 1}`
+      } else if (argExpr instanceof PositionalArgument) {
+        message += `'${argExpr.aliasRef.name}'`
+      }
+      return err(new RuntimeError(argExpr, message))
+    }
+
+    return ok(inferArgType)
+  } else {
+    return argExpr.argType.getAsTypeExpression(runtime)
+  }
+}
+
+export function argumentToArgumentNode(
+  argExpr: FormulaArgumentDefinition,
   type: Types.Type,
 ): GetRuntimeResult<Nodes.Argument> {
   if (argExpr.spreadArg === 'spread' && argExpr.isPositional) {
@@ -4056,7 +4174,7 @@ function argumentToArgumentNode(
 
 export function argumentValues(
   runtime: ValueRuntime,
-  argDefinitions: FormulaLiteralArgument[],
+  argDefinitions: FormulaArgumentDefinition[],
   invokedArgs: Values.FormulaArgs,
   boundThis: Values.ClassInstanceValue | undefined,
 ): GetRuntimeResult<MutableValueRuntime> {
@@ -4075,7 +4193,7 @@ export function argumentValues(
       runtime,
       argDefinitions.map(
         arg =>
-          new FormulaLiteralArgument(
+          new FormulaArgumentDefinition(
             arg.range,
             arg.precedingComments,
             arg.nameRef,
@@ -4181,14 +4299,14 @@ export function argumentValues(
   return ok(mutableRuntime)
 }
 
-function organizeArguments(argDefinitions: FormulaLiteralArgument[]) {
-  const requiredPositional: FormulaLiteralArgument[] = []
+function organizeArguments(argDefinitions: FormulaArgumentDefinition[]) {
+  const requiredPositional: FormulaArgumentDefinition[] = []
   // const lastPositional: FormulaLiteralArgument[] = []
-  const optionalPositional: [FormulaLiteralArgument, Expression][] = []
-  let remainingPositional: FormulaLiteralArgument | undefined
-  const singleNamed: Map<string, FormulaLiteralArgument> = new Map()
-  const repeatNamed: Map<string, FormulaLiteralArgument> = new Map()
-  let kwargs: FormulaLiteralArgument | undefined
+  const optionalPositional: [FormulaArgumentDefinition, Expression][] = []
+  let remainingPositional: FormulaArgumentDefinition | undefined
+  const singleNamed: Map<string, FormulaArgumentDefinition> = new Map()
+  const repeatNamed: Map<string, FormulaArgumentDefinition> = new Map()
+  let kwargs: FormulaArgumentDefinition | undefined
 
   for (const arg of argDefinitions) {
     if (arg.spreadArg === 'spread' && arg.isPositional) {
@@ -4240,7 +4358,7 @@ export class NamedFormulaExpression extends FormulaExpression {
     followingArgsComments: Comment[],
     precedingReturnTypeComments: Comment[],
     readonly nameRef: Reference,
-    argDefinitions: FormulaLiteralArgument[],
+    argDefinitions: FormulaArgumentDefinition[],
     returnType: Expression,
     body: Expression,
     generics: GenericExpression[],
@@ -4317,51 +4435,11 @@ export class InstanceFormulaExpression extends NamedFormulaExpression {
     followingArgsComments: Comment[],
     precedingReturnTypeComments: Comment[],
     nameRef: Reference,
-    argDefinitions: FormulaLiteralArgument[],
+    argDefinitions: FormulaArgumentDefinition[],
     returnType: Expression,
     body: Expression,
     generics: GenericExpression[],
     readonly isOverride: boolean,
-  ) {
-    super(
-      range,
-      precedingComments,
-      precedingNameComments,
-      precedingArgsComments,
-      followingArgsComments,
-      precedingReturnTypeComments,
-      nameRef,
-      argDefinitions,
-      returnType,
-      body,
-      generics,
-    )
-  }
-}
-
-/**
- * Identical in form to a NamedFormulaExpression, but prefixed w/ 'static'.
- * Static formulas act as regular formulas, with the exception that other
- * static formulas and properties in the same class can be treated as local
- * references.
- *
- * TODO: treat other static formulas and properties as local references.
- */
-export class StaticFormulaExpression extends NamedFormulaExpression {
-  prefix = 'static'
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    precedingNameComments: Comment[],
-    precedingArgsComments: Comment[],
-    followingArgsComments: Comment[],
-    precedingReturnTypeComments: Comment[],
-    nameRef: Reference,
-    argDefinitions: FormulaLiteralArgument[],
-    returnType: Expression,
-    body: Expression,
-    generics: GenericExpression[],
   ) {
     super(
       range,
@@ -4391,15 +4469,15 @@ abstract class JsxExpression extends Expression {
     super(range, precedingComments)
   }
 
-  dependencies() {
+  dependencies(parentScopes: Scope[]) {
     const argsDependencies = union(
       new Set(this.nameRef ? [this.nameRef.name] : []),
-      allDependencies(this.props),
+      allDependencies(this.props, parentScopes),
     )
     if (!this.children) {
       return argsDependencies
     }
-    return union(argsDependencies, allDependencies(this.children))
+    return union(argsDependencies, allDependencies(this.children, parentScopes))
   }
 
   childExpressions() {
@@ -4599,80 +4677,6 @@ export class FragmentJsxExpression extends JsxExpression {
     children: Expression[],
   ) {
     super(range, precedingComments, args, children)
-  }
-}
-
-/**
- * A view formula on a view class, or a view formula on a pure-function view.
- */
-export class ViewFormulaExpression extends NamedFormulaExpression {
-  prefix = 'view'
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    precedingNameComments: Comment[],
-    precedingReturnTypeComments: Comment[],
-    precedingArgsComments: Comment[],
-    followingArgsComments: Comment[],
-    nameRef: Reference,
-    argDefinitions: FormulaLiteralArgument[],
-    returnType: Expression,
-    body: Expression,
-  ) {
-    super(
-      range,
-      precedingComments,
-      precedingNameComments,
-      precedingArgsComments,
-      followingArgsComments,
-      precedingReturnTypeComments,
-      nameRef,
-      argDefinitions,
-      returnType,
-      body,
-      [],
-    )
-  }
-
-  getFormulaTypeWith(
-    returnType: Types.Type,
-    args: Types.Argument[],
-    genericTypes: Types.GenericType[],
-  ) {
-    const namedArgs = args.filter(arg => arg.is === 'named-argument')
-    return new Types.ViewFormulaType(this.nameRef.name, returnType, namedArgs, genericTypes)
-  }
-
-  getFormulaValueWith(
-    runtime: ValueRuntime,
-    fn: (
-      args: Values.FormulaArgs,
-      boundThis: Values.ClassInstanceValue | undefined,
-    ) => Result<Values.Value, RuntimeError>,
-  ) {
-    const argDefinitions = this.argDefinitions
-    const render = (
-      args: Values.FormulaArgs,
-      boundThis: Values.ClassInstanceValue | undefined,
-    ): Result<any, RuntimeError> =>
-      argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime => {
-        // this.body.render(nextRuntime)
-        throw new RuntimeError(this, 'TODO: getFormulaValueWith')
-      })
-
-    return new Values.ViewFormulaValue(this.nameRef.name, fn, undefined, render)
-  }
-
-  toCode() {
-    return this.toCodePrefixed(true, true)
-  }
-}
-
-export class RenderFormulaExpression extends ViewFormulaExpression {
-  toCodePrefixed(_prefixed: boolean, forceNewline: boolean) {
-    let code = super.toCodePrefixed(false, forceNewline)
-    return code
   }
 }
 
@@ -5132,7 +5136,7 @@ export class MatchEnumExpression extends MatchExpression {
    */
   private findEnumTypeThatMatchesCase(
     type: Types.Type,
-  ): GetRuntimeResult<[Types.AnonymousEnumType, Types.EnumCase]> {
+  ): GetRuntimeResult<[Types.AnonymousEnumDefinitionType, Types.EnumCase]> {
     const result = this._findOptionalEnumTypeThatMatchesCase(type)
     if (!result) {
       return err(
@@ -5155,9 +5159,9 @@ export class MatchEnumExpression extends MatchExpression {
    */
   private _findOptionalEnumTypeThatMatchesCase(
     type: Types.Type,
-  ): GetRuntimeResult<[Types.AnonymousEnumType, Types.EnumCase]> | undefined {
+  ): GetRuntimeResult<[Types.AnonymousEnumDefinitionType, Types.EnumCase]> | undefined {
     if (type instanceof Types.OneOfType) {
-      let enumInfo: [Types.AnonymousEnumType, Types.EnumCase] | undefined
+      let enumInfo: [Types.AnonymousEnumDefinitionType, Types.EnumCase] | undefined
       for (const oneType of type.of) {
         const oneCheckResult = this._findOptionalEnumTypeThatMatchesCase(oneType)
         if (!oneCheckResult) {
@@ -5186,7 +5190,7 @@ export class MatchEnumExpression extends MatchExpression {
     }
 
     // must be an enum
-    if (!(type instanceof Types.AnonymousEnumType)) {
+    if (!(type instanceof Types.AnonymousEnumDefinitionType)) {
       return
     }
 
@@ -7625,8 +7629,11 @@ export function includeMissingNames(
   return mutableRuntime
 }
 
-export function allDependencies(expressions: Expression[]) {
-  return expressions.reduce((set, expr) => union(set, expr.dependencies()), new Set<string>())
+export function allDependencies(expressions: Expression[], parentScopes: Scope[]) {
+  return expressions.reduce(
+    (set, expr) => union(set, expr.dependencies(parentScopes)),
+    new Set<string>(),
+  )
 }
 
 export function allProvides(expressions: Expression[]) {
@@ -7665,23 +7672,42 @@ export function dependencySort<T extends Expression>(
   expressions: [string, T][],
   // returns 'true' if the dependency is available via the parent context
   providedInScope: (name: string) => boolean,
+  parentScopes: Scope[],
 ): GetRuntimeResult<[string, T][]> {
   let expressionDeps: {
     name: string
     expr: T
     deps: string[]
-  }[] = expressions.map(([name, expr]) => ({name, expr, deps: Array.from(expr.dependencies())}))
+  }[] = expressions.map(([name, expr]) => ({
+    name,
+    expr,
+    deps: Array.from(expr.dependencies(parentScopes)),
+  }))
   // locallyResolved are names that are being provided locally, which *may also*
   // be provided externally, but in this case the local override "wins" (we
   // should resolve it and use it locally, rather than use the external)
+  //
+  // let
+  //   a = 1
+  // in
+  //   let
+  //     c = a -- this will be resolved to 'a = 2'
+  //     a = 2
+  //     b = a -- and this will be resolved to 'a = 2'
+  //   in
+  //     ...
   const locallyResolved = new Set(expressions.map(([name]) => name))
 
   let nextIter: typeof expressionDeps = []
   const orderedExpressions: [string, T][] = []
   const resolved = new Set<string>()
+  const nextResolved = new Set<string>()
   while (expressionDeps.length) {
     const circular = new Map<string, string[]>()
     for (const {name, expr, deps} of expressionDeps) {
+      if (resolved.has(name)) {
+        continue
+      }
       // deps has the list of all the references that expr depends on. We want to:
       // - Remove expressions that have been resolved `resolved.has(depName)`
       // - Remove references that already exist in the parent scope
@@ -7691,8 +7717,13 @@ export function dependencySort<T extends Expression>(
         depName =>
           !(resolved.has(depName) || (providedInScope(depName) && !locallyResolved.has(depName))),
       )
-      if (!unresolvedDeps.length) {
-        resolved.add(name)
+
+      // less efficient... but only resolving one means that the next pass can
+      // try to resolve *earlier* items in the array. The array is sorted in
+      // "user" preference, so keeping that order (as much as possible) is good
+      // for code formatting operations.
+      if (!unresolvedDeps.length && !nextResolved.size) {
+        nextResolved.add(name)
         orderedExpressions.push([name, expr])
       } else {
         circular.set(name, unresolvedDeps)
@@ -7700,11 +7731,16 @@ export function dependencySort<T extends Expression>(
       }
     }
 
+    for (const name of nextResolved) {
+      resolved.add(name)
+      nextResolved.delete(name)
+    }
+
     // expressionDeps should always be decreasing, if it stays the same we've hit an
     // unresolvable loop. Here's a first stab at a helpful error message.
     if (expressionDeps.length === nextIter.length) {
       const firstName = expressionDeps[0].name
-      const dependencies = expressionDeps[0].expr.dependencies()
+      const dependencies = expressionDeps[0].expr.dependencies(parentScopes)
       const chain = findChain(circular.get(firstName) ?? [], firstName, new Set(), circular)
       if (chain && chain.size) {
         return err(

@@ -1,4 +1,4 @@
-import {err, mapAll, mapOr, ok, type Result} from '@extra-lang/result'
+import {err, mapAll, mapOptional, ok, type Result} from '@extra-lang/result'
 import {intersection} from './util'
 import {splitter} from './graphemes'
 import * as Narrowed from './narrowed'
@@ -172,33 +172,34 @@ export function floatRange(narrowed?: Partial<Narrowed.NarrowedFloat>) {
   return FloatRangeType
 }
 
-export function metaClass({
+export function classDefinition({
   name,
+  parent,
   class: classType,
   staticProps,
-  parent,
   defaults,
+  generics,
   moreStatics,
 }: {
   name: string
-  class: ClassInstanceType
-  staticProps?: Map<string, Type>
   parent?: ClassDefinitionType
+  class?: ClassInstanceType
+  staticProps?: Map<string, Type>
   defaults?: string[]
+  generics?: GenericType[]
   moreStatics?: (metaClass: ClassDefinitionType, classType: ClassInstanceType) => Map<string, Type>
 }) {
-  const metaClass = new ClassDefinitionType(
-    name,
-    parent,
-    classType,
-    staticProps ?? new Map(),
-    new Set(defaults),
-  )
-  if (moreStatics) {
-    for (const [name, type] of moreStatics(metaClass, classType)) {
-      metaClass.staticProps.set(name, type)
+  const metaClass = new ClassDefinitionType(name, parent, staticProps ?? new Map(), generics ?? [])
+  if (classType) {
+    metaClass.resolveInstanceType(classType, new Set(defaults))
+
+    if (moreStatics) {
+      for (const [name, type] of moreStatics(metaClass, classType)) {
+        metaClass.staticProps.set(name, type)
+      }
     }
   }
+
   return metaClass
 }
 
@@ -224,30 +225,33 @@ export function classType({
   return classType
 }
 
-export function enumCase(
-  name: string,
-  args: (PositionalArgument | NamedArgument)[] = [],
-): EnumCase {
-  return new EnumCase(name, args)
-}
-export function enumType(members: EnumCase[]) {
-  return new AnonymousEnumType(members)
+/**
+ * An 'instance' of an enum.
+ */
+export function enumType(name: string, formulas: Map<string, FormulaType> = new Map()) {
+  return new EnumInstanceType(name, formulas)
 }
 
-export function namedEnumType({
+export function enumCase(name: string, args: (PositionalArgument | NamedArgument)[] = []) {
+  return new EnumCase(name, args)
+}
+
+export function anonymousEnumDefinition(members: EnumCase[]) {
+  return new AnonymousEnumDefinitionType(members)
+}
+
+export function namedEnumDefinition({
   name,
   members,
-  formulas = [],
-  staticFormulas = [],
+  staticProps = new Map(),
   genericTypes = [],
 }: {
   name: string
   members: EnumCase[]
-  formulas?: NamedFormulaType[]
-  staticFormulas?: NamedFormulaType[]
+  staticProps?: Map<string, Type>
   genericTypes?: GenericType[]
 }) {
-  return new NamedEnumType(name, members, formulas, staticFormulas, genericTypes)
+  return new NamedEnumDefinitionType(name, members, staticProps, genericTypes)
 }
 
 export function optional(type: Type) {
@@ -1283,7 +1287,7 @@ export abstract class OneOfType extends Type {
 }
 
 function scoreType(type: Type): number | undefined {
-  if (type instanceof AnonymousEnumType) {
+  if (type instanceof AnonymousEnumDefinitionType) {
     return 1
   }
   if (type instanceof EnumCase) {
@@ -3471,8 +3475,8 @@ export class EnumCase {
  *
  *     fn(foo: .a | .b(Int))
  */
-export class AnonymousEnumType extends Type {
-  is = 'enum'
+export class AnonymousEnumDefinitionType extends Type {
+  is = 'enum-definition'
 
   constructor(readonly members: EnumCase[]) {
     super()
@@ -3511,17 +3515,20 @@ export class AnonymousEnumType extends Type {
 /**
  * Enum type defined at module scope – with functions, support for generics
  */
-export class NamedEnumType extends AnonymousEnumType {
-  is = 'named-enum'
+export class NamedEnumDefinitionType extends AnonymousEnumDefinitionType {
+  is = 'named-enum-definition'
 
   constructor(
     readonly name: string,
     members: EnumCase[],
-    readonly formulas: NamedFormulaType[],
-    readonly staticFormulas: NamedFormulaType[],
+    readonly staticProps: Map<string, Type>,
     readonly genericTypes: GenericType[],
   ) {
     super(members)
+  }
+
+  addStaticProp(name: string, type: Type) {
+    this.staticProps.set(name, type)
   }
 
   propAccessType(_prop: string): Type | undefined {
@@ -3535,15 +3542,49 @@ export class NamedEnumType extends AnonymousEnumType {
       code += `(${this.genericTypes.map(generic => generic.toCode()).join(', ')})`
     }
     code += ' {\n'
-    // TODO: members, formulas, staticFormulas
+    // TODO: members, formulas, staticProps
     code += '}'
 
     return code
   }
 }
 
+export class EnumInstanceType extends Type {
+  readonly is = 'enum'
+
+  constructor(
+    readonly name: string,
+    readonly formulas: Map<string, Type>,
+  ) {
+    super()
+  }
+
+  addFormula(name: string, formula: Type) {
+    this.formulas.set(name, formula)
+  }
+
+  /**
+   * This doesn't have a meaningful code output, as far as I can tell...
+   */
+  toCode() {
+    return this.name
+  }
+
+  propAccessType(prop: string): Type | undefined {
+    return this.formulas.get(prop)
+  }
+
+  /**
+   * Instances of a class are always true – and shouldn't be used as a
+   * conditional
+   */
+  isOnlyTruthyType() {
+    return true
+  }
+}
+
 //|
-// TODO: Message Type
+//| TODO: Message Type
 //|
 
 export class MessageType extends Type {
@@ -3578,18 +3619,22 @@ export class MessageType extends Type {
  */
 export class ClassDefinitionType extends Type {
   readonly is = 'class-definition'
-  readonly konstructor: NamedFormulaType
+
+  classInstanceType: ClassInstanceType | undefined
+  konstructor: NamedFormulaType | undefined
 
   constructor(
     readonly name: string,
     readonly parentClass: ClassDefinitionType | undefined,
-    readonly returnClassType: ClassInstanceType,
     readonly staticProps: Map<string, Type>,
-    readonly defaultValueNames: Set<string>,
+    readonly genericTypes: GenericType[],
   ) {
     super()
+  }
 
-    const formulaArgs = Array.from(returnClassType.allProps).map(([name, type]) =>
+  resolveInstanceType(classInstanceType: ClassInstanceType, defaultValueNames: Set<string>) {
+    this.classInstanceType = classInstanceType
+    const formulaArgs = Array.from(classInstanceType.allProps).map(([name, type]) =>
       namedArgument({
         name,
         type,
@@ -3598,11 +3643,10 @@ export class ClassDefinitionType extends Type {
     )
 
     this.konstructor = new NamedFormulaType(
-      name,
-      returnClassType,
+      this.name,
+      classInstanceType,
       formulaArgs,
-      // TODO: class generics
-      [],
+      this.genericTypes,
     )
   }
 
@@ -3611,7 +3655,7 @@ export class ClassDefinitionType extends Type {
   }
 
   fromTypeConstructor(): Type {
-    return this.returnClassType
+    return this.classInstanceType!
   }
 
   propAccessType(name: string): Type | undefined {
@@ -3623,11 +3667,10 @@ export class ViewClassDefinitionType extends ClassDefinitionType {
   constructor(
     name: string,
     readonly parentClass: ViewClassDefinitionType | undefined,
-    readonly returnClassType: ViewClassInstanceType,
     staticProps: Map<string, Type>,
-    defaultValues: Set<string>,
+    readonly genericTypes: GenericType[],
   ) {
-    super(name, parentClass, returnClassType, staticProps, defaultValues)
+    super(name, parentClass, staticProps, genericTypes)
   }
 }
 
@@ -3713,7 +3756,7 @@ export class ClassInstanceType extends Type {
   }
 
   resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<ClassInstanceType, string> {
-    return mapOr(this.parent?.resolve(resolvedGenericsMap)).map(parentClass => {
+    return mapOptional(this.parent?.resolve(resolvedGenericsMap)).map(parentClass => {
       const props = new Map<string, Type>()
       for (const [key, type] of this.myProps) {
         const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)

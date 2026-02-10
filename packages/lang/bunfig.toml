@@ -1,0 +1,2 @@
+[test]
+preload = ["@extra-lang/shared/jest/setup.js"]

@@ -1,5 +1,5 @@
 import * as Expressions from '../../expressions'
-import {ARGS_OPEN, CLASS_OPEN, EXPORT_KEYWORD, VIEW_KEYWORD} from '../grammars'
+import {ARGS_OPEN, BLOCK_OPEN, EXPORT_KEYWORD, VIEW_KEYWORD} from '../grammars'
 import type {Scanner} from '../scanner'
 import {type ParseNext, type Comment} from '../types'
 import {scanValidViewName} from './identifier'
@@ -34,7 +34,7 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
   const nameRef = scanValidViewName(scanner)
   scanner.scanAllWhitespace()
 
-  let argDefinitions: Expressions.FormulaLiteralArgument[] | undefined
+  let argDefinitions: Expressions.FormulaArgumentDefinition[] | undefined
   let precedingArgsComments: Comment[] = []
   let followingArgsComments: Comment[] = []
   if (scanner.is(ARGS_OPEN)) {
@@ -44,7 +44,7 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
     followingArgsComments = scanner.flushComments()
   }
 
-  if (scanner.is(CLASS_OPEN)) {
+  if (scanner.is(BLOCK_OPEN)) {
     const {properties, staticProperties, formulas, staticFormulas} = scanClassBody(
       scanner,
       parseNext,
@@ -69,31 +69,7 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
     )
   }
 
-  return finishScanningViewFunction(
-    scanner,
-    parseNext,
-    range0,
-    precedingComments,
-    precedingNameComments,
-    precedingArgsComments,
-    followingArgsComments,
-    nameRef,
-    argDefinitions,
-  )
-}
-
-function finishScanningViewFunction(
-  scanner: Scanner,
-  parseNext: ParseNext,
-  range0: number,
-  precedingComments: Comment[],
-  precedingNameComments: Comment[],
-  precedingArgsComments: Comment[],
-  followingArgsComments: Comment[],
-  nameRef: Expressions.Reference | undefined,
-  argDefinitions: Expressions.FormulaLiteralArgument[] | undefined,
-) {
-  return finishScanningFormula(
+  const viewFormula = finishScanningFormula(
     scanner,
     parseNext,
     range0,
@@ -109,4 +85,10 @@ function finishScanningViewFunction(
     'module',
     true,
   ) as Expressions.ViewFormulaExpression
+  return new Expressions.ViewFormulaDefinition(
+    [range0, scanner.charIndex],
+    precedingComments,
+    viewFormula,
+    isExport,
+  )
 }

@@ -1,28 +1,28 @@
 import {STATIC} from 'src/types'
 import * as Expressions from '../../expressions'
 import {
-  CLASS_KEYWORD,
-  GENERIC_OPEN,
-  CLASS_EXTENDS,
-  CLASS_OPEN,
-  CLASS_CLOSE,
-  OVERRIDE_KEYWORD,
-  FN_KEYWORD,
-  RENDER_KEYWORD,
-  EXPORT_KEYWORD,
-  VIEW_KEYWORD,
   ARGS_OPEN,
-  isArgumentStartChar,
-  TYPE_START,
+  BLOCK_CLOSE,
+  BLOCK_OPEN,
+  CLASS_EXTENDS,
+  CLASS_KEYWORD,
+  EXPORT_KEYWORD,
+  FN_KEYWORD,
   FUNCTION_BODY_START,
-  isRefStartChar,
+  GENERIC_OPEN,
+  OVERRIDE_KEYWORD,
+  RENDER_KEYWORD,
   STATE_START,
+  TYPE_START,
+  VIEW_KEYWORD,
+  isArgumentStartChar,
+  isRefStartChar,
 } from '../grammars'
 import type {Scanner} from '../scanner'
 import {ParseError, type Comment, type ParseNext} from '../types'
 import {
   scanGenerics,
-  scanNamedFormula,
+  scanInstanceFormula,
   scanRenderFormula,
   scanStaticFormula,
   scanViewFormula,
@@ -58,7 +58,7 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
     scanner.scanAllWhitespace()
   }
 
-  let argDefinitions: Expressions.FormulaLiteralArgument[] | undefined
+  let argDefinitions: Expressions.FormulaArgumentDefinition[] | undefined
   let precedingArgsComments: Comment[] = []
   let followingArgsComments: Comment[] = []
   if (scanner.is(ARGS_OPEN)) {
@@ -94,7 +94,7 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
 }
 
 export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'class' | 'view') {
-  scanner.expectString(CLASS_OPEN)
+  scanner.expectString(BLOCK_OPEN)
   scanner.scanAllWhitespace()
 
   scanner.whereAmI(type === 'class' ? 'scanClassBody' : 'scanViewBody')
@@ -103,12 +103,12 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
   const staticProperties: Expressions.ClassStaticPropertyExpression[] = []
   let renderFormula: Expressions.ViewFormulaExpression | undefined
   const formulas: Expressions.InstanceFormulaExpression[] = []
-  const staticFormulas: Expressions.NamedFormulaExpression[] = []
+  const staticFormulas: Expressions.StaticFormulaExpression[] = []
   const staticNames = new Set<string>()
   const memberNames = new Set<string>()
   for (;;) {
     if (scanner.test(isFnStart)) {
-      const formula = scanInstanceFormula(scanner, parseNext)
+      const formula = scanInstanceFormula(scanner, parseNext, 'class')
       if (memberNames.has(formula.name)) {
         throw new ParseError(scanner, `Found duplicate property '${formula.name}'.`)
       }
@@ -169,8 +169,8 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
     }
 
     const shouldBreak = scanner.scanCommaOrBreak(
-      CLASS_CLOSE,
-      `Expected ',' separating properties in the class or '${CLASS_CLOSE}' to end the class definition.`,
+      BLOCK_CLOSE,
+      `Expected ',' separating properties in the class or '${BLOCK_CLOSE}' to end the class definition.`,
     )
 
     if (shouldBreak) {

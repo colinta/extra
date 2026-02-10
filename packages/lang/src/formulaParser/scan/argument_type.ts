@@ -121,7 +121,7 @@ export function scanArgumentType(
 
       const enumCaseName = scanAnyReference(scanner).name
       scanner.whereAmI(`scanEnum: ${enumCaseName}`)
-      let args: Expressions.FormulaLiteralArgument[] = []
+      let args: Expressions.FormulaArgumentDefinition[] = []
       if (scanner.is(ARGS_OPEN)) {
         args = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)
 

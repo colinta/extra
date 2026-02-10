@@ -41,6 +41,7 @@
       "dependencies": {
         "@extra-lang/parse": "workspace:*",
         "@extra-lang/result": "workspace:*",
+        "@extra-lang/util": "workspace:*",
         "grapheme-splitter": "^1.0.4",
       },
       "devDependencies": {
@@ -73,6 +74,19 @@
         "typescript": "^5.7.3",
       },
     },
+    "packages/util": {
+      "name": "@extra-lang/util",
+      "version": "0.1.0",
+      "dependencies": {
+        "@extra-lang/result": "workspace:*",
+      },
+      "devDependencies": {
+        "@extra-lang/cases": "workspace:*",
+        "@extra-lang/inspect": "workspace:*",
+        "@extra-lang/shared": "workspace:*",
+        "typescript": "^5.7.3",
+      },
+    },
     "shared": {
       "name": "@extra-lang/shared",
       "bin": {
@@ -92,6 +106,8 @@
     "@extra-lang/result": ["@extra-lang/result@workspace:packages/result"],
 
     "@extra-lang/shared": ["@extra-lang/shared@workspace:shared"],
+
+    "@extra-lang/util": ["@extra-lang/util@workspace:packages/util"],
 
     "@teaui/core": ["@teaui/core@1.3.7", "", {}, "sha512-UzAP27HzeOzBy0CyG7wKNfXZiGlZvG7xNC1L0b0We//nESsb5miDsftMwux791Vrpvj4/mgLiW57km+IG2GtUg=="],
 

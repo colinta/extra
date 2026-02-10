@@ -1,0 +1,9 @@
+{
+  "extends": "@extra-lang/shared/tsconfig.json",
+  "include": ["src"],
+  "exclude": ["node_modules"],
+  "compilerOptions": {
+    "rootDir": "src/",
+    "baseUrl": "."
+  }
+}
