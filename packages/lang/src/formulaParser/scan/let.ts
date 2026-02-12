@@ -1,5 +1,5 @@
 import * as Expressions from '../../expressions'
-import {FN_KEYWORD, LET_IN, LET_KEYWORD, TYPE_START} from '../grammars'
+import {FN_KEYWORD, LET_IN_KEYWORD, LET_KEYWORD, TYPE_START} from '../grammars'
 import {type Scanner} from '../scanner'
 import {type ExpressionType, type ParseNext} from '../types'
 import {scanArgumentType} from './argument_type'
@@ -23,12 +23,12 @@ export function scanLet(
   scanner.whereAmI('scanLet')
 
   const precedingComments = scanner.flushComments()
-  scanner.expectString(LET_KEYWORD)
+  scanner.expectWord(LET_KEYWORD)
   scanner.scanAllWhitespace()
 
   const bindings: (Expressions.LetAssign | Expressions.NamedFormulaExpression)[] = []
   for (;;) {
-    if (scanner.scanIfWord(LET_IN)) {
+    if (scanner.scanIfWord(LET_IN_KEYWORD)) {
       break
     }
 

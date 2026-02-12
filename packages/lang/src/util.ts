@@ -25,7 +25,13 @@ export function wrapStrings(lhs: string, strings: string[], rhs: string, joiner:
 }
 
 export function indent(code: string) {
-  const lines = code.split('\n').map(line => (line === '' ? '' : INDENT + line))
+  const lines = code.split('\n').map((line, index) => {
+    if (line === '') {
+      return ''
+    } else {
+      return INDENT + line
+    }
+  })
   return lines.join('\n')
 }
 

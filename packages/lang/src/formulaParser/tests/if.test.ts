@@ -22,8 +22,8 @@ describe('if', () => {
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
       c([
-        "if a-letter == 'a'; [1]; else [3]",
-        "(if ((== a-letter 'a') (then: [1]) (else: [3])))",
+        "if a-letter == 'a' then [1] else [3]",
+        "(if (== a-letter 'a') (then: [1]) (else: [3]))",
         `\
 if a-letter == 'a'
   [1]
@@ -31,35 +31,19 @@ else
   [3]`,
       ]),
       c([
-        'if not a or b; 1; else 3',
-        '(if ((or (not a) b) (then: 1) (else: 3)))',
+        'if not a or b then 1 else 3',
+        '(if (or (not a) b) (then: 1) (else: 3))',
         `\
 if not a or b
   1
 else
   3`,
       ]),
+      c(['1 + if a then 1 else 3', '(+ 1 (if a (then: 1) (else: 3)))', '1 + if a then 1 else 3']),
+      c(['1 + if a then 1\nelse 3', '(+ 1 (if a (then: 1) (else: 3)))', '1 + if a then 1 else 3']),
       c([
-        '1 + if a; 1; else 3',
-        '(+ 1 (if a (then: 1) (else: 3) }))',
-        `\
-1 + if a
-  1
-else
-  3`,
-      ]),
-      c([
-        '1 + if a; 1\nelse 3',
-        '(+ 1 (if (a) (then: 1) (else: 3)))',
-        `\
-1 + if a
-  1
-else
-  3`,
-      ]),
-      c([
-        "if a; 1; else if b; 3; else '4'",
-        "(if (a) (then: 1) (else: (if (b) (then: 3) (else: '4'))))",
+        "if a then 1 else if b then 3 else '4'",
+        "(if a (then: 1) (else: (if b (then: 3) (else: '4'))))",
         `\
 if a
   1
@@ -79,7 +63,7 @@ else
       '4'
   '4'
 ]`,
-        "[(if (a) (then: 1) (else: (if (b) (then: 3) (else: '4')))) '4']",
+        "[(if a (then: 1) (else: (if b (then: 3) (else: '4')))) '4']",
         `\
 [
   if a
@@ -95,13 +79,13 @@ else
         `\
 if a
   1
-else if (b):
+else if b
   3
 else
   '4'
 
 `,
-        "(if (a) (then: 1) (else: (if (b) (then: 3)) (else: '4')))",
+        "(if a (then: 1) (else: (if b (then: 3) (else: '4'))))",
         `\
 if a
   1
@@ -126,7 +110,7 @@ else
   '5'
 
 `,
-        "(if (a) (then: (+ 1 2)) (else: (if (b) (then: (+ 3 4) (else: (.. '4' '5'))))))",
+        "(if a (then: (+ 1 2)) (else: (if b (then: (+ 3 4)) (else: (.. '4' '5')))))",
         `\
 if a
   1 + 2
@@ -264,7 +248,7 @@ if a
       ]),
       c([
         `\
-if (a): 1
+if a then 1
 `,
         Types.string({max: 0}),
         'Type \'""\' is invalid as an if condition, because it is always false.',

@@ -37,14 +37,13 @@ import {
   INCLUSION_OPERATOR,
   NULL_COALESCE_ARRAY_ACCESS_OPERATOR,
   NULL_COALESCE_INVOCATION_OPERATOR,
-  NULL_COALESCING_OPERATOR,
+  NULL_COALESCING_PROPERTY_ACCESS_OPERATOR,
   PROPERTY_ACCESS_OPERATOR,
   SPREAD_OPERATOR,
   STRING_CONCAT_OPERATOR,
   UNARY_OP_NAMES,
 } from '@/formulaParser/grammars'
 import * as Expressions from './expressions'
-import {EnumLookupExpression} from './enum-expressions'
 import {
   comparisonOperation,
   expectedNumberMessage,
@@ -112,7 +111,7 @@ const PRECEDENCE = {
     [FUNCTION_INVOCATION_OPERATOR]: 18,
     [NULL_COALESCE_INVOCATION_OPERATOR]: 18,
     [PROPERTY_ACCESS_OPERATOR]: 18,
-    [NULL_COALESCING_OPERATOR]: 18,
+    [NULL_COALESCING_PROPERTY_ACCESS_OPERATOR]: 18,
   } as const,
   UNARY: {
     // unary range operators
@@ -3190,7 +3189,7 @@ addBinaryOperator({
 })
 
 class NullCoalescingPropertyAccessOperator extends PropertyAccessOperator {
-  symbol = NULL_COALESCING_OPERATOR
+  symbol = NULL_COALESCING_PROPERTY_ACCESS_OPERATOR
 
   isNullCoalescing() {
     return true
@@ -3230,8 +3229,8 @@ class NullCoalescingPropertyAccessOperator extends PropertyAccessOperator {
 
 addBinaryOperator({
   name: 'nullable property access',
-  symbol: NULL_COALESCING_OPERATOR,
-  precedence: PRECEDENCE.BINARY[NULL_COALESCING_OPERATOR],
+  symbol: NULL_COALESCING_PROPERTY_ACCESS_OPERATOR,
+  precedence: PRECEDENCE.BINARY[NULL_COALESCING_PROPERTY_ACCESS_OPERATOR],
   associativity: 'left',
   create(
     range: [number, number],

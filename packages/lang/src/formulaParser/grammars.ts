@@ -10,11 +10,13 @@ export const AS_KEYWORD = 'as'
 export const IS_KEYWORD = 'is'
 export const NOT_IS_KEYWORD = '!is'
 export const IF_KEYWORD = 'if'
+export const THEN_KEYWORD = 'then'
+export const ELSE_KEYWORD = 'else'
 export const GUARD_KEYWORD = 'guard'
 export const SWITCH_KEYWORD = 'switch'
 export const CASE_KEYWORD = 'case'
 export const LET_KEYWORD = 'let'
-export const LET_IN = 'in'
+export const LET_IN_KEYWORD = 'in'
 export const IGNORE_TOKEN = '_'
 export const FN_KEYWORD = 'fn'
 export const OVERRIDE_KEYWORD = 'override'
@@ -74,11 +76,11 @@ export const STRING_CONCAT_OPERATOR = '..'
 export const INCLUSION_OPERATOR = 'onlyif'
 export const FUNCTION_INVOCATION_OPERATOR = '()'
 export const PROPERTY_ACCESS_OPERATOR = '.'
-export const NULL_COALESCING_OPERATOR = '?.'
+export const NULL_COALESCING_PROPERTY_ACCESS_OPERATOR = '?.'
 export const NULL_COALESCE_INVOCATION_OPERATOR = '?.()'
-export const NULL_COALESCE_INVOCATION_OPEN = `${NULL_COALESCING_OPERATOR}(`
+export const NULL_COALESCE_INVOCATION_OPEN = `${NULL_COALESCING_PROPERTY_ACCESS_OPERATOR}(`
 export const NULL_COALESCE_ARRAY_ACCESS_OPERATOR = '?.[]'
-export const NULL_COALESCE_ARRAY_OPEN = `${NULL_COALESCING_OPERATOR}[`
+export const NULL_COALESCE_ARRAY_OPEN = `${NULL_COALESCING_PROPERTY_ACCESS_OPERATOR}[`
 
 export const BINARY_OP_NAMES = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
 export const BINARY_OP_ALIASES = {
@@ -147,7 +149,7 @@ const BINARY_OP_SYMBOLS = [
   '%',
   '**',
   PROPERTY_ACCESS_OPERATOR,
-  NULL_COALESCING_OPERATOR,
+  NULL_COALESCING_PROPERTY_ACCESS_OPERATOR,
   '&&',
   '||',
   '!?',
@@ -347,6 +349,9 @@ export function expressionSupportsSplat(expressionType: ExpressionType) {
 export function treatNewlineAsComma(expressionType: ExpressionType) {
   return (
     expressionType === 'let' ||
+    expressionType === 'if' ||
+    expressionType === 'if-then' ||
+    expressionType === 'else' ||
     expressionType === 'case' ||
     expressionType === 'generic' ||
     expressionType === 'argument' ||

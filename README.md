@@ -55,16 +55,22 @@ let
     num % 3 == 0 and num < max
 
   -- if syntax is "clean", no parens. Expressions are terminated by a newline,
-  -- unless an operator indicates more
+  -- unless an operator indicates more.
   evens =
     if max == 10
+      and max < 20
       [2, 4, 6, 8, 10]
-    else if max == 12
+    else if
+      -- I'm just messing with whitespace to show what is possible.
+      -- the built-in code formatter (`extra normal`) can format this nicely
+      max == 12
+      or max > 20
       -- the ++ at the end indicates that the expression is incomplete
       [2, 4, 6, 8, 10] ++
       [12]
     else
       [2, 4, 6, 8, 10, 12, 14]
+
     -- here the ++ comes *after* the entire if expression
     ++ [-1]
 
