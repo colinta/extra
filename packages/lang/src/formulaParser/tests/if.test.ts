@@ -22,143 +22,118 @@ describe('if', () => {
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
       c([
-        "if (a-letter == 'a', then: [1], else: [3])",
+        "if a-letter == 'a'; [1]; else [3]",
         "(if ((== a-letter 'a') (then: [1]) (else: [3])))",
         `\
-if (a-letter == 'a') {
-then:
+if a-letter == 'a'
   [1]
-else:
-  [3]
-}`,
+else
+  [3]`,
       ]),
       c([
-        'if (not a or b, then: 1, else: 3)',
+        'if not a or b; 1; else 3',
         '(if ((or (not a) b) (then: 1) (else: 3)))',
         `\
-if (not a or b) {
-then:
+if not a or b
   1
-else:
-  3
-}`,
+else
+  3`,
       ]),
       c([
-        '1 + if (a) { then: 1, else: 3 }',
-        '(+ 1 (if (a) { (then: 1) (else: 3) }))',
+        '1 + if a; 1; else 3',
+        '(+ 1 (if a (then: 1) (else: 3) }))',
         `\
-1 + if (a) {
-then:
+1 + if a
   1
-else:
-  3
-}`,
+else
+  3`,
       ]),
       c([
-        '1 + if (a) { then: 1\nelse: 3 }',
-        '(+ 1 (if (a) { (then: 1) (else: 3) }))',
+        '1 + if a; 1\nelse 3',
+        '(+ 1 (if (a) (then: 1) (else: 3)))',
         `\
-1 + if (a) {
-then:
+1 + if a
   1
-else:
-  3
-}`,
+else
+  3`,
       ]),
       c([
-        "if (a) { then: 1, elseif (b): 3, else: '4' }",
-        "(if (a) { (then: 1) (elseif (b) { 3 }) (else: '4') })",
+        "if a; 1; else if b; 3; else '4'",
+        "(if (a) (then: 1) (else: (if (b) (then: 3) (else: '4'))))",
         `\
-if (a) {
-then:
+if a
   1
-elseif (b):
+else if b
   3
-else:
-  '4'
-}`,
+else
+  '4'`,
       ]),
       c([
         `[
-  if (a) {
-  then:
+  if a
     1
-  else:
-    if (b) {
-    then:
+  else
+    if b
       3
-    else:
+    else
       '4'
-    }
-  }
   '4'
 ]`,
-        "[(if (a) { (then: 1) (else: (if (b) { (then: 3) (else: '4') })) }) '4']",
+        "[(if (a) (then: 1) (else: (if (b) (then: 3) (else: '4')))) '4']",
         `\
 [
-  if (a) {
-  then:
+  if a
     1
-  else:
-    if (b) {
-    then:
-      3
-    else:
-      '4'
-    }
-  }
+  else if b
+    3
+  else
+    '4'
   '4'
 ]`,
       ]),
       c([
         `\
-if (a) {
-then:
+if a
   1
-elseif (b):
+else if (b):
   3
-else:
+else
   '4'
-}
+
 `,
-        "(if (a) { (then: 1) (elseif (b) { 3 }) (else: '4') })",
+        "(if (a) (then: 1) (else: (if (b) (then: 3)) (else: '4')))",
         `\
-if (a) {
-then:
+if a
   1
-elseif (b):
+else if b
   3
-else:
-  '4'
-}`,
+else
+  '4'`,
       ]),
       c([
         `\
-if (a) {
-then:
+if a
   1
   +
   2
-elseif (b):
+else if b
   3
   +
   4
-else:
+else
   '4'
   ..
   '5'
-}
+
 `,
-        "(if (a) { (then: (+ 1 2)) (elseif (b) { (+ 3 4) }) (else: (.. '4' '5')) })",
+        "(if (a) (then: (+ 1 2)) (else: (if (b) (then: (+ 3 4) (else: (.. '4' '5'))))))",
         `\
-if (a) {
-then:
+if a
   1 + 2
-elseif (b):
+else if b
   3 + 4
-else:
-  '4' .. '5'
-}`,
+else
+  '4' .. '5'`,
       ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse '${formula}'`, () => {
@@ -175,14 +150,12 @@ else:
     cases<[string, ['a', string], ['b', boolean], Types.Type, Values.Value]>(
       c([
         `\
-if (a) {
-then:
+if a
   1
-elseif (b):
+else if b
   3
-else:
+else
   '4'
-}
 `,
         ['a', ''],
         ['b', false],
@@ -191,14 +164,12 @@ else:
       ]),
       c([
         `\
-if (a) {
-then:
+if a
   1
-elseif (b):
+else if b
   3
-else:
+else
   '4'
-}
 `,
         ['a', ''],
         ['b', true],
@@ -207,14 +178,12 @@ else:
       ]),
       c([
         `-- test out literals
-if (true) {
-then:
+if true
   1
-elseif (false):
+else if false
   3
-else:
+else
   '4'
-}
 `,
         ['a', ''],
         ['b', true],
@@ -223,12 +192,10 @@ else:
       ]),
       c([
         `\
-if (a) {
-then:
+if a
   a .. '!'
-else:
+else
   b
-}
 `,
         ['a', ''],
         ['b', true],
@@ -237,12 +204,10 @@ else:
       ]),
       c([
         `\
-if (a) {
-then:
+if a
   a .. '!'
-else:
+else
   b
-}
 `,
         ['a', ''],
         ['b', false],
@@ -251,56 +216,15 @@ else:
       ]),
       c([
         `\
-if (a) {
-then:
+if a
   a .. a
-else:
+else
   b
-}
 `,
         ['a', 'hi'],
         ['b', false],
         Types.oneOf([Types.string({min: 2}), Types.booleanType()]),
         Values.string('hihi'),
-      ]),
-      c([
-        `\
-elseif (a): a
-`,
-        ['a', 'hi'],
-        ['b', false],
-        Types.formula(
-          [],
-          Types.oneOf([
-            Types.tuple([Types.LiteralTrueType, Types.string({min: 1})]),
-            Types.tuple([Types.LiteralFalseType, Types.NullType]),
-          ]),
-        ),
-        expect.anything(),
-      ]),
-      c([
-        `\
-(elseif (a): a)()
-`,
-        ['a', 'hi'],
-        ['b', false],
-        Types.oneOf([
-          Types.tuple([Types.LiteralTrueType, Types.string({min: 1})]),
-          Types.tuple([Types.LiteralFalseType, Types.NullType]),
-        ]),
-        Values.tuple([Values.booleanValue(true), Values.string('hi')]),
-      ]),
-      c([
-        `\
-(elseif (a): a)()
-`,
-        ['a', ''],
-        ['b', false],
-        Types.oneOf([
-          Types.tuple([Types.LiteralTrueType, Types.string({min: 1})]),
-          Types.tuple([Types.LiteralFalseType, Types.NullType]),
-        ]),
-        Values.tuple([Values.booleanValue(false), Values.NullValue]),
       ]),
     ).run(([formula, [_a, valueA], [_b, valueB], expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
@@ -324,25 +248,23 @@ elseif (a): a
     cases<[string, Types.Type, string]>(
       c([
         `\
-if (a) {
-then:
+if a
   1
-}`,
+`,
         Types.string({min: 1}),
         "Type 'String(length: >=1)' is invalid as an if condition, because it is always true.",
       ]),
       c([
         `\
-if (a) {
-then:
+if a
   1
-}`,
+`,
         Types.string({max: 0}),
         'Type \'""\' is invalid as an if condition, because it is always false.',
       ]),
       c([
         `\
-elseif (a): 1
+if (a): 1
 `,
         Types.string({max: 0}),
         'Type \'""\' is invalid as an if condition, because it is always false.',

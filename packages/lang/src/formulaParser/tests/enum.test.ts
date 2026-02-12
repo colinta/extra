@@ -361,7 +361,7 @@ enum Shape { -- all together
     .circle(1.0)
 
   fn is-point() =>
-    this == .point
+    this is .point
 }`,
           Types.namedEnumDefinition({
             name: 'Shape',

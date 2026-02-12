@@ -22,131 +22,95 @@ describe('guard', () => {
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
       c([
-        "guard (a-letter == 'a', else: [3]): [1]",
-        "(guard ((== a-letter 'a') (else: [3])) { [1] })",
+        "guard a-letter == 'a' else [3] then [1]",
+        "(guard ((== a-letter 'a') (else: [3])) (then: [1]))",
+      ]),
+      c([
+        "guard a-letter == 'a' else [3] \n [1]",
+        "(guard ((== a-letter 'a') (else: [3])) (then: [1]))",
         `\
-guard (
+guard
   a-letter == 'a'
-else:
+else
   [3]
-):
 
 [1]`,
       ]),
       c([
-        'guard (not a or b, else: 3, 1)',
-        '(guard ((or (not a) b) (else: 3) 1))',
-        `guard (
+        'guard not a or b else 3\n1',
+        '(guard ((or (not a) b) (else: 3) (then: 1)))',
+        `guard
   not a or b
-else:
+else
   3
-):
 
 1`,
       ]),
+      c(['1 + guard a else 3 then a', '(+ 1 (guard (a) (else: 3) (then: a)))']),
       c([
-        '1 + guard (a) { else: 3, 1 }',
-        '(+ 1 (guard (a) { (else: 3) 1 }))',
-        `1 + guard (
+        '1 + guard a \nelse 3 \n1',
+        '(+ 1 (guard (a) (else: 3) (then: 1)))',
+        `1 + (guard
   a
-else:
+else
   3
-):
 
-1`,
+1)`,
       ]),
+      c(["guard a else '4' then 1", "(guard (a) (else: '4') (then: 1))"]),
       c([
-        '1 + guard (a) { 1\nelse: 3 }',
-        '(+ 1 (guard (a) { 1 (else: 3) }))',
-        `1 + guard (
-  a
-else:
-  3
-):
-
-1`,
-      ]),
-      c([
-        "guard (a) { 1, else: '4' }",
-        "(guard (a) { 1 (else: '4') })",
-        `\
-guard (
-  a
-else:
-  '4'
-):
-
-1`,
-      ]),
-      c([
-        `[
-  guard (a) {
-  else:
-    1
-    guard (b) {
-    else:
-      '4'
-      3
-    }
-  }
-  '4'
-]`,
-        "[(guard (a) { (else: 1) (guard (b) { (else: '4') 3 }) }) '4']",
         `\
 [
-  guard (
+  guard a else 1
+  guard b else 2
+  3
+  '4'
+]`,
+        "[(guard (a) (else: 1) (then: (guard (b) (else: 2) (then: 3)))) '4']",
+        `\
+[
+  guard
     a
-  else:
+  else
     1
-  ):
 
-  guard (
+  guard
     b
-  else:
-    '4'
-  ):
+  else
+    2
 
   3
   '4'
 ]`,
       ]),
       c([
+        "guard a else '4'\n1",
+        "(guard (a) (else: '4') (then: 1))",
         `\
-guard (a) {
-  1
-else:
-  '4'
-}
-`,
-        "(guard (a) { 1 (else: '4') })",
-        `\
-guard (
+guard
   a
-else:
+else
   '4'
-):
 
 1`,
       ]),
       c([
         `\
-guard (a) {
-else:
+guard a
+else
   '4'
   ..
   '5'
-  1
-  +
-  2
-}
-`,
-        "(guard (a) { (else: (.. '4' '5')) (+ 1 2) })",
+
+1
++
+2`,
+        "(guard (a) (else: (.. '4' '5')) (then: (+ 1 2)))",
         `\
-guard (
+guard
   a
-else:
+else
   '4' .. '5'
-):
 
 1 + 2`,
       ]),
@@ -168,12 +132,12 @@ else:
     cases<[string, ['a', string], ['b', boolean], Types.Type, Values.Value]>(
       c([
         `\
-guard (
+guard
   a
-  else:
-    '4'
-):
-  1
+else
+  '4'
+
+1
 `,
         ['a', ''],
         ['b', false],
@@ -181,12 +145,9 @@ guard (
         Values.string('4'),
       ]),
       c([
-        `-- test out literals and parsing block syntax
-guard (true) {
-  else:
-    '4'
-  1
-}
+        `\
+-- test out literals
+guard true else '4' then 1
 `,
         ['a', ''],
         ['b', true],
@@ -195,12 +156,12 @@ guard (true) {
       ]),
       c([
         `\
-guard (
+guard
   a
-else:
+else
   b
-):
-  a .. '!'
+
+a .. '!'
 `,
         ['a', ''],
         ['b', true],
@@ -209,12 +170,12 @@ else:
       ]),
       c([
         `\
-guard (
+guard
   a
-else:
+else
   b
-):
-  a .. '!'
+
+a .. '!'
 `,
         ['a', ''],
         ['b', false],
@@ -223,12 +184,12 @@ else:
       ]),
       c([
         `\
-guard (
+guard
   a
-else:
+else
   b
-):
-  a .. a
+
+a .. a
 `,
         ['a', 'hi'],
         ['b', false],
