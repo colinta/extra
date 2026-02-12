@@ -23,41 +23,31 @@ describe('switch', () => {
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
       c([
-        `switch (a-letter) { case _: '' }`,
-        "(switch (a-letter) { (case (_) : '') })",
+        `switch a-letter\ncase _\n  ''`,
+        "(switch (a-letter) (case (_) : ''))",
         `\
-switch (a-letter) {
-case _:
-  ''
-}`,
+switch a-letter
+case _
+  ''`,
       ]),
       c([
-        `switch (a-letter) { case 'a': [1], else: [3] }`,
-        "(switch (a-letter) { (case ('a') : [1]) (else: [3]) })",
+        `switch a-letter\ncase 'a'\n  [1]\nelse\n  [3]`,
+        "(switch (a-letter) (case ('a') : [1]) (else: [3]))",
         `\
-switch (a-letter) {
-case 'a':
+switch a-letter
+case 'a'
   [1]
-else:
-  [3]
-}`,
+else
+  [3]`,
       ]),
       c([
         `\
-switch (a-letter) {
-case 'a' or 'b':
+switch a-letter
+case 'a' or 'b'
   [1]
-else:
-  [3]
-}`,
-        "(switch (a-letter) { (case ('a' 'b') : [1]) (else: [3]) })",
-        `\
-switch (a-letter) {
-case 'a' or 'b':
-  [1]
-else:
-  [3]
-}`,
+else
+  [3]`,
+        "(switch (a-letter) (case ('a' 'b') : [1]) (else: [3]))",
       ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse '${formula}'`, () => {
@@ -73,55 +63,55 @@ else:
   describe('getType / eval', () => {
     cases<[string, [string, Types.Type, Values.Value][], Types.Type, Values.Value]>(
       c([
-        `switch (a-letter) { case _: '' }`,
+        `switch a-letter\ncase _\n  ''`,
         [['a-letter', Types.string({max: 1}), Values.string(' ')]],
         Types.literal(''),
         Values.string(''),
       ]),
       c([
         `\
-switch (letters) {
-case []:
+switch letters
+case []
   ['a']
-case [first]:
+case [first]
   [first]
-case [first, last]:
+case [first, last]
   [first, last]
-case [first, ..., last]:
+case [first, ..., last]
   [first, last]
-}`,
+`,
         [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
         Types.array(Types.string(), {min: 1, max: 2}),
         Values.string('c'),
       ]),
       c([
         `\
-switch (letters) {
-case []:
+switch letters
+case []
   ['a']
-case [first]:
+case [first]
   letters
-case [first, last]:
+case [first, last]
   letters
-case [first, ..., last]:
+case [first, ..., last]
   [first, last]
-}`,
+`,
         [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
         Types.array(Types.string(), {min: 1, max: 2}),
         Values.string('c'),
       ]),
       c([
         `\
-switch (things.letters) {
-case []:
+switch things.letters
+case []
   ['a']
-case [first]:
+case [first]
   things.letters
-case [first, last]:
+case [first, last]
   things.letters
-case [first, ..., last]:
+case [first, ..., last]
   [first, last]
-}`,
+`,
         [
           [
             'things',
@@ -134,16 +124,16 @@ case [first, ..., last]:
       ]),
       c([
         `\
-switch ([...letters1, ...letters2]) {
-case []:
+switch [...letters1, ...letters2]
+case []
   ['a']
-case [first]:
+case [first]
   [first]
-case [first, last]:
+case [first, last]
   [first, last]
-case [first, ..., last]:
+case [first, ..., last]
   [first, last]
-}`,
+`,
         [
           ['letters1', Types.array(Types.string()), Values.array([Values.string('c')])],
           ['letters2', Types.array(Types.string()), Values.array([Values.string('c')])],
@@ -153,12 +143,11 @@ case [first, ..., last]:
       ]),
       c([
         `\
-  switch (letters) {
-  case [] or [first]:
-    [first ?? 'a']
-  case [first, last] or [first, ..., last]:
-    [first, last]
-  }
+switch letters
+case [] or [first]
+  [first ?? 'a']
+case [first, last] or [first, ..., last]
+  [first, last]
 `,
         [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
         Types.array(Types.string(), {min: 1, max: 2}),
@@ -166,12 +155,11 @@ case [first, ..., last]:
       ]),
       c([
         `\
-  switch (letters) {
-  case [first] or []:
-    [first ?? 'a']
-  case [first, ..., last] or [first, last]:
-    [first, last]
-  }
+switch letters
+case [first] or []
+  [first ?? 'a']
+case [first, ..., last] or [first, last]
+  [first, last]
 `,
         [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
         Types.array(Types.string(), {min: 1, max: 2}),
@@ -200,31 +188,31 @@ case [first, ..., last]:
     cases<[string, [string, Types.Type, Values.Value][], string]>(
       c([
         `\
-switch (letters) {
-case []:
+switch letters
+case []
   ['a']
-case [first]:
+case [first]
   [first]
-case [first, last]:
+case [first, last]
   [first, last]
-case [first, _, last]:
+case [first, _, last]
   [first, last]
-}`,
+`,
         [['letters', Types.array(Types.string()), Values.nullValue()]],
         "Switch is not exhaustive, 'letters' has unhandled type 'Array(String, length: >=4)'",
       ]),
       c([
         `\
-switch ([...letters, ...letters]) {
-case []:
+switch [...letters, ...letters]
+case []
   ['a']
-case [first]:
+case [first]
   [first]
-case [first, last]:
+case [first, last]
   [first, last]
-case [first, _, last]:
+case [first, _, last]
   [first, last]
-}`,
+`,
         [['letters', Types.array(Types.string()), Values.nullValue()]],
         "Switch is not exhaustive, '[...letters, ...letters]' has unhandled type 'Array(String, length: >=4)'",
       ]),

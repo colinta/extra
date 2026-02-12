@@ -4,48 +4,23 @@
 
 `bun run repl`
 
-Extra is a strongly-typed language and runtime that can be used to create
-client-side applications (and other things, I suppose but it's aimed at
-*frontend*). It's closest cousin is Elm, second cousin to React,
-long-time-listener-first-time-caller to Svelte, and uncanny valley similarity to
-TypeScript.
+Extra is a strongly-typed language and runtime that can be used to create client-side applications (and other things, I suppose but it's aimed at *frontend*). It's closest cousin is Elm, second cousin to React, long-time-listener-first-time-caller to Svelte, and uncanny valley similarity to TypeScript.
 
 ## OK, tell me moooore...
 
-While Elm made good on the promise of being extremely well-reasoned, it was
-painful, to me, to compose components that needed to track their own internal
-state. Extra makes that really easy – but still explicit. While I was in there,
-I figured it wouldn't hurt to add TypeScript's branch-based type refinements.
-Might as well add Swift's `guard` expression, too... and JSX seems like a good
-idea (but can we make it even more ergonomic?).
+While Elm made good on the promise of being extremely well-reasoned, it was painful, to me, to compose components that needed to track their own internal state. Extra makes that really easy – but still explicit. While I was in there, I figured it wouldn't hurt to add TypeScript's branch-based type refinements. Might as well add Swift's `guard` expression, too... and JSX seems like a good idea (but can we make it even more ergonomic?).
 
-Extra will also feel familiar to React developers, but without the cognitive
-dissonance of "let it render" and "prevent too many rerenders", and obviously
-not the "this was your best idea?" mess that is hooks. Whenever someone says
-"React is (declarative|functional|good|fine/not-a-mess)!" I die a little inside.
+Extra will also feel familiar to React developers, but without the cognitive dissonance of "let it render" and "prevent too many rerenders", and obviously not the "this was your best idea?" mess that is hooks. Whenever someone says "React is (declarative|functional|good|fine/not-a-mess)!" I die a little inside.
 
-The big difference in Extra with all these frameworks is how views are
-*updated*. Think spreadsheets instead of DOM diffing.
+The big difference in Extra with all these frameworks is how views are *updated*. Think spreadsheets instead of DOM diffing.
 
-When you update a cell in a spreadsheet, the application is able to know exactly
-what cells were depending on that cell. It can create a dependency graph of all
-the downstream dependencies, including charts and pivot tables, triggers, etc,
-and only update *what is needed*. This is eerily similar to the goal that React
-and other virtual-dom-based frameworks attempted... but they work on a
-"render-and-diff" model instead of "render-what-changed". Extra tries to change
-that.
+When you update a cell in a spreadsheet, the application is able to know exactly what cells were depending on that cell. It can create a dependency graph of all the downstream dependencies, including charts and pivot tables, triggers, etc, and only update *what is needed*. This is eerily similar to the goal that React and other virtual-dom-based frameworks attempted... but they work on a "render-and-diff" model instead of "render-what-changed". Extra tries to change that.
 
-In Extra, your `<View/>` components create a runtime that is capable of
-tracking atomic changes. Think "assign new string value" and "push to an array".
-These atomic changes are handed to the components that were depending on that
-value, and the changes are propogated to the corresponding view object (dom or
-native view).
+In Extra, your `<View/>` components create a runtime that is capable of tracking atomic changes. Think "assign new string value" and "push to an array". These atomic changes are handed to the components that were depending on that value, and the changes are propogated to the corresponding view object (dom or native view).
 
 # I'm completely sold! But show me some more cool things nonetheless.
 
-Before I jump into the application architecture, let's get to know Extra first.
-Because on top of being a really interesting runtime, it's also a
-pretty-darn-good™ programming language!
+Before I jump into the application architecture, let's get to know Extra first. Because on top of being a really interesting runtime, it's also a pretty-darn-good™ programming language!
 
 ## Quick syntax primer
 
@@ -56,51 +31,65 @@ pretty-darn-good™ programming language!
 
 -- `let` is a special language construct that assigns values to scope.
 let
+  someNumber = 2 * 1 + 40
+
+  name = "Extra"
+
+  -- # name: -> positional argument
+  -- age: named argument
+  -- return type is inferred
   fn format(# name: String, age: Int) =>
     `Hello, $name! Are you $age years old?`
-  someNumber = 2 * 1 + 40
-  name = "Extra"
+  -- if you wanted to express the return type:
+  -- fn format(# name: String, age: Int): String
 in
   format(name, age: someNumber)
 
 
 let
   max = 10
+
   -- hyphens are allowed in names
   -- functions close-over local variables (`max`)
-  -- the return type `Boolean` is inferred
   fn is-divisible-by-3(num: Int) =>
     num % 3 == 0 and num < max
 
-  -- curly brackets are required in `if` expressions, but they surround the
-  -- entire expression. This is actually a function passing syntax that can be
-  -- used to create your own DSLs.
-  evens = if (max == 10) {
-  then:
-    [2, 4, 6, 8, 10]
-  elseif (max == 12):
-    [2, 4, 6, 8, 10, 12]
-  else:
-    [2, 4, 6, 8, 10, 12, 14]
-  }
+  -- if syntax is "clean", no parens. Expressions are terminated by a newline,
+  -- unless an operator indicates more
+  evens =
+    if max == 10
+      [2, 4, 6, 8, 10]
+    else if max == 12
+      -- the ++ at the end indicates that the expression is incomplete
+      [2, 4, 6, 8, 10] ++
+      [12]
+    else
+      [2, 4, 6, 8, 10, 12, 14]
+    -- here the ++ comes *after* the entire if expression
+    ++ [-1]
+
   odds = [
     1   -- look ma, no commas!
     3
     5
     7
 
-    -- alternative way to invoke 'if', including the elements
-    -- using spread operator
-    ...if (max <= 10, then: [9], else: [])
+    -- '...' is the 'spread' operator; these items will be included in the array
+    -- 'then' can be used to form a ternary-expression-like-syntax
+    -- (the code formatter will attempt to keep these on one line)
+    ...if max <= 10 then [9] else []
 
-    -- even better, the `onlyif` operator is only allowed in arrays,
+    -- even better, the `onlyif` operator is only allowed in arrays, objects,
     -- dicts, and sets. `11` is only included if the condition is true
     11 onlyif max > 10
   ]
 in
   [...evens, ...odds]
     .filter(is-divisible-by-3)
-    .sort(by: fn(a, b) => b <=> a) --> [9, 6, 3]
+    .sort(by: fn(a, b) =>
+      -- a <=> b will sort in ascending order, here we sort in descending order:
+      b <=> a
+    ) --> [9, 6, 3]
   -- the pipe operator assigns the left-hand-side to the `#pipe` symbol
   |> inspect('filter', #pipe)  --> prints "filter = [9, 6, 3]: [Int]" and returns that value
   |> #pipe.map(fn(num) => $num).join(',')
@@ -108,9 +97,9 @@ in
 -- there's a JSX-like syntax built in.
 <div>
   <h1>Hello, Extra!</h1>
-  <p>-- some things change, like this is no longer a comment</p>
-  <p>{- other things don't change, like this *is* a comment -}</p>
-  <!-- this is an HTML comment, so it's preserved -->
+  <p> -- this is no longer a comment</p>
+  <p>{- this *is* a comment -}</p>
+  <!-- this is an HTML comment, and it's preserved in the output -->
 </div>
 
 -- arrays, dicts, sets, and objects support an inclusion operator `onlyif`
@@ -120,20 +109,20 @@ in
   'italic' onlyif @is-italic
 ]>Hello, World!</p>
 ```
-Apps are created using the `view` keyword, which is either a class or pure
-function.
+Apps/Components are created using the `view` keyword, which is either a class or
+pure function.
 
 ```extra
 view Login {
   @email: String = ''
   @password: String = ''
 
-  handle-submit =>
-    guard(
+  fn handle-submit =>
+    -- if you've never seen the 'guard' expression, prepare to fall in love
+    guard
       @email and @password
-    else:
+    else
       null
-    ):
 
     Request.post(API_URL, {email: @email, password: @password})
 
@@ -169,50 +158,78 @@ I've tried hard to make sure the language grammar can unambiguously determine wh
   3
   -4
 
-  -- here's where things get tricky. The space between '-' and '5' turns it
-  -- into a subtraction operation, not negation.
-  8
-  - 5 -- equivalent to `8 - 5`
+  -- if you want to continue the line, you need to end in an operator
+  8 -
+  5 -- equivalent to `8 - 5`
 ] --> [1, 2, 3, -4, 3]
+--> [1, 2, 3, -4, 8 - 5]
+
 
 {
   name: 'Extra'
   is-awesome: true
   awesome-level: 11
 }
+-- > {name: 'Extra', is-awesome: true, awesome-level: 11}
 
 add-two-numbers(
   1
   2
 ) --> 3
+-- > add-two-numbers(1, 2)
 
-import Math : {
+-- import `sqrt` and `pow` functions from the Math package
+import Math only {
   sqrt
   pow
-} --> import `sqrt` and `pow` functions from the Math package
+}
+-- import Math only { sqrt, pow }
+
 ```
 
 ## Unambiguous operators
 
-Minor thing: `+` is a mathematical operator that adds two numbers. Did you know that `a + b == b + a`? Except in Java and Javascript and Swift and many other languages. 🙄
+`+` is a mathematical operator that adds two numbers. Did you know that `a + b == b + a`? Except in Java and Javascript and Swift and many other languages. 🙄
 
-`++` is a computer science-y looking operator that concatenates two arrays. `..` does the same for strings.
+`++` is a computer science-y looking operator that concatenates two arrays. `..` does the same for strings. Having distinct concatenation operators is either really nice for indicating intentionality, or an unnecessary distinction. I hate to side w/ PHP on this one, but I treat 'em differently. Or hey maybe I'm hitching my ride to PHP's weird and shocking resurgence!? Who knows!?
 
-Having distinct concatenation operators is either really nice for indicating intentionality, or an unnecessary distinction. I hate to side w/ PHP on this one, but I treat 'em differently. Or hey maybe I'm hitching my ride to PHP's weird and shocking resurgence!? Who knows!?
+Words (`and` `or` `not` `is` `has` `else`) are used for logical operators, but not bitwise operators (`&` `|` `^` `~`). But I like to think I'm a reasonable person, so I also treat the traditional operators as aliases (`&& → and`, `|| → or`, `! → not`, etc).
 
-Words (`and` `or` `not` `is` `has`) are used for logical operators, but not bitwise operators (`&` `|` `^` `~`). But I like to think I'm a reasonable person, so I also treat the traditional operators as aliases (`&& → and`, `|| → or`, `! → not`, etc).
+## Match operator
 
-You would be forgiven for thinking `is` is the *instanceof* operator... and you'd be right, even though you're wrong: it's the "match" operation (see "Destructured Matching"), ie `if (x is .some(val))` will attempt to match the two sides. The left-hand side is evaluated, and must match with the right-hand side (`.some(val) is x` will not compile). In this case, in the scope of the `then:` branch, `val` will have the unwrapped value of `x`.
+You would be forgiven for thinking `is` is the *instanceof* operator... and you'd be right, even though you're wrong: it's the "match" operator. ie `if x is .some(val)` will attempt to match the two sides. In this case, if the match succeeds, `val` will have the unwrapped value of `x`.
+
 ```extra
 let
   x = .some(42)
 in
-  if (x is .some(val)) {
-  then:
+  if x is .some(val)
+    -- val == 42
     val
-  else:
+  else
     0
-  }
+```
+
+## `let` expressions
+
+`let` assigns variables to local scope.
+
+```extra
+let
+  x = 1
+  y = 2
+in
+  x + y
+```
+
+Extra lives up to its namesake:
+
+```extra
+in
+  x + y
+let
+  x = 1
+  y = 2
 ```
 
 ## String coercion and interpolation
@@ -227,14 +244,17 @@ Extra's "coerce to String" function is a unary operator `$`, and it's also the s
 "How many: " .. $n
 
 -- because it's an _operator_, you can do things like
-[1, 2].join($(n + 1))
+let
+  n = 1
+in
+  $(n + 1) --> "2"
 ```
 
-## Type guards aka Type refinements
+## Type refinements
 
-You can provide much more type information to Arrays, Dicts, Sets, Strings, and Numbers. You can define types like "an Array of Ints, with at least one item, where each Int is greater than 0" (`[Int(>0), 1+]`).
+You can provide much more type information to Arrays, Dicts, Sets, Strings, and Numbers. You can define types like "an Array of Ints, with at least one item, where each Int is greater than 0" (`Array(Int(>0), length: >=1)`).
 
-In my mind, an "empty String/Array" is a different _type_ than "a String with 5 or more characters." And the reason they are different types is because there are often cases where I _know that I will need at least one of the thing_. For instance, a `name: String` variable. Would't it be nice if I could say `name: String(1+)`, indicating that it must have at least one letter? _Yes we can!_
+In my mind, an "empty String/Array" is a different _type_ than "a String with 5 or more characters." And the reason they are different types is because there are often cases where I _know that I will need at least one of the thing_. For instance, a `name: String` variable. Would't it be nice if I could say `name: String(length: >0)`, indicating that it must have at least one letter? _Yes we can!_
 
 ```extra
 String(length: =8)      -- String of exactly length 8
@@ -303,14 +323,16 @@ If `b` is specified, use it, otherwise use the default.
 
 ```extra
 let
-  fn bar(# a: Int, # b: Int = 10) => a + b
+  fn bar(# a: Int, # b: Int = 10) =>
+    a + b
+
   fn foo(# a: Int, # b: Int | null) =>
     bar(a, b ?? #default)
 in
-[
-  foo(1),    --> 11, default value of 10 is used
-  foo(1, 1), --> 2
-]
+  [
+    foo(1),    --> 11, default value of 10 is used
+    foo(1, 1), --> 2
+  ]
 ```
 
 In other languages, in order to avoid hard-coding b's default value 10 you would
@@ -318,12 +340,10 @@ have to provide two separate calls to bar:
 
 ```extra
 fn foo(# a: Int, # b: Int | null) =>
-  if (b == null) {
-  then:
+  if b == null
     bar(a)
-  else:
+  else
     bar(a, b)  -- 🤢
-  }
 ```
 
 It really shakes my pepper that this doesn't exist in more languages! How is this not a thing!? I've often felt that I wanted this. Maybe it's just me. 🤷‍♂️
@@ -369,14 +389,17 @@ enum RemoteData<Success, Failure> {
   .success(value: Success)
 
   static maybe<S, F>(# value: S?): RemoteData(S, F) =>
-    if (value, then: .success(value), else: .notAsked)
+    if value
+      .success(value)
+    else
+      .notAsked
 
   fn data(): Success? =>
-    switch(this) {
-    case .success(value): value
-    else:
+    switch this
+    case .success(value)
+      value
+    else
       null
-    }
 }
 
 let
@@ -460,29 +483,19 @@ U+2570 ╰ ╱ ╲ ╳ ╴ ╵ ╶ ╷ ╸ ╹ ╺ ╻ ╼ ╽ ╾ ╿
 
 ### Blocks and Lazy types
 
-Arguments can be marked `lazy`, in which case they look like a value at the call-site, but are not evaluated until the parameter is invoked.
+Arguments can be marked `Lazy`, in which case they look like a value at the call-site, but are not evaluated until the parameter is invoked.
 
-Arguments can also be provided *outside* of the function using two syntaxes:
-
-```extra
--- "simple" argument
-foo(): 1  --> same as foo(1), only supports one "outside" argument
-foo() { 1 }  --> same as foo(1), supports any number of arguments, including named
-foo() { 1, else: 2 }
-```
-
-Here is a function definition using `lazy` arguments:
+Here is a function definition using `Lazy` arguments:
 
 ```extra
-fn doSomething<T>(condition: 1 | 2 | 3, one: lazy(T), two: lazy(T), three: lazy(T)) =>
-  switch (condition) {
-  case 1:
+fn doSomething<T>(condition: 1 | 2 | 3, one: Lazy(T), two: Lazy(T), three: Lazy(T)) =>
+  switch condition
+  case 1
     one()
-  case 2:
+  case 2
     two()
-  case 3:
+  case 3
     three()
-  }
 
 -- usually you would call the function like this - "vanilla" extra code
 doSomething(1, one: 1, two: 2, three: 3) --> 1
@@ -503,10 +516,15 @@ doSomething(1) {
 -- Syntax:
 --     [subject] is [matcher]
 -- Or
---     switch ([subject]) { case [matcher]: expr}
+--     switch [subject]
+--     case [matcher]
+--       expr
 -- Ex:
    subject is .some(value)
-   switch (subject) { case .some(value): value }
+
+   switch subject
+   case .some(value)
+     value
 
 foo --> matches everything, assigns to 'foo'
 _ --> same but ignore the value
@@ -528,16 +546,15 @@ _ --> same but ignore the value
 ###### Numbers
 ```extra
 -- number matching works on literals and ranges
-switch (volume) {
-case 0:
+switch volume
+case 0
   'muted!?'
-case 1..<2:
+case 1..<2
   'turn it up!'
-case 2..<5:
+case 2..<5
   "that's enough"
-else:
+else
   `$volume is too loud`
-}
 ```
 
 ###### Strings and Regex
@@ -546,33 +563,31 @@ Strings can be matched against regexes, and will assign matches to named capture
 groups, or you can match against a prefix and assign the remainder.
 
 ```extra
-switch (name) {
-case /(?<first>\w+) (?<last>\w+)/:
+switch name
+case /(?<first>\w+) (?<last>\w+)/
   `Hello, $first $last!`
-case "Bob " .. last:
+case "Bob " .. last
   `Did you say Bab? Bab $last!?`
-case _ .. "!":
+case _ .. "!"
   "Your name ends in an exclamation mark, wow, that's so cool 🙄"
-else:
+else
   `Hello, $name!`
-}
 ```
 
 ###### Arrays
 ```extra
 -- match specific lengths, or any length using the spread operator
-switch (friends) {
-case []:
+switch friends
+case []
   "Aww, I'll be your friend"
-case [one-friend]:
+case [one-friend]
   `$one-friend sounds like a great friend!`
-case [first, last]:
+case [first, last]
   `Wow you know $first and $last!?`
-case [first, _, last]:
+case [first, _, last]
   `Wow you know $first and $last!? And someone else, but I forgot their name.`
-case [...some, last]:
+case [...some, last]
   `${some.join(", ")} and $last... that's too many friends.`
-}
 ```
 
 ###### Enums
@@ -583,12 +598,11 @@ enum Permission {
   .readonly
 }
 
-switch (permission) {
-case .sudo, .readonly:
+switch permission
+case .sudo, .readonly
   true
-else:
+else
   false
-}
 ```
 
 ###### Objects
@@ -596,31 +610,29 @@ else:
 -- match named or positional arguments, and you can *nest* matchers, which makes
 -- this really useful
 fn permission(user: User): Permission =>
-  switch (user) {
-  case {role: .admin}:
+  switch user
+  case {role: .admin}
     .sudo
-  case {name: "Colin"}:
+  case {name: "Colin"}
     .sure-why-not
-  case {name: name, role: .staff}:
+  case {name: name, role: .staff}
     .readonly(name)
-  else:
+  else
     .none
-  }
 ```
 
 ###### Putting it all together
 ```extra
 -- input: String | Array(String)
-switch (input) {
-case 'foo' .. bar:
+switch input
+case 'foo' .. bar
   bar -- bar: String, input: String (TODO: add 'prefix' info to String type)
-case [onlyOne]:
+case [onlyOne]
   onlyOne  -- onlyOne: String, input: Array(String, length: =1)
-case [...many, last]:
+case [...many, last]
   many.join(',') .. ` and $last`  -- many: Array(String), last: String, input: Array(String, length: >=1)
-else:
+else
   'not "foo…" or [a, …]'
-}
 ```
 
 ### Enums / Algebraic data types
@@ -631,13 +643,14 @@ enum Result<Ok, Err> {
   .err(Err)
 
   fn to-maybe() =>
-    switch (this) {
-    case .ok(value): value
-    else: null
-    }
+    switch this
+    case .ok(value)
+      value
+    else
+      null
 
   static from-maybe<T>(# value: T?): Result<T, null> =>
-    if (value, then: .ok(value), else: .err(null))
+    if value then .ok(value) else .err(null)
 }
 
 enum Colour {
@@ -646,18 +659,17 @@ enum Colour {
   .name(# name: 'red' | 'green' | 'blue')
 }
 
-switch (colour) {
-case .rgb(r, g, b):
+switch colour
+case .rgb(r, g, b)
   `rgb($r, $g, $b)`
-case .hex(hex):
+case .hex(hex)
   `hex(#$hex)`
-case .name:
+case .name
   `Colour named '$(colour.name)'`
-}
 ```
 
 There is also a shorthand syntax, only available when defining an enum as an
-argument type (you cannot use generics in that case):
+argument type:
 
 ```extra
 fn print(
@@ -669,7 +681,7 @@ fn print(
     | .name('red' | 'green' | 'blue')
     | null
 ) =>
-  if (color) { then: … }
+  if color then …
 ```
 
 ### Classes
@@ -680,24 +692,14 @@ Even functional programming languages deserve classes! And in Extra, classes ser
 class User {
   -- class properties are prefixed with '@'
   @name = ''
-  -- private properties are prefixed with '@@'
-  @@count = 0
+  @count = 0
 
   fn change-name(# new-name: String) =>
     @name = new-name
 
   fn increase() =>
-    @@count += 1
+    @count += 1
 }
-```
-
-You would think, given the above, that mutating an instance of a class would be trivial, but recall that Extra follows the single-expression convention of most functional languages. Where, then, might this mutation go? I'll tell you! It's a return value. This may *look* like it's mutating `u`, but actually it's returning a `Message` to the runtime that *describes* how to mutate `u`. And what actually happens is `u` is replaced with a new instance of `User`, with the updated `@@count` value.
-
-```extra
-let
-  u = User()
-in
-  u.increase() --> `Message(clone u, setting @@count = u.count + 1)`
 ```
 
 This turns out to be magic sauce, and it is *the mechanism* that powers UI updates. More in a bit.
@@ -737,12 +739,10 @@ I think the intention above is clear - and the below is no less clear, but at th
 
 ```extra
 let
-  message = if (not error.message.isEmpty()) {
-  then:
+  message = if error.message != ""
     error.message
-  else:
+  else
     "Try that again please"
-  }
 ```
 
 And so, Extra has "Truthiness", and we take a page from Python: anything "empty" is considered false.
@@ -846,12 +846,10 @@ let
   calculator = fn(# a: Int, # op: String, # b: Int, # out: String) =>
     let
       result =
-        if (op is /^\s*\+\s*$/) {
-        then:
+        if op is /^\s*\+\s*$/
           a + b
-        else:
+        else
           a - b
-        }
       out = out.replaceAll('?', with: $result)
     in
       `$a$op$b$out`
@@ -1089,7 +1087,7 @@ We've seen many definitions already.
 
 ## Let
 
-`let` is how you can assign values to local ~variables~ scope. I'll use this in most examples below so I better define it first.
+`let` is how you can assign values to local ~variables~ scope.
 
 ```extra
 let
@@ -1131,12 +1129,10 @@ If the argument type is null-able, you can make the argument optional `like?: Th
 
 ```extra
 fn first-or<T>(# array: Array(T), else fallback?: T) =>
-  if (array) {
-  then:
+  if array
     array[0]
-  else:
+  else
     fallback
-  }
 
 let
   a: Array(Int) = […]
@@ -1251,106 +1247,70 @@ add(...[1]) --> 1
 
 As in all functional programming languages, `if` is an expression that returns the value of the branch that was executed. The `else` branch is optional. If the `else` value is not provided, `null` is returned.
 
-Usually you will invoke `if` with the "block" syntax, `if (condition) { then: value }`, or you can use the function syntax `if (condition, then: value, else: null)`.
-
 ```extra
-if (test1 or test2) {
-then:
+if test1 or test2
   result_1
-} --> result_1 | null
+--> result_1 | null
 
-if (test1 or test2) {
-then:
+if test1 or test2
   result_1
-else:
+else
   result_2
-} --> result_1 | result_2
+--> result_1 | result_2
 ```
 
-Multiple `elseif` branches can be provided:
+Multiple `else if` branches can be provided:
 
 ```extra
-if (test1 or test2) {
-then:
+if test1 or test2
   result_1
-elseif (test2):
+else if test2
   result_2
-else:
+else
   result_3
-} --> result_1 | result_2 | result_3
+--> result_1 | result_2 | result_3
 ```
 
-There is also an "inline" version, which might show how `if` follows the same function argument rules as Extra in general. Assume `elseif()` is a function that also accepts a condition.
+There is also an "inline" version using the `then` keyword. This is an indication to the code formatter that you would prefer to keep this condition on one line; however, if the line is too long, the formatter will automatically break it into multiple lines anyway because who do you think is boss here?
 
 ```extra
-if (test1 or test2, then: result-1, elseif (test2, result_2), else: result-4)
-```
+-- nice and tidy
+if test1 then result_1 else result_2
 
-`if` is, of course, implemented internally by the compiler. It had to be in order to implement the type narrowing features. But I made sure that the syntax was not "special". Given the right syntax and primitives, it could be expressed as an Extra function.
-
-```extra
-if (test1 or test2) {
-then:  -- a required named argument
-  result_1
-elseif (test2): -- this looks like special syntax, but actually it's just function invocation:
-  result_2      -- `elseif (# condition): # then` (the elseif clauses are variadic in the 'if' function)
-else:  -- optional named argument
-  result_3
-}
-```
-
-For the curious, the function signature of `if` would be *something like*:
-
-```extra
-fn if<T>(
-  # condition: Boolean
-  then: lazy T
-  ...# elseif: Array(lazy T)
-  else?: lazy T
-): T
-
-fn elseif<T>(# condition: lazy Boolean, # then: lazy T)
-```
-
-In the future I'd like to try to support an `implication` type, but I'm not sure I'll ever be able to support the variadic `elseif` array, such that each subsequent invocation implies all the previous ones are false. The `implication` type, in a simple `if/else` version, would look something like this:
-
-```extra
-fn if<T, C is Implication>(
-  # condition: C
-  then: Implies(C, T)
-  else?: Implies(not C, T)): T
-=> …
+-- no way, this will be reformatted
+if test1 or test2 then result-1 else if test2 then result_2 else result-4
+-->
+if test1 or test2
+  result-1
+else if test2
+  result_2
+else
+  result-4
 ```
 
 ## `guard`
 
-Guard expressions are useful in any language, but the `guard` syntax in Swift was one of my favourite language features, and so I'm unapologetically stealing it. Of course w/ Extra flair.
-
-All of the
+Guard expressions are useful in any language, but the `guard` syntax in Swift was one of my favourite language features, and so I'm unapologetically stealing it.
 
 ```extra
 fn(# name: String?, hobbies: Array(String)): String =>
-  guard(
+  guard
     name != null
-  else:
+  else
     ''
-  ):
-    guard(
-      hobbies.length > 0
-    else:
-      name .. ' is not very interesting'
-    ):
-      name .. ': ' .. hobbies.join(', ')
+
+  guard
+    hobbies.length > 0
+  else
+    name .. ' is not very interesting'
+
+  name .. ': ' .. hobbies.join(', ')
 ```
 
-Like `if`, you could imagine that this was implemented after the fact as an Extra function. The signature would be:
+Guard also has an inline version. As much as I love the `guard` expression in general, the inline version is a bit of a mouthful, and I don't recommend using it.
 
 ```extra
-fn guard<T>(
-  # condition: Boolean
-else: lazy T
-  # do: lazy T
-): T
+guard name != null else '' then name
 ```
 
 ## Operators
@@ -1635,7 +1595,7 @@ If the property access isn't a build-in, it will search for that property in the
 
 ```extra
 let
-  ages: Dict(Int) = [alice: 50, bob: 46]
+  ages: Dict(Int) = #{alice: 50, bob: 46}
 in
   ages['alice']  --> returns 50
   ages.bob       --> returns 46
@@ -1644,7 +1604,7 @@ in
 
 -- there is also a "null safe" property access operator
 -- ie if `person` could be null:
-person?.address.street ?? 'default address'
+person?.address.street then 'default address'
 --> returns person.address.street if person is defined, otherwise returns 'default address' due to null coalescing operator
 ```
 
@@ -1655,12 +1615,11 @@ Everyone's favourite! Well it's _my_ favourite, and if you haven't used it today
 ```extra
 [1,2,3].filter(fn(i) => i < 3).join(',')
   |>
-    if (#pipe.length) {
-    then:
+    if #pipe.length
+      -- recall that $ is the 'to string' operator
       $#pipe .. ','
     else
       ''
-    }
   |>
     `[$#pipe]`  --> `"[1,2,3,]"`
 ```
