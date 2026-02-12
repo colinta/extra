@@ -171,7 +171,7 @@ export function scanArgumentType(
         'The `enum` type is not allowed as a formula argument type, however you *can* use the enum shorthand syntax: `arg: .case1 | .case2`, or you should move it to the module scope',
       )
     } else if (scanner.isWord(FN_KEYWORD)) {
-      scanner.expectString(FN_KEYWORD)
+      scanner.expectWord(FN_KEYWORD)
       scanner.scanAllWhitespace()
       argType = scanFormulaType(scanner, arg0, parseNext, moduleOrArgument)
     } else if (isArgumentStartChar(scanner)) {
@@ -456,7 +456,7 @@ function scanObjectType(
     //       foo: fn(): Value
     //     }
     // if (scanner.isWord(FN_KEYWORD)) {
-    //   scanner.expectString(FN_KEYWORD)
+    //   scanner.expectWord(FN_KEYWORD)
     //   scanner.expectWhitespace()
     //   name = scanValidName(scanner).name
     //   scanner.scanAllWhitespace()

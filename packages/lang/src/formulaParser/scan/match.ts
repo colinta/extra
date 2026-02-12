@@ -96,7 +96,7 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
     let assignRef: Expressions.Reference | undefined
     if (scanner.test(isAsKeyword)) {
       scanner.scanSpaces()
-      scanner.expectString(AS_KEYWORD)
+      scanner.expectWord(AS_KEYWORD)
       scanner.scanSpaces()
       assignRef = scanValidLocalName(scanner)
     }
@@ -436,7 +436,7 @@ export function scanCase(scanner: Scanner, parseNext: ParseNext): Expression {
   scanner.whereAmI('scanCase')
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
-  scanner.expectString(CASE_KEYWORD)
+  scanner.expectWord(CASE_KEYWORD)
   scanner.scanAllWhitespace()
   const matches: Expressions.MatchExpression[] = []
   for (;;) {

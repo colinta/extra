@@ -85,13 +85,20 @@ export class ParseError extends Error {
     // )
   }
 }
+
 export type ExpressionType =
   | 'expression' // default, but greedy
   | 'let' // let ... in
+  | 'if' // if ... then | non-greedy expression
+  | 'if-then' // then ... else | non-greedy expression
+  | 'else' // else ... | non-greedy expression
+  | 'guard' // guard ... else
+  | 'guard-then' // non-greedy expression
+  | 'switch' // switch ... case ... case | end-of-expression
+  | 'case' // parses the argument after 'case [match]:'
   | 'type' // parses the type within fn<..>()
   | 'module' // all module-level definitions are scanned in this context
   | 'enum' // parses enum members, member and static functions, closes w/ }
-  | 'case' // parses the argument after 'case [match]:'
   | 'class' // parses properties, member and static functions, closes w/ }
   | 'default' // parses a single expression in the context of a class default value
   | 'object-symbol' // parses the values within {key: value}

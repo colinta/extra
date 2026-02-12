@@ -42,7 +42,7 @@ import {
   expressionSupportsSplat,
   isTaggedString,
   LET_KEYWORD,
-  LET_IN,
+  LET_IN_KEYWORD,
   FN_KEYWORD,
   PARENS_OPEN,
   ARRAY_OPEN,
@@ -61,13 +61,19 @@ import {
   DICT_OPEN,
   ARGS_OPEN,
   INCLUSION_OPERATOR,
-  NULL_COALESCING_OPERATOR,
+  NULL_COALESCING_PROPERTY_ACCESS_OPERATOR,
   FUNCTION_INVOCATION_OPERATOR,
   NULL_COALESCE_INVOCATION_OPEN,
   NULL_COALESCE_ARRAY_OPEN,
   NULL_COALESCE_ARRAY_ACCESS_OPERATOR,
   NULL_COALESCE_INVOCATION_OPERATOR,
   ENUM_START,
+  PROPERTY_ACCESS_OPERATOR,
+  IF_KEYWORD,
+  GUARD_KEYWORD,
+  SWITCH_KEYWORD,
+  THEN_KEYWORD,
+  ELSE_KEYWORD,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -90,6 +96,7 @@ import {scanLet} from './scan/let'
 import {scanCase, scanMatch} from './scan/match'
 import {scanArgumentType} from './scan/argument_type'
 import {scanEnumLookup} from './scan/enum'
+import {scanIf} from './scan/if'
 
 const LOWEST_OP: Operator = {
   name: 'lowest op',
@@ -113,7 +120,7 @@ export function parse(input: string, debug = 0): GetParserResult<Expression> {
 
   if (result.isOk()) {
     const expression = result.value
-    scanner.scanAllWhitespace('1')
+    scanner.scanAllWhitespace()
     if (scanner.charIndex < input.length) {
       return err(new ParseError(scanner, 'Unexpected end of formula before the input was parsed'))
     }
@@ -171,7 +178,7 @@ function scan(
 }
 
 function prepareParseNext(scanner: Scanner) {
-  scanner.scanAllWhitespace('2')
+  scanner.scanAllWhitespace()
   return function parseNext(
     expressionType: ExpressionType,
     options: Pick<Options, 'isInPipe' | 'isInView'> = {},
@@ -391,7 +398,7 @@ function parseInternal(
     switch (scanner.char) {
       case '?':
         return (
-          scanner.is(NULL_COALESCING_OPERATOR) || //   ?.
+          scanner.is(NULL_COALESCING_PROPERTY_ACCESS_OPERATOR) || //   ?.
           scanner.is(NULL_COALESCE_ARRAY_OPEN) || //   ?.[
           scanner.is(NULL_COALESCE_INVOCATION_OPEN) // ?.(
         )
@@ -410,10 +417,10 @@ function parseInternal(
   //    otherwise it's negation (stop scanning)
   // 2. is the next token '...'? if we're scanning array/object/set/dict,
   //    that's a splat operator, we should stop scanning.
-  // 3. check for an 'if' inclusion operator inside of array/object/set/dict.
+  // 3. check for an 'onlyif' inclusion operator inside of array/object/set/dict.
   // 4. finally, check for a binary operator.
   function continueScanningAfterNewline() {
-    scanner.scanAllWhitespace('3')
+    scanner.scanAllWhitespace()
     if (scanner.is(/[-~$][^ \n\t]/)) {
       scanner.whereAmI('scanning a negative number')
       return false
@@ -434,12 +441,38 @@ function parseInternal(
     return isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)
   }
 
+  function nextIsKeyword(keyword: string) {
+    return (scanner: Scanner) => {
+      scanner.scanAllWhitespace()
+      return scanner.isWord(keyword)
+    }
+  }
+
+  // matches a "bare" if/guard/switch. The one exception (that I could think of)
+  // is if the keyword is preceded by a '.' or '?.' operator.
+  //     a + if ... --> if keyword
+  //     a.if ...   --> property access
+  function isMatchingControlExpression(name: 'if' | 'guard' | 'switch') {
+    if (!scanner.isWord(name)) {
+      return false
+    }
+
+    if (
+      isOperator(prevOperator, PROPERTY_ACCESS_OPERATOR, 2) ||
+      isOperator(prevOperator, NULL_COALESCING_PROPERTY_ACCESS_OPERATOR, 2)
+    ) {
+      return false
+    }
+
+    return true
+  }
+
   scanner.whereAmI('parseInternal:scanExpression ' + expressionType)
   while (!scanner.isEOF()) {
     if (!isMatchingExpression) {
       if (treatNewlineAsComma(expressionType) && scanner.is('\n')) {
         if (scanner.test(continueScanningAfterNewline)) {
-          scanner.scanAllWhitespace('4')
+          scanner.scanAllWhitespace()
         } else {
           const comments = scanner.flushComments()
           const commentExpr = expressionStack.at(-1)
@@ -452,11 +485,21 @@ function parseInternal(
         }
       }
 
+      if (expressionType === 'if' && scanner.test(nextIsKeyword(THEN_KEYWORD))) {
+        scanner.whereAmI(`done scanning if`)
+        break
+      }
+
+      if (expressionType === 'if-then' && scanner.test(nextIsKeyword(ELSE_KEYWORD))) {
+        scanner.whereAmI(`done scanning then`)
+        break
+      }
+
       if (expressionType === 'let') {
         if (
           scanner.test(() => {
-            scanner.scanAllWhitespace('5')
-            return scanner.isWord('in')
+            scanner.scanAllWhitespace()
+            return scanner.isWord(LET_IN_KEYWORD)
           })
         ) {
           const comments = scanner.flushComments()
@@ -492,6 +535,12 @@ function parseInternal(
       scanner.whereAmI(`expressionType ${expressionType}`)
       if (isOperator(prevOperator, IS_KEYWORD, 2) || isOperator(prevOperator, NOT_IS_KEYWORD, 2)) {
         processExpression(scanMatch(scanner, parseNext))
+      } else if (isMatchingControlExpression(IF_KEYWORD)) {
+        processExpression(scanIf(scanner, parseNext))
+      } else if (isMatchingControlExpression(GUARD_KEYWORD)) {
+        processExpression(scanGuard(scanner, parseNext))
+      } else if (isMatchingControlExpression(SWITCH_KEYWORD)) {
+        processExpression(scanSwitch(scanner, parseNext))
       } else if (
         // TODO: this can't be right... this matches *all* arguments named
         // 'case', regardless of whether we are scanning a 'switch' statement.
@@ -556,8 +605,8 @@ function parseInternal(
         if (
           expressionType === LET_KEYWORD &&
           scanner.test(() => {
-            scanner.scanAllWhitespace('6')
-            return scanner.isWord(LET_IN)
+            scanner.scanAllWhitespace()
+            return scanner.isWord(LET_IN_KEYWORD)
           })
         ) {
         }
@@ -567,7 +616,7 @@ function parseInternal(
         processOperator(binaryOperatorNamed(FUNCTION_INVOCATION_OPERATOR, scanner.flushComments()))
         processExpression(scanInvocationArgs(scanner, parseNext))
       } else if (scanner.is(NULL_COALESCE_INVOCATION_OPEN)) {
-        scanner.expectString(NULL_COALESCING_OPERATOR)
+        scanner.expectString(NULL_COALESCING_PROPERTY_ACCESS_OPERATOR)
         processOperator(
           binaryOperatorNamed(NULL_COALESCE_INVOCATION_OPERATOR, scanner.flushComments()),
         )
@@ -576,7 +625,7 @@ function parseInternal(
         processOperator(binaryOperatorNamed('[]', scanner.flushComments()))
         processExpression(scanArrayAccess(scanner, parseNext))
       } else if (scanner.is(NULL_COALESCE_ARRAY_OPEN)) {
-        scanner.expectString(NULL_COALESCING_OPERATOR)
+        scanner.expectString(NULL_COALESCING_PROPERTY_ACCESS_OPERATOR)
         processOperator(
           binaryOperatorNamed(NULL_COALESCE_ARRAY_ACCESS_OPERATOR, scanner.flushComments()),
         )
@@ -673,4 +722,23 @@ function parseInternal(
 
   expressionStack[0].followingComments.push(...scanner.flushComments())
   return expressionStack[0]
+}
+function scanGuard(
+  scanner: Scanner,
+  parseNext: (
+    expressionType: ExpressionType,
+    options?: Pick<Options, 'isInPipe' | 'isInView'>,
+  ) => Expressions.Expression,
+): Expressions.Expression {
+  throw new Error('Function not implemented.')
+}
+
+function scanSwitch(
+  scanner: Scanner,
+  parseNext: (
+    expressionType: ExpressionType,
+    options?: Pick<Options, 'isInPipe' | 'isInView'>,
+  ) => Expressions.Expression,
+): Expressions.Expression {
+  throw new Error('Function not implemented.')
 }
