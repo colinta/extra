@@ -31,7 +31,6 @@ import {
   terminatesWithCurlyBracket,
   terminatesWithAngleBracket,
   isBlockStartOperator,
-  isWhitespaceChar,
   treatNewlineAsComma,
   expressionSupportsSplat,
   isTaggedString,
@@ -68,6 +67,7 @@ import {
   SWITCH_KEYWORD,
   THEN_KEYWORD,
   ELSE_KEYWORD,
+  isAnyControl,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -383,16 +383,29 @@ function parseInternal(
       return false
     }
 
-    if (scanner.is(SPREAD_OPERATOR) && expressionSupportsSplat(expressionType)) {
-      return false
-    }
+    // array, dict, set, object - "container" types.
+    if (expressionSupportsSplat(expressionType)) {
+      if (scanner.is(SPREAD_OPERATOR)) {
+        return false
+      }
 
-    if (scanner.is(INCLUSION_OPERATOR) && expressionSupportsSplat(expressionType)) {
-      return true
-    }
+      if (scanner.is(INCLUSION_OPERATOR)) {
+        return true
+      }
 
-    if (scanner.scanIfString(ENUM_START) && isRefStartChar(scanner)) {
-      return false
+      // in a container, we treat lines starting with `.ref` differently than
+      // other contexts. In a container, this is a new enum-shorthand. Usually
+      // it is a property access operator
+      // let
+      //   a = foo
+      //       .b -- property access
+      //   b = [
+      //     foo
+      //     .b -- enum shorthand
+      //     ]
+      if (scanner.scanIfString(ENUM_START) && isRefStartChar(scanner)) {
+        return false
+      }
     }
 
     return isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)
@@ -428,6 +441,9 @@ function parseInternal(
   while (!scanner.isEOF()) {
     if (!isMatchingExpression) {
       if (treatNewlineAsComma(expressionType) && scanner.is('\n')) {
+        scanner.whereAmI(
+          `checking for binary operator after newline ${scanner.test(continueScanningAfterNewline)}`,
+        )
         if (scanner.test(continueScanningAfterNewline)) {
           scanner.scanAllWhitespace()
         } else {
@@ -437,47 +453,27 @@ function parseInternal(
             commentExpr.followingComments.push(...comments)
           }
 
-          scanner.whereAmI(`done scanning ${expressionType}`)
+          scanner.whereAmI(`done scanning @ ${expressionType}`)
           break
         }
       }
 
-      if (expressionType === 'if' && scanner.test(nextIsKeyword(THEN_KEYWORD))) {
-        scanner.whereAmI(`done scanning if`)
-        break
-      }
-
-      if (expressionType === 'if-then' && scanner.test(nextIsKeyword(ELSE_KEYWORD))) {
-        scanner.whereAmI(`done scanning then`)
-        break
-      }
-
-      if (expressionType === 'guard' && scanner.test(nextIsKeyword(ELSE_KEYWORD))) {
-        scanner.whereAmI(`done scanning guard`)
-        break
-      }
-
-      if (expressionType === 'guard-else' && scanner.test(nextIsKeyword(THEN_KEYWORD))) {
-        scanner.whereAmI(`done scanning else`)
-        break
-      }
-
       if (
-        (expressionType === 'switch' || expressionType === 'case-then') &&
-        (scanner.test(nextIsKeyword(CASE_KEYWORD)) || scanner.test(nextIsKeyword(ELSE_KEYWORD)))
+        (expressionType === 'let' && scanner.test(nextIsKeyword(LET_IN_KEYWORD))) ||
+        (expressionType === 'if' && scanner.test(nextIsKeyword(THEN_KEYWORD))) ||
+        (expressionType === 'if-then' && scanner.test(nextIsKeyword(ELSE_KEYWORD))) ||
+        (expressionType === 'guard' && scanner.test(nextIsKeyword(ELSE_KEYWORD))) ||
+        (expressionType === 'guard-else' && scanner.test(nextIsKeyword(THEN_KEYWORD))) ||
+        ((expressionType === 'switch' || expressionType === 'case-then') &&
+          (scanner.test(nextIsKeyword(CASE_KEYWORD)) || scanner.test(nextIsKeyword(ELSE_KEYWORD))))
       ) {
-        scanner.whereAmI(`done scanning switch`)
-        break
-      }
-
-      if (expressionType === 'let' && scanner.test(nextIsKeyword(LET_IN_KEYWORD))) {
         const comments = scanner.flushComments()
         const commentExpr = expressionStack.at(-1)
         if (commentExpr) {
           commentExpr.followingComments.push(...comments)
         }
 
-        scanner.whereAmI(`done scanning let`)
+        scanner.whereAmI(`done scanning ${expressionType}`)
         break
       }
 
@@ -556,18 +552,6 @@ function parseInternal(
         throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
       }
       scanner.whereAmI(`expressionType ${expressionType}`)
-
-      if (isWhitespaceChar(scanner.prevChar) && !scanner.isEOF()) {
-        // very special case for let ... in, where the 'let' ends with whitespace before 'in'
-        if (
-          expressionType === LET_KEYWORD &&
-          scanner.test(() => {
-            scanner.scanAllWhitespace()
-            return scanner.isWord(LET_IN_KEYWORD)
-          })
-        ) {
-        }
-      }
     } else {
       if (scanner.is(ARGS_OPEN)) {
         processOperator(binaryOperatorNamed(FUNCTION_INVOCATION_OPERATOR, scanner.flushComments()))
