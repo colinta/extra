@@ -17,6 +17,7 @@ import {
   ARG_SEPARATOR,
   STRING_CONCAT_OPERATOR,
   ENUM_START,
+  OR_OPERATOR,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -27,6 +28,8 @@ import {scanAnyReference, scanValidLocalName} from './identifier'
 import {scanNumber} from './number'
 import {scanRegex} from './regex'
 import {scanStringLiteral} from './string'
+
+// see below for scanCase
 
 /**
  * scans for:
@@ -432,7 +435,7 @@ function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
   )
 }
 
-export function scanCase(scanner: Scanner, parseNext: ParseNext): Expression {
+export function scanCase(scanner: Scanner, parseNext: ParseNext): Expressions.CaseExpression {
   scanner.whereAmI('scanCase')
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
@@ -445,18 +448,17 @@ export function scanCase(scanner: Scanner, parseNext: ParseNext): Expression {
 
     scanner.scanAllWhitespace()
 
-    if (scanner.isWord('or')) {
-      scanner.expectString('or')
+    if (scanner.isWord(OR_OPERATOR)) {
+      scanner.expectString(OR_OPERATOR)
       scanner.scanAllWhitespace()
       scanner.whereAmI('scanCase or')
       continue
     } else {
-      scanner.expectString(CASE_SEPARATOR)
       break
     }
   }
 
-  const bodyExpression = parseNext('case')
+  const bodyExpression = parseNext('case-then')
   scanner.whereAmI(`case: ${bodyExpression}`)
 
   return new Expressions.CaseExpression(

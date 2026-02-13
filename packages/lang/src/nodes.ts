@@ -1,7 +1,7 @@
 import {type Type} from './types'
 import {type Comment} from './formulaParser/types'
 import * as Types from './types'
-import {ENUM_START, STATE_START} from './formulaParser/grammars'
+import {STATE_START} from './formulaParser/grammars'
 
 export type Source = {
   start: number

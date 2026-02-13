@@ -81,11 +81,12 @@ export const NULL_COALESCE_INVOCATION_OPERATOR = '?.()'
 export const NULL_COALESCE_INVOCATION_OPEN = `${NULL_COALESCING_PROPERTY_ACCESS_OPERATOR}(`
 export const NULL_COALESCE_ARRAY_ACCESS_OPERATOR = '?.[]'
 export const NULL_COALESCE_ARRAY_OPEN = `${NULL_COALESCING_PROPERTY_ACCESS_OPERATOR}[`
+export const OR_OPERATOR = 'or'
 
-export const BINARY_OP_NAMES = ['and', 'or', 'has', '!has', 'is', '!is', 'matches'] as const
+export const BINARY_OP_NAMES = ['and', OR_OPERATOR, 'has', '!has', 'is', '!is', 'matches'] as const
 export const BINARY_OP_ALIASES = {
   '&&': 'and',
-  '||': 'or',
+  '||': OR_OPERATOR,
   '!?': INCLUSION_OPERATOR,
   '?!': INCLUSION_OPERATOR,
   '≤': '<=',
@@ -351,8 +352,10 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
     expressionType === 'let' ||
     expressionType === 'if' ||
     expressionType === 'if-then' ||
-    expressionType === 'else' ||
-    expressionType === 'case' ||
+    expressionType === 'if-else' ||
+    expressionType === 'guard-else' ||
+    expressionType === 'guard-then' ||
+    expressionType === 'case-then' ||
     expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
@@ -371,10 +374,21 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
   )
 }
 
-export function terminatesWithComma(expressionType: ExpressionType) {
+export function isAnyControl(expressionType: ExpressionType) {
   return (
     expressionType === 'let' ||
-    expressionType === 'case' ||
+    expressionType === 'if' ||
+    expressionType === 'if-then' ||
+    expressionType === 'if-else' ||
+    expressionType === 'guard-else' ||
+    expressionType === 'guard-then' ||
+    expressionType === 'case-then'
+  )
+}
+
+export function terminatesWithComma(expressionType: ExpressionType) {
+  return (
+    isAnyControl(expressionType) ||
     expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
@@ -392,6 +406,7 @@ export function terminatesWithComma(expressionType: ExpressionType) {
 
 export function terminatesWithRoundBracket(expressionType: ExpressionType) {
   return (
+    isAnyControl(expressionType) ||
     expressionType === 'argument' ||
     expressionType === 'object-word' ||
     expressionType === 'array-word' ||
@@ -403,6 +418,7 @@ export function terminatesWithRoundBracket(expressionType: ExpressionType) {
 
 export function terminatesWithSquareBracket(expressionType: ExpressionType) {
   return (
+    isAnyControl(expressionType) ||
     expressionType === 'bracket_access' ||
     expressionType === 'set-symbol' ||
     expressionType === 'array-symbol'
@@ -411,13 +427,13 @@ export function terminatesWithSquareBracket(expressionType: ExpressionType) {
 
 export function terminatesWithCurlyBracket(expressionType: ExpressionType) {
   return (
+    isAnyControl(expressionType) ||
     expressionType === 'block_argument' ||
     expressionType === 'jsx_embed' ||
     expressionType === 'interpolation' ||
     expressionType === 'object-symbol' ||
     expressionType === 'dict-symbol' ||
     expressionType === 'enum' ||
-    expressionType === 'case' ||
     expressionType === 'class' ||
     expressionType === 'default'
   )

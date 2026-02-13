@@ -4,13 +4,7 @@ import * as Values from '@/values'
 import * as Expressions from '@/expressions'
 import {Expression} from '@/expressions'
 
-import {
-  LOWEST_PRECEDENCE,
-  binaryOperatorNamed,
-  isOperator,
-  NegateOperator,
-  FunctionInvocationOperator,
-} from '@/expressions'
+import {LOWEST_PRECEDENCE, binaryOperatorNamed, isOperator, NegateOperator} from '@/expressions'
 import {
   ParseError,
   type ParseNext,
@@ -97,6 +91,8 @@ import {scanCase, scanMatch} from './scan/match'
 import {scanArgumentType} from './scan/argument_type'
 import {scanEnumLookup} from './scan/enum'
 import {scanIf} from './scan/if'
+import {scanGuard} from './scan/guard'
+import {scanSwitch} from './scan/switch'
 
 const LOWEST_OP: Operator = {
   name: 'lowest op',
@@ -220,45 +216,6 @@ function parseInternal(
           literal.range,
           literal.precedingComments,
           Values.float(-literal.value.value),
-        )
-      }
-    }
-
-    // convert if/elseif/guard/switch expressions
-    if (expression instanceof FunctionInvocationOperator) {
-      if (expression.args[0] instanceof Expressions.IfIdentifier) {
-        return new Expressions.IfExpression(
-          expression.range,
-          expression.precedingComments,
-          expression.followingOperatorComments,
-          expression.args[1] as Expressions.ArgumentsList,
-        )
-      }
-
-      if (expression.args[0] instanceof Expressions.ElseIfIdentifier) {
-        return new Expressions.ElseIfExpression(
-          expression.range,
-          expression.precedingComments,
-          expression.followingOperatorComments,
-          expression.args[1] as Expressions.ArgumentsList,
-        )
-      }
-
-      if (expression.args[0] instanceof Expressions.GuardIdentifier) {
-        return new Expressions.GuardExpression(
-          expression.range,
-          expression.precedingComments,
-          expression.followingOperatorComments,
-          expression.args[1] as Expressions.ArgumentsList,
-        )
-      }
-
-      if (expression.args[0] instanceof Expressions.SwitchIdentifier) {
-        return new Expressions.SwitchExpression(
-          expression.range,
-          expression.precedingComments,
-          expression.followingOperatorComments,
-          expression.args[1] as Expressions.ArgumentsList,
         )
       }
     }
@@ -495,30 +452,41 @@ function parseInternal(
         break
       }
 
-      if (expressionType === 'let') {
-        if (
-          scanner.test(() => {
-            scanner.scanAllWhitespace()
-            return scanner.isWord(LET_IN_KEYWORD)
-          })
-        ) {
-          const comments = scanner.flushComments()
-          const commentExpr = expressionStack.at(-1)
-          if (commentExpr) {
-            commentExpr.followingComments.push(...comments)
-          }
+      if (expressionType === 'guard' && scanner.test(nextIsKeyword(ELSE_KEYWORD))) {
+        scanner.whereAmI(`done scanning guard`)
+        break
+      }
 
-          scanner.whereAmI(`done scanning let`)
-          break
-        }
+      if (expressionType === 'guard-else' && scanner.test(nextIsKeyword(THEN_KEYWORD))) {
+        scanner.whereAmI(`done scanning else`)
+        break
       }
 
       if (
-        (terminatesWithComma(expressionType) && scanner.is(',')) ||
-        (terminatesWithRoundBracket(expressionType) && scanner.is(')')) ||
-        (terminatesWithSquareBracket(expressionType) && scanner.is(']')) ||
-        (terminatesWithCurlyBracket(expressionType) && scanner.is('}')) ||
-        (terminatesWithAngleBracket(expressionType) && scanner.is('>'))
+        (expressionType === 'switch' || expressionType === 'case-then') &&
+        (scanner.test(nextIsKeyword(CASE_KEYWORD)) || scanner.test(nextIsKeyword(ELSE_KEYWORD)))
+      ) {
+        scanner.whereAmI(`done scanning switch`)
+        break
+      }
+
+      if (expressionType === 'let' && scanner.test(nextIsKeyword(LET_IN_KEYWORD))) {
+        const comments = scanner.flushComments()
+        const commentExpr = expressionStack.at(-1)
+        if (commentExpr) {
+          commentExpr.followingComments.push(...comments)
+        }
+
+        scanner.whereAmI(`done scanning let`)
+        break
+      }
+
+      if (
+        (scanner.is(',') && terminatesWithComma(expressionType)) ||
+        (scanner.is(')') && terminatesWithRoundBracket(expressionType)) ||
+        (scanner.is(']') && terminatesWithSquareBracket(expressionType)) ||
+        (scanner.is('}') && terminatesWithCurlyBracket(expressionType)) ||
+        (scanner.is('>') && terminatesWithAngleBracket(expressionType))
       ) {
         scanner.whereAmI(`done scanning ${expressionType}`)
         break
@@ -541,18 +509,7 @@ function parseInternal(
         processExpression(scanGuard(scanner, parseNext))
       } else if (isMatchingControlExpression(SWITCH_KEYWORD)) {
         processExpression(scanSwitch(scanner, parseNext))
-      } else if (
-        // TODO: this can't be right... this matches *all* arguments named
-        // 'case', regardless of whether we are scanning a 'switch' statement.
-        //
-        // this *could* be useful - if 'case' is considered a keyword, and we
-        // expose its type to userland, you could write functions that expect
-        // case/match expressions... for now I'm leaving it as-is. Another fix
-        // would be to check the expression stack for the 'switch' identifier
-        scanner.is(CASE_KEYWORD) &&
-        (expressionType === 'block_argument' || expressionType === 'argument')
-      ) {
-        processExpression(scanCase(scanner, parseNext))
+        scanner.whereAmI('done scanning switch, back to expression loop')
       } else if (scanner.isInView && isViewStart(scanner.remainingInput)) {
         processExpression(scanJsx(scanner, parseNext))
       } else if (isDiceStart(scanner.remainingInput)) {
@@ -722,23 +679,4 @@ function parseInternal(
 
   expressionStack[0].followingComments.push(...scanner.flushComments())
   return expressionStack[0]
-}
-function scanGuard(
-  scanner: Scanner,
-  parseNext: (
-    expressionType: ExpressionType,
-    options?: Pick<Options, 'isInPipe' | 'isInView'>,
-  ) => Expressions.Expression,
-): Expressions.Expression {
-  throw new Error('Function not implemented.')
-}
-
-function scanSwitch(
-  scanner: Scanner,
-  parseNext: (
-    expressionType: ExpressionType,
-    options?: Pick<Options, 'isInPipe' | 'isInView'>,
-  ) => Expressions.Expression,
-): Expressions.Expression {
-  throw new Error('Function not implemented.')
 }

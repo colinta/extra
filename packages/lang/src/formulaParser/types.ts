@@ -91,11 +91,12 @@ export type ExpressionType =
   | 'let' // let ... in
   | 'if' // if ... then | non-greedy expression
   | 'if-then' // then ... else | non-greedy expression
-  | 'else' // else ... | non-greedy expression
+  | 'if-else' // else ... | non-greedy expression
   | 'guard' // guard ... else
+  | 'guard-else' // else ... then | non-greedy expression
   | 'guard-then' // non-greedy expression
   | 'switch' // switch ... case ... case | end-of-expression
-  | 'case' // parses the argument after 'case [match]:'
+  | 'case-then' // parses the argument after 'case [match]'
   | 'type' // parses the type within fn<..>()
   | 'module' // all module-level definitions are scanned in this context
   | 'enum' // parses enum members, member and static functions, closes w/ }

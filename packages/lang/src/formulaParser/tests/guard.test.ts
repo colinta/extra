@@ -23,11 +23,18 @@ describe('guard', () => {
     cases<[string, string] | [string, string, string]>(
       c([
         "guard a-letter == 'a' else [3] then [1]",
-        "(guard ((== a-letter 'a') (else: [3])) (then: [1]))",
+        "(guard (== a-letter 'a') (else: [3]) (then: [1]))",
+        `\
+guard
+  a-letter == 'a'
+else
+  [3]
+
+[1]`,
       ]),
       c([
         "guard a-letter == 'a' else [3] \n [1]",
-        "(guard ((== a-letter 'a') (else: [3])) (then: [1]))",
+        "(guard (== a-letter 'a') (else: [3]) (then: [1]))",
         `\
 guard
   a-letter == 'a'
@@ -38,7 +45,7 @@ else
       ]),
       c([
         'guard not a or b else 3\n1',
-        '(guard ((or (not a) b) (else: 3) (then: 1)))',
+        '(guard (or (not a) b) (else: 3) (then: 1))',
         `guard
   not a or b
 else
@@ -46,10 +53,19 @@ else
 
 1`,
       ]),
-      c(['1 + guard a else 3 then a', '(+ 1 (guard (a) (else: 3) (then: a)))']),
+      c([
+        '1 + guard a else 3 then a',
+        '(+ 1 (guard a (else: 3) (then: a)))',
+        `1 + (guard
+  a
+else
+  3
+
+a)`,
+      ]),
       c([
         '1 + guard a \nelse 3 \n1',
-        '(+ 1 (guard (a) (else: 3) (then: 1)))',
+        '(+ 1 (guard a (else: 3) (then: 1)))',
         `1 + (guard
   a
 else
@@ -57,7 +73,17 @@ else
 
 1)`,
       ]),
-      c(["guard a else '4' then 1", "(guard (a) (else: '4') (then: 1))"]),
+      c([
+        "guard a else '4' then 1",
+        "(guard a (else: '4') (then: 1))",
+        `\
+guard
+  a
+else
+  '4'
+
+1`,
+      ]),
       c([
         `\
 [
@@ -66,7 +92,7 @@ else
   3
   '4'
 ]`,
-        "[(guard (a) (else: 1) (then: (guard (b) (else: 2) (then: 3)))) '4']",
+        "[(guard a (else: 1) (then: (guard b (else: 2) (then: 3)))) '4']",
         `\
 [
   guard
@@ -85,7 +111,7 @@ else
       ]),
       c([
         "guard a else '4'\n1",
-        "(guard (a) (else: '4') (then: 1))",
+        "(guard a (else: '4') (then: 1))",
         `\
 guard
   a
@@ -105,7 +131,7 @@ else
 1
 +
 2`,
-        "(guard (a) (else: (.. '4' '5')) (then: (+ 1 2)))",
+        "(guard a (else: (.. '4' '5')) (then: (+ 1 2)))",
         `\
 guard
   a
@@ -218,21 +244,19 @@ a .. a
     cases<[string, Types.Type, string]>(
       c([
         `\
-guard (a) {
+guard a
+else
   1
-else:
-  1
-}`,
+1`,
         Types.string({min: 1}),
         "Type 'String(length: >=1)' is invalid as an if condition, because it is always true.",
       ]),
       c([
         `\
-guard (a) {
+guard a
+else
   1
-else:
-  1
-}`,
+1`,
         Types.string({max: 0}),
         'Type \'""\' is invalid as an if condition, because it is always false.',
       ]),

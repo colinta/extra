@@ -42,6 +42,7 @@ import {
   SPREAD_OPERATOR,
   STRING_CONCAT_OPERATOR,
   UNARY_OP_NAMES,
+  OR_OPERATOR,
 } from '@/formulaParser/grammars'
 import * as Expressions from './expressions'
 import {
@@ -779,7 +780,7 @@ function mapCombineEitherError(
 }
 
 class LogicalOrOperator extends BinaryOperator {
-  symbol = 'or'
+  symbol = OR_OPERATOR
 
   assumeTrue(runtime: TypeRuntime) {
     const [lhs, rhs] = this.args
@@ -923,8 +924,8 @@ class LogicalOrOperator extends BinaryOperator {
 
 addBinaryOperator({
   name: 'logical or',
-  symbol: 'or',
-  precedence: PRECEDENCE.BINARY['or'],
+  symbol: OR_OPERATOR,
+  precedence: PRECEDENCE.BINARY[OR_OPERATOR],
   associativity: 'left',
   create(
     range: [number, number],

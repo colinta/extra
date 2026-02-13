@@ -160,7 +160,7 @@ export class Scanner {
     this.scanAllWhitespace()
 
     // if search is a word (all letters) use this.isWord
-    const found = search.match(/^\w+$/) ? this.isWord(search) : this.is(search)
+    const found = isWord(search) ? this.isWord(search) : this.is(search)
     this.whereAmI(`scanAhead '${search}' ? ${found}`)
     this.rewindTo(rewind)
     this.#pauseComments = false
@@ -173,7 +173,7 @@ export class Scanner {
     const rewind = this.charIndex
     this.scanAllWhitespace()
 
-    const found = search.match(/^\w+$/) ? this.isWord(search) : this.is(search)
+    const found = isWord(search) ? this.isWord(search) : this.is(search)
     if (found) {
       this.charIndex += search.length
       this.whereAmI(`scanAhead '${search}' ? yes`)
