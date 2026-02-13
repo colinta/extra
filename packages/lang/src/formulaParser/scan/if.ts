@@ -1,10 +1,7 @@
 import * as Expressions from '../../expressions'
 import {ELSE_KEYWORD, IF_KEYWORD, THEN_KEYWORD} from '../grammars'
 import {type Scanner} from '../scanner'
-import {type ExpressionType, type ParseNext} from '../types'
-import {scanArgumentType} from './argument_type'
-import {scanNamedFormula} from './formula'
-import {scanValidLocalName} from './identifier'
+import {type ParseNext} from '../types'
 
 /**
  *     if cond then val
@@ -48,14 +45,14 @@ export function scanIf(scanner: Scanner, parseNext: ParseNext): Expressions.IfEx
   )
 }
 
-function scanCondition(scanner: Scanner, parseNext: ParseNext): Expressions.Expression {
+function scanCondition(_scanner: Scanner, parseNext: ParseNext): Expressions.Expression {
   return parseNext('if')
 }
 
-function scanThen(scanner: Scanner, parseNext: ParseNext): Expressions.Expression {
+function scanThen(_scanner: Scanner, parseNext: ParseNext): Expressions.Expression {
   return parseNext('if-then')
 }
 
-function scanElse(scanner: Scanner, parseNext: ParseNext): Expressions.Expression {
-  return parseNext('else')
+function scanElse(_scanner: Scanner, parseNext: ParseNext): Expressions.Expression {
+  return parseNext('if-else')
 }

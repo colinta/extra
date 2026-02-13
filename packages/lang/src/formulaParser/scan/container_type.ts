@@ -151,12 +151,7 @@ export function scanObject(
     }
 
     scanner.whereAmI('scanObjectArg: ' + props.at(-1))
-    const shouldBreak = scanner.scanCommaOrBreak(
-      OBJECT_CLOSE,
-      `Expected ',' separating items in the object`,
-    )
-
-    if (shouldBreak) {
+    if (scanner.scanCommaOrBreak(OBJECT_CLOSE, `Expected ',' separating items in the object`)) {
       break
     }
 
@@ -254,12 +249,12 @@ export function scanArray(
       scanner.whereAmI('scanArrayArg: [] ' + expression.toCode())
     }
 
-    const shouldBreak = scanner.scanCommaOrBreak(
-      type === 'array-symbol' ? ARRAY_CLOSE : PARENS_CLOSE,
-      `Expected ',' separating items in the array`,
-    )
-
-    if (shouldBreak) {
+    if (
+      scanner.scanCommaOrBreak(
+        type === 'array-symbol' ? ARRAY_CLOSE : PARENS_CLOSE,
+        `Expected ',' separating items in the array`,
+      )
+    ) {
       break
     }
 
@@ -371,12 +366,7 @@ export function scanDict(
       entries.push(entry)
     }
 
-    const shouldBreak = scanner.scanCommaOrBreak(
-      closer,
-      `Expected ',' separating items in the dict`,
-    )
-
-    if (shouldBreak) {
+    if (scanner.scanCommaOrBreak(closer, `Expected ',' separating items in the dict`)) {
       break
     }
 
@@ -454,9 +444,7 @@ export function scanSet(scanner: Scanner, parseNext: ParseNext, type: 'set-symbo
       scanner.whereAmI('scanSetArg: Set() ' + expression.toCode())
     }
 
-    const shouldBreak = scanner.scanCommaOrBreak(closer, `Expected ',' separating items in the set`)
-
-    if (shouldBreak) {
+    if (scanner.scanCommaOrBreak(closer, `Expected ',' separating items in the set`)) {
       break
     }
 

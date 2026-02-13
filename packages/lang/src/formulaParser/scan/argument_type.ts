@@ -234,12 +234,12 @@ export function scanArgumentType(
             const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
             typeArgs.push(ofType)
 
-            const shouldBreak = scanner.scanCommaOrBreak(
-              PARENS_CLOSE,
-              `Expected ',' separating items in the arguments`,
-            )
-
-            if (shouldBreak) {
+            if (
+              scanner.scanCommaOrBreak(
+                PARENS_CLOSE,
+                `Expected ',' separating items in the arguments`,
+              )
+            ) {
               break
             }
 
@@ -483,13 +483,12 @@ function scanObjectType(
     scanner.whereAmI(`objectArgType: ${objectArgType.toCode()}`)
     values.push([name, objectArgType])
 
-    const shouldBreak = scanner.scanCommaOrBreak(
-      OBJECT_CLOSE,
-      `Expected ',' or '${OBJECT_CLOSE}' in object type definition`,
-    )
-    scanner.whereAmI(`shouldBreak: ${shouldBreak}`)
-
-    if (shouldBreak) {
+    if (
+      scanner.scanCommaOrBreak(
+        OBJECT_CLOSE,
+        `Expected ',' or '${OBJECT_CLOSE}' in object type definition`,
+      )
+    ) {
       break
     }
 
@@ -565,13 +564,9 @@ function scanDictType(
         const name = scanAtom(scanner)
         narrowedNames.add(name.stringValue)
 
-        const shouldBreak = scanner.scanCommaOrBreak(
-          ARRAY_CLOSE,
-          `Expected ',' or '${ARRAY_CLOSE}' in dict keys`,
-        )
-        scanner.whereAmI(`shouldBreak: ${shouldBreak}`)
-
-        if (shouldBreak) {
+        if (
+          scanner.scanCommaOrBreak(ARRAY_CLOSE, `Expected ',' or '${ARRAY_CLOSE}' in dict keys`)
+        ) {
           break
         }
 

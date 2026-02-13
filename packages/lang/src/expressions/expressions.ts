@@ -3873,7 +3873,7 @@ export class FormulaExpression extends Expression {
     return `(${this.toCode()})`
   }
 
-  toCodePrefixed(prefixed: boolean) {
+  toCodePrefixed(prefixed: boolean, forceNewline: boolean = false) {
     let code = ''
     code += formatComments(this.precedingComments)
     if (prefixed) {
@@ -3891,6 +3891,15 @@ export class FormulaExpression extends Expression {
     }
 
     const argDefinitions = this.argDefinitions.map(expr => expr.toCode()).join(', ')
+    const returnTypeCode = this.returnType.toCode()
+    let hasNewline: boolean
+    if (forceNewline) {
+      hasNewline = true
+    } else {
+      const bodyCode = this.body.toCode()
+      const testCode = code + argDefinitions + returnTypeCode + bodyCode
+      hasNewline = testCode.includes('\n') || testCode.length > MAX_LEN
+    }
 
     if (!argDefinitions.length) {
       code += '()'
@@ -3908,7 +3917,7 @@ export class FormulaExpression extends Expression {
       code += ': ' + this.returnType.toCode()
     }
 
-    code += ' ' + this.toBodyCode(0)
+    code += ' ' + this.toBodyCode(hasNewline ? 0 : MAX_LEN - code.length)
 
     return code
   }
@@ -6609,7 +6618,7 @@ export class CaseExpression extends MatchExpression {
     } else {
       code += cases
     }
-    code += ':\n'
+    code += '\n'
     code += indent(this.bodyExpression.toCode())
     return code
   }
@@ -6676,7 +6685,11 @@ export class IfExpression extends Expression {
     })`
   }
 
-  toCode(): string {
+  toCode(precedence: number = 0): string {
+    if (precedence > 0) {
+      return `(${this.toCode()})`
+    }
+
     return this.toIfCode()
   }
 
@@ -6845,7 +6858,10 @@ export class GuardExpression extends Expression {
     return `(guard ${this.conditionExpr.toLisp()} (else: ${this.elseExpr.toLisp()}) (then: ${this.thenExpr.toLisp()}))`
   }
 
-  toCode(): string {
+  toCode(precedence: number = 0): string {
+    if (precedence > 0) {
+      return `(${this.toCode()})`
+    }
     const condition = this.conditionExpr.toCode()
     const elseCode = this.elseExpr.toCode()
     const bodyCode = this.thenExpr.toCode()
@@ -6937,34 +6953,16 @@ export class GuardExpression extends Expression {
 
 export class SwitchExpression extends Expression {
   symbol = 'switch'
-  subjectExpr?: Expression
-  caseExprs?: CaseExpression[]
-  elseExpr?: Expression
 
   constructor(
     range: Range,
     precedingComments: Comment[],
     followingComments: Comment[],
-    readonly argList: ArgumentsList,
+    readonly subjectExpr: Expression,
+    readonly caseExprs: CaseExpression[],
+    readonly elseExpr?: Expression,
   ) {
     super(range, precedingComments, followingComments)
-
-    const args = argList.allPositionalArgs()
-    this.subjectExpr = args[0]
-    this.caseExprs = args.slice(1) as CaseExpression[]
-    if (this.caseExprs.some(arg => !(arg instanceof CaseExpression))) {
-      throw new RuntimeError(this, expectedCaseConditions())
-    }
-
-    this.elseExpr = argList.namedArg('else')
-    const names = new Set(argList.allNamedArgs().keys())
-    names.delete('else')
-    if (names.size) {
-      throw new RuntimeError(
-        this,
-        `Unexpected named arguments in switch expression: '${Array.from(names).join("', '")}'`,
-      )
-    }
   }
 
   /**
@@ -6975,26 +6973,23 @@ export class SwitchExpression extends Expression {
   }
 
   toLisp() {
-    return `(switch ${this.argList.toLisp()})`
+    return `(switch ${this.subjectExpr.toLisp()} ${this.caseExprs
+      .map(expr => expr.toLisp())
+      .join(' ')}${this.elseExpr ? ` (else: ${this.elseExpr.toLisp()})` : ''})`
   }
 
   toCode(): string {
-    if (!this.subjectExpr || !this.caseExprs) {
-      const argListCode = this.argList.toCode()
-      return `switch ${argListCode}`
-    }
-
     const subjectCode = this.subjectExpr.toCode()
-    let code = 'switch (' + subjectCode + ') {\n'
+    let lines: string[] = ['switch ' + subjectCode]
     for (const caseExpr of this.caseExprs) {
-      code += caseExpr.toCode() + '\n'
+      lines.push(caseExpr.toCode())
     }
     if (this.elseExpr) {
-      code += 'else:\n'
-      code += indent(this.elseExpr.toCode()) + '\n'
+      lines.push('else')
+      lines.push(indent(this.elseExpr.toCode()))
     }
-    code += '}'
-    return code
+
+    return lines.join('\n')
   }
 
   // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
@@ -7320,26 +7315,6 @@ function expectedIfCondition() {
 
 function expectedIfThenResult() {
   return "Missing 'then: T' in 'if()' expression"
-}
-
-function expectedElseIfCondition() {
-  return "Missing '# condition: Condition' in 'elseif()' expression"
-}
-
-function expectedElseIfThenResult() {
-  return "Missing 'then: T' in 'elseif()' expression"
-}
-
-function expectedElseifConditionExpression(found: Expression) {
-  return `Expected 'elseif(condition): then' expression, found '${found}'`
-}
-
-function expectedElseifConditionArgument() {
-  return "Missing condition in 'elseif(<condition>)' expression"
-}
-
-function expectedElseifConditionResult() {
-  return `Missing result in 'elseif(): <result>' expression`
 }
 
 function expectedGuardArguments() {

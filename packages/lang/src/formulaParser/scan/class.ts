@@ -168,12 +168,12 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
       throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}' in class body`)
     }
 
-    const shouldBreak = scanner.scanCommaOrBreak(
-      BLOCK_CLOSE,
-      `Expected ',' separating properties in the class or '${BLOCK_CLOSE}' to end the class definition.`,
-    )
-
-    if (shouldBreak) {
+    if (
+      scanner.scanCommaOrBreak(
+        BLOCK_CLOSE,
+        `Expected ',' separating properties in the class or '${BLOCK_CLOSE}' to end the class definition.`,
+      )
+    ) {
       break
     }
 

@@ -311,7 +311,7 @@ enum Color { -- static property + static function
         Types.namedEnumDefinition({
           name: 'Color',
           members: [Types.enumCase('red'), Types.enumCase('green'), Types.enumCase('blue')],
-          staticProps: new Map([
+          staticProps: new Map<string, Types.Type>([
             ['default', Types.enumType('Color')],
             [
               'from-name',

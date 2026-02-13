@@ -24,7 +24,7 @@ describe('switch', () => {
     cases<[string, string] | [string, string, string]>(
       c([
         `switch a-letter\ncase _\n  ''`,
-        "(switch (a-letter) (case (_) : ''))",
+        "(switch a-letter (case (_) : ''))",
         `\
 switch a-letter
 case _
@@ -32,7 +32,7 @@ case _
       ]),
       c([
         `switch a-letter\ncase 'a'\n  [1]\nelse\n  [3]`,
-        "(switch (a-letter) (case ('a') : [1]) (else: [3]))",
+        "(switch a-letter (case ('a') : [1]) (else: [3]))",
         `\
 switch a-letter
 case 'a'
@@ -47,7 +47,7 @@ case 'a' or 'b'
   [1]
 else
   [3]`,
-        "(switch (a-letter) (case ('a' 'b') : [1]) (else: [3]))",
+        "(switch a-letter (case ('a' 'b') : [1]) (else: [3]))",
       ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse '${formula}'`, () => {
