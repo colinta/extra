@@ -136,11 +136,12 @@ class Failure<OK, ERR> extends ResultClass<OK, ERR> {
 }
 
 export type Result<OK, ERR> = Ok<OK, ERR> | Failure<OK, ERR>
+export type Guarantee<OK, ERR> = Ok<OK, ERR>
 
-export function ok(): Result<void, any>
-export function ok<OK>(value: OK): Result<OK, any>
+export function ok(): Ok<void, any>
+export function ok<OK>(value: OK): Ok<OK, any>
 
-export function ok<OK>(value?: OK): Result<OK, any> {
+export function ok<OK>(value?: OK): Ok<OK, any> {
   return new Ok(value as OK)
 }
 
@@ -174,6 +175,22 @@ export function mapOptional<OK, ERR>(
   value: Result<OK, ERR> | undefined,
 ): Result<OK | undefined, ERR> {
   return value === undefined ? ok(undefined) : value
+}
+
+export function reduceAll<In, Out, ERR>(
+  initial: Out,
+  items: In[],
+  fn: (acc: Out, item: In) => Result<Out, ERR>,
+): Result<Out, ERR> {
+  let acc = initial
+  for (const item of items) {
+    const result = fn(acc, item)
+    if (result.isErr()) {
+      return result
+    }
+    acc = result.value
+  }
+  return ok(acc)
 }
 
 export function mapAll<OK, ERR>(items: Result<OK, ERR>[]): Result<OK[], ERR> {

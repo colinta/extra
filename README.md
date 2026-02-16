@@ -25,8 +25,8 @@ Before I jump into the application architecture, let's get to know Extra first. 
 ## Quick syntax primer
 
 ```extra
--- comments are hyphenated, like Ada and Lua
-{- or nested like this -}
+-- comments are hyphenated, like Ada
+{- or nested like this -} -- like Haskell or Elm because they're cool I'm cool
 <-- also this! Finally you can *point* to things using comments.
 
 -- `let` is a special language construct that assigns values to scope.
@@ -420,9 +420,12 @@ in
 
 I may have gone a bit overboard, just a heads up. 🤓
 
+Haskell & Elm & Ada inspired:
 `-- line comment`
 `{- block -}`
 `{- block {- with nesting -} -}`
+
+Let's get interesting:
 `--> arrow style line comment`
 `<-- alternate arrow style line comment`
 `← why stop there?` `→ pointing is rude though`
@@ -448,7 +451,7 @@ multiple |>
 <-- so much so that I made `<--` a comment marker, too, and ← and →
 ```
 
-## Extra Comments
+## Extra Comments, or *Let's Get Weird*
 
 This is maybe a little out of hand, but I like drawing boxes using old-school ASCII characters, so there's support for these as line-comment start characters.
 
@@ -456,9 +459,9 @@ All box-drawing characters _are also valid comments_ (U+2500 – U+257F).
 
 ```extra
 ╭────────╮
-│  yup.  │  ┌─╴╴╴╴╴╴╼┓
-╰────────╯  │go nuts!╿
-            ╘════════╛
+│  yup.  │  ┌────────╖
+╰────────╯  │go nuts!║
+            ╘════════╝
 ```
 
 Here's the complete set, so you can copy/paste your favourites:

@@ -151,7 +151,7 @@ export function inspect(value: any, wrap = true, depth = 0, found = new Set<any>
     }
 
     const values = value.map(val => inspect(val, wrap, depth + 1, nextFound))
-    const count = values.reduce((len, val) => len + val.length, 0)
+    const count = values.reduce((len, val) => len + (val.includes('\n') ? 200 : val.length), 0)
     const newline = wrap && count > 100
     let inner: string
     if (newline) {
@@ -180,7 +180,7 @@ export function inspect(value: any, wrap = true, depth = 0, found = new Set<any>
   const values = keys.map(
     key => `${colorize.key(key)}: ${inspect(value[key], wrap, depth + 1, nextFound)}`,
   )
-  const count = values.reduce((len, val) => len + val.length, 0)
+  const count = values.reduce((len, val) => len + (val.includes('\n') ? 200 : val.length), 0)
   const newline = className || (wrap && count > 100)
   let inner: string
   if (newline) {
@@ -208,7 +208,7 @@ for (const logLevel of ['log', 'warn', 'debug', 'info', 'error'] as const) {
         if (typeof message === 'string') {
           return message
         } else {
-          return inspect(message, false)
+          return inspect(message, true)
         }
       }),
     )
