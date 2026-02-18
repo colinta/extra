@@ -23,13 +23,12 @@ describe('complicated relationships', () => {
         prev = index - 1
         next = index + 1
       in
-        if (index > 0 and index < 10) {
-          then: {
+        if index > 0 and index < 10
+          {
             prev
             index
             next
-          }
-        }`
+          }`
     const currentExpression = parse(code).get()
     const resolvedType = currentExpression.getType(typeRuntime).get()
     const resolvedValue = currentExpression.eval(valueRuntime).get()
@@ -54,13 +53,12 @@ describe('complicated relationships', () => {
         prev = index - 1
         next = index + 1
       in
-        if (index) {
-          then: {
+        if index
+          {
             prev
             index
             next
-          }
-        }`
+          }`
     const currentExpression = parse(code).get()
     const resolvedType = currentExpression.getType(typeRuntime).get()
     const resolvedValue = currentExpression.eval(valueRuntime).get()
@@ -82,13 +80,12 @@ describe('complicated relationships', () => {
         next = prev + 2
         index = i
       in
-        if (index > 0 and 10 > index) {
-          then: {
+        if index > 0 and 10 > index
+          {
             prev
             index
             next
-          }
-        }`
+          }`
     const currentExpression = parse(code).get()
     const resolvedType = currentExpression.getType(typeRuntime).get()
 
@@ -109,13 +106,12 @@ describe('complicated relationships', () => {
     runtimeTypes['b'] = [Types.int(), Values.nullValue()]
     runtimeTypes['c'] = [Types.int(), Values.nullValue()]
     const code = `
-      if (a < b and b < c and c < 10) {
-        then: {
+      if a < b and b < c and c < 10
+        {
           a
           b
           c
-        }
-      }`
+        }`
     const currentExpression = parse(code).get()
     const resolvedType = currentExpression.getType(typeRuntime).get()
 
@@ -132,13 +128,12 @@ describe('complicated relationships', () => {
     runtimeTypes['obj2'] = [Types.object([Types.namedProp('bar', Types.int())]), Values.nullValue()]
     runtimeTypes['c'] = [Types.int(), Values.nullValue()]
     const code = `
-      if (obj1.foo < obj2.bar and obj2.bar < c and c < 10) {
-        then: {
+      if obj1.foo < obj2.bar and obj2.bar < c and c < 10
+        {
           obj1.foo
           obj2.bar
           c
-        }
-      }`
+        }`
     const currentExpression = parse(code).get()
     const resolvedType = currentExpression.getType(typeRuntime).get()
 
@@ -163,13 +158,12 @@ describe('complicated relationships', () => {
         prev = index - 1
         next = index + 1
       in
-        if (items.length >= 3 and index >= 1 and index <= items.length - 2) {
-          then: {
+        if items.length >= 3 and index >= 1 and index <= items.length - 2
+          {
             items[prev]
             items[index]
             items[next]
-          }
-        }`
+          }`
     const currentExpression = parse(code).get()
     const resolvedType = currentExpression.getType(typeRuntime).get()
     const resolvedValue = currentExpression.eval(valueRuntime).get()
@@ -187,16 +181,15 @@ describe('complicated relationships', () => {
         numbers: Array(Int) = [-1, 0, 1]
         index: Int = 1
       in
-        if (
+        if
           index > 0
           and index < letters.length
           and letters.length == numbers.length
-        ) {
-          then: {
+
+          {
             letters[index],
             numbers[index],
           }
-        }
     `
     const currentExpression = parse(code).get()
     const resolvedType = currentExpression.getType(typeRuntime).get()
@@ -215,16 +208,13 @@ describe('complicated relationships', () => {
         numbers: Array(Int) = [-1, 0, 1]
         index: Int = 1
       in
-        if (
-          index > 0
+        if index > 0
           and index < letters.length
           and letters.length <= numbers.length
-        ) {
-          then: {
+          {
             letters[index],
             numbers[index],
           }
-        }
     `
     const currentExpression = parse(code).get()
     const resolvedType = currentExpression.getType(typeRuntime).get()

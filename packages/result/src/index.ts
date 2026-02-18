@@ -179,7 +179,7 @@ export function mapOptional<OK, ERR>(
 
 export function reduceAll<In, Out, ERR>(
   initial: Out,
-  items: In[],
+  items: Iterable<In>,
   fn: (acc: Out, item: In) => Result<Out, ERR>,
 ): Result<Out, ERR> {
   let acc = initial

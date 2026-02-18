@@ -17,7 +17,6 @@ export function scanIf(scanner: Scanner, parseNext: ParseNext): Expressions.IfEx
 
   const precedingComments = scanner.flushComments()
   scanner.expectWord(IF_KEYWORD)
-  scanner.scanAllWhitespace()
 
   const condExpr = scanCondition(scanner, parseNext)
 

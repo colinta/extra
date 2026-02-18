@@ -134,7 +134,7 @@ describe('Property Access Operator', () => {
     it('foo.name => throws', () => {
       const expression = parse('foo.name').get()
       expect(() => expression.getType(typeRuntime).get()).toThrow(
-        "Cannot get type of variable named 'foo'",
+        "There is no reference in scope named 'foo'",
       )
     })
 

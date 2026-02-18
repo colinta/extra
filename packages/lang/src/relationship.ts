@@ -390,6 +390,8 @@ export function assignRelationshipsToRuntime(
   relationships: Relationship[],
   asserting: boolean,
 ) {
+  console.log('=========== relationship.ts at line 393 ===========')
+  console.log({relationships})
   if (!relationships.length) {
     return ok(prevRuntime)
   }

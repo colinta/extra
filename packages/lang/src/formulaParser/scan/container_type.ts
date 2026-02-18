@@ -473,6 +473,7 @@ function scanDictKey(
   } else if (isStringStartChar(scanner)) {
     return [scanString(scanner, true, parseNext)]
   } else if (scanner.is(PARENS_OPEN)) {
+    // TODO: if I want to be more JS-ish, I should change this to ARRAY_OPEN '['
     return [scanParensGroup(scanner, parseNext)]
   } else if (scanner.isWord('null')) {
     scanner.expectString('null')

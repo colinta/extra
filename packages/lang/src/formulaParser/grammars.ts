@@ -27,7 +27,6 @@ export const TYPE_KEYWORD = 'type'
 export const TYPE_START = ':'
 export const DICT_SEPARATOR = ':'
 export const ARG_SEPARATOR = ':'
-export const CASE_SEPARATOR = ':'
 
 export const ARGS_OPEN = '('
 export const ARGS_CLOSE = ')'
@@ -191,6 +190,10 @@ export function isWord(input: string): boolean {
   return /^\b\w+\b$/.test(input)
 }
 
+export function isBinaryOperator(scanner: Scanner) {
+  return isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)
+}
+
 export function isBinaryOperatorSymbol(scanner: Scanner) {
   return BINARY_OP_SYMBOLS.some(symbol => scanner.is(symbol))
 }
@@ -278,12 +281,16 @@ export function isTaggedString(scanner: Scanner) {
   return scanner.is(/^[a-zA-Z_][a-zA-Z0-9_-]*`/)
 }
 
-// special care for ATOM_START, because it's also an operator we check for
+// special care for ATOM_START, because '::' is an operator
 //     :<anything>
 // but not
 //     ::<anything>
 export function isStringStartChar(scanner: Scanner) {
   return scanner.is(/^["'`]/) || (scanner.is(ATOM_START) && scanner.nextChar !== ATOM_START)
+}
+
+export function isValidAtom(input: string) {
+  return /^([a-zA-Z0-9_-]|\p{Extended_Pictographic})+$/u.test(input)
 }
 
 export function isObjectLiteralStart(input: string) {
@@ -300,12 +307,30 @@ export function isNamedArg(scanner: Scanner) {
 
 export function isRefChar(scanner: Scanner) {
   // if code point of scanner.char is greater than 128, it's probably an emoji
-  const code = scanner.char?.codePointAt(0) ?? 0
-  if (code > 128) {
-    return true
-  }
+  // TODO: if scanner used graphemes instead of character points... that would
+  // be cool.
+  // const code = scanner.char?.codePointAt(0) ?? 0
+  // if (code > 128) {
+  //   return true
+  // }
 
   return /^([a-zA-Z0-9_-]|\p{Extended_Pictographic})/u.test(scanner.remainingInput)
+}
+
+export function refCharLen(scanner: Scanner) {
+  // if code point of scanner.char is greater than 128, it's probably an emoji
+  // TODO: if scanner used graphemes instead of character points... that would
+  // be cool.
+  // const code = scanner.char?.codePointAt(0) ?? 0
+  // if (code > 128) {
+  //   return true
+  // }
+
+  const match = /^([a-zA-Z0-9_-]|\p{Extended_Pictographic})+/u.exec(scanner.remainingInput)
+  if (match) {
+    return match[0].length
+  }
+  return 0
 }
 
 // & and @ are valid start-of-reference characters
@@ -362,7 +387,7 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
     expressionType === 'module' ||
     expressionType === 'enum' ||
     expressionType === 'class' ||
-    expressionType === 'default' ||
+    expressionType === 'default-value' ||
     expressionType === 'object-symbol' ||
     expressionType === 'object-word' ||
     expressionType === 'array-symbol' ||
@@ -392,7 +417,7 @@ export function terminatesWithComma(expressionType: ExpressionType) {
     expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
-    expressionType === 'default' ||
+    expressionType === 'default-value' ||
     expressionType === 'object-symbol' ||
     expressionType === 'object-word' ||
     expressionType === 'array-symbol' ||
@@ -435,7 +460,7 @@ export function terminatesWithCurlyBracket(expressionType: ExpressionType) {
     expressionType === 'dict-symbol' ||
     expressionType === 'enum' ||
     expressionType === 'class' ||
-    expressionType === 'default'
+    expressionType === 'default-value'
   )
 }
 

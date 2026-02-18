@@ -67,7 +67,8 @@ import {
   SWITCH_KEYWORD,
   THEN_KEYWORD,
   ELSE_KEYWORD,
-  isAnyControl,
+  isBinaryOperator,
+  scanBinaryOperatorSymbol,
 } from './grammars'
 import {Scanner} from './scanner'
 import {unexpectedToken} from './scan/basics'
@@ -87,25 +88,12 @@ import {scanBlockArgs, scanInvocationArgs} from './scan/formula_invocation_argum
 import {scanBinaryOperator} from './scan/binary_operator'
 import {scanUnaryOperator} from './scan/unary_operator'
 import {scanLet} from './scan/let'
-import {scanCase, scanMatch} from './scan/match'
+import {scanMatch} from './scan/match'
 import {scanArgumentType} from './scan/argument_type'
 import {scanEnumLookup} from './scan/enum'
 import {scanIf} from './scan/if'
 import {scanGuard} from './scan/guard'
 import {scanSwitch} from './scan/switch'
-
-const LOWEST_OP: Operator = {
-  name: 'lowest op',
-  symbol: '',
-  precedence: LOWEST_PRECEDENCE,
-  associativity: 'left',
-  arity: 1,
-  precedingComments: [],
-  followingOperatorComments: [],
-  create() {
-    throw new Error('Should not be called')
-  },
-}
 
 export function parse(input: string, debug = 0): GetParserResult<Expression> {
   const scanner = new Scanner(input, {debug})
@@ -144,9 +132,8 @@ export function parseModule(input: string, debug = 0): GetParserResult<Expressio
 }
 
 /**
- * Only for testing. Oh wait also for some internal 'parse' features.
- *
- * Ug: naming.
+ * Only for testing. Ug: naming, it isn't a test of scan, it's to test scan
+ * functions.
  */
 export function testScan(
   input: string,
@@ -359,23 +346,36 @@ function parseInternal(
           scanner.is(NULL_COALESCE_ARRAY_OPEN) || //   ?.[
           scanner.is(NULL_COALESCE_INVOCATION_OPEN) // ?.(
         )
-      case '.':
-      case '[':
-      case '(':
+      case PROPERTY_ACCESS_OPERATOR: // .
+      case ARRAY_OPEN: // [
+      case ARGS_OPEN: // (
         return true
     }
 
     return false
   }
 
-  // we're at a newline... cool
-  // 1. is the next token a '-'? Check for whitespace after.
+  // we're at a newline... cool. I want to allow expressions to continue onto
+  // the next line - *specifically* conditions where the and/or clauses can get
+  // quite long. However, there are two operators where this doesn't work out
+  // well. Property access and negative numbers.
+  //
+  // 1. Is the next token a '-'? Check for whitespace after.
   //    whitespace means it's subtraction (keep scanning),
   //    otherwise it's negation (stop scanning)
+  // 4. Is it property access? Property access is indistinguishable from enum
+  //   shorthand, so it is not allowed for operator continuation.
+  //       enum Foo {
+  //         static default = .a
+  //         .a -- is this `Foo.a.a` or `Foo.a`, followed by enum member `.a`
+  //       }
   // 2. is the next token '...'? if we're scanning array/object/set/dict,
   //    that's a splat operator, we should stop scanning.
   // 3. check for an 'onlyif' inclusion operator inside of array/object/set/dict.
   // 4. finally, check for a binary operator.
+  //
+  // (this is a scanner.test() function - scanning is restored after this scan
+  // succeeds or fails)
   function continueScanningAfterNewline() {
     scanner.scanAllWhitespace()
     if (scanner.is(/[-~$][^ \n\t]/)) {
@@ -408,7 +408,17 @@ function parseInternal(
       }
     }
 
-    return isBinaryOperatorSymbol(scanner) || isBinaryOperatorName(scanner)
+    if (
+      scanner.test(
+        () =>
+          isBinaryOperator(scanner) &&
+          scanBinaryOperatorSymbol(scanner) === PROPERTY_ACCESS_OPERATOR,
+      )
+    ) {
+      return false
+    }
+
+    return isBinaryOperator(scanner)
   }
 
   function nextIsKeyword(keyword: string) {
@@ -663,4 +673,20 @@ function parseInternal(
 
   expressionStack[0].followingComments.push(...scanner.flushComments())
   return expressionStack[0]
+}
+
+/**
+ * A sentinel operator to simplify the operator parsing loop.
+ */
+const LOWEST_OP: Operator = {
+  name: 'lowest op',
+  symbol: '',
+  precedence: LOWEST_PRECEDENCE,
+  associativity: 'left',
+  arity: 1,
+  precedingComments: [],
+  followingOperatorComments: [],
+  create() {
+    throw new Error('Should not be called')
+  },
 }

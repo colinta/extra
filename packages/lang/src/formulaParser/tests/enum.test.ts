@@ -76,6 +76,27 @@ enum User {
 }
 `,
       ]),
+      c([
+        `\
+enum User {
+  static default() => .one
+
+  .one
+  .two
+  .three
+}
+`,
+        `\
+enum User {
+  .one
+  .two
+  .three
+
+  static default() =>
+    .one
+}
+`,
+      ]),
       // multiple static properties with dependency sorting
       c([
         `\
@@ -338,6 +359,10 @@ enum Color { -- instance function
 }`,
         Types.namedEnumDefinition({
           name: 'Color',
+          class: Types.enumType(
+            'Color',
+            new Map([['is-red', Types.namedFormula('is-red', [], Types.booleanType())]]),
+          ),
           members: [Types.enumCase('red'), Types.enumCase('green'), Types.enumCase('blue')],
         }),
         [],
@@ -365,6 +390,7 @@ enum Shape { -- all together
 }`,
           Types.namedEnumDefinition({
             name: 'Shape',
+            class: shapeInstance,
             members: [
               Types.enumCase('circle', [
                 Types.positionalArgument({name: 'radius', type: Types.float(), isRequired: true}),

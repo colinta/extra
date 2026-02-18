@@ -16,7 +16,6 @@ export function scanGuard(scanner: Scanner, parseNext: ParseNext): Expressions.G
 
   const precedingComments = scanner.flushComments()
   scanner.expectWord(GUARD_KEYWORD)
-  scanner.scanAllWhitespace()
 
   const condExpr = scanCondition(scanner, parseNext)
 

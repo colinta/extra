@@ -24,7 +24,6 @@ export function scanLet(
 
   const precedingComments = scanner.flushComments()
   scanner.expectWord(LET_KEYWORD)
-  scanner.scanAllWhitespace()
 
   const bindings: (Expressions.LetAssign | Expressions.NamedFormulaExpression)[] = []
   for (;;) {

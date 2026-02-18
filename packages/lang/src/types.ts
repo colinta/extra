@@ -1,9 +1,9 @@
-import {err, mapAll, mapOptional, ok, type Result} from '@extra-lang/result'
+import {err, mapAll, mapOptional, ok, type Result, Guarantee} from '@extra-lang/result'
 import {intersection} from './util'
 import {splitter} from './graphemes'
 import * as Narrowed from './narrowed'
 import {narrowedFloatToInt, narrowedFloatToLength} from './narrowed'
-import {ATOM_START, SPREAD_OPERATOR, KWARG_OPERATOR} from './formulaParser/grammars'
+import {SPREAD_OPERATOR, KWARG_OPERATOR} from './formulaParser/grammars'
 
 export const FN = 'fn'
 export const VIEW = 'view'
@@ -20,10 +20,6 @@ export const SET = 'Set'
 // constructor functions
 export function never() {
   return NeverType
-}
-
-export function all() {
-  return AllType
 }
 
 export function always() {
@@ -92,9 +88,12 @@ export function string({min, max, regex}: {min?: number; max?: number; regex?: R
   return StringType
 }
 
-export function literal(value: boolean | number | string | RegExp, isFloat?: 'float') {
+export function literal(value: boolean | number | string | null | RegExp, isFloat?: 'float') {
   if (value instanceof RegExp) {
     return new LiteralRegexType(value)
+  }
+  if (value === null) {
+    return NullType
   }
 
   return LiteralType.from(value, isFloat)
@@ -183,24 +182,22 @@ export function classDefinition({
 }: {
   name: string
   parent?: ClassDefinitionType
-  class?: ClassInstanceType
+  class: ClassInstanceType
   staticProps?: Map<string, Type>
   defaults?: string[]
   generics?: GenericType[]
-  moreStatics?: (metaClass: ClassDefinitionType, classType: ClassInstanceType) => Map<string, Type>
+  moreStatics?: (definition: ClassDefinitionType, classType: ClassInstanceType) => Map<string, Type>
 }) {
-  const metaClass = new ClassDefinitionType(name, parent, staticProps ?? new Map(), generics ?? [])
-  if (classType) {
-    metaClass.resolveInstanceType(classType, new Set(defaults))
+  const definition = new ClassDefinitionType(name, parent, staticProps ?? new Map(), generics ?? [])
+  definition.resolveInstanceType(classType, new Set(defaults))
 
-    if (moreStatics) {
-      for (const [name, type] of moreStatics(metaClass, classType)) {
-        metaClass.staticProps.set(name, type)
-      }
+  if (moreStatics) {
+    for (const [name, type] of moreStatics(definition, classType)) {
+      definition.addStaticProp(name, type)
     }
   }
 
-  return metaClass
+  return definition
 }
 
 export function classType({
@@ -219,7 +216,7 @@ export function classType({
   const classType = new ClassInstanceType(name, parent, props ?? new Map(), formulas ?? new Map())
   if (moreFormulas) {
     for (const [name, type] of moreFormulas(classType)) {
-      classType.formulas.set(name, type)
+      classType.addFormula(name, type)
     }
   }
   return classType
@@ -229,7 +226,7 @@ export function classType({
  * An 'instance' of an enum.
  */
 export function enumType(name: string, formulas: Map<string, FormulaType> = new Map()) {
-  return new EnumInstanceType(name, formulas)
+  return new NamedEnumInstanceType(name, formulas)
 }
 
 export function enumCase(name: string, args: (PositionalArgument | NamedArgument)[] = []) {
@@ -243,15 +240,32 @@ export function anonymousEnumDefinition(members: EnumCase[]) {
 export function namedEnumDefinition({
   name,
   members,
+  class: classType,
   staticProps = new Map(),
   genericTypes = [],
+  moreStatics,
 }: {
   name: string
   members: EnumCase[]
+  class?: NamedEnumInstanceType
   staticProps?: Map<string, Type>
   genericTypes?: GenericType[]
+  moreStatics?: (
+    definition: NamedEnumDefinitionType,
+    classType: NamedEnumInstanceType,
+  ) => Map<string, Type>
 }) {
-  return new NamedEnumDefinitionType(name, members, staticProps, genericTypes)
+  const definition = new NamedEnumDefinitionType(name, members, staticProps, genericTypes)
+  classType = classType ?? enumType(name)
+  definition.resolveInstanceType(classType)
+
+  if (moreStatics) {
+    for (const [name, type] of moreStatics(definition, classType)) {
+      definition.addStaticProp(name, type)
+    }
+  }
+
+  return definition
 }
 
 export function optional(type: Type) {
@@ -574,7 +588,7 @@ export abstract class Type {
     return undefined
   }
 
-  replacingProp(propName: string, _type: Type): Result<Type, string> {
+  replacingProp(propName: string | number, _type: Type): Result<Type, string> {
     return err(`Type ${this.toCode()} does not have property ${propName}`)
   }
 
@@ -588,7 +602,7 @@ export abstract class Type {
   /**
    * The PropertyAccessOperator 'expr.prop' calls this method to get properties.
    */
-  abstract propAccessType(name: string): Type | undefined
+  abstract propAccessType(name: string | number): Type | undefined
 
   safeArrayAccessType(rhs: Type) {
     return this.arrayAccessType(rhs)
@@ -599,7 +613,7 @@ export abstract class Type {
    * overides `safePropAccessType` and `safeArrayAccessType` to filter out any
    * `null` type.
    */
-  safePropAccessType(name: string) {
+  safePropAccessType(name: string | number) {
     return this.propAccessType(name)
   }
 
@@ -768,7 +782,7 @@ export class GenericType extends Type {
     return `${this.name}${this.resolvedType ? ' = ' + this.resolvedType.toCode() : ''}`
   }
 
-  propAccessType(name: string): Type | undefined {
+  propAccessType(name: string | number): Type | undefined {
     return undefined
   }
 }
@@ -1000,7 +1014,7 @@ export class FormulaType extends Type {
     return embedded ? `(${desc})` : desc
   }
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
     return undefined
   }
 
@@ -1232,19 +1246,8 @@ export abstract class OneOfType extends Type {
       return types[0]
     }
 
-    // special case for oneOf([Type, NullType]) => OptionalType
-    const nonNullType = types.find(t => t !== NullType)
-    if (
-      // only 2
-      types.length === 2 &&
-      // one is NullType
-      types.some(t => t === NullType) &&
-      // the other isn't
-      nonNullType
-    ) {
-      return OptionalType.createOptional(nonNullType)
-    }
-
+    // combine the types - compatibleWithBothTypes will take care of merging
+    // compatible types, returning OptionalType, sorting the types, etc
     return types.reduce((previous, current) => compatibleWithBothTypes(previous, current))
   }
 
@@ -1263,11 +1266,19 @@ export abstract class OneOfType extends Type {
     return mergedType
   }
 
+  arrayAccessType(rhs: Type) {
+    return this.mergeAccessTypes(this.of, (ofType: Type) => ofType.arrayAccessType(rhs))
+  }
+
   safeArrayAccessType(rhs: Type) {
     return this.mergeAccessTypes(
       this.of.filter(type => type !== NullType),
       (ofType: Type) => ofType.arrayAccessType(rhs),
     )
+  }
+
+  propAccessType(name: string | number) {
+    return this.mergeAccessTypes(this.of, (ofType: Type) => ofType.propAccessType(name))
   }
 
   safePropAccessType(name: string) {
@@ -1276,21 +1287,13 @@ export abstract class OneOfType extends Type {
       (ofType: Type) => ofType.propAccessType(name),
     )
   }
-
-  arrayAccessType(rhs: Type) {
-    return this.mergeAccessTypes(this.of, (ofType: Type) => ofType.arrayAccessType(rhs))
-  }
-
-  propAccessType(name: string) {
-    return this.mergeAccessTypes(this.of, (ofType: Type) => ofType.propAccessType(name))
-  }
 }
 
 function scoreType(type: Type): number | undefined {
   if (type instanceof AnonymousEnumDefinitionType) {
     return 1
   }
-  if (type instanceof EnumCase) {
+  if (type instanceof EnumCase || type instanceof EnumInstanceType) {
     return 2
   }
   if (type instanceof ClassInstanceType) {
@@ -1348,8 +1351,6 @@ function scoreType(type: Type): number | undefined {
       return 20
     case NullType:
       return 21
-    case AllType:
-      return 22
     case AlwaysType:
       return 23
     case NeverType:
@@ -1418,6 +1419,10 @@ function _sortTypes(a: Type, b: Type): number {
   return a.toString().toLowerCase().localeCompare(b.toString().toLowerCase())
 }
 
+/**
+ * Only used when you are really sure the types don't overlap. Sorts the types
+ * into a consistent order.
+ */
 export function _privateOneOf(types: Type[]): __OneOfType {
   if (types.some(type => type instanceof OneOfType)) {
     throw 'I should not be. OneOfType passed to _privateOneOf'
@@ -1515,31 +1520,14 @@ export class TypeError extends Error {}
 export const NeverType = new (class NeverType extends Type {
   readonly is = 'never'
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
     return undefined
   }
 })()
 
 /**
- * The set of all possible types. Because it includes all types, it's pretty much
- * *as useful* as the NeverType, except that it can be narrowed.
- *
- *     let
- *       a: all
- *     in
- *       if (a is Int, then: a, else: 0)
- */
-export const AllType = new (class AllType extends Type {
-  readonly is = 'all'
-
-  propAccessType(name: string) {
-    return undefined
-  }
-})()
-
-/**
- * 'never/NeverType' is the empty set, and 'always/AlwaysType' is the set of all
- * types.
+ * 'never/NeverType' is the empty set, 'always/AlwaysType' is the set of all
+ * types. It is meant to be narrowed into more useful types.
  *
  * What is the type of 'a' here?
  *
@@ -1556,7 +1544,7 @@ export const AllType = new (class AllType extends Type {
 export const AlwaysType = new (class AlwaysType extends Type {
   readonly is = 'always'
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
     return undefined
   }
 })()
@@ -1584,7 +1572,10 @@ class MetaNullType extends Type {
     return true
   }
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
+    if (typeof name === 'number') {
+      return undefined
+    }
     return MetaNullType.types[name]?.()
   }
 }
@@ -1623,7 +1614,10 @@ class MetaBooleanType extends Type {
     return BOOLEAN
   }
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
+    if (typeof name === 'number') {
+      return undefined
+    }
     return MetaBooleanType.types[name]?.(this)
   }
 }
@@ -1697,7 +1691,14 @@ export abstract class NumberType<
     return oneOf(ranges.map(range => this.narrow(range.min, range.max)))
   }
 
+  /**
+   * Move the narrowed "window" by amount - think +/- operations.
+   */
   abstract adjustNarrow(amount: number): Type
+  /**
+   * Invert the narrowed range due to -float. Easy for Ints, for floats this
+   * also means changing which side (min/max) is exclusive.
+   */
   abstract negateNarrow(amount: number): Type
 }
 
@@ -1759,6 +1760,28 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
     if (Narrowed.isInNarrowedRange(literal.value, this.narrowed)) {
       return this
     }
+
+    // if the literal is "touching" the min/max (exclusive) value, create an
+    // inclusive range instead
+    // Float(1..<5) | 5 --> Float(1...5)
+    if (Array.isArray(this.narrowed.min) && this.narrowed.min[0] === literal.value) {
+      if (literal.value === this.narrowed.max) {
+        return literal.isInt() ? new LiteralFloatType(literal.value) : literal
+      }
+      return new MetaFloatType({min: literal.value, max: this.narrowed.max}).narrow(
+        literal.value,
+        this.narrowed.max,
+      )
+    }
+    if (Array.isArray(this.narrowed.max) && this.narrowed.max[0] === literal.value) {
+      if (literal.value === this.narrowed.min) {
+        return literal.isInt() ? new LiteralFloatType(literal.value) : literal
+      }
+      return new MetaFloatType({min: this.narrowed.min, max: literal.value}).narrow(
+        this.narrowed.min,
+        literal.value,
+      )
+    }
   }
 
   toCode() {
@@ -1777,21 +1800,23 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
    */
   compatibleWithBothNarrowed(rhs: MetaFloatType | MetaIntType) {
     const narrowed = Narrowed.compatibleWithBothFloats(this.narrowed, rhs.narrowed)
+
     if (narrowed === undefined) {
       return _privateOneOf([this, rhs])
     }
-    // comparing narrowed and this.narrowed looks "wrong" because NarrowedFloat
-    // could be an array, but compatibleWithBothFloats assigns that array without
-    // copying.
-    if (narrowed === this.narrowed) {
-      return this
-    }
-    if (narrowed === rhs.narrowed) {
-      return rhs
-    }
+
     if (Narrowed.isDefaultNarrowedNumber(narrowed)) {
       return FloatType
     }
+
+    if (Narrowed.isEqualNarrowed(narrowed, this.narrowed)) {
+      return this
+    }
+
+    if (Narrowed.isEqualNarrowed(narrowed, rhs.narrowed)) {
+      return rhs
+    }
+
     return new MetaFloatType(narrowed)
   }
 
@@ -1840,7 +1865,7 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
   }
 
   /**
-   * Used with SubtractionOperation
+   * Used with SubtractionOperation and NegateOperation
    * 1 - x => negateNarrow(1)
    */
   negateNarrow(amount: number) {
@@ -1865,7 +1890,10 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
     return new MetaFloatType(next)
   }
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
+    if (typeof name === 'number') {
+      return undefined
+    }
     return MetaFloatType.types[name]?.(this)
   }
 
@@ -1874,9 +1902,6 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
   }
 }
 
-/**
- * Handles narrowed Int types like `Int(>=5)`
- */
 export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
   readonly is = 'int'
 
@@ -1931,9 +1956,9 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
 
   combineLiteral(literal: LiteralType) {
     if (!literal.isInt()) {
-      // if the float is in the range of this int, return float type version of this
-      if (literal.isFloat() && Narrowed.isInNarrowedRange(literal.value, this.narrowed)) {
-        return new MetaFloatType(this.narrowed)
+      // "cast" to a float and let MetaFloatType deal with it
+      if (literal.isFloat()) {
+        return new MetaFloatType(this.narrowed).combineLiteral(literal)
       }
 
       return
@@ -1947,11 +1972,17 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
 
     // if the literal is one below min or one above max, merge those
     if (this.narrowed.min !== undefined && literal.value === this.narrowed.min - 1) {
-      return new MetaIntType({min: this.narrowed.min - 1, max: this.narrowed.max})
+      if (literal.value === this.narrowed.max) {
+        return literal
+      }
+      return new MetaIntType({min: literal.value, max: this.narrowed.max})
     }
 
     if (this.narrowed.max !== undefined && literal.value === this.narrowed.max + 1) {
-      return new MetaIntType({min: this.narrowed.min, max: this.narrowed.max + 1})
+      if (literal.value === this.narrowed.min) {
+        return literal
+      }
+      return new MetaIntType({min: this.narrowed.min, max: literal.value})
     }
   }
 
@@ -1966,18 +1997,23 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
 
   compatibleWithBothNarrowed(rhs: MetaIntType) {
     const narrowed = Narrowed.compatibleWithBothInts(this.narrowed, rhs.narrowed)
+
     if (narrowed === undefined) {
       return _privateOneOf([this, rhs])
     }
-    if (narrowed === this.narrowed) {
-      return this
-    }
-    if (narrowed === rhs.narrowed) {
-      return rhs
-    }
+
     if (Narrowed.isDefaultNarrowedNumber(narrowed)) {
       return IntType
     }
+
+    if (Narrowed.isEqualNarrowed(narrowed, this.narrowed)) {
+      return this
+    }
+
+    if (Narrowed.isEqualNarrowed(narrowed, rhs.narrowed)) {
+      return rhs
+    }
+
     return new MetaIntType(narrowed)
   }
 
@@ -2047,7 +2083,10 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
     return new MetaIntType(next)
   }
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
+    if (typeof name === 'number') {
+      return undefined
+    }
     return MetaIntType.types[name]?.(this)
   }
 
@@ -2298,7 +2337,7 @@ export class MetaStringType extends Type {
    * If propName is length and type is MetaIntType (with narrowedLength), return a
    * new MetaStringType.
    */
-  replacingProp(propName: string, type: Type): Result<Type, string> {
+  replacingProp(propName: string | number, type: Type): Result<Type, string> {
     if (propName === 'length') {
       if (type instanceof OneOfType) {
         return mapAll(type.of.map(ofType => this.replacingProp(propName, ofType))).map(oneOf)
@@ -2322,7 +2361,11 @@ export class MetaStringType extends Type {
     return super.replacingProp(propName, type)
   }
 
-  propAccessType(name: string): Type | undefined {
+  propAccessType(name: string | number): Type | undefined {
+    if (typeof name === 'number') {
+      return undefined
+    }
+
     if (name === 'length') {
       if (this.narrowedString.length.min === this.narrowedString.length.max) {
         return new LiteralIntType(this.narrowedString.length.min)
@@ -2355,7 +2398,11 @@ class MetaRegexType extends Type {
     return true
   }
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
+    if (typeof name === 'number') {
+      return undefined
+    }
+
     return MetaRegexType.types[name]?.(this)
   }
 
@@ -2446,7 +2493,11 @@ export class MetaFloatRangeType extends RangeType<Narrowed.NarrowedFloat> {
   }
 
   propAccessType(_name: string) {
-    // return MetaFloatRangeType.types[name]?.(this)
+    if (typeof name === 'number') {
+      return undefined
+    }
+
+    // TODO: return MetaFloatRangeType.types[name]?.(this)
     return undefined
   }
 
@@ -2486,7 +2537,11 @@ export class MetaIntRangeType extends RangeType<Narrowed.NarrowedInt> {
   }
 
   propAccessType(_name: string) {
-    // return RangeType.types[name]?.(this)
+    if (typeof name === 'number') {
+      return undefined
+    }
+
+    // TODO: return RangeType.types[name]?.(this)
     return undefined
   }
 
@@ -2526,7 +2581,7 @@ export class ViewType extends Type {
     return true
   }
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
     return undefined
   }
 }
@@ -2586,6 +2641,9 @@ export abstract class LiteralType extends Type {
   }
 
   toCode() {
+    // TODO: don't be lazy - literal types need to preserve things like:
+    //   - int representation (0xDEADBEEF vs 3_735_928_559)
+    //   - scientific notation (1.1e+21)
     return JSON.stringify(this.value)
   }
 
@@ -2617,7 +2675,7 @@ export abstract class LiteralBooleanType extends LiteralType {
     }
   }
 
-  propAccessType(name: string): Type | undefined {
+  propAccessType(name: string | number): Type | undefined {
     return BooleanType.propAccessType(name)
   }
 
@@ -2660,6 +2718,13 @@ export class LiteralFloatType extends LiteralType {
    * `min` & `max`. Possibly 'never'.
    */
   exclude(narrowed: Narrowed.NarrowedFloat) {
+    // this logic looks backwards, because 'exclude' is not narrow
+    // a: 1.5, a !is >5 -- a should remain 1.5
+    // Narrowing to >5 will *fail*, which means no values were excluded, ie keep
+    // what we got.
+    // a: 1.5 a !is >1 -- a should be never
+    // Narrowing to >1 will result keep the literal value, which in the exclude
+    // case means we should remove it, leaving never.
     if (this.narrow(narrowed.min, narrowed.max) === NeverType) {
       return this
     }
@@ -2676,7 +2741,7 @@ export class LiteralFloatType extends LiteralType {
     return s
   }
 
-  propAccessType(name: string): Type | undefined {
+  propAccessType(name: string | number): Type | undefined {
     return FloatType.propAccessType(name)
   }
 
@@ -2698,7 +2763,7 @@ export class LiteralIntType extends LiteralFloatType {
     return JSON.stringify(this.value)
   }
 
-  propAccessType(name: string): Type | undefined {
+  propAccessType(name: string | number): Type | undefined {
     return IntType.propAccessType(name)
   }
 
@@ -2728,11 +2793,11 @@ export class LiteralStringType extends LiteralType {
    * If propName is length and type is MetaIntType (with narrowedLength), return a
    * new MetaStringType.
    */
-  replacingProp(propName: string, type: Type): Result<Type, string> {
+  replacingProp(_propName: string | number, _type: Type): Result<Type, string> {
     return err(`I didn't bother implementing replacingProp on ${this}`)
   }
 
-  propAccessType(name: string): Type | undefined {
+  propAccessType(name: string | number): Type | undefined {
     if (name === 'length') {
       return new LiteralIntType(this.length)
     }
@@ -2742,6 +2807,11 @@ export class LiteralStringType extends LiteralType {
 
   defaultInferredClassProp() {
     return StringType
+  }
+
+  toCode() {
+    // TODO: single quotes preferred, and newlines imply triple quotes
+    return JSON.stringify(this.value)
   }
 }
 
@@ -2758,7 +2828,7 @@ export class LiteralRegexType extends LiteralType {
     return `/${this.value.source}/${this.value.flags}`
   }
 
-  propAccessType(name: string): Type | undefined {
+  propAccessType(name: string | number): Type | undefined {
     return RegexType.propAccessType(name)
   }
 
@@ -2911,8 +2981,11 @@ export class ArrayType extends ContainerType<ArrayType> {
     of: Type,
     narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
   ) {
-    // hmm if narrowedLength.max === 0, 'of' could be 'always' type... just a
-    // thought.
+    // arrays that are known to be length 0, concatenated with another array of
+    // unknown length, should *only* take on the properties of the new array
+    // if (narrowedLength.min === 0 && narrowedLength.max === 0) {
+    //   of = AlwaysType
+    // }
     super(of, narrowedLength)
   }
 
@@ -2969,19 +3042,28 @@ export class ArrayType extends ContainerType<ArrayType> {
       return
     }
 
-    if (rhs instanceof LiteralIntType) {
-      return this.literalAccessType(rhs.value)
-    }
-
+    // if this array has a minimum number, and the max is less than that, we are
+    // guaranteed to be in range
     if (
-      rhs instanceof MetaIntType &&
+      this.narrowedLength.min !== undefined &&
       rhs.narrowed.min !== undefined &&
       rhs.narrowed.min >= 0 &&
       rhs.narrowed.max !== undefined &&
-      this.narrowedLength.max !== undefined &&
-      rhs.narrowed.max <= this.narrowedLength.max
+      rhs.narrowed.max <= this.narrowedLength.min
     ) {
       return this.of
+    }
+
+    // check for nulls
+    // - if min is > max -> null
+    // - if max < 0 -> null
+    if (
+      (rhs.narrowed.min !== undefined &&
+        this.narrowedLength.max !== undefined &&
+        rhs.narrowed.min > this.narrowedLength.max) ||
+      (rhs.narrowed.max !== undefined && rhs.narrowed.max < 0)
+    ) {
+      return NullType
     }
 
     return optional(this.of)
@@ -3018,16 +3100,16 @@ export class ArrayType extends ContainerType<ArrayType> {
    * If propName is length and type is MetaIntType (with narrowedLength), return a
    * new ArrayType with that length.
    */
-  replacingProp(propName: string, type: Type): Result<Type, string> {
+  replacingProp(propName: string | number, type: Type): Result<Type, string> {
+    if (type instanceof OneOfType) {
+      return mapAll(type.of.map(ofType => this.replacingProp(propName, ofType))).map(oneOf)
+    }
+
+    if (type === NeverType) {
+      return ok(NeverType)
+    }
+
     if (propName === 'length') {
-      if (type instanceof OneOfType) {
-        return mapAll(type.of.map(ofType => this.replacingProp(propName, ofType))).map(oneOf)
-      }
-
-      if (type === NeverType) {
-        return ok(NeverType)
-      }
-
       if (type instanceof LiteralIntType) {
         return ok(this.narrowLength(Math.max(type.value, 0), type.value))
       }
@@ -3044,7 +3126,10 @@ export class ArrayType extends ContainerType<ArrayType> {
     return super.replacingProp(propName, type)
   }
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
+    if (typeof name === 'number') {
+      return this.literalAccessType(name)
+    }
     return ArrayType.types[name]?.(this)
   }
 
@@ -3057,6 +3142,10 @@ export class DictType extends ContainerType<DictType> {
   readonly is = 'Dict'
 
   declare static types: Record<string, ((dict: DictType) => Type) | undefined>
+
+  // TODO: support "only" keys - the narrowedNames are the *only* keys in this
+  // dict, rather than just a guaranteed set of keys
+  readonly exhaustiveNames: boolean
 
   constructor(
     of: Type,
@@ -3072,7 +3161,10 @@ export class DictType extends ContainerType<DictType> {
         max: narrowed.max === undefined ? undefined : Math.max(narrowed.max, narrowedNames.size),
       }
     }
+
     super(of, narrowed)
+    this.exhaustiveNames =
+      narrowed.max === narrowedNames.size && narrowed.min === narrowedNames.size
   }
 
   create(narrowed: Narrowed.NarrowedFloat): DictType {
@@ -3100,7 +3192,23 @@ export class DictType extends ContainerType<DictType> {
     if (narrowedNames.size === 0) {
       namesDesc = ''
     } else {
-      namesDesc = `keys: [${[...narrowedNames].map(name => ATOM_START + name).join(', ')}]`
+      let keys = 'keys'
+      if (narrowedNames.size === narrowedLength.max && narrowedLength.min === narrowedNames.size) {
+        keys = 'only'
+      }
+      const names = [...narrowedNames]
+        .map(name => {
+          if (
+            typeof name === 'string' &&
+            /^([a-zA-Z0-9_-]|\p{Extended_Pictographic})+$/u.test(name)
+          ) {
+            return ':' + name
+          } else {
+            return literal(name).toCode()
+          }
+        })
+        .join(', ')
+      namesDesc = `${keys}: [${names}]`
     }
 
     let lengthDesc = Narrowed.lengthDesc(narrowedLength)
@@ -3182,8 +3290,34 @@ export class DictType extends ContainerType<DictType> {
     return optional(this.of)
   }
 
-  propAccessType(name: string) {
-    return DictType.types[name]?.(this) ?? this.of
+  /**
+   * Dict has intrinsic properties and methods, but as a fallback will use the
+   * property access as a key. If you want to access a key that is an intrinsic
+   * property, use array access
+   *     let
+   *       d = #{'hello': 0, 'length': 5}
+   *     in
+   *       {
+   *         d.length --> 2  -- intrinsic property
+   *         d.hello --> 0   -- fallback to dict key
+   *         d[:length] --> 5  -- always uses the key (and this is a "known" key)
+   *       }
+   */
+  propAccessType(name: string | number) {
+    const intrinsic = DictType.types[name]?.(this)
+    if (intrinsic !== undefined) {
+      return intrinsic
+    }
+
+    // if the key is known, return T. If the key is not known but ALL the keys
+    // ARE known (exhaustiveNames == true), return null. Otherwise T?
+    if (this.narrowedNames.has(name)) {
+      return this.of
+    } else if (this.exhaustiveNames) {
+      return NullType
+    }
+
+    return optional(this.of)
   }
 
   defaultInferredClassProp() {
@@ -3246,7 +3380,10 @@ export class SetType extends ContainerType<SetType> {
     return new SetType(this.of, length)
   }
 
-  propAccessType(name: string) {
+  propAccessType(name: string | number) {
+    if (typeof name === 'number') {
+      return undefined
+    }
     return SetType.types[name]?.(this)
   }
 
@@ -3260,10 +3397,28 @@ export class ObjectType extends Type {
 
   declare static types: Record<string, ((object: ObjectType) => Type) | undefined>
 
+  private _namedProps: Map<String, Type> = new Map()
+  private _positionalProps: Map<number, Type> = new Map()
+
   constructor(readonly props: ObjectProp[]) {
-    // TODO: props are not being checked for duplicate names (later names should
-    // override earlier names)
     super()
+
+    let propIndex = 0
+    for (const prop of props) {
+      if (prop.is === 'named') {
+        this._namedProps.set(prop.name, prop.type)
+      } else {
+        this._positionalProps.set(propIndex++, prop.type)
+      }
+    }
+  }
+
+  namedProp(name: string) {
+    return this._namedProps.get(name)
+  }
+
+  positionalProp(index: number) {
+    return this._positionalProps.get(index)
   }
 
   isObject(): this is ObjectType {
@@ -3329,9 +3484,27 @@ export class ObjectType extends Type {
   }
 
   /**
-   * ObjectType.arrayAccessType
+   * ObjectType.arrayAccessType - this one needs to investigate the type of the
+   * access element more than most, because ObjectType is heterogeneous.
+   * - literals -> literalAccessType
+   * - int -> could be any of the positional props
+   * - string -> could be any named prop or undefined
    */
   arrayAccessType(rhs: Type): Type | undefined {
+    if (rhs instanceof OneOfType) {
+      return OneOfType.createOneOf(
+        rhs.of.map(type => this.arrayAccessType(type)).filter(t => t !== undefined),
+      )
+    }
+
+    if (rhs.isLiteral()) {
+      if (rhs.value instanceof RegExp) {
+        return undefined
+      }
+
+      return this.literalAccessType(rhs.value)
+    }
+
     let propType: KeyType
     if (rhs.isInt()) {
       propType = 'int'
@@ -3341,7 +3514,7 @@ export class ObjectType extends Type {
       return
     }
 
-    let reducedType: Type | undefined
+    let reducedType: Type = NullType
     let foundAny = false
     for (const prop of this.props) {
       if (
@@ -3349,9 +3522,7 @@ export class ObjectType extends Type {
         (prop.is === 'named' && propType === 'string')
       ) {
         foundAny = true
-        reducedType = reducedType
-          ? compatibleWithBothTypes(reducedType, prop.type)
-          : optional(prop.type)
+        reducedType = compatibleWithBothTypes(reducedType, prop.type)
       }
 
       if (reducedType === NeverType) {
@@ -3370,47 +3541,57 @@ export class ObjectType extends Type {
    * ObjectType.literalAccessType
    */
   literalAccessType(propName: Key): Type | undefined {
+    // only numerics and strings in objects. if you think this is restrictive,
+    // classes only allow strings, so count yourself lucky.
     if (propName === null || typeof propName === 'boolean') {
       return undefined
     }
 
     if (typeof propName === 'string') {
-      return this.props.find(prop => prop.name === propName)?.type
+      return this.namedProp(propName)
     }
 
-    let propIndex = 0
-    for (const prop of this.props) {
-      if (prop.is === 'positional') {
-        if (propName === propIndex) {
-          return prop.type
-        }
-        propIndex++
-      }
-    }
-
-    return undefined
+    return this.positionalProp(propName)
   }
 
   /**
    * Returns a copy of the ObjectType, replacing the type of one property. This is
    * used by the type narrowing and relationship code.
+   *
+   * propName can be a string (foo.name) OR a number (foo.0).
    */
-  replacingProp(propName: string, type: Type): Result<Type, string> {
+  replacingProp(propName: string | number, type: Type): Guarantee<ObjectType, any> {
+    let propIndex = 0
     return ok(
       new ObjectType(
         this.props.map(prop => {
-          if (prop.name !== propName) {
-            return prop
+          const isMatch =
+            (prop.is === 'positional' && propName === propIndex) ||
+            (typeof propName === 'string' && propName === prop.name)
+
+          if (prop.is === 'positional') {
+            propIndex++
           }
 
-          return {...prop, type}
+          if (isMatch) {
+            return {...prop, type}
+          }
+
+          return prop
         }),
       ),
     )
   }
 
-  propAccessType(prop: string): Type | undefined {
-    return ObjectType.types[prop]?.(this) ?? this.literalAccessType(prop)
+  /**
+   * Object has intrinsic properties and methods, but also, obviously, supports
+   * property access - this is the most common interface to access properties on
+   * an object. If you want to access a key that is an intrinsic property, use
+   * array access.
+   */
+  propAccessType(name: string | number): Type | undefined {
+    const intrinsic = ObjectType.types[name]?.(this)
+    return intrinsic ?? this.literalAccessType(name)
   }
 
   /**
@@ -3482,7 +3663,7 @@ export class AnonymousEnumDefinitionType extends Type {
     super()
   }
 
-  propAccessType(_prop: string): Type | undefined {
+  propAccessType(_name: string): Type | undefined {
     return undefined
   }
 
@@ -3518,6 +3699,8 @@ export class AnonymousEnumDefinitionType extends Type {
 export class NamedEnumDefinitionType extends AnonymousEnumDefinitionType {
   is = 'named-enum-definition'
 
+  instanceType: NamedEnumInstanceType | undefined
+
   constructor(
     readonly name: string,
     members: EnumCase[],
@@ -3527,11 +3710,15 @@ export class NamedEnumDefinitionType extends AnonymousEnumDefinitionType {
     super(members)
   }
 
+  resolveInstanceType(instanceType: NamedEnumInstanceType) {
+    this.instanceType = instanceType
+  }
+
   addStaticProp(name: string, type: Type) {
     this.staticProps.set(name, type)
   }
 
-  propAccessType(_prop: string): Type | undefined {
+  propAccessType(_name: string): Type | undefined {
     // TODO: scan this.formulas
     return undefined
   }
@@ -3549,18 +3736,14 @@ export class NamedEnumDefinitionType extends AnonymousEnumDefinitionType {
   }
 }
 
+/**
+ * An instance of an AnonymousEnumDefinitionType
+ */
 export class EnumInstanceType extends Type {
   readonly is = 'enum'
 
-  constructor(
-    readonly name: string,
-    readonly formulas: Map<string, Type>,
-  ) {
+  constructor(readonly name: string) {
     super()
-  }
-
-  addFormula(name: string, formula: Type) {
-    this.formulas.set(name, formula)
   }
 
   /**
@@ -3570,13 +3753,41 @@ export class EnumInstanceType extends Type {
     return this.name
   }
 
-  propAccessType(prop: string): Type | undefined {
-    return this.formulas.get(prop)
+  propAccessType(name: string | number): Type | undefined {
+    return undefined
   }
 
   /**
-   * Instances of a class are always true – and shouldn't be used as a
-   * conditional
+   * Instances of an enum are always true
+   */
+  isOnlyTruthyType() {
+    return true
+  }
+}
+
+export class NamedEnumInstanceType extends EnumInstanceType {
+  readonly is = 'enum'
+
+  constructor(
+    readonly name: string,
+    readonly formulas: Map<string, Type>,
+  ) {
+    super(name)
+  }
+
+  addFormula(name: string, formula: Type) {
+    this.formulas.set(name, formula)
+  }
+
+  propAccessType(name: string | number): Type | undefined {
+    if (typeof name === 'number') {
+      return undefined
+    }
+    return this.formulas.get(name)
+  }
+
+  /**
+   * Instances of an enum are always true
    */
   isOnlyTruthyType() {
     return true
@@ -3658,7 +3869,10 @@ export class ClassDefinitionType extends Type {
     return this.classInstanceType!
   }
 
-  propAccessType(name: string): Type | undefined {
+  propAccessType(name: string | number): Type | undefined {
+    if (typeof name === 'number') {
+      return undefined
+    }
     return this.staticProps.get(name)
   }
 }
@@ -3809,8 +4023,11 @@ export class ClassInstanceType extends Type {
     }
   }
 
-  propAccessType(prop: string): Type | undefined {
-    return this.allProps.get(prop) ?? this.formulas.get(prop) ?? this.parent?.propAccessType(prop)
+  propAccessType(name: string | number): Type | undefined {
+    if (typeof name === 'number') {
+      return undefined
+    }
+    return this.allProps.get(name) ?? this.formulas.get(name) ?? this.parent?.propAccessType(name)
   }
 
   /**
@@ -3852,7 +4069,10 @@ export class ModuleType extends Type {
     super()
   }
 
-  propAccessType(name: string): Type | undefined {
+  propAccessType(name: string | number): Type | undefined {
+    if (typeof name === 'number') {
+      return undefined
+    }
     return this.definitions.get(name)
   }
 }
@@ -3911,6 +4131,29 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
   // Yeah ranges don't really work as a 'canBeAssignedTo' case, and it was just
   // easier to put it in here than work it into canBeAssignedTo (where it
   // definitely doesn't belong)
+  if (lhsType.isFloat() && typeAssertion.isRange()) {
+    if (Narrowed.isInNarrowedRange(typeAssertion.narrowed, lhsType.narrowed)) {
+      if (lhsType.isInt()) {
+        const narrowed = narrowedFloatToInt(typeAssertion.narrowed)
+        if (Narrowed.narrowedIsNever(narrowed)) {
+          return NeverType
+        }
+        return int(narrowed)
+      } else {
+        return float(typeAssertion.narrowed)
+      }
+    }
+
+    if (lhsType.isInt()) {
+      const narrowed = narrowedFloatToInt(typeAssertion.narrowed)
+      if (Narrowed.narrowedIsNever(narrowed)) {
+        return NeverType
+      }
+      return lhsType.narrow(narrowed.min, narrowed.max)
+    }
+    return lhsType.narrow(typeAssertion.narrowed.min, typeAssertion.narrowed.max)
+  }
+
   if (
     (lhsType.isFloat() && typeAssertion.isFloat()) ||
     (lhsType.isRange() && typeAssertion.isRange())
@@ -3964,7 +4207,7 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
 
   if (lhsType instanceof ContainerType && typeAssertion instanceof ContainerType) {
     // make sure that the array type of typeAssertion completely covers the
-    // array type of lhsType
+    // array type of lhsType - if it doesn't, we can't be sure that there isn't some overlap, and we
     if (!canBeAssignedTo(lhsType.of, typeAssertion.of)) {
       return lhsType
     }
@@ -3978,6 +4221,7 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
   }
 
   if (
+    (lhsType.isFloat() && typeAssertion.isRange()) ||
     (lhsType.isFloat() && typeAssertion.isFloat()) ||
     (lhsType.isRange() && typeAssertion.isRange())
   ) {
@@ -4149,7 +4393,6 @@ export function stringConcatenationType(
  * includes both types.
  *
  * - NeverType never merges - nothing is compatible with it.
- * - if either type is AllType, return AllType
  * - if either type is AlwaysType, return the other type
  * - Identical types are easy, return the type
  * - OneOf types will be merged item by item, merging when possible. At most you'll
@@ -4174,10 +4417,6 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
 
   if (lhs === NeverType || rhs === NeverType) {
     return NeverType
-  }
-
-  if (lhs === AllType || rhs === AllType) {
-    return AllType
   }
 
   if (lhs === AlwaysType) {
@@ -4574,6 +4813,20 @@ export function canBeAssignedTo(
   resolvedGenericsMap?: Map<GenericType, GenericType>,
   reason?: {reason: string}, // if provided, this object will be modified to include an error message.
 ): boolean {
+  if (testType === NeverType || assignTo === NeverType) {
+    return why(false, `Encountered unexpected type 'never'.`)
+  }
+
+  if (testType === AlwaysType || assignTo === AlwaysType) {
+    return true
+  }
+
+  if (testType === assignTo) {
+    return true
+  }
+
+  // this little helper accepts the canBeAssigned check, and if an error object
+  // was provided, assigns the failure reason.
   function why(canBeAssigned: boolean, error: string) {
     if (canBeAssigned) {
       if (reason) {
@@ -4620,30 +4873,6 @@ export function canBeAssignedTo(
       generic.some(rhType => canBeAssignedTo(testType, rhType, resolvedGenericsMap, reason)),
       `'${testType}' is not assignable to '${assignTo}'.`,
     )
-  }
-
-  if (testType === NeverType || assignTo === NeverType) {
-    return why(false, `Encountered unexpected type 'never'.`)
-  }
-
-  if (assignTo === AllType) {
-    return true
-  }
-
-  if (testType === AllType) {
-    return why(false, `Encountered unexpected type 'any'.`)
-  }
-
-  if (testType === AlwaysType) {
-    return true
-  }
-
-  if (assignTo === AlwaysType) {
-    return why(false, `Encountered unexpected type 'always'.`)
-  }
-
-  if (testType === assignTo) {
-    return true
   }
 
   if (testType.isGeneric() && !assignTo.isGeneric()) {
@@ -5159,7 +5388,30 @@ function _checkFormulaArguments(
   let positionIndex = 0
   const remainingNames: Set<string> = new Set(namedArgs)
 
-  for (const formulaArgument of formulaBeingCalled.args) {
+  // sort formulaBeingCalled.args:
+  // - all positional
+  // - all spread-positional
+  // - all named
+  // - all repeated-named
+  // - finally, kwargs
+  function argumentScore(arg: Argument) {
+    switch (arg.is) {
+      case 'positional-argument':
+        return 0
+      case 'spread-positional-argument':
+        return 1
+      case 'named-argument':
+        return 2
+      case 'repeated-named-argument':
+        return 3
+      case 'kwarg-list-argument':
+        return 4
+    }
+  }
+  const sortedArgs = [...formulaBeingCalled.args].sort(
+    (a, b) => argumentScore(a) - argumentScore(b),
+  )
+  for (const formulaArgument of sortedArgs) {
     let argumentType: Type | undefined
     let argumentIsRequired: boolean
     // store position for error messages if argumentType has an error
@@ -5343,7 +5595,9 @@ function kwargListArgumentType(
     remainingNames.delete(argName)
     const argTypes = argumentsNamed(argName)
     if (argTypes.length > 1) {
-      errors.push(`Multiple arguments named '${argName}' provided. Only one is expected.`)
+      errors.push(
+        `Multiple arguments named '${argName}' provided. Only one is expected to be assigned to the keyword argument list.`,
+      )
       break
     } else if (argTypes.length === 0) {
       throw 'impossible - I got the list of arg names from remainingNames - but then none are returned by argumentsNamed!?'

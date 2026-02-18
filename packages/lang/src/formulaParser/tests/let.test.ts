@@ -108,8 +108,8 @@ in
       c([
         `\
 let
-  a = bla1
-    .bla2?.
+  a = bla1.
+    bla2?.
     bla3
 in
   let

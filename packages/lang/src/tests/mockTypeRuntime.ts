@@ -5,6 +5,7 @@ import {MutableTypeRuntime} from '../runtime'
 class MockTypeRuntime extends MutableTypeRuntime {
   constructor(readonly runtimeTypes: {[K in string]: [Types.Type, Values.Value]}) {
     super()
+    Object.defineProperty(this, 'runtimeTypes', {enumerable: false})
   }
 
   refId(name: string): string | undefined {

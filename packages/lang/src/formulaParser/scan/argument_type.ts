@@ -172,7 +172,6 @@ export function scanArgumentType(
       )
     } else if (scanner.isWord(FN_KEYWORD)) {
       scanner.expectWord(FN_KEYWORD)
-      scanner.scanAllWhitespace()
       argType = scanFormulaType(scanner, arg0, parseNext, moduleOrArgument)
     } else if (isArgumentStartChar(scanner)) {
       const typeName = scanIdentifier(scanner)

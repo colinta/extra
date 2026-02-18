@@ -71,7 +71,7 @@ fn(
       ]),
       c([
         'fn<T, U>(a: fn(): T, # b: fn(): U): {T, U} => {a(), b()}',
-        '(fn <T> ((a: (fn () : (T))) (# b: (fn () : (T)))) : T => (fn b ()))',
+        '(fn <T U> ((a: (fn () : (T))) (# b: (fn () : (U)))) : {T U} => {(fn a ()) (fn b ())})',
       ]),
       c(['fn(# arg: .a | .b): T => b()', '(fn ((# arg: (enum | .a | .b))) : T => (fn b ()))']),
       c(['fn(# arg: {a: String}): T => b()', '(fn ((# arg: {(a: `String`)})) : T => (fn b ()))']),

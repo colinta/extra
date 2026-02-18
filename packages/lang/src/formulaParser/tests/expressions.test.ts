@@ -73,19 +73,21 @@ describe('getType', () => {
   })
 
   describe('LogicalNot', () => {
-    cases<[string, Types.Type]>(c(['not 0|1|2', Types.oneOf([Types.booleanType()])])).run(
-      ([formula, expectedType], {only, skip}) =>
-        (only ? it.only : skip ? it.skip : it)(`${formula}`, () => {
-          const [_, lhs] = formula.split('not ', 2)
-          const lhsType = parseType(lhs)
-            .get()
-            .getAsTypeExpression(typeRuntime)
-            .get()
-            .fromTypeConstructor()
-          runtimeTypes['lhs'] = [lhsType, Values.nullValue()]
-          const expression = parse('not lhs').get()
-          expect(expression.getType(typeRuntime).get()).toEqual(expectedType)
-        }),
+    cases<[string, Types.Type]>(
+      //
+      c(['not 0|1|2', Types.oneOf([Types.booleanType()])]),
+    ).run(([formula, expectedType], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`${formula}`, () => {
+        const [_, lhs] = formula.split('not ', 2)
+        const lhsType = parseType(lhs)
+          .get()
+          .getAsTypeExpression(typeRuntime)
+          .get()
+          .fromTypeConstructor()
+        runtimeTypes['lhs'] = [lhsType, Values.nullValue()]
+        const expression = parse('not lhs').get()
+        expect(expression.getType(typeRuntime).get()).toEqual(expectedType)
+      }),
     )
   })
 

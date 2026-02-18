@@ -611,8 +611,7 @@ class NullColescingPipeOperator extends BinaryOperator {
   symbol = '?|>'
 
   rhsCompile(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
-    const hasNullType =
-      lhs instanceof Types.OneOfType && lhs.of.some(type => type === Types.NullType)
+    const hasNullType = lhs instanceof Types.OneOfType && lhs.isOptional()
     if (!hasNullType) {
       return err(
         new RuntimeError(
@@ -637,8 +636,7 @@ class NullColescingPipeOperator extends BinaryOperator {
     _rhsExpr: Expression,
     originalLhs: Types.Type,
   ) {
-    const hasNullType =
-      originalLhs instanceof Types.OneOfType && originalLhs.of.some(type => type === Types.NullType)
+    const hasNullType = originalLhs instanceof Types.OneOfType && originalLhs.isOptional()
     if (!hasNullType) {
       return decorateError(
         this,
@@ -701,8 +699,7 @@ class NullCoalescingOperator extends BinaryOperator {
   symbol = '??'
 
   rhsCompile(runtime: TypeRuntime, lhs: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
-    const hasNullType =
-      lhs instanceof Types.OneOfType && lhs.of.some(type => type === Types.NullType)
+    const hasNullType = lhs instanceof Types.OneOfType && lhs.isOptional()
     if (!hasNullType) {
       return err(
         new RuntimeError(
@@ -784,6 +781,8 @@ class LogicalOrOperator extends BinaryOperator {
 
   assumeTrue(runtime: TypeRuntime) {
     const [lhs, rhs] = this.args
+    console.log('=========== operators.ts at line 784 ===========')
+    console.log({lhs, rhs})
     return lhs
       .assumeFalse(runtime)
       .map(lhsFalseRuntime => rhs.assumeTrue(lhsFalseRuntime))
@@ -1790,10 +1789,10 @@ abstract class MatchOperator extends BinaryOperator {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr, rhs)))
     }
 
-    // this little gem prevents 'expr is bar and bar', which might look fine,
-    // but try to calculate the 'false' branch of that thing... expr should be
-    // 'never', but it... assigns to bar? Doesn't assign? I don't know. So it's
-    // a compile-time error instead. 😎
+    // this little gem prevents 'expr is bar', which might look fine, but try to
+    // calculate the 'false' branch of that thing... expr always assigns to
+    // 'bar', so 'expr' would be type 'never', but it... assigns to bar? Doesn't
+    // assign? I don't know. So it's a compile-time error instead. 😎
     if (rhsExpr.alwaysMatches(lhs)) {
       return ok(Types.LiteralTrueType)
     }
@@ -2891,6 +2890,33 @@ abstract class PropertyChainOperator extends BinaryOperator {
 
   lhsCompile(runtime: TypeRuntime, lhsExpr: Expression): GetNodeResult {
     return getChildNode(this, lhsExpr, runtime).map(actualNode => {
+      const lhsType = actualNode.type
+      if (this.isNullCoalescing()) {
+        // the null coalescing operators are meant to be executed on values that
+        // are *sometimes* null, but not always null, and not never null.
+        //     null         --> always null    ❌
+        //     Int          --> never null     ❌
+        //     Int | String --> never null     ❌
+        //     Int | null   --> sometimes null ✅
+        if (lhsType === Types.NullType) {
+          return err(
+            new RuntimeError(
+              this,
+              `Expected a nullable type on left hand side of '${this.symbol}' operator, found '${lhsType}' which is always null.`,
+            ),
+          )
+        }
+
+        if (!(lhsType instanceof Types.OneOfType) || !lhsType.isOptional()) {
+          return err(
+            new RuntimeError(
+              this,
+              `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${lhsType} which is never null.`,
+            ),
+          )
+        }
+      }
+
       let lhsResult: GetTypeResult
       if (lhsExpr instanceof PropertyChainOperator) {
         lhsResult = lhsExpr.getChainType(runtime)
@@ -2909,6 +2935,7 @@ abstract class PropertyChainOperator extends BinaryOperator {
     lhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
+    originalLhs: Types.Type,
   ): GetTypeResult
 
   /**
@@ -2921,9 +2948,9 @@ abstract class PropertyChainOperator extends BinaryOperator {
     _rhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
-    _originalLhs: Types.Type,
+    originalLhs: Types.Type,
   ) {
-    return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+    return this.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr, originalLhs)
   }
 
   defaultCompile(runtime: TypeRuntime, ctor: NodeConstructor): GetNodeResult {
@@ -2971,32 +2998,6 @@ abstract class PropertyChainOperator extends BinaryOperator {
     }
 
     return lhsResult.mapResult(decorateError(this)).map(lhsType => {
-      if (this.isNullCoalescing()) {
-        // the null coalescing operators are meant to be executed on values that
-        // are *sometimes* null, but not always null, and not never null.
-        //     null         --> always null    ❌
-        //     Int          --> never null     ❌
-        //     Int | String --> never null     ❌
-        //     Int | null   --> sometimes null ✅
-        if (lhsType === Types.NullType) {
-          return err(
-            new RuntimeError(
-              this,
-              `Expected a nullable type on left hand side of '${this.symbol}' operator, found '${lhsType}' which is always null.`,
-            ),
-          )
-        }
-
-        if (!(lhsType instanceof Types.OneOfType) || !lhsType.of.some(of => of.isNull())) {
-          return err(
-            new RuntimeError(
-              this,
-              `Expected a nullable type on left hand side of '${this.symbol}' operator, found ${lhsType} which is never null.`,
-            ),
-          )
-        }
-      }
-
       if (lhsType instanceof Types.OneOfType) {
         const lhsTypes = this.isNullCoalescing()
           ? lhsType.of.filter(type => !type.isNull())
@@ -3005,12 +3006,12 @@ abstract class PropertyChainOperator extends BinaryOperator {
           lhsTypes.map(
             oneLhType =>
               guardNeverType(oneLhType) ??
-              this.chainOperatorType(runtime, oneLhType, lhsExpr, rhsExpr),
+              this.chainOperatorType(runtime, oneLhType, lhsExpr, rhsExpr, lhsType),
           ),
         ).map(Types.oneOf)
       }
 
-      return this.chainOperatorType(runtime, lhsType, lhsExpr, rhsExpr)
+      return this.chainOperatorType(runtime, lhsType, lhsExpr, rhsExpr, lhsType)
     })
   }
 }
@@ -3094,7 +3095,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
     return this.rhsName().map(rhsName => new Nodes.PropertyName(toSource(rhsExpr), rhsName))
   }
 
-  rhsName(): GetRuntimeResult<string> {
+  rhsName(): GetRuntimeResult<string | number> {
     const [, rhsExpr] = this.args
     if (!(rhsExpr instanceof Expressions.Identifier)) {
       return err(new RuntimeError(rhsExpr, expectedType('property name', rhsExpr)))
@@ -3107,6 +3108,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
     lhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
+    _originalLhs: Types.Type,
   ): GetTypeResult {
     return this.rhsName().map(rhsName => {
       const rhType = lhs.propAccessType(rhsName)
@@ -3201,12 +3203,13 @@ class NullCoalescingPropertyAccessOperator extends PropertyAccessOperator {
     lhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
+    originalLhs: Types.Type,
   ): GetTypeResult {
     if (lhs.isNull()) {
       return ok(lhs)
     }
 
-    return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+    return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr, originalLhs)
   }
 
   compile(runtime: TypeRuntime) {
@@ -3283,6 +3286,7 @@ class ArrayAccessOperator extends PropertyChainOperator {
     lhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
+    originalLhs: Types.Type,
   ) {
     return rhsExpr.getType(runtime).map(rhs => {
       if (rhs instanceof Types.OneOfType) {
@@ -3566,12 +3570,13 @@ class NullCoalescingArrayAccessOperator extends ArrayAccessOperator {
     lhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
+    originalLhs: Types.Type,
   ): GetTypeResult {
     if (lhs.isNull()) {
       return ok(lhs)
     }
 
-    return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+    return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr, originalLhs)
   }
 
   compile(runtime: TypeRuntime) {
@@ -3655,6 +3660,7 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
     lhFormulaType: Types.Type,
     lhFormulaExpression: Expression,
     rhArgsExpression: Expression,
+    originalLhs: Types.Type,
   ) {
     if (lhFormulaType instanceof Types.ClassDefinitionType) {
       lhFormulaType = lhFormulaType.konstructor!
@@ -3752,12 +3758,13 @@ export class NullCoalescingFunctionInvocationOperator extends FunctionInvocation
     lhs: Types.Type,
     lhsExpr: Expression,
     rhsExpr: Expression,
+    originalLhs: Types.Type,
   ): GetTypeResult {
     if (lhs.isNull()) {
       return ok(lhs)
     }
 
-    return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr)
+    return super.chainOperatorType(runtime, lhs, lhsExpr, rhsExpr, originalLhs)
   }
 
   operatorEval(
@@ -3834,6 +3841,10 @@ class InclusionOperator extends BinaryOperator {
     return true
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.defaultCompile(runtime, Nodes.InclusionOperator)
+  }
+
   operatorType(_runtime: TypeRuntime, lhs: Types.Type, _rhs: Types.Type, rhsExpr: Expression) {
     if (rhsExpr instanceof InclusionOperator) {
       return err(new RuntimeError(this, 'Inclusion operator cannot be nested'))
@@ -3879,21 +3890,26 @@ class LogicalNotOperator extends UnaryOperator {
     return this.args[0].assumeTrue(runtime)
   }
 
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, lhsExpr: Expression) {
-    if (lhs.isOnlyTruthyType()) {
+  operatorType(
+    _runtime: TypeRuntime,
+    lhs: Types.Type,
+    lhsExpr: Expression,
+    originalLhs: Types.Type,
+  ) {
+    if (originalLhs.isOnlyTruthyType()) {
       return err(
         new RuntimeError(
           this,
-          `'not' operator always returns false. '${lhsExpr}' is of type '${lhs}', which is never false.`,
+          `'not' operator always returns false. '${lhsExpr}' is of type '${originalLhs}', which is never false.`,
         ),
       )
     }
 
-    if (lhs.isOnlyFalseyType()) {
+    if (originalLhs.isOnlyFalseyType()) {
       return err(
         new RuntimeError(
           this,
-          `'not' operator always returns true. '${lhsExpr}' is of type '${lhs}', which is never true.`,
+          `'not' operator always returns true. '${lhsExpr}' is of type '${originalLhs}', which is never true.`,
         ),
       )
     }

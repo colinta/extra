@@ -290,7 +290,10 @@ export class Scanner {
 
   expectWord(str: string, message?: string) {
     this.expectString(str, message)
-    this.expectWhitespace()
+    if (this.is(/^[\w\d]/)) {
+      throw new ParseError(this, `Expected word boundary, found '${unexpectedToken(this)}'`)
+    }
+    this.scanAllWhitespace()
   }
 
   expectString(str: string, message?: string) {

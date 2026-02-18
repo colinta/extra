@@ -28,7 +28,6 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
   }
 
   scanner.expectWord(VIEW_KEYWORD)
-  scanner.scanAllWhitespace()
 
   const precedingNameComments = scanner.flushComments()
   const nameRef = scanValidViewName(scanner)

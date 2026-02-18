@@ -1,5 +1,13 @@
 import * as Expressions from '../../expressions'
-import {ATOM_START, IGNORE_TOKEN, isRef, isRefChar, STATE_START} from '../grammars'
+import {
+  ATOM_START,
+  IGNORE_TOKEN,
+  isArgumentStartChar,
+  isRef,
+  isRefChar,
+  refCharLen,
+  STATE_START,
+} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
 import {unexpectedToken} from './basics'
@@ -13,9 +21,10 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
   const range0 = scanner.charIndex
 
   let currentToken = ''
-  while (isRefChar(scanner)) {
-    currentToken += scanner.char
-    scanner.charIndex += 1
+  if (isArgumentStartChar(scanner)) {
+    const len = refCharLen(scanner)
+    currentToken += scanner.remainingInput.slice(0, len)
+    scanner.charIndex += len
   }
 
   if (!isRef(currentToken)) {
@@ -146,10 +155,12 @@ export function scanAtom(scanner: Scanner) {
   scanner.expectString(ATOM_START)
 
   let currentToken = ''
-  while (isRefChar(scanner)) {
-    currentToken += scanner.char
-    scanner.charIndex += 1
-  }
+  // unlike most "reference-like" tokens, atoms CAN begin with a number, hyphen,
+  // etc, because the first character is the delimiter ':', so we don't use
+  // `isArgumentStartChar`
+  const len = refCharLen(scanner)
+  currentToken += scanner.remainingInput.slice(0, len)
+  scanner.charIndex += len
 
   if (!isRef(currentToken)) {
     throw new ParseError(scanner, `Expected an atom, found '${currentToken}'`)
@@ -173,9 +184,10 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
   const isState = scanner.scanIfString(STATE_START)
 
   let currentToken = ''
-  while (isRefChar(scanner)) {
-    currentToken += scanner.char
-    scanner.charIndex += 1
+  if (isArgumentStartChar(scanner)) {
+    const len = refCharLen(scanner)
+    currentToken = scanner.remainingInput.slice(0, len)
+    scanner.charIndex += len
   }
 
   if (!isRef(currentToken)) {
@@ -277,9 +289,10 @@ export function scanAnyReference(scanner: Scanner): Expressions.Reference {
   const range0 = scanner.charIndex
 
   let currentToken = ''
-  while (isRefChar(scanner)) {
-    currentToken += scanner.char
-    scanner.charIndex += 1
+  if (isArgumentStartChar(scanner)) {
+    const len = refCharLen(scanner)
+    currentToken += scanner.remainingInput.slice(0, len)
+    scanner.charIndex += len
   }
 
   if (!isRef(currentToken)) {

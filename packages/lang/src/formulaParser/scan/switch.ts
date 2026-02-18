@@ -1,8 +1,8 @@
 import * as Expressions from '../../expressions'
-import {CASE_KEYWORD, ELSE_KEYWORD, SWITCH_KEYWORD, THEN_KEYWORD} from '../grammars'
+import {CASE_KEYWORD, ELSE_KEYWORD, SWITCH_KEYWORD} from '../grammars'
 import {type Scanner} from '../scanner'
 import {type ParseNext} from '../types'
-import {scanCase, scanMatch} from './match'
+import {scanCase} from './match'
 
 /**
  *     switch subject case test then value
@@ -25,7 +25,6 @@ export function scanSwitch(scanner: Scanner, parseNext: ParseNext): Expressions.
 
   const precedingComments = scanner.flushComments()
   scanner.expectWord(SWITCH_KEYWORD)
-  scanner.scanAllWhitespace()
 
   const subjectExpr = scanSubject(scanner, parseNext)
   const caseExprs: Expressions.CaseExpression[] = []

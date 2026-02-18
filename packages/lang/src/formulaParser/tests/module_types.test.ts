@@ -79,15 +79,14 @@ enum RemoteData<Tsuccess, Tfail> {
   .failure(# value: Tfail)
 
   fn toMaybe(): Maybe(Tsuccess) =>
-      switch (this) {
-      case .success(value):
+      switch this
+      case .success(value)
         .some(value)
-      else:
+      else
         .none
-      }
 }
 `,
-      '((enum RemoteData) <Tsuccess Tfail> (.notLoaded .loading .success((# value: Tsuccess)) .failure((# value: Tfail))))',
+      '((enum RemoteData) <Tsuccess Tfail> (.notLoaded .loading .success((# value: Tsuccess)) .failure((# value: Tfail))) ((fn toMaybe() : (Maybe Tsuccess) => (switch `this` (case (.success(value)) : .some(value)) (else: .none)))))',
       `\
 enum RemoteData<Tsuccess, Tfail> {
   .notLoaded
@@ -96,12 +95,11 @@ enum RemoteData<Tsuccess, Tfail> {
   .failure(# value: Tfail)
 
   fn toMaybe(): Maybe(Tsuccess) =>
-    switch (this) {
-    case .success(value):
+    switch this
+    case .success(value)
       .some(value)
-    else:
+    else
       .none
-    }
 }`,
     ]),
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
@@ -130,17 +128,17 @@ export class User<T> {
         User(first-name: '', last-name: '', data: 0)
 }
 `,
-      "((export class User) <T> ((@first-name: `String`) (@last-name: `String`) (@data: T)) ((fn name() => (.. (.. @first-name ' ') @last-name)) (static default() => (fn User ((first-name: '') (last-name: '') (data: 0))))))",
-      `export class User<T> {
+      "((export class User) <T> ((@first-name: `String`) (@last-name: `String`) (@data: T)) ((fn name() => (.. (.. @first-name ' ') @last-name))) ((static default() => (fn User ((first-name: '') (last-name: '') (data: 0))))))",
+      `\
+export class User<T> {
+  static default() => User(first-name: '', last-name: '', data: 0)
+
   @first-name: String
   @last-name: String
   @data: T
 
   fn name() =>
     @first-name .. ' ' .. @last-name
-
-  static default() =>
-    User(first-name: '', last-name: '', data: 0)
 }`,
     ]),
     c([
@@ -179,14 +177,12 @@ class User {
   @age: Int(>=0) = 0
 
   fn fullname(): String =>
-    if (this.first-name and this.last-name) {
-    then:
+    if this.first-name and this.last-name
       this.first-name .. this.last-name
-    else:
+    else
       this.first-name or this.last-name or '<no name>'
-    }
 }`,
-      "((class User) ((@first-name: `String` '') (@last-name: (`String(length: >=1)` | `null`)) (@age: `Int(>=0)` 0)) ((fn fullname() : `String` => (if ((and (. `this` first-name) (. `this` last-name))) { (then: (.. (. `this` first-name) (. `this` last-name))) (else: (or (or (. `this` first-name) (. `this` last-name)) '<no name>')) }))))",
+      "((class User) ((@first-name: `String` '') (@last-name: (`String(length: >=1)` | `null`)) (@age: `Int(>=0)` 0)) ((fn fullname() : `String` => (if (and (. `this` first-name) (. `this` last-name)) (then: (.. (. `this` first-name) (. `this` last-name))) (else: (or (or (. `this` first-name) (. `this` last-name)) '<no name>'))))))",
     ]),
     c([
       `\
@@ -196,14 +192,12 @@ class User {
   @age: Int(>=0) = 0
 
   fn fullname(): String =>
-    if (@first-name and @last-name) {
-    then:
+    if @first-name and @last-name
       @first-name .. @last-name
-    else:
+    else
       @first-name or @last-name or '<no name>'
-    }
 }`,
-      "((class User) ((@first-name: `String` '') (@last-name: (`String(length: >=1)` | `null`)) (@age: `Int(>=0)` 0)) ((fn fullname() : `String` => (if ((and @first-name @last-name)) { (then: (.. @first-name @last-name)) (else: (or (or @first-name @last-name) '<no name>')) }))))",
+      "((class User) ((@first-name: `String` '') (@last-name: (`String(length: >=1)` | `null`)) (@age: `Int(>=0)` 0)) ((fn fullname() : `String` => (if (and @first-name @last-name) (then: (.. @first-name @last-name)) (else: (or (or @first-name @last-name) '<no name>'))))))",
     ]),
   ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse class definition '${formula}'`, () => {

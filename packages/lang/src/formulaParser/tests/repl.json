@@ -39,7 +39,7 @@
       "variables": [
         [
           "f",
-          "fn(a: String) => \"<${a}>\""
+          "fn(a: String) => `<${a}>`"
         ]
       ]
     },
@@ -273,7 +273,7 @@
       "variables": [
         [
           "formula8",
-          "fn(#one: Int, two: Int, ...#posInts: Array(Int), ...int repInts: Array(Int), **namedInts: Dict(Int)) => one + two + posInts.length + repInts.length + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
+          "fn(#one: Int, two: Int, ...# posInts: Array(Int), ...int repInts: Array(Int), **namedInts: Dict(Int)) => one + two + posInts.length + repInts.length + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
         ]
       ]
     },
@@ -331,8 +331,6 @@
     {
       "desc": "bits and bobs",
       "formula": "[\n  bits & bobs\n  bits | bobs\n  ~bits\n  ~bobs\n]",
-      "only": false,
-      "skip": false,
       "expectedCode": "[bits & bobs, bits | bobs, ~bits, ~bobs]",
       "expectedType": "Array(-215 | -116 | 82 | 247, length: =4)",
       "expectedValue": "[82, 247, -215, -116]",
@@ -350,8 +348,6 @@
     {
       "desc": "generics - identity",
       "formula": "identity(1)",
-      "only": false,
-      "skip": false,
       "expectedCode": "identity(1)",
       "expectedType": "1",
       "expectedValue": "1",
@@ -365,8 +361,6 @@
     {
       "desc": "map identity",
       "formula": "map(1, map: identity)",
-      "only": false,
-      "skip": false,
       "expectedCode": "map(1, map: identity)",
       "expectedType": "1",
       "expectedValue": "1",
@@ -387,10 +381,8 @@
     },
     {
       "desc": "safe array index",
-      "formula": "let\n  ones: Array(1, length: 1...5) = [1, 1, ]\n  twos: Array(2, length: 2...6) = [2, 2, 2,]\n  all = ones ++ twos\n  index: Int = 0\nin\n  if (index >= 0 and index < all.length) { \n  then: \n    all[index] \n  else:\n    0\n  }\n",
-      "only": false,
-      "skip": false,
-      "expectedCode": "let\n  ones: Array(1, length: 1...5) = [1, 1]\n  twos: Array(2, length: 2...6) = [2, 2, 2]\n  all = ones ++ twos\n  index: Int = 0\nin\n  if (index >= 0 and index < all.length) {\n  then:\n    all[index]\n  else:\n    0\n  }",
+      "formula": "let\n  ones: Array(1, length: 1...5) = [1, 1, ]\n  twos: Array(2, length: 2...6) = [2, 2, 2,]\n  all = ones ++ twos\n  index: Int = 0\nin\n  if index >= 0 and index < all.length\n    all[index] \n  else\n    0\n",
+      "expectedCode": "let\n  ones: Array(1, length: 1...5) = [1, 1]\n  twos: Array(2, length: 2...6) = [2, 2, 2]\n  all = ones ++ twos\n  index: Int = 0\nin\n  if index >= 0 and index < all.length\n    all[index]\n  else\n    0",
       "expectedType": "0 | 1 | 2",
       "expectedValue": "1",
       "variables": []

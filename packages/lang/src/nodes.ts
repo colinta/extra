@@ -81,6 +81,15 @@ export class ArrayType extends TypeNode {}
 export class DictType extends TypeNode {}
 export class SetType extends TypeNode {}
 export class TypeConstructor extends TypeNode {}
+export class NamedType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+    readonly name: string,
+  ) {
+    super(source, type)
+  }
+}
 
 export class Literal extends Node {}
 
@@ -453,6 +462,7 @@ export class RepeatedNamedArgument extends Argument {
   toArgumentType() {
     return Types.repeatedNamedArgument({
       name: this.name,
+      alias: this.alias,
       type: this.type,
     })
   }
@@ -517,6 +527,94 @@ export class NamedFunction extends AnonymousFunction {
 export class InstanceFunction extends NamedFunction {}
 export class StaticFunction extends NamedFunction {}
 export class ViewFunction extends NamedFunction {}
+
+export class If extends Node {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+    readonly condition: Node,
+    readonly thenBranch: Node,
+    readonly elseBranch: Node | undefined,
+  ) {
+    super(source, type)
+  }
+}
+
+export class Guard extends Node {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+    readonly condition: Node,
+    readonly thenBranch: Node,
+    readonly elseBranch: Node,
+  ) {
+    super(source, type)
+  }
+}
+
+class Case extends Node {
+  constructor(
+    readonly source: Source,
+    readonly body: Node,
+  ) {
+    super(source, Types.AlwaysType)
+  }
+}
+
+abstract class CaseMatch extends Node {
+  constructor(
+    readonly source: Source,
+    readonly body: Node,
+  ) {
+    super(source, Types.AlwaysType)
+  }
+}
+
+export class MatchOne extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly cases: CaseMatch[],
+    readonly body: Node,
+  ) {
+    super(source, body)
+  }
+}
+
+export class MatchType extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+    readonly body: Node,
+  ) {
+    super(source, body)
+  }
+}
+
+export class MatchReference extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+    readonly body: Node,
+  ) {
+    super(source, body)
+  }
+}
+
+export class Switch extends Node {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+    readonly subject: Node,
+    readonly cases: Case[],
+    readonly elseBranch: Node,
+  ) {
+    super(source, type)
+  }
+}
+
+//|
+//|  Classes
+//|
 
 export abstract class ClassProperty extends Node {
   constructor(
@@ -670,13 +768,33 @@ export class NamedEnumDefinition extends EnumDefinition {
     readonly name: string,
     readonly type: Types.NamedEnumDefinitionType,
     readonly members: EnumMember[],
-    readonly instanceType: Types.EnumInstanceType,
+    readonly instanceType: Types.NamedEnumInstanceType,
     readonly staticProperties: Map<string, Node>,
     readonly memberFunctions: Map<string, Node>,
     readonly generics: Generic[],
     readonly isExport: boolean,
   ) {
     super(source, type, members)
+  }
+}
+
+export class EnumCase extends Node {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+    readonly args: (PositionalArgument | NamedArgument)[],
+  ) {
+    super(source, Types.AlwaysType)
+  }
+}
+
+export class EnumLookup extends Node {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
   }
 }
 
@@ -693,6 +811,10 @@ export class AnonymousEnumDefinition extends EnumDefinition {
     super(source, type, members)
   }
 }
+
+//|
+//| Operators
+//|
 
 export abstract class Operator extends Node {
   constructor(
@@ -728,6 +850,7 @@ export class UnaryRangeOperator extends Operator {
 //|
 
 export class PipeOperator extends Operator {}
+export class InclusionOperator extends Operator {}
 export class NullCoalescingPipeOperator extends Operator {}
 export class NullCoalescingOperator extends Operator {}
 export class LogicalOrOperator extends Operator {}
@@ -799,23 +922,3 @@ export class NullCoalescingPropertyAccessOperator extends Operator {}
 export class ArrayAccessOperator extends Operator {}
 export class NullCoalescingArrayAccessOperator extends Operator {}
 export class FunctionInvocationOperator extends Operator {}
-
-export class EnumCase extends Node {
-  constructor(
-    readonly source: Source,
-    readonly name: string,
-    readonly args: (PositionalArgument | NamedArgument)[],
-  ) {
-    super(source, Types.AlwaysType)
-  }
-}
-
-export class EnumLookup extends Node {
-  constructor(
-    readonly source: Source,
-    readonly name: string,
-    readonly type: Types.Type,
-  ) {
-    super(source, type)
-  }
-}

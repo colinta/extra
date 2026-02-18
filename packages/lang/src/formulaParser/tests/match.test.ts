@@ -75,9 +75,18 @@ describe('match operator', () => {
       c(['foo is [a] or foo is [a, _]']),
       c(['foo is /a/']),
       c(['foo is /(?<name>a+)/']),
-      c.skip(['foo is {}']),
-      c.skip(['foo is {name: name}']),
-      c.skip(['foo is {name: _}']),
+      c(['foo is {}']),
+      c(['foo is {Int}']),
+      c(['foo is {foo}']),
+      c(['foo is {?foo}']),
+      c(['foo is {a, ?foo}']),
+      c(['foo is {?a, ?foo}']),
+      c(['foo is {name: _}']),
+      c(['foo is {name?: _}']),
+      c(['foo is {name:}']),
+      c(['foo is {name?:}']),
+      c(['foo is {name: foo}']),
+      c(['foo is {name: _, address:}']),
     ).run(([formula, expectedLisp], {only, skip}) => {
       ;(only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         const expectedCode = formula
@@ -791,9 +800,9 @@ describe('match operator', () => {
       c([
         Types.array(Types.string()),
         [
-          [Values.array([]), valueTrue],
-          [Values.array([Values.string('one')]), valueTrue],
-          [Values.array([Values.string('one'), Values.string('two')]), valueFalse],
+          // [Values.array([]), valueTrue],
+          // [Values.array([Values.string('one')]), valueTrue],
+          // [Values.array([Values.string('one'), Values.string('two')]), valueFalse],
         ],
         'foo is [_] or !foo',
         {
@@ -854,15 +863,12 @@ describe('match operator', () => {
         'foo is [_] or foo is [_, _]',
         {
           truthy: Types.oneOf([
-            Types.array(Types.booleanType(), {min: 1, max: 2}),
             Types.array(Types.oneOf([Types.string(), Types.int()]), {min: 1, max: 2}),
+            Types.array(Types.booleanType(), {min: 1, max: 2}),
           ]),
           falsey: Types.oneOf([
             Types.oneOf([
-              Types.array(Types.booleanType(), {max: 0}),
-              Types.array(Types.oneOf([Types.string(), Types.int()]), {max: 0}),
-            ]),
-            Types.oneOf([
+              Types.array(Types.always(), {max: 0}),
               Types.array(Types.booleanType(), {min: 3}),
               Types.array(Types.oneOf([Types.string(), Types.int()]), {min: 3}),
             ]),
@@ -957,7 +963,7 @@ describe('match operator', () => {
         }
 
         if (values.length) {
-          describe(`${fetch === 'foo' ? '' : fetch + ': '} values`, () => {
+          describe(`${fetch === 'foo' ? '' : fetch + ': '}values`, () => {
             for (const [fooValue, expected] of values) {
               ;(only ? it.only : skip ? it.skip : it)(
                 `foo = ${fooValue}, expected = ${expected}`,

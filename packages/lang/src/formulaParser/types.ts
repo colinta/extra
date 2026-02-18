@@ -101,7 +101,7 @@ export type ExpressionType =
   | 'module' // all module-level definitions are scanned in this context
   | 'enum' // parses enum members, member and static functions, closes w/ }
   | 'class' // parses properties, member and static functions, closes w/ }
-  | 'default' // parses a single expression in the context of a class default value
+  | 'default-value' // parses a single expression in the context of a class default value
   | 'object-symbol' // parses the values within {key: value}
   | 'object-word' // parses the values within Object(key: value)
   | 'array-symbol' // parses the values within [1,2,3]

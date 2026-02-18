@@ -1,5 +1,6 @@
-import * as Expressions from '../../expressions'
-import {type Expression} from '../../expressions'
+import {type MatchExpression} from '@/expressions'
+import * as Expressions from '@/expressions'
+
 import {
   ARGS_CLOSE,
   ARGS_OPEN,
@@ -13,11 +14,14 @@ import {
   IGNORE_TOKEN,
   isStringStartChar,
   AS_KEYWORD,
-  CASE_SEPARATOR,
+  THEN_KEYWORD,
   ARG_SEPARATOR,
   STRING_CONCAT_OPERATOR,
   ENUM_START,
   OR_OPERATOR,
+  OBJECT_OPEN,
+  OBJECT_CLOSE,
+  SPREAD_OPERATOR,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -33,60 +37,70 @@ import {scanStringLiteral} from './string'
 
 /**
  * scans for:
- *   enum:
+ *   'or' operator:
+ *     Int or String
+ *   Enum:
  *     .some(value) -- assigned enum value
- *   types, via scanArgumentType:
+ *   Types, via scanArgumentType:
+ *     Int as var -- checks for 'Int' and assigns to 'var'
  *     Int, String, String(length: =8)
- *     Array(Int), Array(String, length: >5)
+ *     Array(Int), Array(String, length: >5), Set(String), Dict(String, Int)
+ *     [Int], [String, length: >5], #[String], #{String: Int}
  *     Int | String, (Int | String)
  *     fn (# name: Int): String
- *
- *   also:
- *     Int as a -- checks 'Int' and assigns to 'a'
+ *   Int:
+ *     Treated as literal type
+ *   String:
+ *     "" -- empty string
+ *     "test" -- string literal
+ *     "prefix" .. foo -- string starts with "prefix", remainder assigned
+ *     foo .. "suffix" -- string ends with "suffix", prefix assigned
+ *     "<<" .. foo .. ">>" -- string starts with "<<", ends with ">>", middle assigned
+ *     "<<" .. foo .. "--" .. bar .. ">>" -- uses non-greedy match
+ *   Regex:
+ *     /foo/ -- regex literal
+ *     /foo/i -- regex literal with flags
+ *     /(?<name>foo)/ -- regex with named group - foo is assigned the matching regular expression
  *   Object:
  *     { } -- any fields
- *     { name: name } -- name is assigned
+ *     { name: } -- name is assigned to 'name'
+ *     { name: foo } -- name is assigned to 'foo'
  *     { name: _ }  -- name must be present, not assigned
+ *     { name?: foo }  -- name is optional, assigned to foo
  *   Array:
  *     []  -- empty
  *     [foo] -- one item, assigned
  *     [_, _] -- exactly two items, not assigned
- *     [ foo, ... ] -- many items, only first is assigned
- *     [ foo, ...items ] -- many items, first is assigned and remainder are in items
- *   Int:
- *     Treated as literal type
- *   String:
- *     "" -- ❌ empty string - just use ==
- *     "test" -- ❌ string literal - just use ==
- *     "prefix" .. foo -- string starts with "prefix", remainder assigned
- *     foo .. "suffix" -- string ends with "suffix", prefix assigned
- *     "<<" .. foo .. ">>" -- string starts with "<<", ends with ">>", middle assigned
- *     "<<" .. foo .. "--" .. ">>" -- string starts with "<<", ends with ">>", middle assigned
- *   Regex:
- *     /foo/ -- regex literal
- *     /foo/i -- regex literal with flags
- *     /(?<name>foo)/ -- regex with named group - foo is assigned that matching regular expression
+ *     [ foo, ... ] -- at least one item, only first is assigned
+ *     [ foo, ..., last ] -- at least 2 items, first and last are assigned
+ *     [ foo, ...items ] -- first is assigned, remainder are in items
+ *     [ ...items, z1, z0 ] -- last two are assigned, remainder are in items
+ *   TODO: Dict, Set
  */
-export function scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchExpression {
+export function scanMatch(scanner: Scanner, parseNext: ParseNext): MatchExpression {
   scanner.whereAmI('scanMatch')
   const matchExpression = _scanMatch(scanner, parseNext)
-  const duplicate = matchExpression.checkAssignRefs()
-  if (duplicate) {
+  const duplicates = matchExpression.checkAssignRefs()
+  if (duplicates.size) {
     scanner.rewindTo(matchExpression.range[0])
     throw new ParseError(
       scanner,
-      `Too many variables named '${duplicate}' in match expression '${matchExpression}'`,
+      `Too many variables named '${[...duplicates].join(', ')}' in match expression '${matchExpression}'`,
     )
   }
   return matchExpression
 }
 
-function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchExpression {
+function _scanMatch(scanner: Scanner, parseNext: ParseNext): MatchExpression {
   if (scanner.is('(')) {
     throw new ParseError(scanner, "TODO: support '(...)' in scanMatch")
   }
 
   if (
+    // these need to be an exhaustive check of type declarations
+    //     case Foo as foo
+    //     case view as foo
+    //     case null as foo
     scanner.is(/[A-Z]/) ||
     scanner.isWord('view') ||
     scanner.isWord('null') ||
@@ -100,7 +114,6 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
     if (scanner.test(isAsKeyword)) {
       scanner.scanSpaces()
       scanner.expectWord(AS_KEYWORD)
-      scanner.scanSpaces()
       assignRef = scanValidLocalName(scanner)
     }
     return new Expressions.MatchTypeExpression(argType, assignRef)
@@ -120,6 +133,8 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): Expressions.MatchEx
     return scanMatchString(scanner)
   } else if (scanner.is(ARRAY_OPEN)) {
     return scanMatchArray(scanner, parseNext)
+  } else if (scanner.is(OBJECT_OPEN)) {
+    return scanMatchObject(scanner, parseNext)
   } else {
     throw new ParseError(scanner, `Invalid match expression (else) '${unexpectedToken(scanner)}'`)
   }
@@ -140,22 +155,45 @@ function scanMatchReference(scanner: Scanner) {
   return new Expressions.MatchReference(reference)
 }
 
-function scanMatchNamedReference(scanner: Scanner, parseNext: ParseNext) {
-  scanner.whereAmI('scanMatchNamedReference')
+function scanMatchNamedReference(scanner: Scanner, parseNext: ParseNext, closer: string) {
+  scanner.whereAmI(`scanMatchNamedReference until ${closer}`)
   const arg0 = scanner.charIndex
   const precedingComments = scanner.flushComments()
   const nameRef = scanAnyReference(scanner)
   scanner.scanSpaces()
+  let isOptional = false
+  // objects (only) support optional named arguments
+  if (closer === OBJECT_CLOSE && scanner.scanIfString('?')) {
+    isOptional = true
+    scanner.scanSpaces()
+  }
   scanner.expectString(ARG_SEPARATOR)
-  scanner.scanAllWhitespace()
+  // only scan spaces for now, so that we can check for \n in the shorthand check
+  //     case {name: }  -- terminated with 'closer'
+  //     case {name: ,  -- terminated with explicit comma
+  //     case {
+  //       name:        -- terminated with newline
+  //     case {name:
+  //        , address:  -- also supported 🙄
+  // yeah not requiring commas is a sisyphaen task. but you're worth it. and
+  // you're welcome, you're welcome 🎶
+  scanner.scanSpaces()
 
-  const reference = scanMatch(scanner, parseNext)
+  let reference: MatchExpression
+  if (scanner.lookAhead(closer) || scanner.lookAhead(',') || scanner.is('\n')) {
+    scanner.scanAllWhitespace()
+    reference = new Expressions.MatchReference(nameRef)
+  } else {
+    scanner.scanAllWhitespace()
+    reference = scanMatch(scanner, parseNext)
+  }
 
   return new Expressions.MatchNamedArgument(
     [arg0, scanner.charIndex],
     precedingComments,
     nameRef,
     reference,
+    isOptional,
   )
 }
 
@@ -167,7 +205,7 @@ function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
   const enumCaseName = scanAnyReference(scanner).name
   scanner.scanSpaces()
 
-  const args: Expressions.MatchExpression[] = []
+  const args: MatchExpression[] = []
   if (scanner.scanIfString(ARGS_OPEN)) {
     for (;;) {
       scanner.scanSpaces()
@@ -189,7 +227,7 @@ function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
       }
 
       if (scanner.test(isNamedArg)) {
-        args.push(scanMatchNamedReference(scanner, parseNext))
+        args.push(scanMatchNamedReference(scanner, parseNext, ARGS_CLOSE))
       } else {
         args.push(scanMatch(scanner, parseNext))
       }
@@ -361,34 +399,86 @@ function scanMatchRegex(scanner: Scanner) {
   return new Expressions.MatchLiteralRegex(regex)
 }
 
+function scanMatchObject(scanner: Scanner, parseNext: ParseNext) {
+  scanner.whereAmI('scanMatchObject')
+  const precedingComments = scanner.flushComments()
+  const exprs: {match: MatchExpression; isOptional: boolean}[] = []
+  const range0 = scanner.charIndex
+  scanner.expectString(OBJECT_OPEN)
+  scanner.scanAllWhitespace()
+  let wasOptional = false
+  if (!scanner.scanIfString(OBJECT_CLOSE)) {
+    for (;;) {
+      if (scanner.test(isNamedArg)) {
+        const matchNamed = scanMatchNamedReference(scanner, parseNext, OBJECT_CLOSE)
+        exprs.push({
+          match: matchNamed,
+          isOptional: matchNamed.isOptional,
+        })
+      } else {
+        const isOptional = scanner.scanIfString('?')
+        if (isOptional) {
+          scanner.scanAllWhitespace()
+        } else if (wasOptional) {
+          throw new ParseError(
+            scanner,
+            'Required positional fields cannot come after optional fields in an object match expression',
+          )
+        }
+        const matchPosition = scanMatch(scanner, parseNext)
+        exprs.push({match: matchPosition, isOptional})
+        wasOptional = isOptional
+      }
+
+      const shouldBreak = scanner.scanCommaOrBreak(
+        OBJECT_CLOSE,
+        "Expected ',' separating items in the object",
+      )
+
+      if (shouldBreak) {
+        break
+      }
+
+      scanner.scanAllWhitespace()
+    }
+  }
+
+  return new Expressions.MatchObjectExpression(
+    [range0, scanner.charIndex],
+    precedingComments,
+    exprs,
+  )
+}
+
 function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
   scanner.whereAmI('scanMatchArray')
   const precedingComments = scanner.flushComments()
-  const initialExprs: Expressions.MatchExpression[] = []
+  const initialExprs: MatchExpression[] = []
   let remainingExpr:
     | Expressions.MatchIgnoreRemainingExpression
     | Expressions.MatchAssignRemainingExpression
     | undefined
-  const trailingExprs: Expressions.MatchExpression[] = []
+  const trailingExprs: MatchExpression[] = []
   const range0 = scanner.charIndex
   scanner.expectString(ARRAY_OPEN)
   scanner.scanAllWhitespace()
   if (!scanner.scanIfString(ARRAY_CLOSE)) {
     for (;;) {
-      if (scanner.is('...')) {
-        const arg0 = scanner.charIndex
-        const precedingComments = scanner.flushComments()
-        scanner.expectString('...')
-        scanner.scanSpaces()
+      if (scanner.is(SPREAD_OPERATOR)) {
         if (remainingExpr) {
           throw new ParseError(scanner, 'Already matched remaining array elements')
         }
 
+        const arg0 = scanner.charIndex
+        const precedingComments = scanner.flushComments()
+        scanner.expectString(SPREAD_OPERATOR)
+        scanner.scanSpaces()
         if (scanner.is(/_+\b/)) {
-          throw new ParseError(
-            scanner,
-            "Ignore placeholder '${IGNORE_TOKEN}' is not necessary here, just '...' is enough",
-          )
+          // TODO: could emit a warning here
+          // [..._] is equivalent to just [...]
+          // scan the _ and ignore it
+          while (scanner.scanIfString('_')) {}
+          scanner.scanSpaces()
         }
 
         if (isRefStartChar(scanner)) {
@@ -415,7 +505,7 @@ function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
 
       const shouldBreak = scanner.scanCommaOrBreak(
         ARRAY_CLOSE,
-        "Expected ',' separating items in the arguments list",
+        "Expected ',' separating items in the array",
       )
 
       if (shouldBreak) {
@@ -440,8 +530,7 @@ export function scanCase(scanner: Scanner, parseNext: ParseNext): Expressions.Ca
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
   scanner.expectWord(CASE_KEYWORD)
-  scanner.scanAllWhitespace()
-  const matches: Expressions.MatchExpression[] = []
+  const matches: MatchExpression[] = []
   for (;;) {
     const match = scanMatch(scanner, parseNext)
     matches.push(match)
@@ -454,6 +543,9 @@ export function scanCase(scanner: Scanner, parseNext: ParseNext): Expressions.Ca
       scanner.whereAmI('scanCase or')
       continue
     } else {
+      if (scanner.scanIfWord(THEN_KEYWORD)) {
+        scanner.scanAllWhitespace()
+      }
       break
     }
   }
@@ -496,6 +588,9 @@ function isNamedArg(scanner: Scanner) {
   }
 
   scanner.scanSpaces()
+  if (scanner.scanIfString('?')) {
+    scanner.scanSpaces()
+  }
   return scanner.is(ARG_SEPARATOR)
 }
 

@@ -9,6 +9,22 @@ view Main(name: String, onResetName: fn(): &) {
   ╰────────╯
   @users: Array(User) = []
 
+  ╭──────╮
+  │ &Msg │
+  ╰──────╯
+  fn addUser(name: String) =>
+    guard
+      name.length > 0
+    else
+      @error = 'Name cannot be empty'
+
+    guard
+      @users.all(fn(u) => u.name != name)
+    else
+      @error = 'User already exists'
+
+    @users.push({name:})
+
   ╭────────╮
   │ Render │
   ╰────────╯
@@ -18,22 +34,4 @@ view Main(name: String, onResetName: fn(): &) {
       <Button onPress=(fn() => addUser(name))>Add</Button>
       <Button onPress=onResetName>Reset</Button>
     </>
-
-  ╭──────╮
-  │ &Msg │
-  ╰──────╯
-  fn addUser(name: String) =>
-    guard (
-      name.length > 0
-    else:
-      @error = 'Name cannot be empty'
-    ):
-
-    guard (
-      @users.all(fn(u) => u.name != name)
-    else:
-      @error = 'User already exists'
-    ):
-
-    @users.push({name:})
 }

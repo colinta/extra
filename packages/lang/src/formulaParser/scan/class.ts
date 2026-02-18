@@ -270,7 +270,7 @@ export function scanClassProperty(scanner: Scanner, parseNext: ParseNext, isStat
     )
     ;(argType ?? nameRef).followingComments.push(...scanner.flushComments())
     scanner.scanAllWhitespace()
-    defaultValue = parseNext('default')
+    defaultValue = parseNext('default-value')
   }
 
   if (!requiresDefaultValue && !argType) {

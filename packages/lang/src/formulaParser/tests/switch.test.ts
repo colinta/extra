@@ -23,6 +23,22 @@ describe('switch', () => {
   describe('parse', () => {
     cases<[string, string] | [string, string, string]>(
       c([
+        `switch a-letter case _  ''`,
+        "(switch a-letter (case (_) : ''))",
+        `\
+switch a-letter
+case _
+  ''`,
+      ]),
+      c([
+        `switch a-letter case _ then ''`,
+        "(switch a-letter (case (_) : ''))",
+        `\
+switch a-letter
+case _
+  ''`,
+      ]),
+      c([
         `switch a-letter\ncase _\n  ''`,
         "(switch a-letter (case (_) : ''))",
         `\
@@ -82,7 +98,7 @@ case [first, ..., last]
 `,
         [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
         Types.array(Types.string(), {min: 1, max: 2}),
-        Values.string('c'),
+        Values.array([Values.string('c')]),
       ]),
       c([
         `\
@@ -98,7 +114,7 @@ case [first, ..., last]
 `,
         [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
         Types.array(Types.string(), {min: 1, max: 2}),
-        Values.string('c'),
+        Values.array([Values.string('c')]),
       ]),
       c([
         `\
@@ -120,7 +136,7 @@ case [first, ..., last]
           ],
         ],
         Types.array(Types.string(), {min: 1, max: 2}),
-        Values.string('c'),
+        Values.array([Values.string('c')]),
       ]),
       c([
         `\
@@ -135,11 +151,11 @@ case [first, ..., last]
   [first, last]
 `,
         [
-          ['letters1', Types.array(Types.string()), Values.array([Values.string('c')])],
+          ['letters1', Types.array(Types.string()), Values.array([Values.string('a')])],
           ['letters2', Types.array(Types.string()), Values.array([Values.string('c')])],
         ],
         Types.array(Types.string(), {min: 1, max: 2}),
-        Values.string('c'),
+        Values.array([Values.string('a'), Values.string('c')]),
       ]),
       c([
         `\
@@ -151,7 +167,7 @@ case [first, last] or [first, ..., last]
 `,
         [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
         Types.array(Types.string(), {min: 1, max: 2}),
-        Values.string('c'),
+        Values.array([Values.string('c')]),
       ]),
       c([
         `\
@@ -161,9 +177,9 @@ case [first] or []
 case [first, ..., last] or [first, last]
   [first, last]
 `,
-        [['letters', Types.array(Types.string()), Values.array([Values.string('c')])]],
+        [['letters', Types.array(Types.string()), Values.array([])]],
         Types.array(Types.string(), {min: 1, max: 2}),
-        Values.string('c'),
+        Values.array([Values.string('a')]),
       ]),
     ).run(([formula, values, expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
@@ -175,10 +191,10 @@ case [first, ..., last] or [first, last]
 
           const expression = parse(formula).get()
           const type = expression.getType(typeRuntime).get()
-          // const value = expression.eval(valueRuntime).get()
+          const value = expression.eval(valueRuntime).get()
 
           expect(type).toEqual(expectedType)
-          // expect(value).toEqual(expectedValue)
+          expect(value).toEqual(expectedValue)
         },
       ),
     )

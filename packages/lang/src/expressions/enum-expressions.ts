@@ -351,7 +351,7 @@ export class NamedEnumDefinition extends EnumTypeExpression {
     if (this.staticFormulas.length) {
       body += '\n'
       for (const formula of this.staticFormulas) {
-        body += formula.toCode() + '\n'
+        body += formula.toCodePrefixed(true, true) + '\n'
       }
     }
 
@@ -470,7 +470,7 @@ export class NamedEnumDefinition extends EnumTypeExpression {
               staticPropertyNodes.set(expr.name, node)
             }
 
-            const enumType = new Types.NamedEnumDefinitionType(
+            const enumDefinition = new Types.NamedEnumDefinitionType(
               name,
               enumMembers.map(
                 enumCaseNode =>
@@ -484,13 +484,14 @@ export class NamedEnumDefinition extends EnumTypeExpression {
               genericTypes,
             )
 
-            moduleRuntime.addLocalType(name, enumType)
+            moduleRuntime.addLocalType(name, enumDefinition)
 
-            const instanceType = new Types.EnumInstanceType(
+            const instanceType = new Types.NamedEnumInstanceType(
               name,
               // will hold formulas, they get assigned as they are resolved
               new Map(),
             )
+            enumDefinition.resolveInstanceType(instanceType)
             const thisRuntime = new MutableTypeRuntime(moduleRuntime, instanceType)
 
             for (const enumCaseNode of enumMembers) {
@@ -542,14 +543,14 @@ export class NamedEnumDefinition extends EnumTypeExpression {
                   // static properties can be treated as local variables
                   moduleRuntime.addLocalType(expr.name, remainingProp.value.type)
 
-                  enumType.addStaticProp(expr.name, remainingProp.value.type)
+                  enumDefinition.addStaticProp(expr.name, remainingProp.value.type)
                   staticPropertyNodes.set(expr.name, remainingProp.value)
                 }
 
                 return ok(out)
               },
               {
-                enumType,
+                enumType: enumDefinition,
                 enumMembers,
                 instanceType,
                 staticPropertyNodes,
