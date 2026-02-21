@@ -390,8 +390,6 @@ export function assignRelationshipsToRuntime(
   relationships: Relationship[],
   asserting: boolean,
 ) {
-  console.log('=========== relationship.ts at line 393 ===========')
-  console.log({relationships})
   if (!relationships.length) {
     return ok(prevRuntime)
   }
@@ -498,6 +496,8 @@ export function assignNextRuntime(
 
     const types = nextAssigns.map(([_assignable, nextType]) => nextType)
     return [[nextAssigns[0][0], Types.oneOf(types)]]
+  } else if (isAssign(relationship)) {
+    return [relationship]
   } else {
     return []
   }
@@ -516,6 +516,9 @@ function mergeNextTypeRuntime(
   if (!prevType) {
     return []
   }
+  if (formula.type === 'assign') {
+    return [[formula, prevType]]
+  }
 
   let nextType: Types.Type
   if (operator === 'instanceof') {
@@ -526,11 +529,11 @@ function mergeNextTypeRuntime(
     nextType = Types.NeverType
   }
 
-  // if (nextType !== prevType) {
-  return [[formula, nextType]]
-  // }
+  if (nextType !== prevType) {
+    return [[formula, nextType]]
+  }
 
-  // return []
+  return []
 }
 
 function mergeNextTruthyRuntime(

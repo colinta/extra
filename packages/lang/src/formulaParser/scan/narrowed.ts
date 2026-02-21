@@ -182,7 +182,10 @@ export function scanNarrowedString(scanner: Scanner): Narrowed.NarrowedString {
       narrowedLength = scanNarrowedLength(scanner)
       scanner.scanAllWhitespace()
       scanner.whereAmI(`scanDictType: (length: ${narrowedLength})`)
-    } else if (!didSetNarrowedRegex && scanner.scanIfWord('matches')) {
+    } else if (
+      !didSetNarrowedRegex &&
+      (scanner.scanIfWord('matches') || scanner.scanIfWord('regex'))
+    ) {
       didSetNarrowedRegex = true
 
       scanner.scanAllWhitespace()

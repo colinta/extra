@@ -445,8 +445,6 @@ export abstract class Expression {
    */
   gimmeFalseStuff(runtime: TypeRuntime): GetRuntimeResult<Relationship[]> {
     const formula = this.relationshipFormula(runtime)
-    console.log('=========== expressions.ts at line 448 ===========')
-    console.log({formula, comparison: {operator: 'falsey'}})
     if (!formula) {
       return ok([])
     }
@@ -5286,6 +5284,10 @@ export class MatchLiteralRegex extends MatchLiteral {
     return ok(Types.StringType.narrowRegex(this.literal.value.value))
   }
 
+  narrowUsingMatcherTypeSkippingOneOf(runtime: TypeRuntime, subjectType: Types.Type) {
+    return this.getAsTypeExpression(runtime)
+  }
+
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
@@ -6841,85 +6843,79 @@ export class MatchArrayExpression extends MatchExpression {
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    return this.earlyExitCheck(formula, subjectType)
-      .map(value => {
-        if (value instanceof Array) {
-          return ok(value)
+    return this.earlyExitCheck(formula, subjectType).map(value => {
+      if (value instanceof Array) {
+        return ok(value)
+      }
+
+      // value is either ArrayType or OneOf(..., ArrayType, ...)
+      // mapAllMatchersToNarrowed iterates over all the matchExprs, turning them
+      // into a map. If subjectType is a OneOf type, the propertyType in
+      // matchExprMap is a combination of all the types.
+      return this.mapAllMatchersToNarrowed(runtime, subjectType).map(matchExprMap => {
+        // early exit (error) if the matchExpr did not match the subjectType
+        if (!matchExprMap) {
+          return err(
+            new RuntimeError(
+              this,
+              `Invalid match expression - '${this}: ${subjectType.toCode()}' does not match array expression '${this.toCode()}'`,
+            ),
+          )
         }
 
-        // value is either ArrayType or OneOf(..., ArrayType, ...)
-        // mapAllMatchersToNarrowed iterates over all the matchExprs, turning them
-        // into a map. If subjectType is a OneOf type, the propertyType in
-        // matchExprMap is a combination of all the types.
-        return this.mapAllMatchersToNarrowed(runtime, subjectType).map(matchExprMap => {
-          // early exit (error) if the matchExpr did not match the subjectType
-          if (!matchExprMap) {
-            return err(
-              new RuntimeError(
-                this,
-                `Invalid match expression - '${this}: ${subjectType.toCode()}' does not match array expression '${this.toCode()}'`,
-              ),
-            )
+        return this.narrowUsingMatcherType(runtime, value).map(arrayType => {
+          const relationships: Relationship[] = []
+
+          if (formula) {
+            relationships.push({
+              formula,
+              comparison: {operator: 'instanceof', rhs: arrayType},
+            })
           }
 
-          return this.narrowUsingMatcherType(runtime, value).map(arrayType => {
-            const relationships: Relationship[] = []
-
-            if (formula) {
-              relationships.push({
-                formula,
-                comparison: {operator: 'instanceof', rhs: arrayType},
-              })
-            }
-
-            // for every expression in initialExprs, we can add a relationship for
-            // formula[0], formula[1], ...
-            for (const [index, matchExpr] of this.initialExprs.entries()) {
-              const matchType = matchExprMap.get(matchExpr)
-              if (matchType) {
-                // if we have a formula, we can compute an array access formula
-                // based on it (otherwise accessFormula is undefined, but it's still
-                // possible to add relationships)
-                // TODO: if the array is a fixed length, we should also assign
-                // relationships for negative indices.
-                const accessFormula =
-                  formula &&
-                  relationshipFormula.arrayAccess(formula, relationshipFormula.int(index))
-                const result = matchExpr.gimmeTrueStuffWith(runtime, accessFormula, matchType)
-                if (result.isErr()) {
-                  return err(result)
-                }
-                relationships.push(...result.value)
+          // for every expression in initialExprs, we can add a relationship for
+          // formula[0], formula[1], ...
+          for (const [index, matchExpr] of this.initialExprs.entries()) {
+            const matchType = matchExprMap.get(matchExpr)
+            if (matchType) {
+              // if we have a formula, we can compute an array access formula
+              // based on it (otherwise accessFormula is undefined, but it's still
+              // possible to add relationships)
+              // TODO: if the array is a fixed length, we should also assign
+              // relationships for negative indices.
+              const accessFormula =
+                formula && relationshipFormula.arrayAccess(formula, relationshipFormula.int(index))
+              const result = matchExpr.gimmeTrueStuffWith(runtime, accessFormula, matchType)
+              if (result.isErr()) {
+                return err(result)
               }
+              relationships.push(...result.value)
             }
+          }
 
-            // TODO: handle remainingExpr and trailingExprs in relationship.ts
-            // - remainingExpr needs support for "all indices in this range"
-            // - trailingExprs needs support for negative indices
-            // - or, if arrayType has a maximumLength, we can assign relationships
-            //   using positive indices
+          // TODO: handle remainingExpr and trailingExprs in relationship.ts
+          // - remainingExpr needs support for "all indices in this range"
+          // - trailingExprs needs support for negative indices
+          // - or, if arrayType has a maximumLength, we can assign relationships
+          //   using positive indices
+          const remainingAndTrailing = ([] as MatchExpression[])
+            .concat(this.remainingExpr ? [this.remainingExpr] : [])
+            .concat(this.trailingExprs)
+          for (const matchExpr of remainingAndTrailing) {
+            const matchType = matchExprMap.get(matchExpr)
+            if (matchType) {
+              const result = matchExpr.gimmeTrueStuffWith(runtime, undefined, matchType)
+              if (result.isErr()) {
+                return err(result)
+              }
+              relationships.push(...result.value)
+            }
+          }
 
-            const matchExprs = this.initialExprs
-              .concat(this.remainingExpr ? [this.remainingExpr] : [])
-              .concat(this.trailingExprs)
-            return reduceAll(
-              relationships,
-              matchExprs,
-              (allRelationships, matchExpr): GetRuntimeResult<Relationship[]> => {
-                const matchType = matchExprMap.get(matchExpr)
-                return matchExpr
-                  .gimmeTrueStuffWith(runtime, formula, matchType!)
-                  .map(relationships => allRelationships.concat(relationships))
-              },
-            )
-          })
+          return ok(relationships)
         })
       })
-      .map(r => {
-        console.log('=========== expressions.ts at line 6917 ===========')
-        console.log(r)
-        return r
-      })
+    })
   }
 
   /**

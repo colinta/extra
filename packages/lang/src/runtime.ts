@@ -4,7 +4,7 @@ import {
   simplifyRelationships,
   isEqualRelationship,
 } from './relationship'
-import {type Type, ViewClassDefinitionType, ViewFormulaType, ViewType} from './types'
+import {type Type, ViewClassDefinitionType, ViewFormulaType, ViewType, NeverType} from './types'
 import {
   type Value,
   ViewClassDefinitionValue,
@@ -56,6 +56,7 @@ export class MutableTypeRuntime {
   readonly _id = uid()
   public viewRuntime?: ViewRuntime
   thisType: Type | undefined
+  debug = false
 
   get id(): string {
     if (this.parent) {

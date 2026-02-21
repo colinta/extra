@@ -191,11 +191,11 @@ export class Scanner {
   scanIfString(search: string, whereAmI = false) {
     for (const [offset, char] of Array.from(search).entries()) {
       if (this.input[this.charIndex + offset] !== char) {
-        if (whereAmI) this.whereAmI(`scanIfString '${search}' ? no`)
+        if (!this.#pauseComments && whereAmI) this.whereAmI(`scanIfString '${search}' ? no`)
         return false
       }
     }
-    if (whereAmI) this.whereAmI(`scanIfString '${search}' ? yes`)
+    if (!this.#pauseComments && whereAmI) this.whereAmI(`scanIfString '${search}' ? yes`)
     this.charIndex += search.length
     return true
   }
@@ -362,23 +362,19 @@ export class Scanner {
     let comment: string
     if (this.is('--')) {
       // ADA style comments ❤
-      if (!this.#pauseComments) debugger
       comment = scanCommentLine(this)
       this.pushComment('line', comment, '--', commentIndex)
     } else if (this.is('{-')) {
       // Elm style {- -}
-      if (!this.#pauseComments) debugger
       comment = scanCommentContainer(this)
       this.pushComment('block', comment, '{-', commentIndex)
     } else if (this.is('<--')) {
       // point at thing comment
-      if (!this.#pauseComments) debugger
       comment = scanArrowCommentLine(this)
       this.pushComment('arrow', comment, '<--', commentIndex)
     } else {
       // box drawing characters and special arrows ←→
       const char = this.char
-      if (!this.#pauseComments) debugger
       comment = scanCommentBox(this)
       this.pushComment('box', comment, char, commentIndex)
     }

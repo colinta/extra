@@ -169,7 +169,11 @@ export function inspect(value: any, wrap = true, depth = 0, found = new Set<any>
   }
 
   if (value[inspectable]) {
-    return className ? `${className}\n${value[inspectable]()}` : value[inspectable]()
+    return `{${
+      className
+        ? ` ${className}\n${innerTab}${yellow(value[inspectable]())}\n${tab}`
+        : yellow(value[inspectable]())
+    }}`
   }
 
   const keys = Object.keys(value)

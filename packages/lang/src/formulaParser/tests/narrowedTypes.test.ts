@@ -347,6 +347,15 @@ describe('narrowed types', () => {
       Types.array(Types.string(), {max: 10}),
       Types.array(Types.string(), {min: 11}),
     ]),
+    c([
+      Types.oneOf([Types.array(Types.int()), Types.array(Types.string())]),
+      'foo.length > 0',
+      Types.oneOf([Types.array(Types.int(), {min: 1}), Types.array(Types.string(), {min: 1})]),
+      Types.oneOf([
+        Types.array(Types.int(), {min: 0, max: 0}),
+        Types.array(Types.string(), {min: 0, max: 0}),
+      ]),
+    ]),
   ).run(([type, formula, truthyType, falseyType], {only, skip}) => {
     const name = 'foo'
     describe(`${name}: ${type}, ${formula}`, () => {

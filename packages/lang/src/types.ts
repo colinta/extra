@@ -1,9 +1,11 @@
+import {inspectable} from '@extra-lang/inspect'
 import {err, mapAll, mapOptional, ok, type Result, Guarantee} from '@extra-lang/result'
 import {intersection} from './util'
 import {splitter} from './graphemes'
 import * as Narrowed from './narrowed'
 import {narrowedFloatToInt, narrowedFloatToLength} from './narrowed'
 import {SPREAD_OPERATOR, KWARG_OPERATOR} from './formulaParser/grammars'
+import {isEqualRegex} from '@extra-lang/util'
 
 export const FN = 'fn'
 export const VIEW = 'view'
@@ -383,10 +385,16 @@ export type KeyType = 'string' | 'int' | 'float' | 'boolean' | 'null'
 type Literals = 'boolean' | 'float' | 'int' | 'string' | 'regex'
 
 export abstract class Type {
-  abstract readonly is: string
+  abstract readonly is: string;
+  [inspectable]: any
 
   toString() {
     return this.toCode(false)
+  }
+
+  constructor() {
+    this[inspectable] = () => this.toCode()
+    Object.defineProperty(this, inspectable, {enumerable: false})
   }
 
   /**
@@ -1140,81 +1148,6 @@ export abstract class OneOfType extends Type {
     super()
   }
 
-  fromTypeConstructor(): Type {
-    const types = this.of.map(type => type.fromTypeConstructor())
-    if (types.every((type, index) => this.of[index] === type)) {
-      return this
-    }
-    return oneOf(types)
-  }
-
-  toTruthyType(): Type {
-    const truthyTypes = this.of.filter(type => type.isEverTruthyType())
-    if (truthyTypes.length === 0) {
-      return NeverType
-    }
-
-    if (truthyTypes.length === 1) {
-      return truthyTypes[0].toTruthyType()
-    }
-
-    return _privateOneOf(truthyTypes.map(type => type.toTruthyType()))
-  }
-
-  toFalseyType(): Type {
-    const falseyTypes = this.of.filter(type => type.isEverFalseyType())
-    if (falseyTypes.length === 0) {
-      return NeverType
-    }
-
-    if (falseyTypes.length === 1) {
-      return falseyTypes[0].toFalseyType()
-    }
-
-    return _privateOneOf(falseyTypes.map(type => type.toFalseyType()))
-  }
-
-  hasGeneric() {
-    return this.of.some(type => type.hasGeneric())
-  }
-
-  generics() {
-    return this.of.reduce((memo, type) => {
-      for (const generic of type.generics()) {
-        memo.add(generic)
-      }
-
-      return memo
-    }, new Set<GenericType>())
-  }
-
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    const types: Type[] = []
-    for (const type of this.of) {
-      const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)
-      if (resolved.isErr()) {
-        return err(resolved.error)
-      }
-      types.push(resolved.get())
-    }
-
-    return ok(oneOf(types))
-  }
-
-  toCode(embedded = false) {
-    const types = this.of.map(type => `${type.toCode(false)}`)
-
-    if (embedded) {
-      return `(${types.join(' | ')})`
-    }
-
-    return types.join(' | ')
-  }
-
-  isOptional() {
-    return this.of.some(type => type === NullType)
-  }
-
   static createOneOf(types: Type[]): Type {
     // remove duplicates - especially important to remove duplicate NullType
     // and remove NeverTypes
@@ -1251,6 +1184,81 @@ export abstract class OneOfType extends Type {
     return types.reduce((previous, current) => compatibleWithBothTypes(previous, current))
   }
 
+  fromTypeConstructor(): Type {
+    const types = this.of.map(type => type.fromTypeConstructor())
+    if (types.every((type, index) => this.of[index] === type)) {
+      return this
+    }
+    return OneOfType.createOneOf(types)
+  }
+
+  toTruthyType(): Type {
+    const truthyTypes = this.of.filter(type => type.isEverTruthyType())
+    if (truthyTypes.length === 0) {
+      return NeverType
+    }
+
+    if (truthyTypes.length === 1) {
+      return truthyTypes[0].toTruthyType()
+    }
+
+    return _privateOneOf(truthyTypes.map(type => type.toTruthyType()))
+  }
+
+  toFalseyType(): Type {
+    const falseyTypes = this.of.filter(type => type.isEverFalseyType())
+    if (falseyTypes.length === 0) {
+      return NeverType
+    }
+
+    if (falseyTypes.length === 1) {
+      return falseyTypes[0].toFalseyType()
+    }
+
+    return _privateOneOf(falseyTypes.map(type => type.toFalseyType()))
+  }
+
+  isOptional() {
+    return this.of.some(type => type === NullType)
+  }
+
+  hasGeneric() {
+    return this.of.some(type => type.hasGeneric())
+  }
+
+  generics() {
+    return this.of.reduce((memo, type) => {
+      for (const generic of type.generics()) {
+        memo.add(generic)
+      }
+
+      return memo
+    }, new Set<GenericType>())
+  }
+
+  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
+    const types: Type[] = []
+    for (const type of this.of) {
+      const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)
+      if (resolved.isErr()) {
+        return err(resolved.error)
+      }
+      types.push(resolved.get())
+    }
+
+    return ok(OneOfType.createOneOf(types))
+  }
+
+  toCode(embedded = false) {
+    const types = this.of.map(type => `${type.toCode(false)}`)
+
+    if (embedded) {
+      return `(${types.join(' | ')})`
+    }
+
+    return types.join(' | ')
+  }
+
   mergeAccessTypes<T>(
     types: Type[],
     mapAccessType: (type: Type) => Type | undefined,
@@ -1277,6 +1285,12 @@ export abstract class OneOfType extends Type {
     )
   }
 
+  replacingProp(propName: string | number, type: Type): Result<Type, string> {
+    return mapAll(this.of.map(ofType => ofType.replacingProp(propName, type))).map(
+      OneOfType.createOneOf,
+    )
+  }
+
   propAccessType(name: string | number) {
     return this.mergeAccessTypes(this.of, (ofType: Type) => ofType.propAccessType(name))
   }
@@ -1290,58 +1304,58 @@ export abstract class OneOfType extends Type {
 }
 
 function scoreType(type: Type): number | undefined {
-  if (type instanceof AnonymousEnumDefinitionType) {
+  if (type instanceof LiteralIntType) {
     return 1
   }
-  if (type instanceof EnumCase || type instanceof EnumInstanceType) {
+  if (type instanceof LiteralFloatType) {
     return 2
   }
-  if (type instanceof ClassInstanceType) {
+  if (type instanceof LiteralStringType) {
     return 3
   }
-  if (type instanceof SetType) {
+  if (type instanceof LiteralRegexType) {
     return 4
   }
-  if (type instanceof DictType) {
+  if (type instanceof ArrayType) {
     return 5
   }
-  if (type instanceof ArrayType) {
+  if (type instanceof SetType) {
     return 6
   }
-  if (type instanceof ObjectType) {
+  if (type instanceof DictType) {
     return 7
   }
-  if (type instanceof MetaFloatRangeType) {
+  if (type instanceof ObjectType) {
     return 8
   }
-  if (type instanceof MetaIntRangeType) {
+  if (type instanceof ClassInstanceType) {
     return 9
   }
-  if (type instanceof MetaIntType) {
+  if (type instanceof AnonymousEnumDefinitionType) {
     return 10
   }
-  if (type instanceof MetaFloatType) {
+  if (type instanceof EnumCase || type instanceof EnumInstanceType) {
     return 11
   }
-  if (type instanceof MetaStringType) {
+  if (type instanceof MetaBooleanType) {
     return 12
   }
-  if (type instanceof MetaRegexType) {
+  if (type instanceof MetaIntType) {
     return 13
   }
-  if (type instanceof LiteralStringType) {
+  if (type instanceof MetaIntRangeType) {
     return 14
   }
-  if (type instanceof LiteralRegexType) {
+  if (type instanceof MetaFloatRangeType) {
     return 15
   }
-  if (type instanceof LiteralIntType) {
+  if (type instanceof MetaFloatType) {
     return 16
   }
-  if (type instanceof LiteralFloatType) {
+  if (type instanceof MetaStringType) {
     return 17
   }
-  if (type instanceof MetaIntType) {
+  if (type instanceof MetaRegexType) {
     return 18
   }
   switch (type) {
@@ -1352,11 +1366,11 @@ function scoreType(type: Type): number | undefined {
     case NullType:
       return 21
     case AlwaysType:
-      return 23
+      return 22
     case NeverType:
-      return 24
+      return 23
   }
-  return 25
+  return 24
 }
 
 function _sortNarrowed(a: Narrowed.NarrowedFloat, b: Narrowed.NarrowedFloat) {
@@ -1688,7 +1702,8 @@ export abstract class NumberType<
    */
   exclude(narrowed: Narrowed.NarrowedFloat) {
     const ranges = Narrowed.exclude(this.narrowed, narrowed)
-    return oneOf(ranges.map(range => this.narrow(range.min, range.max)))
+    const narrowedType = oneOf(ranges.map(range => this.narrow(range.min, range.max)))
+    return narrowedType
   }
 
   /**
@@ -2109,38 +2124,6 @@ export class MetaStringType extends Type {
     super()
   }
 
-  compatibleWithBothNarrowed(rhs: MetaStringType) {
-    const sameRegex =
-      this.narrowedString.regex.length === rhs.narrowedString.regex.length &&
-      this.narrowedString.regex.every(lhsRegex =>
-        rhs.narrowedString.regex.some(
-          rhsRegex => lhsRegex.source === rhsRegex.source && lhsRegex.flags === rhsRegex.flags,
-        ),
-      )
-
-    // if both strings have regex, but the regex isn't the same, use 'one-of' type
-    // originally I had concatenated lhs.narrowedString.regex and
-    // rhs.narrowedString.regex, but I see that's incorrect.
-    //     a: String(matches: /^foo/)
-    //     b: String(matches: /^bar/)
-    //     a | b => ?
-    if (!sameRegex && this.narrowedString.regex.length && rhs.narrowedString.regex.length) {
-      return undefined
-    }
-
-    const length = Narrowed.compatibleWithBothLengths(
-      this.narrowedString.length,
-      rhs.narrowedString.length,
-    )
-
-    // either one of the string types doesn't have regex, or the regex is the same
-    const regex =
-      !this.narrowedString.regex.length || !rhs.narrowedString.regex.length
-        ? []
-        : rhs.narrowedString.regex
-    return new MetaStringType({length: length ?? Narrowed.DEFAULT_NARROWED_LENGTH, regex})
-  }
-
   isString(): this is MetaStringType | LiteralStringType {
     return true
   }
@@ -2220,8 +2203,12 @@ export class MetaStringType extends Type {
     }
 
     let nextRegex: RegExp[]
-    if (narrowed.regex.length) {
-      nextRegex = this.narrowedString.regex.concat(narrowed.regex)
+    // only add new regex
+    const newRegex = narrowed.regex.filter(
+      regex => !this.narrowedString.regex.some(myRegex => isEqualRegex(myRegex, regex)),
+    )
+    if (newRegex.length) {
+      nextRegex = this.narrowedString.regex.concat(newRegex)
     } else {
       nextRegex = this.narrowedString.regex
     }
@@ -2240,7 +2227,94 @@ export class MetaStringType extends Type {
   }
 
   narrowRegex(regex: RegExp): Type {
-    return this.narrowString({length: Narrowed.DEFAULT_NARROWED_LENGTH, regex: [regex]})
+    const newRegex = this.narrowedString.regex.some(myRegex => isEqualRegex(myRegex, regex))
+      ? this.narrowedString.regex
+      : this.narrowedString.regex.concat(regex)
+    return this.narrowString({length: Narrowed.DEFAULT_NARROWED_LENGTH, regex: newRegex})
+  }
+
+  /**
+   * Excluding string types is tricky business:
+   * - if no ranges remain -> Never type
+   * - when excluding regex-only types, it's as simple as removing them. If no
+   *   regex remain -> Never type
+   * - when excluding length-only types, too
+   * - when it's both, though
+   */
+  exclude(narrowed: Narrowed.NarrowedString) {
+    const ranges = Narrowed.exclude(this.narrowedString.length, narrowed.length)
+    // remove the regex from narrowed that are in this.narrowedString
+    const newRegex = this.narrowedString.regex.filter(
+      newRegex => !narrowed.regex.some(myRegex => isEqualRegex(newRegex, myRegex)),
+    )
+    const regexNarrowed = Boolean(narrowed.regex.length)
+
+    // if ranges has something, *and* our regex filter changed, we narrrowed on
+    // both length and regex, so the exclude cannot make any assumptions
+    // (either length changed *or* regex *or* both but who knows)
+    if (ranges.length && regexNarrowed) {
+      return this
+    }
+
+    // if ranges is empty, we just check newRegex - if the count of regex
+    // changed, we filtered all the lengths, but only some of the regex
+    // expressions.
+    if (ranges.length === 0) {
+      // if all regex were removed (this had regex, now it doesn't) -> never
+      if (this.narrowedString.regex.length && !newRegex.length) {
+        return NeverType
+      }
+
+      if (regexNarrowed) {
+        return new MetaStringType({
+          length: this.narrowedString.length,
+          regex: newRegex,
+        })
+      }
+      return NeverType
+    }
+
+    // final case, we have new ranges, and our regex is the same
+    const type = oneOf(
+      ranges.map(Narrowed.narrowedFloatToLength).map(
+        range =>
+          new MetaStringType({
+            length: range,
+            regex: this.narrowedString.regex,
+          }),
+      ),
+    )
+    return type
+  }
+
+  compatibleWithBothNarrowed(rhs: MetaStringType) {
+    const sameRegex =
+      this.narrowedString.regex.length === rhs.narrowedString.regex.length &&
+      this.narrowedString.regex.every(lhsRegex =>
+        rhs.narrowedString.regex.some(rhsRegex => isEqualRegex(lhsRegex, rhsRegex)),
+      )
+
+    // if both strings have regex, but the regex isn't the same, use 'one-of' type
+    // originally I had concatenated lhs.narrowedString.regex and
+    // rhs.narrowedString.regex, but I see that's incorrect.
+    //     a: String(matches: /^foo/)
+    //     b: String(matches: /^bar/)
+    //     a | b => ?
+    if (!sameRegex && this.narrowedString.regex.length && rhs.narrowedString.regex.length) {
+      return undefined
+    }
+
+    const length = Narrowed.compatibleWithBothLengths(
+      this.narrowedString.length,
+      rhs.narrowedString.length,
+    )
+
+    // either one of the string types doesn't have regex, or the regex is the same
+    const regex =
+      !this.narrowedString.regex.length || !rhs.narrowedString.regex.length
+        ? []
+        : rhs.narrowedString.regex
+    return new MetaStringType({length: length ?? Narrowed.DEFAULT_NARROWED_LENGTH, regex})
   }
 
   /**
@@ -2767,6 +2841,15 @@ export class LiteralIntType extends LiteralFloatType {
     return IntType.propAccessType(name)
   }
 
+  exclude(narrowed: Narrowed.NarrowedFloat) {
+    narrowed = narrowedFloatToInt(narrowed)
+    if (this.narrow(narrowed.min, narrowed.max) === NeverType) {
+      return this
+    }
+
+    return NeverType
+  }
+
   defaultInferredClassProp(): Type {
     return IntType
   }
@@ -2803,6 +2886,29 @@ export class LiteralStringType extends LiteralType {
     }
 
     return StringType.propAccessType(name)
+  }
+
+  narrowString(narrowed: Narrowed.NarrowedString) {
+    if (
+      (typeof narrowed.length.min === 'number' && narrowed.length.min > this.length) ||
+      (typeof narrowed.length.max === 'number' && narrowed.length.max < this.length)
+    ) {
+      return NeverType
+    }
+
+    if (!Narrowed.testRegex(this.value, narrowed.regex)) {
+      return NeverType
+    }
+
+    return this
+  }
+
+  exclude(narrowed: Narrowed.NarrowedString) {
+    if (this.narrowString(narrowed) === NeverType) {
+      return this
+    }
+
+    return NeverType
   }
 
   defaultInferredClassProp() {
@@ -2981,11 +3087,6 @@ export class ArrayType extends ContainerType<ArrayType> {
     of: Type,
     narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
   ) {
-    // arrays that are known to be length 0, concatenated with another array of
-    // unknown length, should *only* take on the properties of the new array
-    // if (narrowedLength.min === 0 && narrowedLength.max === 0) {
-    //   of = AlwaysType
-    // }
     super(of, narrowedLength)
   }
 
@@ -4087,6 +4188,11 @@ export class ModuleType extends Type {
  * For `a is b` operator, this returns the subtypes of a that "are b"
  */
 export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
+  const narrowed = _narrowTypeIs(lhsType, typeAssertion)
+  return narrowed
+}
+
+function _narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
   if (typeAssertion instanceof OneOfType) {
     return oneOf(
       typeAssertion.of.flatMap(typeAssertion => {
@@ -4166,6 +4272,10 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
     return lhsType.narrow(typeAssertion.narrowed.min, typeAssertion.narrowed.max)
   }
 
+  if (lhsType.isString() && typeAssertion.isString()) {
+    return lhsType.narrowString(typeAssertion.narrowedString)
+  }
+
   return NeverType
 }
 
@@ -4174,30 +4284,31 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
  * "are not b"
  */
 export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
-  if (typeAssertion instanceof OneOfType) {
+  const narrowed = _narrowTypeIsNot(lhsType, typeAssertion)
+  return narrowed
+}
+
+function _narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
+  if (lhsType instanceof OneOfType && typeAssertion instanceof OneOfType) {
     return oneOf(
-      typeAssertion.of.flatMap(typeAssertion => {
-        const narrowed = narrowTypeIsNot(lhsType, typeAssertion)
-        if (narrowed === NeverType) {
-          return []
-        } else {
-          return [narrowed]
-        }
+      lhsType.of.flatMap(lhsOfType => {
+        return typeAssertion.of.reduce((reducedType, typeAssertionOf) => {
+          if (reducedType === NeverType) {
+            return NeverType
+          }
+
+          return narrowTypeIsNot(reducedType, typeAssertionOf)
+        }, lhsOfType)
       }),
     )
   }
 
   if (lhsType instanceof OneOfType) {
-    return oneOf(
-      lhsType.of.flatMap(lhsType => {
-        const narrowed = narrowTypeIsNot(lhsType, typeAssertion)
-        if (narrowed === NeverType) {
-          return []
-        } else {
-          return [narrowed]
-        }
-      }),
-    )
+    return oneOf(lhsType.of.flatMap(ofType => narrowTypeIsNot(ofType, typeAssertion)))
+  }
+
+  if (typeAssertion instanceof OneOfType) {
+    return oneOf(typeAssertion.of.flatMap(ofType => narrowTypeIsNot(lhsType, ofType)))
   }
 
   // if lhsType is a subet of typeAssertion, the resulting set is empty
@@ -4218,6 +4329,10 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
       return NeverType
     }
     return oneOf(lengths.map(length => lhsType.create(length)))
+  }
+
+  if (lhsType.isString() && typeAssertion.isString()) {
+    return lhsType.exclude(typeAssertion.narrowedString)
   }
 
   if (

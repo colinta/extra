@@ -36,3 +36,7 @@ export function stablePointAlgorithm<In, Out, Err>(
 
   return ok(resolved)
 }
+
+export function isEqualRegex(reg1: RegExp, reg2: RegExp) {
+  return reg1.source === reg2.source && reg1.flags === reg2.flags
+}

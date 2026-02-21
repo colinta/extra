@@ -781,8 +781,6 @@ class LogicalOrOperator extends BinaryOperator {
 
   assumeTrue(runtime: TypeRuntime) {
     const [lhs, rhs] = this.args
-    console.log('=========== operators.ts at line 784 ===========')
-    console.log({lhs, rhs})
     return lhs
       .assumeFalse(runtime)
       .map(lhsFalseRuntime => rhs.assumeTrue(lhsFalseRuntime))
@@ -947,6 +945,7 @@ class LogicalAndOperator extends BinaryOperator {
   symbol = 'and'
 
   assumeTrue(runtime: TypeRuntime) {
+    debugger
     const [lhs, rhs] = this.args
     return lhs.assumeTrue(runtime).map(lhsFalseRuntime => rhs.assumeTrue(lhsFalseRuntime))
   }
