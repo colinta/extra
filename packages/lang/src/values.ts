@@ -120,7 +120,7 @@ export abstract class Value {
   abstract isEqual(value: Value): boolean
   abstract isTruthy(): boolean
   abstract toCode(): string
-  abstract propValue(prop: string): Value | undefined
+  abstract propValue(prop: string | number): Value | undefined
 
   toLisp() {
     return this.toCode()

@@ -4,7 +4,7 @@ import {
   simplifyRelationships,
   isEqualRelationship,
 } from './relationship'
-import {type Type, ViewClassDefinitionType, ViewFormulaType, ViewType, NeverType} from './types'
+import {type Type, ViewClassDefinitionType, ViewFormulaType, ViewType} from './types'
 import {
   type Value,
   ViewClassDefinitionValue,

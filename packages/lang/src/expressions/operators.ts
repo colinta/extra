@@ -3091,7 +3091,11 @@ class PropertyAccessOperator extends PropertyChainOperator {
 
   rhsCompile() {
     const [, rhsExpr] = this.args
-    return this.rhsName().map(rhsName => new Nodes.PropertyName(toSource(rhsExpr), rhsName))
+    return this.rhsName().map(rhsName =>
+      typeof rhsName === 'string'
+        ? new Nodes.PropertyAccessName(toSource(rhsExpr), rhsName)
+        : new Nodes.PropertyAccessIndex(toSource(rhsExpr), rhsName),
+    )
   }
 
   rhsName(): GetRuntimeResult<string | number> {

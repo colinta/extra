@@ -487,6 +487,7 @@ export class NamedEnumDefinition extends EnumTypeExpression {
             moduleRuntime.addLocalType(name, enumDefinition)
 
             const instanceType = new Types.NamedEnumInstanceType(
+              enumDefinition,
               name,
               // will hold formulas, they get assigned as they are resolved
               new Map(),
@@ -607,8 +608,9 @@ export class AnonymousEnumTypeExpression extends EnumTypeExpression {
   }
 
   compile(runtime: TypeRuntime) {
+    // TODO TODAY
     // return this.getEnumCases(runtime)
-    //   .map(enumMembers => Types.enumType(enumMembers))
+    //   .map(enumMembers => Types.enumType(enumDefinition, enumMembers))
     //   .map(enumType => ok(new Nodes.AnonymousEnumDefinition(toSource(this), enumType)))
     return {} as any
   }

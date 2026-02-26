@@ -226,8 +226,12 @@ export function classType({
 /**
  * An 'instance' of an enum.
  */
-export function enumType(name: string, formulas: Map<string, FormulaType> = new Map()) {
-  return new NamedEnumInstanceType(name, formulas)
+export function enumType(
+  definition: NamedEnumDefinitionType,
+  name: string,
+  formulas: Map<string, FormulaType> = new Map(),
+) {
+  return new NamedEnumInstanceType(definition, name, formulas)
 }
 
 export function enumCase(name: string, args: (PositionalArgument | NamedArgument)[] = []) {
@@ -248,7 +252,7 @@ export function namedEnumDefinition({
 }: {
   name: string
   members: EnumCase[]
-  class?: NamedEnumInstanceType
+  class?: (def: NamedEnumDefinitionType) => NamedEnumInstanceType
   staticProps?: Map<string, Type>
   genericTypes?: GenericType[]
   moreStatics?: (
@@ -257,11 +261,11 @@ export function namedEnumDefinition({
   ) => Map<string, Type>
 }) {
   const definition = new NamedEnumDefinitionType(name, members, staticProps, genericTypes)
-  classType = classType ?? enumType(name)
-  definition.resolveInstanceType(classType)
+  const classInstanceType = classType?.(definition) ?? enumType(definition, name)
+  definition.resolveInstanceType(classInstanceType)
 
   if (moreStatics) {
-    for (const [name, type] of moreStatics(definition, classType)) {
+    for (const [name, type] of moreStatics(definition, classInstanceType)) {
       definition.addStaticProp(name, type)
     }
   }
@@ -3066,8 +3070,8 @@ export class NamespaceType extends Type {
     super()
   }
 
-  propAccessType(_name: string) {
-    return undefined
+  propAccessType(name: string) {
+    return this.types.get(name)
   }
 }
 
@@ -3812,9 +3816,23 @@ export class NamedEnumDefinitionType extends AnonymousEnumDefinitionType {
     this.staticProps.set(name, type)
   }
 
-  propAccessType(_name: string): Type | undefined {
-    // TODO: scan this.formulas
-    return undefined
+  propAccessType(name: string | number): Type | undefined {
+    if (typeof name === 'number') {
+      return undefined
+    }
+
+    if (this.instanceType) {
+      const member = this.lookupCase(name)
+      if (member) {
+        if (member.positionalTypes.length || member.namedTypes.size) {
+          return new NamedFormulaType(this.name, this.instanceType, member.args, [])
+        }
+
+        return this.instanceType
+      }
+    }
+
+    return this.staticProps.get(name)
   }
 
   toCode() {
@@ -3836,7 +3854,10 @@ export class NamedEnumDefinitionType extends AnonymousEnumDefinitionType {
 export class EnumInstanceType extends Type {
   readonly is = 'enum'
 
-  constructor(readonly name: string) {
+  constructor(
+    readonly enumDefinition: AnonymousEnumDefinitionType,
+    readonly name: string,
+  ) {
     super()
   }
 
@@ -3863,10 +3884,11 @@ export class NamedEnumInstanceType extends EnumInstanceType {
   readonly is = 'enum'
 
   constructor(
+    readonly enumDefinition: NamedEnumDefinitionType,
     readonly name: string,
     readonly formulas: Map<string, Type>,
   ) {
-    super(name)
+    super(enumDefinition, name)
   }
 
   addFormula(name: string, formula: Type) {
@@ -5057,6 +5079,17 @@ export function canBeAssignedTo(
       canBeAssignedTo(testType.of, assignTo.of, resolvedGenericsMap, reason),
       `Incompatible set types '${testType}' and '${assignTo}'.`,
     )
+  } else if (
+    testType instanceof EnumInstanceType &&
+    assignTo instanceof AnonymousEnumDefinitionType
+  ) {
+    if (testType.enumDefinition !== assignTo) {
+      return why(
+        false,
+        `Incompatible types in enum. '${testType.enumDefinition.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
+      )
+    }
+    return true
   } else if (testType instanceof ObjectType && assignTo instanceof ObjectType) {
     const assignToTupleProps: PositionalProp[] = []
     const assignToNamedProps: NamedProp[] = []
@@ -5118,7 +5151,7 @@ export function canBeAssignedTo(
     return why(errorMessage === undefined, errorMessage ?? '')
   }
 
-  return why(false, `Type '${testType}' cannot be assigned to '${assignTo}'.`)
+  return why(false, `Type '${testType.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`)
 }
 
 function canBeAssignedToRange(

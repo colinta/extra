@@ -198,12 +198,27 @@ export class StateReference extends Reference {
  *  The property-name doesn't have an intrinsic type - the property access
  *  operation has a type, but not the rhs expression.
  */
-export class PropertyName extends Reference {
+export class PropertyAccessName extends Reference {
   constructor(
     readonly source: Source,
     readonly name: string,
   ) {
     super(source, Types.AlwaysType, name)
+  }
+}
+
+/**
+ * The right-hand side of a property-access operation using tuple-like access
+ *
+ *     object.0
+ *            ^
+ */
+export class PropertyAccessIndex extends Node {
+  constructor(
+    readonly source: Source,
+    readonly name: number,
+  ) {
+    super(source, Types.AlwaysType)
   }
 
   get stateName() {
