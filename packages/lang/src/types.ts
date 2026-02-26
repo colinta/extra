@@ -1,4 +1,3 @@
-import {inspectable} from '@extra-lang/inspect'
 import {err, mapAll, mapOptional, ok, type Result, Guarantee} from '@extra-lang/result'
 import {intersection} from './util'
 import {splitter} from './graphemes'
@@ -385,16 +384,10 @@ export type KeyType = 'string' | 'int' | 'float' | 'boolean' | 'null'
 type Literals = 'boolean' | 'float' | 'int' | 'string' | 'regex'
 
 export abstract class Type {
-  abstract readonly is: string;
-  [inspectable]: any
+  abstract readonly is: string
 
   toString() {
     return this.toCode(false)
-  }
-
-  constructor() {
-    this[inspectable] = () => this.toCode()
-    Object.defineProperty(this, inspectable, {enumerable: false})
   }
 
   /**

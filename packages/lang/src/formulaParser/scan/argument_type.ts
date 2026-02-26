@@ -31,7 +31,7 @@ import {type ArgumentType, ParseError, type ParseNext} from '../types'
 import {unexpectedToken} from './basics'
 import {scanGenerics} from './formula'
 import {scanFormulaLiteralArguments, scanFormulaTypeArguments} from './formula_arguments'
-import {scanAnyReference, scanAtom, scanIdentifier, scanValidName} from './identifier'
+import {scanAnyReference, scanAtom, scanEnumName, scanIdentifier} from './identifier'
 import {
   scanNarrowedFloat,
   scanNarrowedInt,
@@ -471,7 +471,7 @@ function scanObjectType(
     // } else {
     // }
     if (isNamedArg(scanner)) {
-      name = scanValidName(scanner).name
+      name = scanAnyReference(scanner).name
       scanner.scanAllWhitespace()
       scanner.expectString(TYPE_START)
       scanner.scanAllWhitespace()

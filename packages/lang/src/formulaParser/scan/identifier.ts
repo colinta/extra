@@ -4,7 +4,6 @@ import {
   IGNORE_TOKEN,
   isArgumentStartChar,
   isRef,
-  isRefChar,
   refCharLen,
   STATE_START,
 } from '../grammars'
@@ -13,8 +12,8 @@ import {ParseError} from '../types'
 import {unexpectedToken} from './basics'
 
 /**
- * scanValidName is just like scanIdentifier, but it doesn't support state
- * references (@foo), and and cannot be a reserved word.
+ * scanValidName is much like scanAnyReference. It doesn't support state and
+ * message references (`@foo`, `&foo`), and cannot be a reserved word (`let`).
  */
 export function scanValidName(scanner: Scanner): Expressions.Reference {
   scanner.whereAmI('scanValidName')
@@ -39,12 +38,12 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     )
   }
 
+  if (/^_+$/.test(currentToken)) {
+    throw new ParseError(scanner, `Invalid use of reserved symbol '${currentToken}'`)
+  }
+
   scanner.whereAmI(`scanValidName: ${currentToken}`)
   switch (currentToken) {
-    case '_':
-    case '__':
-    case '___':
-      throw new ParseError(scanner, `Invalid use of reserved symbol '${currentToken}'`)
     case 'let':
     case 'is':
     case 'if':
@@ -282,6 +281,14 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
     scanner.flushComments(),
     currentToken,
   )
+}
+
+/**
+ * Enum case names have the same rules as local references - must start with a
+ * lower-case letter, emoji, or underscore (must not start with upper-case)
+ */
+export function scanEnumName(scanner: Scanner): Expressions.Reference {
+  return scanValidLocalName(scanner)
 }
 
 export function scanAnyReference(scanner: Scanner): Expressions.Reference {

@@ -6,7 +6,7 @@ import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
 import {unexpectedToken} from './basics'
-import {scanValidName} from './identifier'
+import {scanAnyReference} from './identifier'
 
 export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
   scanner.whereAmI('scanJsx')
@@ -23,7 +23,7 @@ export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
     scanner.whereAmI('scanJsx <>')
     // fragment - don't scan name or props
   } else {
-    nameRef = scanValidName(scanner)
+    nameRef = scanAnyReference(scanner)
 
     scanner.scanAllWhitespace()
 
@@ -235,7 +235,7 @@ export function scanJsx(scanner: Scanner, parseNext: ParseNext) {
 function scanPropName(scanner: Scanner) {
   let name = ''
   for (;;) {
-    name += scanValidName(scanner).name
+    name += scanAnyReference(scanner).name
     if (scanner.scanIfString(':', false)) {
       name += ':'
     } else {

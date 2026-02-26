@@ -16,7 +16,7 @@ import {
   TYPE_START,
   VIEW_KEYWORD,
   isArgumentStartChar,
-  isRefStartChar,
+  isIdentifierStartChar,
 } from '../grammars'
 import type {Scanner} from '../scanner'
 import {ParseError, type Comment, type ParseNext} from '../types'
@@ -340,9 +340,6 @@ function isRenderStart(scanner: Scanner) {
 
 // properties are either static – which use the 'static' keyword – or instance
 // properties – which use the '@' sigil to show that they are "stateful".
-//
-// The `isRefStartChar` returns true though... this is because
-// `scanClassProperty` shows a helpful error message in this case.
 function isClassProperty(scanner: Scanner) {
   if (scanner.isWord(STATIC) && scanner.test(isStaticProperty)) {
     return true
@@ -350,7 +347,7 @@ function isClassProperty(scanner: Scanner) {
     return false
   }
 
-  return isRefStartChar(scanner) || scanner.is(STATE_START)
+  return isIdentifierStartChar(scanner) || scanner.is(STATE_START)
 }
 
 /**

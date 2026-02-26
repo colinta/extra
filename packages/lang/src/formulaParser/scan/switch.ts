@@ -57,9 +57,5 @@ function scanSubject(_scanner: Scanner, parseNext: ParseNext): Expressions.Expre
 }
 
 function scanElse(_scanner: Scanner, parseNext: ParseNext): Expressions.Expression {
-  return parseNext('case-then')
-}
-
-function scanThen(_scanner: Scanner, parseNext: ParseNext): Expressions.Expression {
-  return parseNext('case-then')
+  return parseNext('case-else')
 }

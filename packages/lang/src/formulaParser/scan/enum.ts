@@ -14,7 +14,7 @@ import {type ParseNext, ParseError} from '../types'
 import {unexpectedToken} from './basics'
 import {scanGenerics, scanInstanceFormula, scanStaticFormula} from './formula'
 import {scanFormulaLiteralArguments} from './formula_arguments'
-import {scanValidTypeName, scanAnyReference} from './identifier'
+import {scanValidTypeName, scanEnumName} from './identifier'
 import {isStaticFunction, isStaticProperty, scanClassProperty} from './class'
 
 export function scanNamedEnum(
@@ -31,16 +31,16 @@ export function scanNamedEnum(
 
   scanner.expectWord(ENUM_KEYWORD)
   const nameRef = scanValidTypeName(scanner)
-  scanner.scanAllWhitespace('1')
+  scanner.scanAllWhitespace()
 
   const generics: Expressions.GenericExpression[] = []
   if (scanner.scanIfString(GENERIC_OPEN)) {
     generics.push(...scanGenerics(scanner, parseNext))
-    scanner.scanAllWhitespace('2')
+    scanner.scanAllWhitespace()
   }
 
   scanner.expectString(BLOCK_OPEN)
-  scanner.scanAllWhitespace('3')
+  scanner.scanAllWhitespace()
 
   let range1 = scanner.charIndex
   scanner.whereAmI('scanEnum')
@@ -54,10 +54,10 @@ export function scanNamedEnum(
   const staticFormulas: Expressions.NamedFormulaExpression[] = []
   while (!scanner.scanIfString(BLOCK_CLOSE)) {
     if (scanner.scanIfString(ENUM_START)) {
-      scanner.scanAllWhitespace('4')
+      scanner.scanAllWhitespace()
 
       const enum0 = scanner.charIndex
-      const enumCaseName = scanAnyReference(scanner).name
+      const enumCaseName = scanEnumName(scanner).name
       if (caseNames.has(enumCaseName)) {
         throw new ParseError(scanner, `Found duplicate enum case name '${enumCaseName}'.`)
       }
@@ -159,7 +159,7 @@ export function scanEnumLookup(scanner: Scanner): Expressions.Expression {
   const precedingComments = scanner.flushComments()
 
   scanner.expectString(ENUM_START)
-  const name = scanAnyReference(scanner).name
+  const name = scanEnumName(scanner).name
 
   return new Expressions.EnumLookupExpression([range0, scanner.charIndex], precedingComments, name)
 }

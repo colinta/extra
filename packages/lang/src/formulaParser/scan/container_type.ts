@@ -33,18 +33,6 @@ import {scanParensGroup} from './parens'
 import {scanArgumentType} from './argument_type'
 import {scanString} from './string'
 
-function isNamedObjectArgument(scanner: Scanner) {
-  return scanner.test(() => {
-    // check for key: ...
-    if (!isArgumentStartChar(scanner)) {
-      return false
-    }
-    scanIdentifier(scanner)
-    scanner.scanSpaces() // if we hit a newline, we should treat it as a tuple value
-    return scanner.is(DICT_SEPARATOR)
-  })
-}
-
 export function scanObject(
   scanner: Scanner,
   parseNext: ParseNext,
@@ -491,4 +479,16 @@ function scanDictKey(
       dictName,
     ]
   }
+}
+
+function isNamedObjectArgument(scanner: Scanner) {
+  return scanner.test(() => {
+    // check for key: ...
+    if (!isArgumentStartChar(scanner)) {
+      return false
+    }
+    scanIdentifier(scanner)
+    scanner.scanSpaces() // if we hit a newline, we should treat it as a tuple value
+    return scanner.is(DICT_SEPARATOR)
+  })
 }

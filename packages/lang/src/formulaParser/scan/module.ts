@@ -1,7 +1,7 @@
 import {type Scanner} from '../scanner'
 import * as Expressions from '../../expressions'
 
-import {scanAnyReference, scanValidName, scanValidTypeName} from './identifier'
+import {scanAnyReference, scanValidLocalName, scanValidName, scanValidTypeName} from './identifier'
 import {type Comment, ParseError, type ParseNext} from '../types'
 import {scanGenerics, scanNamedFormula} from './formula'
 import {
@@ -134,7 +134,7 @@ export function scanRequiresStatement(scanner: Scanner) {
   const range0 = scanner.charIndex
   const envs: string[] = []
   for (;;) {
-    const name = scanValidName(scanner).name
+    const name = scanValidTypeName(scanner).name
     envs.push(name)
     scanner.scanSpaces()
 
@@ -241,7 +241,7 @@ export function scanImportStatement(scanner: Scanner) {
   let aliasRef: Expressions.Reference | undefined
   if (scanner.scanIfWord(AS_KEYWORD)) {
     scanner.scanAllWhitespace()
-    aliasRef = scanValidName(scanner)
+    aliasRef = scanValidTypeName(scanner)
     if (scanner.lookAhead(IMPORT_ONLY_KEYWORD)) {
       scanner.scanAllWhitespace()
     } else {

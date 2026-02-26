@@ -1,7 +1,7 @@
 import * as Expressions from '@/expressions'
 import {type Expression, binaryOperatorNamed} from '@/expressions'
 
-import {ATOM_START, isRefStartChar, STATE_START} from '../grammars'
+import {ATOM_START, isArgumentStartChar, isIdentifierStartChar, STATE_START} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
@@ -35,7 +35,7 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
 
   let tag: string | undefined
   let quote: string
-  if (isRefStartChar(scanner)) {
+  if (isArgumentStartChar(scanner)) {
     tag = scanValidName(scanner).name
     quote = '`'
     if (!scanner.is(quote)) {
@@ -162,7 +162,8 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
       quoteSupportsInterpolation &&
       // test for `...$foo...`
       scanner.test(
-        () => scanner.scanIfString('$') && isRefStartChar(scanner) && !scanner.is(STATE_START),
+        () =>
+          scanner.scanIfString('$') && isIdentifierStartChar(scanner) && !scanner.is(STATE_START),
       )
     ) {
       if (!enableInterpolation) {

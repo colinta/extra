@@ -1,20 +1,19 @@
 import {c, cases} from '@extra-lang/cases'
-import {type TypeRuntime, type ValueRuntime} from '../../runtime'
+import {type TypeRuntime} from '../../runtime'
 import * as Types from '../../types'
 import * as Values from '../../values'
 import {parse, parseModule} from '../'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
-import {mockValueRuntime} from '../../tests/mockValueRuntime'
 
 let runtimeTypes: {[K in string]: [Types.Type, Values.Value]}
 
 let typeRuntime: TypeRuntime
-let valueRuntime: ValueRuntime
+// let valueRuntime: ValueRuntime
 
 beforeEach(() => {
   runtimeTypes = {}
   typeRuntime = mockTypeRuntime(runtimeTypes)
-  valueRuntime = mockValueRuntime(runtimeTypes)
+  // valueRuntime = mockValueRuntime(runtimeTypes)
 })
 
 function desc(def: string) {

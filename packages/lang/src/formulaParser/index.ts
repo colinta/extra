@@ -20,7 +20,8 @@ import {
   isDiceStart,
   isNumberChar,
   isNumberStart,
-  isRefStartChar,
+  isArgumentStartChar,
+  isIdentifierStartChar,
   isStringStartChar,
   isUnaryOperatorChar,
   isUnaryOperatorName,
@@ -403,7 +404,7 @@ function parseInternal(
       //     foo
       //     .b -- enum shorthand
       //     ]
-      if (scanner.scanIfString(ENUM_START) && isRefStartChar(scanner)) {
+      if (scanner.scanIfString(ENUM_START) && isArgumentStartChar(scanner)) {
         return false
       }
     }
@@ -556,7 +557,7 @@ function parseInternal(
         processExpression(scanString(scanner, true, parseNext))
       } else if (scanner.is(REGEX_START)) {
         processExpression(scanRegex(scanner))
-      } else if (isRefStartChar(scanner)) {
+      } else if (isIdentifierStartChar(scanner)) {
         processExpression(scanIdentifier(scanner))
       } else {
         throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)

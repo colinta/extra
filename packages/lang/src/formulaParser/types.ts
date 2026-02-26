@@ -95,8 +95,9 @@ export type ExpressionType =
   | 'guard' // guard ... else
   | 'guard-else' // else ... then | non-greedy expression
   | 'guard-then' // non-greedy expression
-  | 'switch' // switch ... case ... case | end-of-expression
-  | 'case-then' // parses the argument after 'case [match]'
+  | 'switch' // switch ... case ... case [... else] | end-of-expression
+  | 'case-then' // parses the argument after 'switch..case [match]'
+  | 'case-else' // parses the argument after 'switch..else'
   | 'type' // parses the type within fn<..>()
   | 'module' // all module-level definitions are scanned in this context
   | 'enum' // parses enum members, member and static functions, closes w/ }

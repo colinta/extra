@@ -6,7 +6,6 @@ import {
   ARGS_OPEN,
   ARRAY_OPEN,
   ARRAY_CLOSE,
-  isRefStartChar,
   isRefChar,
   CASE_KEYWORD,
   isArgumentStartChar,
@@ -28,7 +27,7 @@ import {ParseError, type ParseNext} from '../types'
 import {scanArgumentType} from './argument_type'
 
 import {unexpectedToken} from './basics'
-import {scanAnyReference, scanValidLocalName} from './identifier'
+import {scanAnyReference, scanValidLocalName, scanValidTypeName} from './identifier'
 import {scanNumber} from './number'
 import {scanRegex} from './regex'
 import {scanStringLiteral} from './string'
@@ -354,7 +353,7 @@ function scanMatchString(scanner: Scanner) {
       } else {
         throw `Unexpected... found '${stringExpression}' but prefix is already defined, and lastRef is undefined`
       }
-    } else if (isRefStartChar(scanner)) {
+    } else if (isArgumentStartChar(scanner)) {
       if (prev === 'ref') {
         throw new ParseError(
           scanner,
@@ -481,7 +480,7 @@ function scanMatchArray(scanner: Scanner, parseNext: ParseNext) {
           scanner.scanSpaces()
         }
 
-        if (isRefStartChar(scanner)) {
+        if (isArgumentStartChar(scanner)) {
           const reference = scanValidLocalName(scanner)
           remainingExpr = new Expressions.MatchAssignRemainingExpression(
             [arg0, scanner.charIndex],

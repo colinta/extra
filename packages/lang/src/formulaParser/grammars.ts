@@ -333,12 +333,11 @@ export function refCharLen(scanner: Scanner) {
   return 0
 }
 
-// & and @ are valid start-of-reference characters
-export function isRefStartChar(scanner: Scanner) {
+// & and @ are valid start-of-identifier characters
+export function isIdentifierStartChar(scanner: Scanner) {
   return /^[&@]/.test(scanner.char) || isArgumentStartChar(scanner)
 }
 
-// isArgumentStartChar doesn't allow [&@-] or [0-9]
 export function isArgumentStartChar(scanner: Scanner) {
   return /^([a-zA-Z_]|\p{Extended_Pictographic})/u.test(scanner.remainingInput)
 }
@@ -381,6 +380,7 @@ export function treatNewlineAsComma(expressionType: ExpressionType) {
     expressionType === 'guard-else' ||
     expressionType === 'guard-then' ||
     expressionType === 'case-then' ||
+    expressionType === 'case-else' ||
     expressionType === 'generic' ||
     expressionType === 'argument' ||
     expressionType === 'block_argument' ||
@@ -407,7 +407,8 @@ export function isAnyControl(expressionType: ExpressionType) {
     expressionType === 'if-else' ||
     expressionType === 'guard-else' ||
     expressionType === 'guard-then' ||
-    expressionType === 'case-then'
+    expressionType === 'case-then' ||
+    expressionType === 'case-else'
   )
 }
 
