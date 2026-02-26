@@ -7,7 +7,7 @@ view Main(name: String, onResetName: fn(): &) {
   ╭────────╮
   │ @State │
   ╰────────╯
-  @users: Array(User) = []
+  @users: [User] = []
 
   ╭──────╮
   │ &Msg │

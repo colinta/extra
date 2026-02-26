@@ -215,7 +215,7 @@ case [first, _, last]
   [first, last]
 `,
         [['letters', Types.array(Types.string()), Values.nullValue()]],
-        "Switch is not exhaustive, 'letters' has unhandled type 'Array(String, length: >=4)'",
+        "Switch is not exhaustive, 'letters' has unhandled type '[String, length: >=4]'",
       ]),
       c([
         `\
@@ -230,7 +230,7 @@ case [first, _, last]
   [first, last]
 `,
         [['letters', Types.array(Types.string()), Values.nullValue()]],
-        "Switch is not exhaustive, '[...letters, ...letters]' has unhandled type 'Array(String, length: >=4)'",
+        "Switch is not exhaustive, '[...letters, ...letters]' has unhandled type '[String, length: >=4]'",
       ]),
     ).run(([formula, values, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(

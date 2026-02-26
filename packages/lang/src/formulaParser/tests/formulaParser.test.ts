@@ -40,7 +40,7 @@ describe('function parser', () => {
       c(['foo is /test/', '(is foo /test/)']),
       c(['foo is /test/ims', '(is foo /test/ims)']),
       c(['foo is /\\d+/imss', '(is foo /\\d+/ims)', 'foo is /\\d+/ims']),
-      c(['lhs is Array(Int) and foo', '(and (is lhs Array(`Int`)) foo)']),
+      c(['lhs is Array(Int) and foo', '(and (is lhs Array(`Int`)) foo)', 'lhs is [Int] and foo']),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         let expression: Expression = parse(formula).get()

@@ -47,6 +47,8 @@ import {scanString} from './string'
  *     Int, String, String(), etc
  *   Object:
  *     { … }
+ *     { … } & User
+ *     User & { … }
  *   Object:
  *     TODO: Object(age: Int), Object(# name: String), etc
  *   Array:
@@ -77,10 +79,10 @@ export function scanArgumentType(
   let argType: Expression | undefined
   const range0 = scanner.charIndex
   const oneOfExpressions: Expression[] = []
-  const enumExpressions: Expressions.EnumMemberExpression[] = []
   let extendsExpressions: Expression[] = []
   let hasOptional = false
   let rewind = scanner.charIndex
+  let supportsExtends = false
 
   // support leading '|'
   if (scanner.scanIfString('|')) {
@@ -94,73 +96,7 @@ export function scanArgumentType(
     scanner.scanAllWhitespace()
     const arg0 = scanner.charIndex
 
-    if (scanner.scanIfString(PARENS_OPEN)) {
-      argType = scanArgumentType(scanner, moduleOrArgument, parseNext)
-      scanner.scanAllWhitespace()
-      scanner.expectString(
-        PARENS_CLOSE,
-        `Expected '${PARENS_CLOSE}' closing the argument type group`,
-      )
-      scanner.whereAmI(`scanArgumentType: () ${argType.toCode()}`)
-    } else if (scanner.scanIfString(MSG_TYPE)) {
-      argType = new Expressions.BuiltinCommandIdentifier(
-        [arg0, scanner.charIndex],
-        scanner.flushComments(),
-      )
-    } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
-      argType = scanNumber(scanner, 'float')
-    } else if (isStringStartChar(scanner)) {
-      argType = scanString(scanner, false, parseNext)
-    } else if (scanner.scanIfString(ENUM_START)) {
-      if (moduleOrArgument === 'module_type_definition') {
-        throw new ParseError(
-          scanner,
-          'Enum shorthand syntax `.type | .type | ...` is only allowed for formula argument types',
-        )
-      }
-
-      const enumCaseName = scanAnyReference(scanner).name
-      scanner.whereAmI(`scanEnum: ${enumCaseName}`)
-      let args: Expressions.FormulaArgumentDefinition[] = []
-      if (scanner.is(ARGS_OPEN)) {
-        args = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)
-
-        // TODO: I'm being lazy, and don't want to implement spread arguments support
-        // in the new enum code (specifically in the matching code)
-        args.forEach(arg => {
-          if (arg.spreadArg) {
-            throw new ParseError(
-              scanner,
-              'Spread, repeated, and keyword-list arguments are not allowed in enum case definitions, only positional and named arguments.',
-              scanner.charIndex - 1,
-            )
-          }
-        })
-      }
-
-      enumExpressions.push(
-        new Expressions.EnumMemberExpression(
-          [arg0, scanner.charIndex],
-          scanner.flushComments(),
-          enumCaseName,
-          args,
-        ),
-      )
-
-      if (scanner.scanAhead('|')) {
-        continue
-      }
-
-      argType = new Expressions.AnonymousEnumTypeExpression(
-        [range0, scanner.charIndex],
-        scanner.flushComments(),
-        enumExpressions,
-      )
-
-      break
-    } else if (scanner.scanIfString(OBJECT_OPEN)) {
-      argType = scanObjectType(scanner, moduleOrArgument, parseNext, arg0)
-    } else if (scanner.isWord(CLASS_KEYWORD)) {
+    if (scanner.isWord(CLASS_KEYWORD)) {
       throw new ParseError(
         scanner,
         'The `class` type is not allowed as a formula argument type, you should move it to the module scope',
@@ -171,134 +107,48 @@ export function scanArgumentType(
         'The `enum` type is not allowed as a formula argument type, however you *can* use the enum shorthand syntax: `arg: .case1 | .case2`, or you should move it to the module scope',
       )
     } else if (scanner.isWord(FN_KEYWORD)) {
-      scanner.expectWord(FN_KEYWORD)
       argType = scanFormulaType(scanner, arg0, parseNext, moduleOrArgument)
+    } else if (scanner.scanIfString(PARENS_OPEN)) {
+      argType = scanArgumentType(scanner, moduleOrArgument, parseNext)
+      scanner.scanAllWhitespace()
+      scanner.expectString(
+        PARENS_CLOSE,
+        `Expected '${PARENS_CLOSE}' closing the argument type group`,
+      )
+      scanner.whereAmI(`scanArgumentType: () ${argType.toCode()}`)
+      supportsExtends = true
+    } else if (scanner.scanIfString(MSG_TYPE)) {
+      argType = new Expressions.BuiltinCommandIdentifier(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+      )
+    } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
+      argType = scanNumber(scanner, 'float')
+    } else if (isStringStartChar(scanner)) {
+      argType = scanString(scanner, false, parseNext)
+    } else if (scanner.is(ENUM_START)) {
+      argType = scanEnumType(scanner, moduleOrArgument, parseNext)
+    } else if (scanner.is(OBJECT_OPEN)) {
+      // {arg: Type, Type}
+      argType = scanObjectType(scanner, moduleOrArgument, parseNext)
+      supportsExtends = true
+    } else if (scanner.is(ARRAY_OPEN)) {
+      // [Type, length: 0]
+      argType = scanArrayLiteralType(scanner, moduleOrArgument, parseNext)
     } else if (isArgumentStartChar(scanner)) {
-      const typeName = scanIdentifier(scanner)
-
-      if (scanner.scanAhead(ARGS_OPEN)) {
-        scanner.scanAllWhitespace()
-
-        if (typeName.name === STRING) {
-          const narrowed = scanNarrowedString(scanner)
-          argType = new Expressions.StringTypeIdentifier(
-            [arg0, scanner.charIndex],
-            scanner.flushComments(),
-            narrowed,
-          )
-
-          scanner.scanAllWhitespace()
-          scanner.expectString(ARGS_CLOSE)
-        } else if (typeName.name === INT) {
-          const narrowed = scanNarrowedInt(scanner)
-          argType = new Expressions.IntTypeIdentifier(
-            [arg0, scanner.charIndex],
-            scanner.flushComments(),
-            narrowed,
-          )
-
-          scanner.scanAllWhitespace()
-          scanner.expectString(ARGS_CLOSE)
-        } else if (typeName.name === FLOAT) {
-          const narrowed = scanNarrowedFloat(scanner)
-          argType = new Expressions.FloatTypeIdentifier(
-            [arg0, scanner.charIndex],
-            scanner.flushComments(),
-            narrowed,
-          )
-
-          scanner.scanAllWhitespace()
-          scanner.expectString(ARGS_CLOSE)
-        } else if (typeName.name === ARRAY) {
-          argType = scanArrayType(scanner, moduleOrArgument, parseNext, arg0)
-        } else if (typeName.name === DICT) {
-          argType = scanDictType(scanner, moduleOrArgument, parseNext, arg0)
-        } else if (typeName.name === SET) {
-          argType = scanSetType(scanner, moduleOrArgument, parseNext, arg0)
-        } else if (typeName.name === OBJECT) {
-          throw new ParseError(
-            scanner,
-            `Object types are defined using { key: Type, ... }, not Object(key: Type, ...)`,
-            scanner.charIndex - 1,
-          )
-        } else if (typeName.name === BOOLEAN) {
-          throw new ParseError(
-            scanner,
-            `Unexpected type refinement on type '${typeName.name}'. Type refinements are only supported on String, Int, and Float, and generic types, not '${typeName.name}'`,
-            scanner.charIndex - 1,
-          )
-        } else if (typeName instanceof Expressions.Reference) {
-          const typeArgs: Expressions.Expression[] = []
-          for (;;) {
-            const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
-            typeArgs.push(ofType)
-
-            if (
-              scanner.scanCommaOrBreak(
-                PARENS_CLOSE,
-                `Expected ',' separating items in the arguments`,
-              )
-            ) {
-              break
-            }
-
-            scanner.scanAllWhitespace()
-          }
-
-          argType = new Expressions.TypeConstructorExpression(
-            [arg0, scanner.charIndex],
-            scanner.flushComments(),
-            typeName,
-            typeArgs,
-          )
-        } else {
-          throw new ParseError(
-            scanner,
-            `Unexpected type refinement on type '${typeName.name}'`,
-            scanner.charIndex - 1,
-          )
-        }
-      } else if (scanner.scanAhead(PROPERTY_ACCESS_OPERATOR)) {
-        // parsing foo.type.Type
-        // TODO: currently, only _concrete types_ are supported here.
-        // i.e. if `Type` is generic (`Type(a)`) this will fail.
-        let childArgType: Expressions.NamespaceAccessExpression | undefined
-        do {
-          scanner.scanAllWhitespace()
-          const childIdentifier = scanAnyReference(scanner)
-          childArgType = new Expressions.NamespaceAccessExpression(
-            [arg0, scanner.charIndex],
-            scanner.flushComments(),
-            childArgType ?? typeName,
-            childIdentifier,
-          )
-        } while (scanner.scanAhead(PROPERTY_ACCESS_OPERATOR))
-
-        return childArgType
-      } else {
-        if (typeName instanceof Expressions.ContainerTypeIdentifier) {
-          throw new ParseError(scanner, `${typeName.name} requires a type (${typeName.name}(Type))`)
-        }
-
-        if (
-          typeName.name.match(/^[A-Z]/) ||
-          typeName.name === 'null' ||
-          typeName.name === 'true' ||
-          typeName.name === 'false'
-        ) {
-          argType = typeName
-        } else {
-          throw new ParseError(scanner, `Expected a type name, found '${typeName.name}'`)
-        }
-      }
+      argType = scanNamedType(scanner, moduleOrArgument, parseNext)
+      supportsExtends = true
     } else {
-      throw new ParseError(scanner, `Unexpected token '${unexpectedToken(scanner)}'`)
+      throw new ParseError(
+        scanner,
+        `Expected a type, found unexpected token '${unexpectedToken(scanner)}'`,
+      )
     }
 
+    let argTypeIsOptional = false
     rewind = scanner.charIndex
     scanner.scanSpaces()
 
-    let argTypeIsOptional = false
     if (scanner.scanIfString('?')) {
       rewind = scanner.charIndex
       scanner.scanSpaces()
@@ -308,7 +158,7 @@ export function scanArgumentType(
 
     // we are starting or continuing a 'extends' type, e.g.
     //     User & {isGreat: Boolean} & {isFunny: Boolean}
-    if (scanner.scanIfString('&')) {
+    if (supportsExtends && scanner.scanIfString('&')) {
       if (argTypeIsOptional) {
         throw new ParseError(
           scanner,
@@ -324,7 +174,7 @@ export function scanArgumentType(
     // we *had* some extendsExpressions, but no more (no '&'), so merge them into one
     // `ExtendsExpression`.
     if (extendsExpressions.length) {
-      if (argTypeIsOptional) {
+      if (hasOptional) {
         throw new ParseError(
           scanner,
           `Optional type '${argType}?' is not supported with the '&' extends operator`,
@@ -342,34 +192,18 @@ export function scanArgumentType(
       extendsExpressions = []
     }
 
+    oneOfExpressions.push(argType)
+
     if (scanner.scanAhead('|')) {
       scanner.whereAmI(`scanArgumentType: | ${argType.toCode()}`)
-      oneOfExpressions.push(argType)
       continue
-    }
-
-    if (oneOfExpressions.length) {
-      oneOfExpressions.push(argType)
     }
 
     scanner.rewindTo(rewind)
     break
   }
 
-  if (enumExpressions.length && !(argType instanceof Expressions.AnonymousEnumTypeExpression)) {
-    const enumType = new Expressions.AnonymousEnumTypeExpression(
-      [range0, scanner.charIndex],
-      scanner.flushComments(),
-      enumExpressions,
-    )
-
-    oneOfExpressions.push(enumType)
-  }
-
   if (hasOptional) {
-    if (oneOfExpressions.length === 0) {
-      oneOfExpressions.push(argType!)
-    }
     oneOfExpressions.push(
       new Expressions.LiteralNull(
         [scanner.charIndex - 1, scanner.charIndex],
@@ -402,6 +236,9 @@ function scanFormulaType(
   parseNext: ParseNext,
   moduleOrArgument: ArgumentType,
 ) {
+  scanner.expectWord(FN_KEYWORD)
+  scanner.scanAllWhitespace()
+
   let generics: Expressions.GenericExpression[]
   if (scanner.scanIfString('<')) {
     generics = scanGenerics(scanner, parseNext)
@@ -430,13 +267,33 @@ function scanFormulaType(
   )
 }
 
-function scanObjectType(
+function scanArrayLiteralType(
   scanner: Scanner,
   moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
-  range0: number,
 ) {
   scanner.whereAmI(`scanObjectType`)
+  const range0 = scanner.charIndex
+  scanner.expectString(ARRAY_OPEN)
+  scanner.scanAllWhitespace()
+  const {ofType, narrowedLength} = scanOfAndLength(
+    scanner,
+    moduleOrArgument,
+    parseNext,
+    ARRAY_CLOSE,
+  )
+  return new Expressions.ArrayTypeExpression(
+    [range0, scanner.charIndex],
+    scanner.flushComments(),
+    ofType,
+    narrowedLength,
+  )
+}
+
+function scanObjectType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNext: ParseNext) {
+  scanner.whereAmI(`scanObjectType`)
+  const range0 = scanner.charIndex
+  scanner.expectString(OBJECT_OPEN)
   scanner.scanAllWhitespace()
 
   const values: [string | undefined, Expression][] = []
@@ -507,26 +364,208 @@ function scanObjectType(
   )
 }
 
-function scanArrayType(
-  scanner: Scanner,
-  moduleOrArgument: ArgumentType,
-  parseNext: ParseNext,
-  range0: number,
-) {
-  scanner.whereAmI(`scanArrayType`)
-  const {ofType, narrowedLength} = scanOfAndLength(scanner, moduleOrArgument, parseNext)
-  scanner.whereAmI(
-    `scanArrayType: (` + ofType.toCode() + `, length: ${lengthDesc(narrowedLength)})`,
-  )
-  return new Expressions.ArrayTypeExpression(
+function scanEnumType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNext: ParseNext) {
+  if (moduleOrArgument === 'module_type_definition') {
+    throw new ParseError(
+      scanner,
+      'Enum shorthand syntax `.type | .type | ...` is only allowed for formula argument types',
+    )
+  }
+
+  const range0 = scanner.charIndex
+  const enumExpressions: Expressions.EnumMemberExpression[] = []
+
+  for (;;) {
+    const arg0 = scanner.charIndex
+    scanner.expectString(ENUM_START)
+    // whitespace not allowed after '.'
+    const enumCaseName = scanEnumName(scanner).name
+    scanner.whereAmI(`scanEnum: ${enumCaseName}`)
+    let args: Expressions.FormulaArgumentDefinition[] = []
+    if (scanner.is(ARGS_OPEN)) {
+      args = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)
+
+      // TODO: I'm being lazy, and don't want to implement spread arguments support
+      // in the new enum code (specifically in the matching code)
+      args.forEach(arg => {
+        if (arg.spreadArg) {
+          throw new ParseError(
+            scanner,
+            'Spread, repeated, and keyword-list arguments are not allowed in enum case definitions, only positional and named arguments.',
+            arg.range[0],
+          )
+        }
+      })
+    }
+
+    enumExpressions.push(
+      new Expressions.EnumMemberExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        enumCaseName,
+        args,
+      ),
+    )
+
+    if (!scanner.test(hasMoreEnum)) {
+      break
+    }
+
+    scanner.scanAhead('|')
+    scanner.scanAllWhitespace()
+  }
+
+  return new Expressions.AnonymousEnumTypeExpression(
     [range0, scanner.charIndex],
     scanner.flushComments(),
-    ofType,
-    narrowedLength,
+    enumExpressions,
   )
 }
 
-function scanDictType(
+function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNext: ParseNext) {
+  const arg0 = scanner.charIndex
+  const typeName = scanIdentifier(scanner)
+
+  if (scanner.scanAhead(ARGS_OPEN)) {
+    scanner.scanAllWhitespace()
+
+    if (typeName.name === STRING) {
+      const narrowed = scanNarrowedString(scanner)
+      const argType = new Expressions.StringTypeIdentifier(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        narrowed,
+      )
+
+      scanner.scanAllWhitespace()
+      scanner.expectString(ARGS_CLOSE)
+      return argType
+    } else if (typeName.name === INT) {
+      const narrowed = scanNarrowedInt(scanner)
+      const argType = new Expressions.IntTypeIdentifier(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        narrowed,
+      )
+
+      scanner.scanAllWhitespace()
+      scanner.expectString(ARGS_CLOSE)
+      return argType
+    } else if (typeName.name === FLOAT) {
+      const narrowed = scanNarrowedFloat(scanner)
+      const argType = new Expressions.FloatTypeIdentifier(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        narrowed,
+      )
+
+      scanner.scanAllWhitespace()
+      scanner.expectString(ARGS_CLOSE)
+      return argType
+    } else if (typeName.name === ARRAY) {
+      const {ofType, narrowedLength} = scanOfAndLength(scanner, moduleOrArgument, parseNext)
+      return new Expressions.ArrayTypeExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        ofType,
+        narrowedLength,
+      )
+    } else if (typeName.name === DICT) {
+      const {ofType, narrowedLength, narrowedNames} = scanDictOfAndLength(
+        scanner,
+        moduleOrArgument,
+        parseNext,
+        arg0,
+      )
+      return new Expressions.DictTypeExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        ofType,
+        narrowedLength,
+        narrowedNames,
+      )
+    } else if (typeName.name === SET) {
+      const {ofType, narrowedLength} = scanOfAndLength(scanner, moduleOrArgument, parseNext)
+      return new Expressions.SetTypeExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        ofType,
+        narrowedLength,
+      )
+    } else if (typeName.name === OBJECT) {
+      throw new ParseError(
+        scanner,
+        `Object types are defined using { key: Type, ... }, not Object(key: Type, ...)`,
+        scanner.charIndex - 1,
+      )
+    } else if (typeName.name === BOOLEAN) {
+      throw new ParseError(
+        scanner,
+        `Unexpected type refinement on type '${typeName.name}'. Type refinements are only supported on String, Int, and Float, and generic types, not '${typeName.name}'`,
+        scanner.charIndex - 1,
+      )
+    } else if (typeName instanceof Expressions.Reference) {
+      const typeArgs: Expressions.Expression[] = []
+      for (;;) {
+        const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
+        typeArgs.push(ofType)
+
+        if (
+          scanner.scanCommaOrBreak(PARENS_CLOSE, `Expected ',' separating items in the arguments`)
+        ) {
+          break
+        }
+
+        scanner.scanAllWhitespace()
+      }
+
+      return new Expressions.TypeConstructorExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        typeName,
+        typeArgs,
+      )
+    }
+
+    throw new ParseError(
+      scanner,
+      `Unexpected type refinement on type '${typeName.name}'`,
+      scanner.charIndex - 1,
+    )
+  } else if (scanner.scanAhead(PROPERTY_ACCESS_OPERATOR)) {
+    // parsing Foo.Type.Type
+    // TODO: currently, only _concrete types_ are supported here.
+    // i.e. if `Type` is generic (`Type(a)`) this scanner will fail.
+    // But I'm not sure `Foo.Type(a).Type` is even a meaningful expression
+    let childArgType: Expressions.NamespaceAccessExpression | undefined
+    do {
+      scanner.scanAllWhitespace()
+      const childIdentifier = scanAnyReference(scanner)
+      childArgType = new Expressions.NamespaceAccessExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        childArgType ?? typeName,
+        childIdentifier,
+      )
+    } while (scanner.scanAhead(PROPERTY_ACCESS_OPERATOR))
+
+    return childArgType
+  }
+
+  if (typeName instanceof Expressions.ContainerTypeIdentifier) {
+    throw new ParseError(scanner, `${typeName.name} requires a type (${typeName.name}(Type))`)
+  }
+
+  if (typeName.name === 'null' || typeName.name === 'true' || typeName.name === 'false') {
+    return typeName
+  } else if (typeName.name.match(/^[A-Z]/)) {
+    return typeName
+  }
+
+  throw new ParseError(scanner, `Expected a type name, found '${typeName.name}'`)
+}
+
+function scanDictOfAndLength(
   scanner: Scanner,
   moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
@@ -590,33 +629,15 @@ function scanDictType(
       `, length: ${lengthDesc(narrowedLength)}, names: ${[...narrowedNames]})`,
   )
 
-  return new Expressions.DictTypeExpression(
-    [range0, scanner.charIndex],
-    scanner.flushComments(),
-    ofType,
-    narrowedLength,
-    narrowedNames,
-  )
+  return {ofType, narrowedLength, narrowedNames}
 }
 
-function scanSetType(
+function scanOfAndLength(
   scanner: Scanner,
   moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
-  range0: number,
+  closer: string = PARENS_CLOSE,
 ) {
-  scanner.whereAmI(`scanSetType`)
-  const {ofType, narrowedLength} = scanOfAndLength(scanner, moduleOrArgument, parseNext)
-  scanner.whereAmI(`scanSetType: (` + ofType.toCode() + `, length: ${lengthDesc(narrowedLength)})`)
-  return new Expressions.SetTypeExpression(
-    [range0, scanner.charIndex],
-    scanner.flushComments(),
-    ofType,
-    narrowedLength,
-  )
-}
-
-function scanOfAndLength(scanner: Scanner, moduleOrArgument: ArgumentType, parseNext: ParseNext) {
   const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
   scanner.scanAllWhitespace()
 
@@ -632,7 +653,16 @@ function scanOfAndLength(scanner: Scanner, moduleOrArgument: ArgumentType, parse
     scanner.scanAllWhitespace()
   }
 
-  scanner.expectString(PARENS_CLOSE)
+  scanner.expectString(closer)
 
   return {ofType, narrowedLength}
+}
+
+function hasMoreEnum(scanner: Scanner) {
+  if (!scanner.scanAhead('|')) {
+    return false
+  }
+
+  scanner.scanAllWhitespace()
+  return scanner.scanIfString(ENUM_START) && isArgumentStartChar(scanner)
 }

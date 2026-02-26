@@ -714,7 +714,7 @@ function combineOrRelationships(
     } else if (lhs.formula.type === 'assign') {
       // here is a very delicate check that covers this situation:
       //     let
-      //       -- foo: Array(Int) | String | Int
+      //       -- foo: [Int] | String | Int
       //       bar = foo
       //     in
       //       if (foo is [_, foo] or foo is String) {
@@ -727,7 +727,7 @@ function combineOrRelationships(
       // 2. Or `foo is String`, and be assigned a String
       //
       // `bar` on the other hand... It can only possibly be:
-      // 1. If foo matches [_, _], `bar: Array(Int, length: =2)`
+      // 1. If foo matches [_, _], `bar: [Int, length: =2]`
       // 2. If foo matches String, `bar: String`
       //
       // For this, we use a "mask", which copies the type information from one

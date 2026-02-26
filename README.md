@@ -258,7 +258,7 @@ in
 
 ## Type refinements
 
-You can provide much more type information to Arrays, Dicts, Sets, Strings, and Numbers. You can define types like "an Array of Ints, with at least one item, where each Int is greater than 0" (`Array(Int(>0), length: >=1)`).
+You can provide much more type information to Arrays, Dicts, Sets, Strings, and Numbers. You can define types like "an Array of Ints, with at least one item, where each Int is greater than 0" (`[Int(>0), length: >=1]`).
 
 In my mind, an "empty String/Array" is a different _type_ than "a String with 5 or more characters." And the reason they are different types is because there are often cases where I _know that I will need at least one of the thing_. For instance, a `name: String` variable. Would't it be nice if I could say `name: String(length: >0)`, indicating that it must have at least one letter? _Yes we can!_
 
@@ -277,19 +277,19 @@ Int(8...8)    -- so is this!
 Int(7<.<9)    -- and this.
 8             -- literals are also valid types
 
-Array(Foo, length: >=3)     -- Array of type 'Foo' with at least 3 items
-Array(Foo, length: <=3)     -- Array of Foo with 3 items or less
-Array(Foo, length: =3)     -- Array of Foo with exactly 3 items
+[Foo, length: >=3]     -- Array of type 'Foo' with at least 3 items
+[Foo, length: <=3]     -- Array of Foo with 3 items or less
+[Foo, length: =3]     -- Array of Foo with exactly 3 items
 
 -- < <= >= > comparisons also work
-Array(Foo, length: <=3)    -- array of Foo with no more than 3 items
-Array(Foo, length: >3)     -- array of Foo with more than 3 items
+[Foo, length: <=3]    -- array of Foo with no more than 3 items
+[Foo, length: >3]     -- array of Foo with more than 3 items
 
 -- and ranges
-Array(Foo, length: 2...4)   -- array of Foo with 2, 3, or 4 items (inclusive range)
-Array(Foo, length: 1<.<5) -- array of Foo with 2, 3, or 4 items (exclusive range)
-Array(Foo, length: 2..<5) -- array of Foo with 2, 3, or 4 items (exclusive range)
-Array(Foo, length: 2<..5) -- array of Foo with 3, or 5 items (exclusive range)
+[Foo, length: 2...4]   -- array of Foo with 2, 3, or 4 items (inclusive range)
+[Foo, length: 1<.<5] -- array of Foo with 2, 3, or 4 items (exclusive range)
+[Foo, length: 2..<5] -- array of Foo with 2, 3, or 4 items (exclusive range)
+[Foo, length: 2<..5] -- array of Foo with 3, or 5 items (exclusive range)
 
 -- Dict / Maps
 Dict(Foo, length: 3+)      -- dict of Foo with 3 or more items
@@ -301,10 +301,10 @@ Dict(Foo, keys: [key1:, key2:])  -- dict with specified keys - these keys must b
 Dict(Foo, keys: [key1:, key2:], length: 3+)  -- specified keys and length >= 3
 
 -- these types can be combined:
-Array(String(length: =8), length: =10) -- array of strings
+[String(length: =8), length: =10] -- array of strings
       -- each string is 8 characters
                   -- and there are 10 of them in the array
-Array(length: =10, String(=8)) -- if you prefer, these arguments can be rearranged
+[length: =10, String(=8)] -- if you prefer, these arguments can be rearranged
 ```
 
 ## Default value placeholder.
@@ -632,14 +632,14 @@ fn permission(user: User): Permission =>
 
 ###### Putting it all together
 ```extra
--- input: String | Array(String)
+-- input: String | [String]
 switch input
 case 'foo' .. bar
   bar -- bar: String, input: String (TODO: add 'prefix' info to String type)
 case [onlyOne]
-  onlyOne  -- onlyOne: String, input: Array(String, length: =1)
+  onlyOne  -- onlyOne: String, input: [String, length: =1]
 case [...many, last]
-  many.join(',') .. ` and $last`  -- many: Array(String), last: String, input: Array(String, length: >=1)
+  many.join(',') .. ` and $last`  -- many: [String], last: String, input: [String, length: >=1]
 else
   'not "foo…" or [a, …]'
 ```
@@ -995,10 +995,10 @@ Syntax:
 
 - Array: `[] [] [1] [1,] [1, 2, 3]`
   (alternatively you can use the "long form" `Array(1,2,3)`)
-- Dict: `Dict() Dict(key: 1) Dict(key: 1,) Dict(1: 1, 'key2': 2, "key$three": 3)`
-  (alternative shorthand: `#{key: value}`)
-- Set: `Set() Set(1) Set(1,) Set(1, 2, 3)`
-  (alternative shorthand: `#[1, 2, 3]`)
+- Dict: `#{} #{key: 1} #{key: 1,} #{1: 1, 'key2': 2, "key$three": 3}`
+  (alternative longhand: `Dict(key: value)`)
+- Set: `#[] #[1] #[1,] #[1, 2, 3]`
+  (alternative longhand: `Set(1, 2, 3)`)
 
 #### Heterogenous types: Tuple, Object
 
@@ -1015,8 +1015,8 @@ Syntax:
 
 ```extra
 -- Arrays
-[1, 2, 3]        --> [Int] ("Int array") with three entries
-[]               --> empty array (Array(Always))
+[1, 2, 3]        --> [Int] (aka Array(Int)) with three entries
+[]               --> empty array ([Always])
 ["one", "two", ] --> [String] with two entries (trailing comma is ok)
 
 -- Dicts
@@ -1045,8 +1045,8 @@ Set()         --> empty set
 Objects and Tuples can contain values with different types (this is called a **Product Type**). What happens if you put different types into an array or dict?
 
 ```extra
-[1, 2, "3"] -- Invalid!? Nope! This has the type `Array(Int | String)`
--- (**ahem**, actually it has the type `Array(1 | 2 | "3")`)
+[1, 2, "3"] -- Invalid!? Nope! This has the type `[Int | String]`
+-- (**ahem**, actually it has the type `[1 | 2 | "3"]`)
 ```
 
 Enter the **OneOf** type.
@@ -1088,11 +1088,11 @@ We've seen many definitions already.
 - `1` `1_000` `'text'` also literal types
 - `Boolean` `Int` `Float` `String` the basic types
 - `Boolean | Int` one of types
-- `Array(Int)` `Array(Int | String)` `Array(Float?)` arrays
+- `[Int]` `[Int | String]` `[Float?]` arrays
 - `Dict(Int)` `Dict(Int | String)` `Dict(Float?)` dicts
 - `{Int, String}` `{Int?, String?}` tuples
 - `{foo: Int, bar: String}` `{foo: Int?, bar: String?}` objects
-- `Array(Boolean) | Array(Int | String)` one of types mixed with container types
+- `[Boolean] | [Int | String]` one of types mixed with container types
 
 ## Let
 
@@ -1137,15 +1137,15 @@ doEeet(1, 'foo', reason: '', age: 42)   -- name = 'foo', age = 42
 If the argument type is null-able, you can make the argument optional `like?: This` (`like: This | null`). If the argument is _generic_, it will be made optional only if the type is null-able. In other words:
 
 ```extra
-fn first-or<T>(# array: Array(T), else fallback?: T) =>
+fn first-or<T>(# array: [T], else fallback?: T) =>
   if array
     array[0]
   else
     fallback
 
 let
-  a: Array(Int) = […]
-  b: Array(Int?) = […]
+  a: [Int] = […]
+  b: [Int?] = […]
 in
   first-or(a, else: 1) --> else is required because type `Int` is not nullable
   first-or(b, else: 1) --> still fine here, but...
@@ -1179,7 +1179,7 @@ There are _three_ brands of variadic arguments. I was fed up with all the Python
 You can accept any number of positional arguments using an argument defined as `...# name: Type`
 
 ```extra
-fn add(...# numbers: Array(Int)) =>
+fn add(...# numbers: [Int]) =>
   numbers.reduce(0, fn(memo, num) => memo + num)
 
 add() --> 0
@@ -1222,7 +1222,7 @@ in
 You can specify the same argument by name, multiple times. `...name: Type`
 
 ```extra
-fn returnIf<T>(# condition: Boolean, ...and: Array(Boolean), then: T): T?
+fn returnIf<T>(# condition: Boolean, ...and: [Boolean], then: T): T?
 
 returnIf(a == 1, and: b == 1, and: c == 2, then: 'yay!') --> 'yay!' | null
 ```
@@ -1302,7 +1302,7 @@ else
 Guard expressions are useful in any language, but the `guard` syntax in Swift was one of my favourite language features, and so I'm unapologetically stealing it.
 
 ```extra
-fn(# name: String?, hobbies: Array(String)): String =>
+fn(# name: String?, hobbies: [String]): String =>
   guard
     name != null
   else

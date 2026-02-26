@@ -515,7 +515,7 @@ describe('match operator', () => {
       c([
         Types.int(),
         [],
-        'foo is >0 or foo is <0 or foo is =0',
+        'foo is >0 or foo is <0 or foo is 0',
         {
           truthy: Types.int(),
           falsey: Types.never(),
@@ -525,7 +525,7 @@ describe('match operator', () => {
       c([
         Types.oneOf([Types.string(), Types.int()]),
         [],
-        'foo is >0 or foo is <0 or foo is =0',
+        'foo is >0 or foo is <0 or foo is 0',
         {
           truthy: Types.int(),
           falsey: Types.string(),
@@ -600,7 +600,7 @@ describe('match operator', () => {
         Types.int(),
         // don't need to test values again
         [],
-        'foo is =0.5',
+        'foo is 0.5',
         {
           truthy: Types.never(),
           falsey: Types.int(),

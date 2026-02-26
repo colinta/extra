@@ -623,7 +623,7 @@ export abstract class Type {
    * inferred type based on the argument.
    *
    *     @ages = [1,2,3]
-   *     --> @ages: Array(Int)
+   *     --> @ages: [Int]
    */
   defaultInferredClassProp(): Type {
     return this
@@ -687,8 +687,8 @@ export class GenericType extends Type {
      * the resolved type, but the resolved type must be assignable to them.
      *
      * @example
-     *     example: <T>(# callback: (input: T): Array(T), # arg: T)
-     *     callback: fn(# foo: Int | String): Array(String)
+     *     example: <T>(# callback: (input: T): [T], # arg: T)
+     *     callback: fn(# foo: Int | String): [String]
      *
      *     example(callback, '')
      *
@@ -828,7 +828,7 @@ export interface PositionalArgument {
  * - never have an alias
  *
  * Example:
- *     fn filterUsers(...users: Array(User)): String
+ *     fn filterUsers(...users: [User]): String
  *
  *     filterUsers(kevin, buzz)
  */
@@ -868,7 +868,7 @@ export interface NamedArgument {
  * - always optional (until narrowed array is supported)
  *
  * Example:
- *     fn filterUsers(...user users: Array(User)): Array(User)
+ *     fn filterUsers(...user users: [User]): [User]
  *
  *     filterUsers(user: foo, user: bar)
  */
@@ -889,7 +889,7 @@ export interface RepeatedNamedArgument {
  * - never has an alias
  *
  * Example:
- *     fn groupUsers(*users: Dict(User)): Dict(Array(User))
+ *     fn groupUsers(*users: Dict(User)): Dict([User])
  *
  *     groupUsers(kevin: user1, angie: user2)
  */
@@ -1540,9 +1540,9 @@ export const NeverType = new (class NeverType extends Type {
  *
  *     let
  *       a = []
- *       b = [someInt] ++ a  -- b: Array(Int)
- *       c = [someString] ++ a  -- c: Array(String)
- *       names = a.join('')  -- join typically expects Array(String)
+ *       b = [someInt] ++ a  -- b: [Int]
+ *       c = [someString] ++ a  -- c: [String]
+ *       names = a.join('')  -- join typically expects [String]
  *     in …
  *
  * 'a' can be... anything! This is the role of the 'always/AlwaysType'. It usually
@@ -3100,12 +3100,13 @@ export class ArrayType extends ContainerType<ArrayType> {
     )
   }
 
-  static desc(typeDesc: string, narrowedLength: Narrowed.NarrowedLength) {
+  static desc(typeDesc: string, narrowedLength: Narrowed.NarrowedLength, lisp = false) {
+    const [start, end] = lisp ? ['Array(', ')'] : ['[', ']']
     const length = Narrowed.lengthDesc(narrowedLength)
     if (length) {
-      return `Array(${typeDesc}, length: ${length})`
+      return `${start}${typeDesc}, length: ${length}${end}`
     }
-    return `Array(${typeDesc})`
+    return `${start}${typeDesc}${end}`
   }
 
   toCode() {
@@ -3121,7 +3122,6 @@ export class ArrayType extends ContainerType<ArrayType> {
     if (!length) {
       return _privateOneOf([this, rhs])
     }
-
     return new ArrayType(this.of, length)
   }
 
@@ -4181,11 +4181,10 @@ export class ModuleType extends Type {
  * For `a is b` operator, this returns the subtypes of a that "are b"
  */
 export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
-  const narrowed = _narrowTypeIs(lhsType, typeAssertion)
-  return narrowed
-}
+  if (typeAssertion === AlwaysType) {
+    return lhsType
+  }
 
-function _narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
   if (typeAssertion instanceof OneOfType) {
     return oneOf(
       typeAssertion.of.flatMap(typeAssertion => {

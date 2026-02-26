@@ -253,10 +253,8 @@ function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
 function scanMatchRange(scanner: Scanner) {
   const range0 = scanner.charIndex
   if (scanner.is(/[<=>]/)) {
-    let unaryOp: '=' | '>' | '>=' | '<' | '<='
-    if (scanner.scanIfString('=')) {
-      unaryOp = '='
-    } else if (scanner.scanIfString('>=')) {
+    let unaryOp: '>' | '>=' | '<' | '<='
+    if (scanner.scanIfString('>=')) {
       unaryOp = '>='
     } else if (scanner.scanIfString('>')) {
       unaryOp = '>'

@@ -38,10 +38,10 @@ describe('argument parser', () => {
       c(['# number: Int = 0', '((# number: `Int` 0))']),
       c(['count number: Int', '((count number: `Int`))']),
       c(['count number: Int = 0', '((count number: `Int` 0))']),
-      c(['number: Array(Int)', '((number: Array(`Int`)))']),
+      c(['number: [Int]', '((number: Array(`Int`)))']),
       c(['number: Dict(Int)', '((number: Dict(`Int`)))']),
-      c(['number: Array(Dict(Int))', '((number: Array(Dict(`Int`))))']),
-      c(['number: Array(Dict(Int(>=4)))', '((number: Array(Dict(`Int(>=4)`))))']),
+      c(['number: [Dict(Int)]', '((number: Array(Dict(`Int`))))']),
+      c(['number: [Dict(Int(>=4))]', '((number: Array(Dict(`Int(>=4)`))))']),
       c(['number: Int | String', '((number: (`Int` | `String`)))']),
       c([
         'number: Int | String?',
@@ -54,8 +54,8 @@ describe('argument parser', () => {
         'number: Int | String | null',
       ]),
       c(['number: (Int | String)', '((number: (`Int` | `String`)))', 'number: Int | String']),
-      c(['number: Array(Int | String)', '((number: Array((`Int` | `String`))))']),
-      c(['number: Array(Int?)', '((number: Array((`Int` | `null`))))', 'number: Array(Int?)']),
+      c(['number: [Int | String]', '((number: Array((`Int` | `String`))))']),
+      c(['number: [Int?]', '((number: Array((`Int` | `null`))))', 'number: [Int?]']),
       c(['number: Int, name: String', '((number: `Int`) (name: `String`))']),
       c([
         'number: Int?, name: String',
@@ -94,7 +94,7 @@ describe('argument parser', () => {
         '((number: `Int`) (name: `String`) (score: Score))',
       ]),
       c([
-        'reduce: fn(# initial: String, # callback: fn(# memo: String, # value: Int): String, values: Array(Int)): String',
+        'reduce: fn(# initial: String, # callback: fn(# memo: String, # value: Int): String, values: [Int]): String',
         '(' + // <arg-def-list>
           '(reduce: ' + // <reduce>
           '(fn ' + // <reduce-type>

@@ -47,7 +47,7 @@ fn(
         "fn(name: 'alice' | 'bob', age: 1 | 2 | 42) => 0",
       ]),
       c([
-        'fn(# a: Int, ...# as: Array(Int)): Int => 0',
+        'fn(# a: Int, ...# as: [Int]): Int => 0',
         '(fn ((# a: `Int`) (...# as: Array(`Int`))) : `Int` => 0)',
       ]),
       c([
@@ -55,10 +55,10 @@ fn(
         '(fn ((# a: `Int`) (**as: Dict(`Int`))) : `Int` => 0)',
       ]),
       c([
-        'fn(# a: Int, ...a as: Array(Int)): Int => 0',
+        'fn(# a: Int, ...a as: [Int]): Int => 0',
         '(fn ((# a: `Int`) (...a as: Array(`Int`))) : `Int` => 0)',
       ]),
-      c(['fn(...a: Array(Int)): Int => 0', '(fn ((...a: Array(`Int`))) : `Int` => 0)']),
+      c(['fn(...a: [Int]): Int => 0', '(fn ((...a: Array(`Int`))) : `Int` => 0)']),
       c(['fn(a: Int): Int => 0', '(fn ((a: `Int`)) : `Int` => 0)']),
       c(['fn(a: Int, # b: Int): Int => 0', '(fn ((a: `Int`) (# b: `Int`)) : `Int` => 0)']),
       c([
@@ -96,9 +96,9 @@ fn(
       c(['(fn(a: Int): Int => a)(a: 1)', Values.int(1)]),
       c(['(fn(# a: Int, b: Int): Int => a + b)(1, b: 2)', Values.int(3)]),
       c(['(fn(# a: Int, b: Int): Int => a + b)(b: 2, 1)', Values.int(3)]),
-      c(['(fn(...# a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))()', Values.int(-2)]),
-      c(['(fn(...# a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))(1)', Values.int(0)]),
-      c(['(fn(...# a: Array(Int)): Int => (a[0] ?? -1) + (a[1] ?? -1))(1, 2)', Values.int(3)]),
+      c(['(fn(...# a: [Int]): Int => (a[0] ?? -1) + (a[1] ?? -1))()', Values.int(-2)]),
+      c(['(fn(...# a: [Int]): Int => (a[0] ?? -1) + (a[1] ?? -1))(1)', Values.int(0)]),
+      c(['(fn(...# a: [Int]): Int => (a[0] ?? -1) + (a[1] ?? -1))(1, 2)', Values.int(3)]),
     ).run(([formula, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         const expression = parse(formula).get()

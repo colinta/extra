@@ -2104,8 +2104,8 @@ export class ObjectTypeExpression extends TypeExpression {
 }
 
 /**
- * Array(Int)
- * Array(Int, length: >=6)
+ * [Int]
+ * [Int, length: >=6]
  */
 export class ArrayTypeExpression extends TypeExpression {
   constructor(
@@ -2129,7 +2129,7 @@ export class ArrayTypeExpression extends TypeExpression {
   }
 
   toLisp() {
-    return Types.ArrayType.desc(this.of.toLisp(), this.narrowed)
+    return Types.ArrayType.desc(this.of.toLisp(), this.narrowed, true)
   }
 
   toCode() {
@@ -2254,7 +2254,7 @@ export class SetTypeExpression extends TypeExpression {
  *
  *     fn intStringTuple(): TupleType(Int, String) => …
  *                          ^^^^^^^^^^^^^^^^^^^^^^
- *     fn anotherExample(): TupleType(Array(Int), String?) => …
+ *     fn anotherExample(): TupleType([Int], String?) => …
  *                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  * A TypeConstructor is a function, but used in the context of creating a Type.
  */
@@ -2476,8 +2476,8 @@ export class NamedArgument extends Argument {
  *
  *     foo(...a)
  *     -- can be object (the values are "spread" as if they were passed to the function)
- *     -- or array *if* the function accepts spread args `fn(...# args: Array(T))`
- *     -- (or repeated-named args `fn(...args: Array(T))`, `foo(...args: args)`)
+ *     -- or array *if* the function accepts spread args `fn(...# args: [T])`
+ *     -- (or repeated-named args `fn(...args: [T])`, `foo(...args: args)`)
  *     -- or dict *if* the function accepts keyword list `fn(**kwargs: Dict(T))`
  */
 export abstract class SpreadArgument extends Argument {
@@ -3484,9 +3484,9 @@ export class PipePlaceholderExpression extends Expression {
  *     alias name: Int
  *     alias name: Int = 1
  * - spread positional argument:
- *     ...# name: Array(Int)
+ *     ...# name: [Int]
  * - repeated named argument:
- *     ...name: Array(Int)
+ *     ...name: [Int]
  * - keyword list argument:
  *     *name: Dict(Int)
  */
@@ -3536,8 +3536,8 @@ export abstract class ArgumentExpression extends Expression {
  *     # name: Type [=value]
  *     alias name: Type [= value]
  *     name: Type [= value]
- *     ...# spread: Array(Type), default = []
- *     ...spread: Array(Type), default = []
+ *     ...# spread: [Type], default = []
+ *     ...spread: [Type], default = []
  *     **kwargs: Dict(Type), default = #{}
  */
 export class FormulaArgumentDefinition extends ArgumentExpression {
@@ -3625,8 +3625,8 @@ export class FormulaArgumentDefinition extends ArgumentExpression {
  *                       ^^^^^^
  *
  * Variadic arguments are also declared on the formula type:
- *     add: fn(...# values: Array(Int)): Int
- *     add: fn(...values: Array(Int)): Int
+ *     add: fn(...# values: [Int]): Int
+ *     add: fn(...values: [Int]): Int
  *     add: fn(**named: Dict(Int)): Int
  */
 export class FormulaTypeArgument extends ArgumentExpression {
@@ -6929,7 +6929,7 @@ export class MatchArrayExpression extends MatchExpression {
    * range, the array could have less OR more than the matched items.
    *
    * But oh, good news, it's all handled by asserting against the length, using
-   * `Array(all, minLength ... minLength)`. This comment was a lot more relevant
+   * `[all, minLength ... minLength]`. This comment was a lot more relevant
    * when this implementation was a hundred+ lines.
    */
   gimmeFalseStuffWith(
@@ -7813,30 +7813,6 @@ export function expectedNumberMessage(found: Expression, type?: Types.Type | Val
   return expectedType('Int or Float', found, type)
 }
 
-function expectedIfCondition() {
-  return "Missing '# condition: Condition' in 'if()' expression"
-}
-
-function expectedIfThenResult() {
-  return "Missing 'then: T' in 'if()' expression"
-}
-
-function expectedGuardArguments() {
-  return "Missing '# condition: Condition' and '# body: T' in 'guard()' expression"
-}
-
-function expectedGuardElseResult() {
-  return "Missing 'else: T' in 'guard()' expression"
-}
-
-function expectedSubjectCondition() {
-  return "Missing subject argument '# subject: T' in 'switch()' expression"
-}
-
-function expectedCaseConditions() {
-  return "Missing case expressions '...# cases: T' in 'switch()' expression"
-}
-
 function unexpectedOnlyType(conditionType: Types.Type, only: boolean): string {
   return `Type '${conditionType}' is invalid as an if condition, because it is always ${only ? 'true' : 'false'}.`
 }
@@ -8018,10 +7994,6 @@ export function dependencySort<T extends Expression>(
   }
 
   return ok(orderedExpressions)
-}
-
-function filterNever(type: Types.Type) {
-  return type !== Types.NeverType
 }
 
 export function formatComments(comments: Comment[]) {

@@ -4,7 +4,7 @@ import {
   ARG_SEPARATOR,
   ARRAY_CLOSE,
   ARRAY_OPEN,
-  PARENS_CLOSE,
+  ARGS_CLOSE,
   isNumberChar,
   isNumberStart,
 } from '../grammars'
@@ -167,7 +167,7 @@ export function scanNarrowedString(scanner: Scanner): Narrowed.NarrowedString {
   let didSetNarrowedRegex = false
 
   scanner.scanAllWhitespace()
-  while (!scanner.is(PARENS_CLOSE)) {
+  while (!scanner.is(ARGS_CLOSE)) {
     if (didSetNarrowedLength || didSetNarrowedRegex) {
       scanner.expectString(',')
       scanner.scanAllWhitespace()

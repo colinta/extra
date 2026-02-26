@@ -18,56 +18,53 @@ describe('toCode', () => {
     c([Types.literal(1), '1']),
     c([Types.literal(1.1), '1.1']),
     c([Types.literal('foo'), '"foo"']),
-    c([Types.array(Types.string()), 'Array(String)']),
-    c([Types.array(Types.array(Types.string())), 'Array(Array(String))']),
-    c([Types.array(Types.literal(true)), 'Array(true)']),
-    c([Types.array(Types.oneOf([Types.int(), Types.string()])), 'Array(Int | String)']),
-    c([
-      Types.array(Types.array(Types.oneOf([Types.int(), Types.string()]))),
-      'Array(Array(Int | String))',
-    ]),
+    c([Types.array(Types.string()), '[String]']),
+    c([Types.array(Types.array(Types.string())), '[[String]]']),
+    c([Types.array(Types.literal(true)), '[true]']),
+    c([Types.array(Types.oneOf([Types.int(), Types.string()])), '[Int | String]']),
+    c([Types.array(Types.array(Types.oneOf([Types.int(), Types.string()]))), '[[Int | String]]']),
     c([
       Types.oneOf([
         Types.array(Types.int(), {max: 3}),
         Types.array(Types.string(), {min: 7, max: 10}),
       ]),
-      'Array(Int, length: <=3) | Array(String, length: 7...10)',
+      '[Int, length: <=3] | [String, length: 7...10]',
     ]),
     c([
       Types.oneOf([
         Types.array(Types.oneOf([Types.string(), Types.int()]), {min: 3}),
         Types.array(Types.booleanType(), {min: 3}),
       ]),
-      'Array(Boolean, length: >=3) | Array(Int | String, length: >=3)',
+      '[Boolean, length: >=3] | [Int | String, length: >=3]',
     ]),
     c([
       Types.oneOf([
         Types.array(Types.int(), {max: 5}),
         Types.array(Types.string(), {min: 7, max: 10}),
       ]),
-      'Array(Int, length: <=5) | Array(String, length: 7...10)',
+      '[Int, length: <=5] | [String, length: 7...10]',
     ]),
     c([
       Types.oneOf([
         Types.array(Types.oneOf([Types.int(), Types.string()]), {max: 15}),
         Types.array(Types.string(), {min: 7, max: 10}),
       ]),
-      'Array(Int | String, length: <=15)',
+      '[Int | String, length: <=15]',
     ]),
     c([
       Types.oneOf([
         Types.array(Types.int(), {max: 3}),
         Types.array(Types.int(), {min: 7, max: 10}),
       ]),
-      'Array(Int, length: <=3) | Array(Int, length: 7...10)',
+      '[Int, length: <=3] | [Int, length: 7...10]',
     ]),
     c([
       Types.oneOf([Types.array(Types.string(), {max: 1}), Types.array(Types.string(), {min: 2})]),
-      'Array(String)',
+      '[String]',
     ]),
     c([
       Types.oneOf([Types.array(Types.string(), {max: 1}), Types.array(Types.string(), {min: 3})]),
-      'Array(String, length: <=1) | Array(String, length: >=3)',
+      '[String, length: <=1] | [String, length: >=3]',
     ]),
     c([
       Types.formula(
@@ -341,7 +338,7 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
     describe(mapFormula.toCode(), () => {
       it(`toCode`, () => {
         expect(mapFormula.toCode()).toEqual(
-          'fn<T, U>(# callback: fn(# input: T): U, # values: Array(T)): Array(U)',
+          'fn<T, U>(# callback: fn(# input: T): U, # values: [T]): [U]',
         )
       })
 
@@ -439,7 +436,7 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
     describe(compactMapFormula.toCode(), () => {
       it('toCode', () => {
         expect(compactMapFormula.toCode()).toEqual(
-          'fn<T, U>(# callback: fn(# input: T): U?, # values: Array(T)): Array(U)',
+          'fn<T, U>(# callback: fn(# input: T): U?, # values: [T]): [U]',
         )
       })
 
@@ -448,16 +445,16 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
       it(`successfully derives T: ${expectedT.toCode()} and U: ${expectedU.toCode()}`, () => {
         // fn<T, U>(
         //   # callback: fn(# input: T): U?,
-        //   # values: Array(T),
-        // ): Array(U)
+        //   # values: [T],
+        // ): [U]
         //
         // # callback => fn(# value: Int): String?
         // Int => requirement for T (must be Int or "smaller")
         // String? => hint for U?
         // (String => hint for U) (U could be "larger" than String)
         //
-        // # values => Array(Int)
-        // Array(Int) => hint for Array(T) (T could be "larger" than Int)
+        // # values => [Int]
+        // [Int] => hint for [T] (T could be "larger" than Int)
         // (Int => hint for T)
         //
         // T => Int,

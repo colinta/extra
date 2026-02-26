@@ -1,7 +1,7 @@
 import {type Scanner} from '../scanner'
 import * as Expressions from '../../expressions'
 
-import {scanAnyReference, scanValidLocalName, scanValidName, scanValidTypeName} from './identifier'
+import {scanAnyReference, scanValidName, scanValidTypeName} from './identifier'
 import {type Comment, ParseError, type ParseNext} from '../types'
 import {scanGenerics, scanNamedFormula} from './formula'
 import {
