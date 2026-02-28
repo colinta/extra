@@ -1048,6 +1048,84 @@ describe('match operator', () => {
           reverse: false,
         },
       ]),
+      c([
+        Types.oneOf([Types.object([Types.namedProp('bar', Types.string())]), Types.int()]),
+        [],
+        'foo is {}',
+        {
+          truthy: Types.object([Types.namedProp('bar', Types.string())]),
+          falsey: Types.int(),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.object([Types.namedProp('bar', Types.string())]), Types.int()]),
+        [],
+        'foo is {bar:}',
+        {
+          truthy: Types.object([Types.namedProp('bar', Types.string())]),
+          falsey: Types.int(),
+        },
+      ]),
+      c([
+        Types.oneOf([
+          Types.object([Types.namedProp('bar', Types.array(Types.string()))]),
+          Types.int(),
+        ]),
+        [],
+        'foo is {bar: [head, ...tail]}',
+        {
+          truthy: Types.object([Types.namedProp('bar', Types.array(Types.string(), {min: 1}))]),
+        },
+      ]),
+      c([
+        Types.oneOf([
+          Types.object([Types.namedProp('bar', Types.array(Types.string()))]),
+          Types.int(),
+        ]),
+        [],
+        'foo is {bar: [head, ...tail]}',
+        {
+          truthy: Types.string(),
+          typeOf: 'head',
+        },
+      ]),
+      c([
+        Types.oneOf([
+          Types.object([Types.namedProp('bar', Types.array(Types.string()))]),
+          Types.int(),
+        ]),
+        [],
+        'foo is {bar: [head, ...tail]}',
+        {
+          truthy: Types.array(Types.string()),
+          typeOf: 'tail',
+        },
+      ]),
+      c([
+        Types.oneOf([
+          Types.object([Types.namedProp('bar', Types.array(Types.string(), {min: 1}))]),
+          Types.int(),
+        ]),
+        [],
+        'foo is {bar: [head, ...tail]}',
+        {
+          truthy: Types.object([Types.namedProp('bar', Types.array(Types.string(), {min: 1}))]),
+          falsey: Types.int(),
+        },
+      ]),
+      c([
+        Types.oneOf([
+          Types.object([Types.positionalProp(Types.int()), Types.namedProp('bar', Types.string())]),
+          Types.int(),
+        ]),
+        [],
+        'foo is {bar}',
+        {
+          truthy: Types.int(),
+          falsey: Types.never(),
+          typeOf: 'bar',
+        },
+      ]),
     ).run(([fooType, values, formula, expectedTypes], {only, skip}) => {
       const typeOf = expectedTypes.typeOf ?? 'foo'
       describe(`(foo: ${fooType}) '${formula}'`, () => {
@@ -1119,6 +1197,8 @@ describe('match operator', () => {
       })
     })
 
+    // expected failures - first expression parses into expected type, second
+    // expression fails because 'foo' is of the wrong type.
     cases<[Types.Type, string, Types.Type, string]>(
       c([
         Types.optional(Types.string()),

@@ -1,4 +1,4 @@
-import {err, mapAll, mapMany, ok, type Result, reduceAll} from '@extra-lang/result'
+import {err, mapAll, mapMany, ok, type Result, reduceAll, mapOptional} from '@extra-lang/result'
 
 import {
   indent,
@@ -1009,7 +1009,7 @@ export class Reference extends Identifier {
     })
   }
 
-  eval(runtime: ValueRuntime) {
+  eval(runtime: ValueRuntime): GetValueResult {
     const value = runtime.getLocalValue(this.name)
     if (value) {
       return ok(value)
@@ -4809,6 +4809,11 @@ export abstract class MatchExpression extends Expression {
     return err(new RuntimeError(this, `${this.constructor.name} does not have a type`))
   }
 
+  abstract compileWithSubject(
+    runtime: TypeRuntime,
+    subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.CaseMatch>
+
   eval(): GetValueResult {
     return err(new RuntimeError(this, `${this.constructor.name} cannot be evaluated`))
   }
@@ -4844,10 +4849,13 @@ export abstract class MatchExpression extends Expression {
   abstract matchAssignReferences(): string[]
 
   /**
-   * This function is called when you need to assign the narrowed subject to the
-   * runtime, in assumeTrueWith/gimmeTrueStuffWith.
+   * This function returns the type as determined by the match expression. It
+   * can be informed by the `subjectType`. Most `MatchExpression`s implement the
+   * `narrowUsingMatcherTypeSkippingOneOf` function, which is guaranteed to
+   * never receive a `OneOfType`. It may be called multiple times, if
+   * `subjectType` is a `OneOfType`.
    *
-   * Default behavior is to return the subjectType unchanged.
+   * Default behavior is to return the `subjectType` unchanged.
    */
   narrowUsingMatcherType(runtime: TypeRuntime, subjectType: Types.Type): GetTypeResult {
     if (subjectType instanceof Types.OneOfType) {
@@ -4860,7 +4868,7 @@ export abstract class MatchExpression extends Expression {
   }
 
   narrowUsingMatcherTypeSkippingOneOf(
-    runtime: TypeRuntime,
+    _runtime: TypeRuntime,
     subjectType: Types.Type,
   ): GetTypeResult {
     return ok(subjectType)
@@ -4868,7 +4876,7 @@ export abstract class MatchExpression extends Expression {
 }
 
 /**
- * foo is Int, foo is Int(>=0), foo is Array(Int(>1), length: >0), etc etc
+ * foo is Int, foo is Int(>=0), foo is [Int(>1], length: >0), etc etc
  */
 export class MatchTypeExpression extends MatchExpression {
   constructor(
@@ -4886,7 +4894,7 @@ export class MatchTypeExpression extends MatchExpression {
     return getChildAsTypeExpression(this, this.argType, runtime)
   }
 
-  narrowUsingMatcherTypeSkippingOneOf(runtime: TypeRuntime, subjectType: Types.Type) {
+  narrowUsingMatcherTypeSkippingOneOf(runtime: TypeRuntime, _subjectType: Types.Type) {
     return this.getAsTypeExpression(runtime)
   }
 
@@ -4934,6 +4942,15 @@ export class MatchTypeExpression extends MatchExpression {
     })
   }
 
+  compileWithSubject(
+    runtime: TypeRuntime,
+    _subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchType> {
+    return this.getAsTypeExpression(runtime).map(
+      matchType => new Nodes.MatchType(toSource(this), matchType),
+    )
+  }
+
   evalWithSubject(runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
     return this.getAsTypeExpression(runtime).map(type => {
       const isType = Types.canBeAssignedTo(lhs.getType(), type)
@@ -4959,14 +4976,22 @@ export class MatchTypeExpression extends MatchExpression {
 }
 
 export abstract class MatchIdentifier extends MatchExpression {
-  abstract readonly nameRef?: Identifier
+  abstract readonly name?: string
+
+  provides() {
+    if (!this.name) {
+      return super.provides()
+    }
+
+    return new Set([this.name])
+  }
 
   alwaysMatches(_lhs: Types.Type) {
     return true
   }
 
   matchAssignReferences() {
-    return this.nameRef ? [this.nameRef.name] : []
+    return this.name ? [this.name] : []
   }
 
   gimmeTrueStuffWith(
@@ -4974,11 +4999,11 @@ export abstract class MatchIdentifier extends MatchExpression {
     formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    if (!this.nameRef) {
+    if (!this.name) {
       return ok([])
     }
 
-    const assign = relationshipFormula.assign(this.nameRef.name)
+    const assign = relationshipFormula.assign(this.name)
     const relationships: Relationship[] = [
       {
         formula: assign,
@@ -4987,7 +5012,7 @@ export abstract class MatchIdentifier extends MatchExpression {
     ]
     if (formula) {
       relationships.push({
-        formula: relationshipFormula.reference(this.nameRef.name, assign.unstableId),
+        formula: relationshipFormula.reference(this.name, assign.unstableId),
         comparison: {operator: '==', rhs: formula},
       })
     }
@@ -5007,8 +5032,8 @@ export abstract class MatchIdentifier extends MatchExpression {
       })
     }
 
-    if (this.nameRef) {
-      const assign = relationshipFormula.assign(this.nameRef.name)
+    if (this.name) {
+      const assign = relationshipFormula.assign(this.name)
       relationships.push({
         formula: assign,
         comparison: {operator: 'instanceof', rhs: Types.NeverType},
@@ -5017,21 +5042,13 @@ export abstract class MatchIdentifier extends MatchExpression {
 
     return ok(relationships)
   }
-
-  provides() {
-    if (!this.nameRef) {
-      return super.provides()
-    }
-
-    return new Set([this.nameRef.name])
-  }
 }
 
 /**
  * `_` will match anything, but will not assign it to scope.
  */
 export class MatchIgnore extends MatchIdentifier {
-  readonly nameRef?: Identifier = undefined
+  readonly name?: string = undefined
 
   toLisp() {
     return '_'
@@ -5039,6 +5056,13 @@ export class MatchIgnore extends MatchIdentifier {
 
   toCode() {
     return '_'
+  }
+
+  compileWithSubject(
+    _runtime: TypeRuntime,
+    _subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchIgnore> {
+    return ok(new Nodes.MatchIgnore(toSource(this)))
   }
 
   evalWithSubjectReturningRuntime(
@@ -5055,16 +5079,26 @@ export class MatchIgnore extends MatchIdentifier {
  * implementation.
  */
 export class MatchReference extends MatchIdentifier {
-  constructor(readonly nameRef: Reference) {
+  readonly name: string
+
+  constructor(nameRef: Reference) {
     super(nameRef.range, nameRef.precedingComments)
+    this.name = nameRef.name
   }
 
   toLisp() {
-    return this.nameRef.toLisp()
+    return this.name
   }
 
   toCode() {
-    return this.nameRef.toCode()
+    return this.name
+  }
+
+  compileWithSubject(
+    _runtime: TypeRuntime,
+    _subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchReference> {
+    return ok(new Nodes.MatchReference(toSource(this), this.name))
   }
 
   evalWithSubjectReturningRuntime(
@@ -5073,7 +5107,7 @@ export class MatchReference extends MatchIdentifier {
     lhs: Values.Value,
   ): GetValueRuntimeResult {
     const mutableRuntime = new MutableValueRuntime(runtime)
-    mutableRuntime.addLocalValue(this.nameRef.name, lhs)
+    mutableRuntime.addLocalValue(this.name, lhs)
     return ok([Values.TrueValue, mutableRuntime])
   }
 }
@@ -5087,7 +5121,7 @@ export class MatchReference extends MatchIdentifier {
  *     .some(arg, ...remaining)
  */
 export class MatchIgnoreRemainingExpression extends MatchIdentifier {
-  readonly nameRef?: Identifier = undefined
+  readonly name?: string = undefined
 
   toLisp() {
     return SPREAD_OPERATOR
@@ -5095,6 +5129,13 @@ export class MatchIgnoreRemainingExpression extends MatchIdentifier {
 
   toCode() {
     return SPREAD_OPERATOR
+  }
+
+  compileWithSubject(
+    _runtime: TypeRuntime,
+    _subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchIgnoreRemaining> {
+    return ok(new Nodes.MatchIgnoreRemaining(toSource(this)))
   }
 }
 
@@ -5102,12 +5143,10 @@ export class MatchIgnoreRemainingExpression extends MatchIdentifier {
  * [...values]
  */
 export class MatchAssignRemainingExpression extends MatchIdentifier {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly nameRef: Reference,
-  ) {
+  readonly name: string
+  constructor(range: Range, precedingComments: Comment[], nameRef: Reference) {
     super(range, precedingComments)
+    this.name = nameRef.name
   }
 
   toLisp() {
@@ -5115,7 +5154,14 @@ export class MatchAssignRemainingExpression extends MatchIdentifier {
   }
 
   toCode() {
-    return `${SPREAD_OPERATOR}${this.nameRef.name}`
+    return `${SPREAD_OPERATOR}${this.name}`
+  }
+
+  compileWithSubject(
+    _runtime: TypeRuntime,
+    _subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchAssignRemaining> {
+    return ok(new Nodes.MatchAssignRemaining(toSource(this), this.name))
   }
 
   evalWithSubjectReturningRuntime(
@@ -5124,27 +5170,18 @@ export class MatchAssignRemainingExpression extends MatchIdentifier {
     lhs: Values.Value,
   ): GetValueRuntimeResult {
     const mutableRuntime = new MutableValueRuntime(runtime)
-    mutableRuntime.addLocalValue(this.nameRef.name, lhs)
+    mutableRuntime.addLocalValue(this.name, lhs)
     return ok([lhs, mutableRuntime])
   }
 }
 
 /**
- * A named reference within an enum or object match. Often contains a reference,
- * but can contain any match expression.
- *
- *     case .something(named: value)
- *                     ^^^^^^^^^^^^
- *     case .something(named: [value])
- *                     ^^^^^^^^^^^^^^
- *     case {name: value}  {name:}
- *           ^^^^^^^^^^^    ^^^^^ (shorthand for {name: name})
+ * A positional or named match within an enum or object match.
  */
-export class MatchNamedArgument extends MatchExpression {
+abstract class MatchArgumentExpression extends MatchExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly nameRef: Reference,
     readonly matchExpr: MatchExpression,
     readonly isOptional: boolean,
   ) {
@@ -5166,38 +5203,111 @@ export class MatchNamedArgument extends MatchExpression {
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    return this.matchExpr.gimmeTrueStuffWith(runtime, formula, lhsType)
+    return this.matchExpr.gimmeTrueStuffWith(runtime, formula, subjectType)
   }
 
   gimmeFalseStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    return this.matchExpr.gimmeFalseStuffWith(runtime, formula, lhsType)
+    return this.matchExpr.gimmeFalseStuffWith(runtime, formula, subjectType)
   }
 
   evalWithSubject(runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
     return this.matchExpr.evalWithSubject(runtime, op, lhs)
   }
+}
+
+/**
+ * A named reference within an enum or object match. Often contains a reference,
+ * but can contain any match expression.
+ *
+ *     case .something(named: value)
+ *                     ^^^^^^^^^^^^
+ *     case .something(named: [value, ...])
+ *                     ^^^^^^^^^^^^^^^^^^^
+ *     case {name: value}  {name:}
+ *           ^^^^^^^^^^^    ^^^^^ (shorthand for {name: name})
+ */
+export class MatchNamedArgument extends MatchArgumentExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly name: string,
+    readonly matchExpr: MatchExpression,
+    readonly isOptional: boolean,
+  ) {
+    super(range, precedingComments, matchExpr, isOptional)
+  }
+
+  compileWithSubject(
+    runtime: TypeRuntime,
+    subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchNamedArgument> {
+    return this.matchExpr
+      .compileWithSubject(runtime, subjectType)
+      .map(
+        matchNode =>
+          new Nodes.MatchNamedArgument(toSource(this), this.name, matchNode, this.isOptional),
+      )
+  }
 
   toLisp() {
-    return `(${this.nameRef.toLisp()}${this.isOptional ? '?' : ''}: ${this.matchExpr.toLisp()})`
+    return `(${this.name}${this.isOptional ? '?' : ''}: ${this.matchExpr.toLisp()})`
   }
 
   toCode() {
     const colon = this.isOptional ? '?:' : ':'
-    if (
-      this.matchExpr instanceof MatchReference &&
-      this.matchExpr.nameRef.name === this.nameRef.name
-    ) {
+    if (this.matchExpr instanceof MatchReference && this.matchExpr.name === this.name) {
       // special case for {name: name} shorthand
-      return this.nameRef.toCode() + colon
+      return this.name + colon
     }
 
-    return `${this.nameRef.toCode()}${colon} ${this.matchExpr.toCode()}`
+    return `${this.name}${colon} ${this.matchExpr.toCode()}`
+  }
+}
+
+/**
+ * A positional match within an enum or object match.
+ *
+ *     case .something(value)
+ *                     ^^^^^
+ *     case .something([value, ...])
+ *                      ^^^^^
+ *     case {value}
+ *           ^^^^^
+ */
+export class MatchPositionalArgument extends MatchArgumentExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly index: number,
+    readonly matchExpr: MatchExpression,
+    readonly isOptional: boolean,
+  ) {
+    super(range, precedingComments, matchExpr, isOptional)
+  }
+
+  compileWithSubject(
+    runtime: TypeRuntime,
+    subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchPositionalArgument> {
+    return this.matchExpr
+      .compileWithSubject(runtime, subjectType)
+      .map(
+        matchNode => new Nodes.MatchPositionalArgument(toSource(this), matchNode, this.isOptional),
+      )
+  }
+
+  toLisp() {
+    return `(${this.isOptional ? '?' : ''}${this.matchExpr.toLisp()})`
+  }
+
+  toCode() {
+    return `${this.isOptional ? '?' : ''}${this.matchExpr.toCode()}`
   }
 }
 
@@ -5214,36 +5324,43 @@ export abstract class MatchLiteral extends MatchExpression {
     return this.literal.getAsTypeExpression()
   }
 
-  narrowUsingMatcherTypeSkippingOneOf(runtime: TypeRuntime, subjectType: Types.Type) {
+  narrowUsingMatcherTypeSkippingOneOf(runtime: TypeRuntime, _subjectType: Types.Type) {
     return this.getAsTypeExpression(runtime)
   }
 
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
     }
 
-    return this.narrowUsingMatcherType(runtime, lhsType).map((replaceType): Relationship[] => [
-      {formula, comparison: {operator: 'instanceof', rhs: replaceType}},
-    ])
+    return this.narrowUsingMatcherType(runtime, subjectType).map((replaceType): Relationship[] => {
+      return [{formula, comparison: {operator: 'instanceof', rhs: replaceType}}]
+    })
   }
 
   gimmeFalseStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
     }
 
-    return this.narrowUsingMatcherType(runtime, lhsType).map((replaceType): Relationship[] => [
-      {formula, comparison: {operator: '!instanceof', rhs: replaceType}},
-    ])
+    return this.narrowUsingMatcherType(runtime, subjectType).map((replaceType): Relationship[] => {
+      return [{formula, comparison: {operator: '!instanceof', rhs: replaceType}}]
+    })
+  }
+
+  compileWithSubject(
+    runtime: TypeRuntime,
+    _subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchLiteral> {
+    return this.literal.compile(runtime).map(node => new Nodes.MatchLiteral(toSource(this), node))
   }
 
   evalWithSubject(_runtime: ValueRuntime, _op: Expression, lhs: Values.Value) {
@@ -5264,13 +5381,11 @@ export abstract class MatchLiteral extends MatchExpression {
 
 export class MatchLiteralFloat extends MatchLiteral {}
 export class MatchLiteralInt extends MatchLiteral {}
-
 export class MatchLiteralString extends MatchLiteral {
   constructor(readonly literal: LiteralString) {
     super(literal)
   }
 }
-
 export class MatchLiteralRegex extends MatchLiteral {
   constructor(readonly literal: LiteralRegex) {
     super(literal)
@@ -5284,20 +5399,20 @@ export class MatchLiteralRegex extends MatchLiteral {
     return ok(Types.StringType.narrowRegex(this.literal.value.value))
   }
 
-  narrowUsingMatcherTypeSkippingOneOf(runtime: TypeRuntime, subjectType: Types.Type) {
+  narrowUsingMatcherTypeSkippingOneOf(runtime: TypeRuntime, _subjectType: Types.Type) {
     return this.getAsTypeExpression(runtime)
   }
 
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula && !this.literal.groups.size) {
       return ok([])
     }
 
-    return this.narrowUsingMatcherType(runtime, lhsType).map(type => {
+    return this.narrowUsingMatcherType(runtime, subjectType).map(type => {
       const relationships: Relationship[] = []
       if (formula) {
         const ref = {formula, comparison: {operator: 'instanceof', rhs: type}} as const
@@ -5324,7 +5439,7 @@ export class MatchLiteralRegex extends MatchLiteral {
   gimmeFalseStuffWith(
     _runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    _lhsType: Types.Type,
+    _subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -5369,7 +5484,7 @@ export class MatchUnaryRange extends MatchExpression {
   constructor(
     readonly range: Range,
     public precedingComments: Comment[],
-    readonly op: '=' | '>' | '>=' | '<' | '<=',
+    readonly op: '>' | '>=' | '<' | '<=',
     readonly start: Literal,
   ) {
     super(range, precedingComments)
@@ -5389,8 +5504,6 @@ export class MatchUnaryRange extends MatchExpression {
     isInt = isInt && this.start.value.isInt()
     if (isInt) {
       switch (this.op) {
-        case '=':
-          return ok(Types.intRange({min: val, max: val}))
         case '>':
           return ok(Types.intRange({min: val + 1}))
         case '>=':
@@ -5403,8 +5516,6 @@ export class MatchUnaryRange extends MatchExpression {
     }
 
     switch (this.op) {
-      case '=':
-        return ok(Types.floatRange({min: val, max: val}))
       case '>':
         return ok(Types.floatRange({min: [val]}))
       case '>=':
@@ -5424,13 +5535,13 @@ export class MatchUnaryRange extends MatchExpression {
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
     }
 
-    return this.narrowUsingMatcherType(runtime, lhsType).map(replaceType => {
+    return this.narrowUsingMatcherType(runtime, subjectType).map(replaceType => {
       const rhs = this.start.relationshipFormula(runtime)
       if (!rhs) {
         return ok([])
@@ -5450,21 +5561,26 @@ export class MatchUnaryRange extends MatchExpression {
     }
 
     return this.narrowUsingMatcherType(runtime, subjectType).map(replaceType => {
-      const operator = this.op === '=' ? '==' : this.op
+      const operator = this.op
       const relationships: Relationship[] = [
         {formula, comparison: {operator: '!instanceof', rhs: replaceType}},
       ]
 
       const rhs = this.start.relationshipFormula(runtime)
       if (rhs && replaceType.isFloat()) {
-        // rhs is always present, because this.start is a literal
-        // I'm not entirely sure about this branch, it was written at a
-        // different time to the 'narrowUsingMatcherType' logic was added, so it
-        // may be unnecessary now
         relationships.push({formula, comparison: {operator: invertSymbol(operator), rhs}})
       }
       return ok(relationships)
     })
+  }
+
+  compileWithSubject(
+    runtime: TypeRuntime,
+    _subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchUnaryRange> {
+    return this.start
+      .compile(runtime)
+      .map(range => new Nodes.MatchUnaryRange(toSource(this), this.op, range))
   }
 
   evalWithSubject(_runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
@@ -5472,11 +5588,6 @@ export class MatchUnaryRange extends MatchExpression {
       const [min, exclusiveMin] = lhs.start ?? []
       const [max, exclusiveMax] = lhs.stop ?? []
       switch (this.op) {
-        case '=':
-          if (exclusiveMin || exclusiveMax || !min || !max || min.value !== max.value) {
-            return okBoolean(false)
-          }
-          return comparisonOperation(op, min, this.start.value, (lhs, rhs) => lhs === rhs)
         case '>':
         case '>=':
           if (!min) {
@@ -5510,8 +5621,6 @@ export class MatchUnaryRange extends MatchExpression {
       return okBoolean(false)
     }
     switch (this.op) {
-      case '=':
-        return comparisonOperation(op, lhs, this.start.value, (lhs, rhs) => lhs === rhs)
       case '>':
         return comparisonOperation(op, lhs, this.start.value, (lhs, rhs) => lhs > rhs)
       case '>=':
@@ -5595,13 +5704,13 @@ export class MatchBinaryRange extends MatchExpression {
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
     }
 
-    return this.narrowUsingMatcherType(runtime, lhsType).map(replaceType => {
+    return this.narrowUsingMatcherType(runtime, subjectType).map(replaceType => {
       const rhs = this.start.relationshipFormula(runtime)
       if (!rhs) {
         return ok([])
@@ -5614,13 +5723,13 @@ export class MatchBinaryRange extends MatchExpression {
   gimmeFalseStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
     }
 
-    return this.narrowUsingMatcherType(runtime, lhsType).map(replaceType => {
+    return this.narrowUsingMatcherType(runtime, subjectType).map(replaceType => {
       const rhs = this.start.relationshipFormula(runtime)
       if (!rhs) {
         return ok([])
@@ -5630,6 +5739,15 @@ export class MatchBinaryRange extends MatchExpression {
       // minimum, or greater than the maximum)
       return ok([{formula, comparison: {operator: '!instanceof', rhs: replaceType}}])
     })
+  }
+
+  compileWithSubject(
+    runtime: TypeRuntime,
+    _subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchBinaryRange> {
+    return mapMany(this.start.compile(runtime), this.stop.compile(runtime)).map(
+      ([start, stop]) => new Nodes.MatchBinaryRange(toSource(this), this.op, start, stop),
+    )
   }
 
   evalWithSubject(_runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
@@ -5733,6 +5851,10 @@ export class MatchStringExpression extends MatchExpression {
     super(range, precedingComments)
   }
 
+  provides() {
+    return new Set(this.matchAssignReferences())
+  }
+
   all(): (MatchReference | MatchLiteralString)[] {
     const all: (MatchReference | MatchLiteralString)[] = this.prefix ? [this.prefix] : []
     for (const [match, literal] of this.matches) {
@@ -5757,10 +5879,6 @@ export class MatchStringExpression extends MatchExpression {
     return this.refs().flatMap(match => match.matchAssignReferences())
   }
 
-  provides() {
-    return new Set(this.matchAssignReferences())
-  }
-
   private calcMatchLength() {
     return this.literals().reduce((minLength, arg) => {
       return minLength + arg.literal.value.length
@@ -5770,7 +5888,7 @@ export class MatchStringExpression extends MatchExpression {
   /**
    * Add up all the string literals, the String is at least that length.
    */
-  getAsTypeExpression(_runtime: TypeRuntime): GetTypeResult {
+  getAsTypeExpression(): GetTypeResult {
     return ok(
       Types.StringType.narrowString({
         length: {min: this.calcMatchLength(), max: undefined},
@@ -5780,20 +5898,18 @@ export class MatchStringExpression extends MatchExpression {
   }
 
   narrowUsingMatcherTypeSkippingOneOf(runtime: TypeRuntime, subjectType: Types.Type) {
-    return this.getAsTypeExpression(runtime).map(type =>
-      asserting ? Types.narrowTypeIs(subjectType, type) : Types.narrowTypeIsNot(subjectType, type),
-    )
+    return this.getAsTypeExpression().map(type => Types.narrowTypeIs(subjectType, type))
   }
 
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     let stringType: Types.Type | undefined
     let stringTypeMaxLength: number | undefined = undefined
-    if (lhsType instanceof Types.OneOfType) {
-      for (const type of lhsType.of) {
+    if (subjectType instanceof Types.OneOfType) {
+      for (const type of subjectType.of) {
         if (!type.isString()) {
           continue
         }
@@ -5810,16 +5926,16 @@ export class MatchStringExpression extends MatchExpression {
           stringType = Types.compatibleWithBothTypes(stringType, type)
         }
       }
-    } else if (lhsType.isString()) {
-      stringType = lhsType
-      stringTypeMaxLength = lhsType.narrowedString.length.max
+    } else if (subjectType.isString()) {
+      stringType = subjectType
+      stringTypeMaxLength = subjectType.narrowedString.length.max
     }
 
     if (!stringType) {
       return err(
         new RuntimeError(
           this,
-          `Invalid match expression - '${this}: ${lhsType}' does not match string expression '${this}'`,
+          `Invalid match expression - '${this}: ${subjectType}' does not match string expression '${this}'`,
         ),
       )
     }
@@ -5829,7 +5945,7 @@ export class MatchStringExpression extends MatchExpression {
       return err(
         new RuntimeError(
           this,
-          `Invalid match expression - '${this}: ${lhsType}' always contains less characters than '${this}'`,
+          `Invalid match expression - '${this}: ${subjectType}' always contains less characters than '${this}'`,
         ),
       )
     }
@@ -5876,21 +5992,104 @@ export class MatchStringExpression extends MatchExpression {
   gimmeFalseStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
     }
 
-    return this.getAsTypeExpression(runtime).map(type => {
-      return [{formula, comparison: {operator: '!instanceof', rhs: type}}]
+    return this.narrowUsingMatcherType(runtime, subjectType).map(replaceType => {
+      return [{formula, comparison: {operator: '!instanceof', rhs: replaceType}}]
     })
   }
 
+  compileWithSubject(
+    runtime: TypeRuntime,
+    subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.CaseMatch> {
+    return this.getAsTypeExpression().map(stringType =>
+      mapMany(
+        mapOptional(this.prefix?.compileWithSubject(runtime, subjectType)),
+        mapAll<Nodes.MatchReference | Nodes.MatchLiteral, RuntimeError>(
+          this.matches.flatMap(([matchRef, matchLiteral]) => [
+            matchRef.compileWithSubject(runtime, subjectType),
+            matchLiteral.compileWithSubject(runtime, subjectType),
+          ]),
+        ),
+        mapOptional(this.lastRef?.compileWithSubject(runtime, subjectType)),
+      ).map(
+        ([prefix, matches, last]) =>
+          new Nodes.MatchStringConcat(
+            toSource(this),
+            stringType,
+            [prefix, ...matches, last].flatMap(match => (match ? [match] : [])),
+          ),
+      ),
+    )
+  }
+
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    _op: Expression,
+    lhs: Values.Value,
+  ): GetValueRuntimeResult {
+    if (!lhs.isString()) {
+      return ok([Values.FalseValue, runtime])
+    }
+
+    let subject = lhs.value
+    // check the first arg for MatchStringLiteral, and see if it's the prefix
+    if (this.prefix) {
+      const firstMatch = this.prefix.literal.value.value
+      if (!subject.startsWith(firstMatch)) {
+        return ok([Values.FalseValue, runtime])
+      }
+      subject = subject.slice(firstMatch.length)
+    }
+
+    // because of how args are parsed, we always have an alternation of
+    // [literal, ref, literal, ref, ...]. We removed the first and last literal
+    // (if they exist), so if we have anything, we have a reference, followed by
+    // (if any) a string, and another reference.
+    const matches: [string, string][] = this.matches.map(([ref, lit]) => [
+      ref.name,
+      lit.literal.value.value,
+    ])
+
+    // small optimization: if the last arg is a MatchStringLiteral, check for
+    // suffix (and pop it from the args stack)
+    const lastAssign: [string, string][] = []
+    const lastMatch = this.lastRef === undefined && matches.pop()
+    if (lastMatch) {
+      const [matchRef, matchString] = lastMatch
+      if (!subject.endsWith(matchString)) {
+        return ok([Values.FalseValue, runtime])
+      }
+
+      subject = subject.slice(0, -matchString.length)
+      lastAssign.push([matchRef, subject])
+    }
+
+    // check the remainders and return. if didMatch is false, assigns is empty.
+    const [didMatch, assigns, remainder] = this.searchRemainder(subject, matches)
+    if (!didMatch) {
+      ok([Values.FalseValue, runtime])
+    }
+
+    const mutableRuntime = new MutableValueRuntime(runtime)
+    for (const [name, value] of assigns) {
+      mutableRuntime.addLocalValue(name, Values.string(value))
+    }
+    if (this.lastRef) {
+      mutableRuntime.addLocalValue(this.lastRef.name, Values.string(remainder))
+    }
+    return ok([Values.booleanValue(didMatch), mutableRuntime])
+  }
+
   /**
-   * Returns a tuple of either
+   * During evaluation, returns a tuple of either
    *     [didMatch: true, assignments, remainder]`
-   * or
+   * on success or on failure returns
    *     [didMatch: false, [], '']
    */
   private searchRemainder(
@@ -5934,64 +6133,6 @@ export class MatchStringExpression extends MatchExpression {
     return [false, [], '']
   }
 
-  evalWithSubjectReturningRuntime(
-    runtime: ValueRuntime,
-    _op: Expression,
-    lhs: Values.Value,
-  ): GetValueRuntimeResult {
-    if (!lhs.isString()) {
-      return ok([Values.FalseValue, runtime])
-    }
-
-    let subject = lhs.value
-    // check the first arg for MatchStringLiteral, and see if it's the prefix
-    if (this.prefix) {
-      const firstMatch = this.prefix.literal.value.value
-      if (!subject.startsWith(firstMatch)) {
-        return ok([Values.FalseValue, runtime])
-      }
-      subject = subject.slice(firstMatch.length)
-    }
-
-    // because of how args are parsed, we always have an alternation of
-    // [literal, ref, literal, ref, ...]. We removed the first and last literal
-    // (if they exist), so if we have anything, we have a reference, followed by
-    // (if any) a string, and another reference.
-    const matches: [string, string][] = this.matches.map(([ref, lit]) => [
-      ref.nameRef.name,
-      lit.literal.value.value,
-    ])
-
-    // small optimization: if the last arg is a MatchStringLiteral, check for
-    // suffix (and pop it from the args stack)
-    const lastAssign: [string, string][] = []
-    const lastMatch = this.lastRef === undefined && matches.pop()
-    if (lastMatch) {
-      const [matchRef, matchString] = lastMatch
-      if (!subject.endsWith(matchString)) {
-        return ok([Values.FalseValue, runtime])
-      }
-
-      subject = subject.slice(0, -matchString.length)
-      lastAssign.push([matchRef, subject])
-    }
-
-    // check the remainders and return. if didMatch is false, assigns is empty.
-    const [didMatch, assigns, remainder] = this.searchRemainder(subject, matches)
-    if (!didMatch) {
-      ok([Values.FalseValue, runtime])
-    }
-
-    const mutableRuntime = new MutableValueRuntime(runtime)
-    for (const [name, value] of assigns) {
-      mutableRuntime.addLocalValue(name, Values.string(value))
-    }
-    if (this.lastRef) {
-      mutableRuntime.addLocalValue(this.lastRef.nameRef.name, Values.string(remainder))
-    }
-    return ok([Values.booleanValue(didMatch), mutableRuntime])
-  }
-
   toLisp() {
     const args = this.all().map(arg => arg.toLisp())
 
@@ -6008,9 +6149,11 @@ export class MatchStringExpression extends MatchExpression {
 /**
  * Matches the case name and args.
  *
+ *     foo is .some
+ *     foo is EnumName.some
  *     foo is .some(arg1, named: arg2)
  *     foo is .some(arg1, ...)
- *     foo is .some([1, 2, ...], .red)
+ *     foo is EnumName.some([1, 2, ...], .red)
  */
 export class MatchEnumExpression extends MatchExpression {
   private positionalCount: number = 0
@@ -6019,8 +6162,11 @@ export class MatchEnumExpression extends MatchExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
+    readonly qualifiers: string[],
+    readonly enumName: string | undefined,
     readonly name: string,
-    readonly args: MatchExpression[],
+    readonly args: (MatchNamedArgument | MatchPositionalArgument)[],
+    readonly ignoreRemaining: boolean,
   ) {
     super(range, precedingComments)
     for (const arg of args) {
@@ -6029,19 +6175,19 @@ export class MatchEnumExpression extends MatchExpression {
       }
 
       if (arg instanceof MatchNamedArgument) {
-        this.names.add(arg.nameRef.name)
+        this.names.add(arg.name)
       } else {
         this.positionalCount += 1
       }
     }
   }
 
-  matchAssignReferences() {
-    return this.args.flatMap(match => match.matchAssignReferences())
-  }
-
   provides() {
     return allProvides(this.args)
+  }
+
+  matchAssignReferences() {
+    return this.args.flatMap(match => match.matchAssignReferences())
   }
 
   /**
@@ -6056,9 +6202,10 @@ export class MatchEnumExpression extends MatchExpression {
    * - all the assigned names (in `this.names`) should be present in the enum case.
    */
   private findEnumTypeThatMatchesCase(
+    runtime: TypeRuntime,
     type: Types.Type,
   ): GetRuntimeResult<[Types.AnonymousEnumDefinitionType, Types.EnumCase]> {
-    const result = this._findOptionalEnumTypeThatMatchesCase(type)
+    const result = this._findOptionalEnumTypeThatMatchesCase(runtime, type)
     if (!result) {
       return err(
         new RuntimeError(
@@ -6079,12 +6226,13 @@ export class MatchEnumExpression extends MatchExpression {
    * - Ok([Types.EnumType, Types.EnumCase]) => match found
    */
   private _findOptionalEnumTypeThatMatchesCase(
+    runtime: TypeRuntime,
     type: Types.Type,
   ): GetRuntimeResult<[Types.AnonymousEnumDefinitionType, Types.EnumCase]> | undefined {
     if (type instanceof Types.OneOfType) {
       let enumInfo: [Types.AnonymousEnumDefinitionType, Types.EnumCase] | undefined
       for (const oneType of type.of) {
-        const oneCheckResult = this._findOptionalEnumTypeThatMatchesCase(oneType)
+        const oneCheckResult = this._findOptionalEnumTypeThatMatchesCase(runtime, oneType)
         if (!oneCheckResult) {
           continue
         }
@@ -6099,7 +6247,7 @@ export class MatchEnumExpression extends MatchExpression {
           return err(
             new RuntimeError(
               this,
-              `More than one matching case expression (${enumInfo[0]} and ${oneCheckResult.value[0]})`,
+              `More than one matching case expression (${enumInfo[0]} and ${oneCheckResult.value[0]}). Consider using a fully-qualified name.`,
             ),
           )
         } else {
@@ -6115,9 +6263,65 @@ export class MatchEnumExpression extends MatchExpression {
       return
     }
 
+    if (this.enumName) {
+      // when the enumName is present, `type` must be of that named enum type
+      // so it must first be a NamedEnumInstanceType
+      if (!(type instanceof Types.NamedEnumInstanceType)) {
+        return
+      }
+
+      // starting at the first qualifier (a module name), work down to the enumName.
+      const names = [...this.qualifiers, this.enumName]
+      let name = names.shift()!
+      let enumDef: Types.Type
+      let previousType: Types.Type | undefined
+      do {
+        let nextType: Types.Type | undefined
+        if (previousType) {
+          nextType = previousType.propAccessType(name)
+        } else {
+          nextType = runtime.getLocalType(name)
+        }
+
+        if (!nextType) {
+          const lookupType = names.length ? 'module' : 'enum'
+          return err(new RuntimeError(this, `Could not find ${lookupType} name '${name}'.`))
+        }
+        previousType = nextType
+        enumDef = nextType
+        name = names.shift() ?? ''
+      } while (name)
+
+      // we better end up w/ a NamedEnumDefinitionType
+      if (!(enumDef instanceof Types.NamedEnumDefinitionType)) {
+        const qualifiers = [...this.qualifiers, this.enumName].join('.')
+        return err(
+          new RuntimeError(
+            this,
+            `Expected an enum match expression, but '${qualifiers}' refers to '${enumDef.toCode()}'`,
+          ),
+        )
+      }
+
+      // the type must come from the same enumDefinition - this is the qualifed
+      // name check, after this we can use the default enum checking logic below
+      if (!(type.enumDefinition === enumDef)) {
+        return
+      }
+    }
+
     // must have a case with this name
     const enumCase = type.members.find(({name}) => name === this.name)
     if (!enumCase) {
+      // qualifed enum names have a strict set of enum case names
+      if (this.enumName) {
+        return err(
+          new RuntimeError(
+            this,
+            `Invalid case name '${this.name}' on enum type '${this.enumName}'`,
+          ),
+        )
+      }
       return
     }
 
@@ -6158,9 +6362,11 @@ export class MatchEnumExpression extends MatchExpression {
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    return this.findEnumTypeThatMatchesCase(lhsType).map(enumInfo => {
+    // TODO: add `ENUM_START + subjectType.members` to the runtime, so that
+    // lookups can be inferred based on the subject
+    return this.findEnumTypeThatMatchesCase(runtime, subjectType).map(enumInfo => {
       const [enumType, enumCase] = enumInfo
       const relationships: Relationship[] = []
 
@@ -6177,7 +6383,7 @@ export class MatchEnumExpression extends MatchExpression {
       for (const arg of this.args) {
         let type: Types.Type
         if (arg instanceof MatchNamedArgument) {
-          type = enumCase.namedTypes.get(arg.nameRef.name)!
+          type = enumCase.namedTypes.get(arg.name)!
         } else {
           type = enumCase.positionalTypes[index]
           index += 1
@@ -6201,9 +6407,62 @@ export class MatchEnumExpression extends MatchExpression {
   //   formula: RelationshipFormula,
   // ): GetRuntimeResult<Relationship[]> {
   //   return getChildType(this, lhsExpr, runtime)
-  //     .map(lhsType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, lhsType))
+  //     .map(subjectType => this._assumeMatchAndNestedAssertionType(runtime, lhsExpr, subjectType))
   //     .map(([type]) => [{formula, type: 'instanceof', right: relationshipFormula.type(type)}])
   // }
+
+  compileWithSubject(
+    runtime: TypeRuntime,
+    subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchEnum> {
+    // TODO: add `ENUM_START + subjectType.members` to the runtime, so that
+    // lookups can be inferred based on the subject
+    return this.findEnumTypeThatMatchesCase(runtime, subjectType).map(enumInfo => {
+      const [enumType, enumCase] = enumInfo
+      let argIndex = 0
+      return mapAll(
+        this.args.map((arg): GetRuntimeResult<Nodes.MatchArgument | undefined> => {
+          let argKey: string | number
+          let argType: Types.Type | undefined
+          if (arg instanceof MatchNamedArgument) {
+            argKey = arg.name
+            argType = enumCase.namedTypes.get(arg.name)
+          } else {
+            argKey = argIndex
+            argType = enumCase.positionalTypes.at(argIndex)
+          }
+
+          if (!argType && arg.isOptional) {
+            return ok(undefined)
+          } else if (!argType) {
+            return err(
+              new RuntimeError(this, `No argument type for '${argKey}' of ${enumType.toCode()}`),
+            )
+          }
+
+          return arg.compileWithSubject(runtime, argType).map(node => {
+            if (node instanceof Nodes.MatchNamedArgument) {
+              return node
+            } else {
+              return new Nodes.MatchPositionalArgument(toSource(this), node, arg.isOptional)
+            }
+          })
+        }),
+      )
+        .map(args => args.filter(arg => arg !== undefined))
+        .map(
+          args =>
+            new Nodes.MatchEnum(
+              toSource(this),
+              enumType,
+              this.qualifiers,
+              this.enumName,
+              this.name,
+              args,
+            ),
+        )
+    })
+  }
 
   evalWithSubject(_runtime: ValueRuntime, _op: Expression, lhs: Values.Value) {
     if (!(lhs instanceof Values.EnumValue)) {
@@ -6214,22 +6473,36 @@ export class MatchEnumExpression extends MatchExpression {
   }
 
   toLisp() {
-    let code = ENUM_START + this.name
-    const args = this.args.map(arg => arg.toLisp())
+    let code: string = ''
+    if (this.enumName) {
+      code += [...this.qualifiers, this.enumName].join('.')
+    }
 
-    if (this.args.length) {
-      code += `(${args.join(' ')})`
+    code += ENUM_START + this.name
+
+    const args = this.args.map(arg => arg.toLisp())
+    if (args.length || this.ignoreRemaining) {
+      code += '('
+      code += args.concat(this.ignoreRemaining ? ['...'] : []).join(' ')
+      code += ')'
     }
 
     return code
   }
 
   toCode() {
-    let code = ENUM_START + this.name
-    const args = this.args.map(arg => arg.toCode())
+    let code: string = ''
+    if (this.enumName) {
+      code += [...this.qualifiers, this.enumName].join('.')
+    }
 
-    if (args.length) {
-      code += `(${args.join(', ')})`
+    code += ENUM_START + this.name
+
+    const args = this.args.map(arg => arg.toCode())
+    if (args.length || this.ignoreRemaining) {
+      code += '('
+      code += args.concat(this.ignoreRemaining ? ['...'] : []).join(', ')
+      code += ')'
     }
 
     return code
@@ -6245,7 +6518,7 @@ export class MatchObjectExpression extends MatchExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly exprs: {match: MatchExpression; isOptional: boolean}[],
+    readonly exprs: (MatchNamedArgument | MatchPositionalArgument)[],
   ) {
     super(range, precedingComments)
   }
@@ -6260,19 +6533,17 @@ export class MatchObjectExpression extends MatchExpression {
     }
 
     let argIndex = 0
-    for (const {match, isOptional} of this.exprs) {
+    for (const matchExpr of this.exprs) {
       let propType: Types.Type | undefined
-      let matcher: MatchExpression
-      if (match instanceof MatchNamedArgument) {
-        propType = lhs.literalAccessType(match.nameRef.name)
-        matcher = match.matchExpr
+      const matcher: MatchExpression = matchExpr.matchExpr
+      if (matchExpr instanceof MatchNamedArgument) {
+        propType = lhs.literalAccessType(matchExpr.name)
       } else {
         propType = lhs.literalAccessType(argIndex)
-        matcher = match
         argIndex += 1
       }
 
-      if (isOptional && !propType) {
+      if (matchExpr.isOptional && !propType) {
         continue
       } else if (!propType) {
         // propType is required in the matcher, but this ObjectType doesn't
@@ -6289,7 +6560,7 @@ export class MatchObjectExpression extends MatchExpression {
   }
 
   all() {
-    return this.exprs.map(({match}) => match)
+    return this.exprs
   }
 
   matchAssignReferences() {
@@ -6322,11 +6593,10 @@ export class MatchObjectExpression extends MatchExpression {
       return ok(Types.NeverType)
     }
 
-    let argIndex = 0
     return reduceAll(
       subjectType as Types.ObjectType | undefined,
       this.exprs,
-      (subjectType, {isOptional, match: matchExpr}) => {
+      (subjectType, matchExpr) => {
         if (!subjectType) {
           return ok(undefined)
         }
@@ -6334,10 +6604,10 @@ export class MatchObjectExpression extends MatchExpression {
         let propName: string | number
         let propType: Types.Type | undefined
         if (matchExpr instanceof MatchNamedArgument) {
-          propName = matchExpr.nameRef.name
+          propName = matchExpr.name
           propType = subjectType.namedProp(propName)
         } else {
-          propName = argIndex++
+          propName = matchExpr.index
           propType = subjectType.positionalProp(propName)
         }
 
@@ -6345,7 +6615,7 @@ export class MatchObjectExpression extends MatchExpression {
           return matchExpr
             .narrowUsingMatcherType(runtime, propType)
             .map(type => subjectType.replacingProp(propName, type))
-        } else if (isOptional) {
+        } else if (matchExpr.isOptional) {
           return ok(subjectType)
         } else {
           return ok(undefined)
@@ -6356,44 +6626,66 @@ export class MatchObjectExpression extends MatchExpression {
 
   private earlyExitCheck(
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[] | Types.Type> {
     // if no types are an object, raise an error
-    let foundCorrectType = lhsType instanceof Types.ObjectType
-    if (lhsType instanceof Types.OneOfType) {
-      foundCorrectType = lhsType.of.some(type => type instanceof Types.ObjectType)
+    let matchedObjectType: Types.ObjectType[] =
+      subjectType instanceof Types.ObjectType ? [subjectType] : []
+    if (subjectType instanceof Types.OneOfType) {
+      matchedObjectType = subjectType.of.filter(type => type instanceof Types.ObjectType)
     }
 
-    if (!foundCorrectType) {
+    if (!matchedObjectType.length) {
       return err(
         new RuntimeError(
           this,
-          `Invalid match expression - '${this}: ${lhsType.toCode()}' does not match object expression '${this.toCode()}'`,
+          `Invalid match expression. '${this}: ${subjectType.toCode()}' does not match object expression '${this.toCode()}'`,
         ),
       )
+    }
+
+    let argIndex = 0
+    for (const matchExpr of this.exprs) {
+      let prop: string | number
+      if (matchExpr instanceof MatchNamedArgument) {
+        prop = matchExpr.name
+      } else {
+        prop = argIndex++
+      }
+
+      if (matchExpr.isOptional) {
+        continue
+      }
+
+      const errorType = matchedObjectType.find(type => type.literalAccessType(prop) === undefined)
+      if (errorType) {
+        return err(
+          new RuntimeError(
+            this,
+            `Invalid match expression. '${errorType.toCode()}' does not match object expression '${this.toCode()}' due to missing key '${prop}'`,
+          ),
+        )
+      }
     }
 
     if (!formula && !this.exprs.length) {
       return ok([])
     }
 
-    return ok(lhsType)
+    return ok(subjectType)
   }
 
   gimmeTrueStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    return this.earlyExitCheck(formula, lhsType).map(value => {
+    return this.earlyExitCheck(formula, subjectType).map(value => {
       if (value instanceof Array) {
         return ok(value)
       }
-      // ObjectType or OneOf(..., ObjectType, ...)
-      // TODO TODAY
-      const objectType = this.narrowToMatcherObjectType(runtime, value)
 
-      return this.gimmeTrueTypes(lhsType).map(type => {
+      return this.narrowUsingMatcherType(runtime, value).map(replaceType => {
         const relationships: Relationship[] = []
 
         if (formula) {
@@ -6401,29 +6693,32 @@ export class MatchObjectExpression extends MatchExpression {
             formula,
             comparison: {
               operator: 'instanceof',
-              rhs: type,
+              rhs: replaceType,
             },
           })
         }
 
+        // now iterate over each matcher and assign relationships to the object
+        // properties, and give matchers a chance to assign variables via
+        // relationships
         let argIndex = 0
-        for (const {match} of this.exprs) {
-          let propType: Types.Type | undefined
-          let matcher: MatchExpression
-          if (match instanceof MatchNamedArgument) {
-            propType = objectType.literalAccessType(match.nameRef.name)
-            matcher = match.matchExpr
+        for (const matchExpr of this.exprs) {
+          let prop: string | number
+          if (matchExpr instanceof MatchNamedArgument) {
+            prop = matchExpr.name
           } else {
-            propType = objectType.literalAccessType(argIndex)
-            matcher = match
-            argIndex += 1
+            prop = argIndex++
           }
+          const propType = replaceType.literalAccessType(prop)
 
+          // errors due to accessing properties that don't exist on the object
+          // should already be handled in `earlyExitCheck` - or it's optional
           if (!propType) {
             continue
           }
 
-          const result = arg.gimmeTrueStuffWith(runtime, undefined, type)
+          const accessFormula = formula && relationshipFormula.propertyAccess(formula, prop)
+          const result = matchExpr.gimmeTrueStuffWith(runtime, accessFormula, propType)
           if (result.isErr()) {
             return err(result.error)
           }
@@ -6435,25 +6730,12 @@ export class MatchObjectExpression extends MatchExpression {
     })
   }
 
-  /**
-   * returns all the `ObjectType`s.
-   */
-  private objectTypeFromTypes(type: Types.Type) {
-    if (type instanceof Types.OneOfType) {
-      return type.of.filter(type => type instanceof Types.ObjectType)
-    } else if (type instanceof Types.ObjectType) {
-      return [type]
-    } else {
-      return []
-    }
-  }
-
   private gimmeTrueTypes(type: Types.Type): GetTypeResult {
     if (type instanceof Types.OneOfType) {
       return mapAll(
         type.of
-          .filter(lhsType => lhsType instanceof Types.ObjectType)
-          .map(lhsType => this.gimmeTrueTypes(lhsType)),
+          .filter(ofType => ofType instanceof Types.ObjectType)
+          .map(objectType => this.gimmeTrueTypes(objectType)),
       ).map(types => Types.oneOf(types))
     } else if (!(type instanceof Types.ObjectType)) {
       return ok(Types.NeverType)
@@ -6461,10 +6743,10 @@ export class MatchObjectExpression extends MatchExpression {
 
     let objectType = type
     let argIndex = 0
-    for (const {match, isOptional} of this.exprs) {
+    for (const matchExpr of this.exprs) {
       let prop: string | number
-      if (match instanceof MatchNamedArgument) {
-        prop = match.nameRef.name
+      if (matchExpr instanceof MatchNamedArgument) {
+        prop = matchExpr.name
       } else {
         prop = argIndex
         argIndex += 1
@@ -6472,7 +6754,7 @@ export class MatchObjectExpression extends MatchExpression {
 
       const propType = type.literalAccessType(prop)
       if (!propType) {
-        if (isOptional) {
+        if (matchExpr.isOptional) {
           continue
         } else {
           return ok(Types.NeverType)
@@ -6485,86 +6767,89 @@ export class MatchObjectExpression extends MatchExpression {
     return ok(objectType)
   }
 
-  /**
-   * In the false case, we might be able to refine the array type.
-   * - If the array matches all elements, then the array type is 'never'
-   * - If the array matches the minimum array length, then the false case has
-   * the minimum increased by one
-   * - Likewise if the array matches the maximum array length, the false case
-   * has the maximum decreased by one
-   * - It gets weirder... if the array matches *somewhere* in the length
-   * range, the array could have less OR more than the matched items.
-   *
-   * But oh, good news, it's all handled by asserting against the length, using
-   * `Array(all, minLength ... minLength)`. This comment was a lot more relevant
-   * when this implementation was a hundred+ lines.
-   */
   gimmeFalseStuffWith(
-    _runtime: TypeRuntime,
+    runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     lhsType: Types.Type,
   ): GetRuntimeResult<Relationship[]> {
-    const relationships: Relationship[] = []
-    if (formula) {
-      if (this.remainingExpr) {
-        return this.gimmeFalseStuffRemovingArrays(formula, lhsType)
+    if (!formula) {
+      return ok([])
+    }
+
+    return this.narrowUsingMatcherType(runtime, lhsType).map(replaceType => {
+      return [{formula, comparison: {operator: '!instanceof', rhs: replaceType}}]
+    })
+  }
+
+  private collectTypes(objectType: Types.Type) {
+    let types = new Map<string | number, Types.Type>()
+    let objectTypes: Types.ObjectType[] = []
+    if (objectType instanceof Types.ObjectType) {
+      objectTypes.push(objectType)
+    } else if (objectType instanceof Types.OneOfType) {
+      objectTypes.push(...objectType.of.filter(ofType => ofType instanceof Types.ObjectType))
+    }
+
+    for (const objectType of objectTypes) {
+      for (const [name, type] of objectType.namedTypes.entries()) {
+        const previousType = types.get(name)
+        if (previousType) {
+          types.set(name, Types.oneOf([type, previousType]))
+        } else {
+          types.set(name, type)
+        }
       }
-
-      const minLength = this.initialExprs.length + this.trailingExprs.length
-      const type = Types.array(Types.always(), {min: minLength, max: minLength})
-      relationships.push({
-        formula,
-        comparison: {
-          operator: '!instanceof',
-          rhs: type,
-        },
-      })
+      for (const [index, type] of objectType.positionalTypes.entries()) {
+        const previousType = types.get(index)
+        if (previousType) {
+          types.set(index, Types.oneOf([type, previousType]))
+        } else {
+          types.set(index, type)
+        }
+      }
     }
 
-    return ok(relationships)
+    return types
   }
 
-  /**
-   * Used to implement the logic of gimmeFalseStuffWith, and will again when I
-   * add support for scanning initialExprs/trailingExprs for array types.
-   */
-  gimmeFalseTypes(lhsType: Types.Type): GetTypeResult {
-    if (lhsType instanceof Types.OneOfType) {
+  compileWithSubject(
+    runtime: TypeRuntime,
+    subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchObject> {
+    return this.narrowUsingMatcherType(runtime, subjectType).map(objectType => {
+      const types = this.collectTypes(objectType)
+
       return mapAll(
-        lhsType.of
-          .filter(lhsType => lhsType instanceof Types.ObjectType)
-          .map(lhsType => this.gimmeFalseTypes(lhsType)),
-      ).map(types => Types.oneOf(types))
-    } else if (!(lhsType instanceof Types.ObjectType)) {
-      // in the false case, `lhs is []` will never match, and so if lhs isn't an
-      // array, it will always be whatever it was at the start. Also, this
-      // case raises an error in 'gimmeTrueStuffWith'.
-      return ok(lhsType)
-    }
+        this.exprs.map((arg): GetRuntimeResult<Nodes.MatchArgument | undefined> => {
+          let argKey: string | number
+          let argType: Types.Type | undefined
+          if (arg instanceof MatchNamedArgument) {
+            argKey = arg.name
+          } else {
+            argKey = arg.index
+          }
+          argType = types.get(argKey)
 
-    const arrayOfType = lhsType.of
-    const minLength = this.initialExprs.length + this.trailingExprs.length
-    const nextNarrow = Narrowed.exclude(lhsType.narrowedLength, {min: minLength, max: minLength})
-    return ok(Types.oneOf(nextNarrow.map(nextNarrow => Types.array(arrayOfType, nextNarrow))))
-  }
+          if (!argType && arg.isOptional) {
+            return ok(undefined)
+          } else if (!argType) {
+            return err(
+              new RuntimeError(this, `No argument type for '${argKey}' of ${objectType.toCode()}`),
+            )
+          }
 
-  /**
-   * After an exhaustive array check, only non-array types are left. Remove
-   * arrays from one-of, return 'never' if lhs is Array, otherwise return lhs.
-   */
-  gimmeFalseStuffRemovingArrays(
-    formula: RelationshipFormula,
-    lhsType: Types.Type,
-  ): GetRuntimeResult<Relationship[]> {
-    let rhsType: Types.Type
-    if (lhsType instanceof Types.OneOfType) {
-      rhsType = Types.oneOf(lhsType.of.filter(type => !(type instanceof Types.ArrayType)))
-    } else if (lhsType instanceof Types.ArrayType) {
-      rhsType = Types.NeverType
-    } else {
-      rhsType = lhsType
-    }
-    return ok([{formula, comparison: {operator: 'instanceof', rhs: rhsType}}])
+          return arg.compileWithSubject(runtime, argType).map(node => {
+            if (node instanceof Nodes.MatchNamedArgument) {
+              return node
+            } else {
+              return new Nodes.MatchPositionalArgument(toSource(this), node, arg.isOptional)
+            }
+          })
+        }),
+      )
+        .map(args => args.filter(arg => arg !== undefined))
+        .map(args => new Nodes.MatchObject(toSource(this), objectType, args))
+    })
   }
 
   evalWithSubjectReturningRuntime(
@@ -6572,52 +6857,11 @@ export class MatchObjectExpression extends MatchExpression {
     _op: Expression,
     lhs: Values.Value,
   ): GetValueRuntimeResult {
-    if (!(lhs instanceof Values.ArrayValue)) {
+    if (!(lhs instanceof Values.ObjectValue)) {
       return ok([Values.FalseValue, runtime])
     }
-
-    const minLength = this.initialExprs.length + this.trailingExprs.length
-    if ((!this.remainingExpr && lhs.values.length !== minLength) || lhs.values.length < minLength) {
-      return ok([Values.FalseValue, runtime])
-    }
-
-    const initialValues = lhs.values.slice(0, this.initialExprs.length)
-    const trailingValues = lhs.values.slice(-this.trailingExprs.length)
 
     let nextRuntime = runtime
-    for (const index in this.initialExprs) {
-      const matchExpr = this.initialExprs[index]
-      const value = initialValues[index]
-      const nextRuntimeResult = matchExpr.evalWithSubjectReturningRuntime(nextRuntime, this, value)
-      if (nextRuntimeResult.isErr()) {
-        return err(nextRuntimeResult.error)
-      }
-      nextRuntime = nextRuntimeResult.value[1]
-    }
-
-    if (this.remainingExpr) {
-      const remainingValues = lhs.values.slice(this.initialExprs.length, -this.trailingExprs.length)
-      const nextRuntimeResult = this.remainingExpr.evalWithSubjectReturningRuntime(
-        nextRuntime,
-        this,
-        new Values.ArrayValue(remainingValues),
-      )
-      if (nextRuntimeResult.isErr()) {
-        return err(nextRuntimeResult.error)
-      }
-      nextRuntime = nextRuntimeResult.value[1]
-    }
-
-    for (const index in this.trailingExprs) {
-      const matchExpr = this.trailingExprs[index]
-      const value = trailingValues[index]
-      const nextRuntimeResult = matchExpr.evalWithSubjectReturningRuntime(nextRuntime, this, value)
-      if (nextRuntimeResult.isErr()) {
-        return err(nextRuntimeResult.error)
-      }
-      nextRuntime = nextRuntimeResult.value[1]
-    }
-
     return ok([Values.TrueValue, nextRuntime])
   }
 
@@ -6630,20 +6874,12 @@ export class MatchObjectExpression extends MatchExpression {
   toCode() {
     let code = '{'
     let first = true
-    for (const {match, isOptional} of this.exprs) {
+    for (const matchExpr of this.exprs) {
       if (!first) {
         code += ', '
       }
       first = false
-
-      if (match instanceof MatchNamedArgument) {
-        code += match.toCode()
-      } else {
-        if (isOptional) {
-          code += '?'
-        }
-        code += match.toCode()
-      }
+      code += matchExpr.toCode()
     }
     code += '}'
     return code
@@ -6700,7 +6936,7 @@ export class MatchArrayExpression extends MatchExpression {
   }
 
   matchAssignReferences() {
-    return this.all().flatMap(match => match.matchAssignReferences())
+    return this.all().flatMap(matchExpr => matchExpr.matchAssignReferences())
   }
 
   provides() {
@@ -6750,11 +6986,14 @@ export class MatchArrayExpression extends MatchExpression {
       .concat(this.remainingExpr ? [this.remainingExpr] : [])
       .concat(this.trailingExprs)
     return mapAll(
-      matchExprs.map(matchExpr =>
-        matchExpr
-          .narrowUsingMatcherType(runtime, subjectType.of)
-          .map(matchType => [matchExpr, matchType] as const),
-      ),
+      matchExprs.map(matchExpr => {
+        // remainingExpr has special handling in many places - when narrowing with
+        // narrowUsingMatcherType, remainingExpr needs an array type.
+        const arrayOfType = matchExpr === this.remainingExpr ? subjectType : subjectType.of
+        return matchExpr
+          .narrowUsingMatcherType(runtime, arrayOfType)
+          .map(matchType => [matchExpr, matchType] as const)
+      }),
     ).map(entries => {
       if (entries.some(([_, matchType]) => matchType === Types.NeverType)) {
         return undefined
@@ -6779,10 +7018,9 @@ export class MatchArrayExpression extends MatchExpression {
       .concat(this.trailingExprs)
 
     if (!matchExprs.length) {
-      return ok(subjectType.narrowLength(minLength, maxLength))
+      return ok(subjectType.narrowLength(0, 0))
     }
 
-    let arrayOfType = subjectType.of
     // - if any matchers result in NeverType, the entire expression cannot match
     // - we can combine the types of all the matchers into one narrowed type
     // - the initialExprs and trailingExprs can narrow the length
@@ -6790,9 +7028,21 @@ export class MatchArrayExpression extends MatchExpression {
       if (combinedType === Types.NeverType) {
         return ok(Types.NeverType)
       }
-      return matchExpr
-        .narrowUsingMatcherType(runtime, arrayOfType)
-        .map(narrowedType => Types.compatibleWithBothTypes(combinedType, narrowedType))
+
+      // remainingExpr has special handling in many places - when narrowing with
+      // narrowUsingMatcherType, remainingExpr needs the original subjectType
+      const arrayOfType = matchExpr === this.remainingExpr ? subjectType : subjectType.of
+      return matchExpr.narrowUsingMatcherType(runtime, arrayOfType).map(narrowedType => {
+        // remainingExpr has special handling in many places - here we expect an array type
+        // but it could be NeverType
+        if (matchExpr === this.remainingExpr) {
+          const narrowOfType =
+            narrowedType instanceof Types.ArrayType ? narrowedType.of : narrowedType
+          return Types.compatibleWithBothTypes(combinedType, narrowOfType)
+        } else {
+          return Types.compatibleWithBothTypes(combinedType, narrowedType)
+        }
+      })
     }).map(combinedType => {
       // combinedType is not ArrayType because we guarantee the matchExpr.length
       if (combinedType === Types.NeverType) {
@@ -6801,9 +7051,7 @@ export class MatchArrayExpression extends MatchExpression {
 
       return ok(
         Types.array(combinedType, subjectType.narrowedLength).narrowLength(minLength, maxLength),
-      ).map(result => {
-        return result
-      })
+      )
     })
   }
 
@@ -6959,47 +7207,43 @@ export class MatchArrayExpression extends MatchExpression {
     })
   }
 
-  /**
-   * Used to implement the logic of gimmeFalseStuffWith, and will again when I
-   * add support for scanning initialExprs/trailingExprs for array types.
-   */
-  gimmeFalseTypes(lhsType: Types.Type): GetTypeResult {
-    if (lhsType instanceof Types.OneOfType) {
-      return mapAll(
-        lhsType.of
-          .filter(lhsType => lhsType instanceof Types.ArrayType)
-          .map(lhsType => this.gimmeFalseTypes(lhsType)),
-      ).map(types => Types.oneOf(types))
-    } else if (!(lhsType instanceof Types.ArrayType)) {
-      // in the false case, `lhs is []` will never match, and so if lhs isn't an
-      // array, it will always be whatever it was at the start. Also, this
-      // case raises an error in 'gimmeTrueStuffWith'.
-      return ok(lhsType)
+  private collectTypes(arrayType: Types.Type) {
+    if (arrayType instanceof Types.ArrayType) {
+      return arrayType.of
+    } else if (arrayType instanceof Types.OneOfType) {
+      const ofTypes = arrayType.of
+        .filter(ofType => ofType instanceof Types.ArrayType)
+        .map(arrayType => arrayType.of)
+      return Types.oneOf(ofTypes)
     }
 
-    const arrayOfType = lhsType.of
-    const minLength = this.initialExprs.length + this.trailingExprs.length
-    const nextNarrow = Narrowed.exclude(lhsType.narrowedLength, {min: minLength, max: minLength})
-    return ok(Types.oneOf(nextNarrow.map(nextNarrow => Types.array(arrayOfType, nextNarrow))))
+    return Types.NeverType
   }
 
-  /**
-   * After an exhaustive array check, only non-array types are left. Remove
-   * arrays from one-of, return 'never' if lhs is Array, otherwise return lhs.
-   */
-  gimmeFalseStuffRemovingArrays(
-    formula: RelationshipFormula,
-    lhsType: Types.Type,
-  ): GetRuntimeResult<Relationship[]> {
-    let rhsType: Types.Type
-    if (lhsType instanceof Types.OneOfType) {
-      rhsType = Types.oneOf(lhsType.of.filter(type => !(type instanceof Types.ArrayType)))
-    } else if (lhsType instanceof Types.ArrayType) {
-      rhsType = Types.NeverType
-    } else {
-      rhsType = lhsType
-    }
-    return ok([{formula, comparison: {operator: 'instanceof', rhs: rhsType}}])
+  compileWithSubject(
+    runtime: TypeRuntime,
+    subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchArray> {
+    return this.narrowUsingMatcherType(runtime, subjectType).map(arrayType => {
+      const combinedOfType = this.collectTypes(arrayType)
+
+      return mapMany(
+        mapAll(this.initialExprs.map(expr => expr.compileWithSubject(runtime, combinedOfType))),
+        mapOptional<Nodes.MatchIgnoreRemaining | Nodes.MatchAssignRemaining, RuntimeError>(
+          this.remainingExpr?.compileWithSubject(runtime, combinedOfType),
+        ),
+        mapAll(this.trailingExprs.map(expr => expr.compileWithSubject(runtime, combinedOfType))),
+      ).map(
+        ([initialNodes, remainingNode, trailingNodes]) =>
+          new Nodes.MatchArray(
+            toSource(this),
+            arrayType,
+            initialNodes,
+            remainingNode,
+            trailingNodes,
+          ),
+      )
+    })
   }
 
   evalWithSubjectReturningRuntime(
@@ -7069,12 +7313,11 @@ export class MatchArrayExpression extends MatchExpression {
   }
 }
 
-export class CaseExpression extends MatchExpression {
+export class MatchAnyOneOfExpression extends MatchExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
     readonly matches: MatchExpression[],
-    readonly bodyExpression: Expression,
   ) {
     super(range, precedingComments)
   }
@@ -7085,7 +7328,7 @@ export class CaseExpression extends MatchExpression {
 
   /**
    * H'okay, so. Case expressions can have multiple matches:
-   *     switch (subject) {
+   *     switch subject
    *       case [first] or [_, first] or …
    *
    * We combine all these matches using the same logic as we do with 'or'
@@ -7163,23 +7406,129 @@ export class CaseExpression extends MatchExpression {
 
   toLisp() {
     const caseCode = this.matches.map(match => match.toLisp()).join(' ')
-    return `(case (${caseCode}) : ${this.bodyExpression.toCode()})`
+    return '(' + caseCode + ')'
   }
 
   toCode() {
     const cases = this.matches.map(match => match.toCode()).join(' or ')
     const hasNewline = cases.includes('\n') || cases.length > MAX_LEN
 
-    let code = 'case '
+    let code = ''
     if (hasNewline) {
       code += this.matches[0].toCode()
       code += this.matches.slice(1).map(match => ' or\n' + indent(match.toCode()))
     } else {
       code += cases
     }
+    return code
+  }
+
+  compileWithSubject(
+    runtime: TypeRuntime,
+    subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.MatchAnyOneOf> {
+    return mapAll(
+      this.matches.map(matchExpr => matchExpr.compileWithSubject(runtime, subjectType)),
+    ).map(matchNodes => new Nodes.MatchAnyOneOf(matchNodes))
+  }
+
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    caseExpr: Expression,
+    subject: Values.Value,
+  ): GetValueRuntimeResult {
+    const allAssigns = allNamesFrom(this.matches)
+    for (const matchExpr of this.matches) {
+      const didMatchResult = matchExpr.evalWithSubjectReturningRuntime(runtime, caseExpr, subject)
+      if (didMatchResult.isErr()) {
+        return err(didMatchResult.error)
+      }
+
+      const [didMatch, matchRuntimeUnchecked] = didMatchResult.value
+      if (didMatch.isTruthy()) {
+        const matchRuntime = includeMissingNames(matchRuntimeUnchecked, allAssigns, matchExpr)
+        return ok([didMatch, matchRuntime])
+      }
+    }
+    return ok([Values.booleanValue(false), runtime])
+  }
+}
+
+export class CaseExpression extends Expression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly matchExpr: MatchExpression,
+    readonly bodyExpression: Expression,
+  ) {
+    super(range, precedingComments)
+  }
+
+  matchAssignReferences() {
+    return this.matchExpr.matchAssignReferences()
+  }
+
+  assumeTrueWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    subjectType: Types.Type,
+  ) {
+    return this.matchExpr.assumeTrueWith(runtime, formula, subjectType)
+  }
+
+  /**
+   * The false condition is much simpler - `assumeFalse` of every match
+   * expression (again, the same logic as `or` expressions).
+   */
+  assumeFalseWith(
+    runtime: TypeRuntime,
+    formula: RelationshipFormula | undefined,
+    subjectType: Types.Type,
+  ) {
+    return this.matchExpr.assumeFalseWith(runtime, formula, subjectType)
+  }
+
+  toLisp() {
+    const caseCode = this.matchExpr.toLisp()
+    const bodyCode = this.bodyExpression.toLisp()
+    return `(case ${caseCode} : ${bodyCode})`
+  }
+
+  toCode() {
+    let code = 'case '
+    code += this.matchExpr.toCode()
     code += '\n'
     code += indent(this.bodyExpression.toCode())
     return code
+  }
+
+  getType(): GetTypeResult {
+    return err(new RuntimeError(this, `CaseExpression does not have a type`))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, `CaseExpression cannot be evaluated`))
+  }
+
+  compile(_runtime: TypeRuntime) {
+    return err(
+      new RuntimeError(
+        this,
+        'case expressions cannot be compiled without a formula and subject expression',
+      ),
+    )
+  }
+
+  compileWithSubject(
+    runtime: TypeRuntime,
+    formula: RelationshipAssign,
+    subjectType: Types.Type,
+  ): GetRuntimeResult<Nodes.Case> {
+    return this.matchExpr.compileWithSubject(runtime, subjectType).map(matchNode =>
+      this.assumeTrueWith(runtime, formula, subjectType)
+        .map(truthyRuntime => this.bodyExpression.compile(truthyRuntime))
+        .map(bodyNode => new Nodes.Case(toSource(this), matchNode, bodyNode)),
+    )
   }
 }
 
@@ -7473,6 +7822,13 @@ export class GuardExpression extends Expression {
   }
 }
 
+interface SwitchCompileInfo {
+  subjectNode: Nodes.Node
+  exhaustiveType: Types.Type
+  caseNodes: Nodes.Case[]
+  elseNode: Nodes.CaseMatch | undefined
+}
+
 export class SwitchExpression extends Expression {
   symbol = 'switch'
 
@@ -7553,77 +7909,90 @@ export class SwitchExpression extends Expression {
       }
 
       return reduceAll(
-        [subjectNode.type, []] as [Types.Type, Types.Type[]],
+        {
+          subjectNode,
+          exhaustiveType: subjectNode.type,
+          caseNodes: [],
+          elseNode: undefined,
+        } as SwitchCompileInfo,
         caseExprs,
-        ([subjectType, bodyTypes], caseExpr): GetRuntimeResult<[Types.Type, Types.Type[]]> => {
-          if (subjectType === Types.NeverType) {
+        (
+          {subjectNode, exhaustiveType, caseNodes},
+          caseExpr,
+        ): GetRuntimeResult<SwitchCompileInfo> => {
+          if (exhaustiveType === Types.NeverType) {
             return err(
               new RuntimeError(
                 caseExpr,
-                `Unreachable case detected. '${subjectExpr}' is of type '${subjectType}' because the previous cases are exhaustive.`,
+                `Unreachable case detected. '${subjectExpr}' is of type '${exhaustiveType}' because the previous cases are exhaustive.`,
               ),
             )
           }
 
           return caseExpr
-            .assumeTrueWith(nextRuntime, trackingFormula, subjectType)
-            .map(truthyRuntime => caseExpr.bodyExpression.compile(truthyRuntime))
+            .compileWithSubject(nextRuntime, trackingFormula, exhaustiveType)
             .map(caseNode => {
-              bodyTypes.push(caseNode.type)
+              caseNodes.push(caseNode)
 
               return caseExpr
-                .assumeFalseWith(nextRuntime, trackingFormula, subjectType)
+                .assumeFalseWith(nextRuntime, trackingFormula, exhaustiveType)
                 .map(nextRuntime => {
                   const caseSubjectType = relationshipToType(nextRuntime, trackingFormula)
                   if (!caseSubjectType) {
                     return err(
                       new RuntimeError(
                         caseExpr,
-                        "No subjectType type in SwitchExpression? that shouldn't happen",
+                        "No caseSubjectType type in SwitchExpression? that shouldn't happen",
                       ),
                     )
                   }
 
-                  const nextSubjectType = Types.narrowTypeIs(subjectType, caseSubjectType)
-                  return ok([nextSubjectType, bodyTypes])
+                  const nextSubjectType = Types.narrowTypeIs(exhaustiveType, caseSubjectType)
+                  return ok({
+                    subjectNode,
+                    exhaustiveType: nextSubjectType,
+                    caseNodes,
+                    elseNode: undefined,
+                  })
                 })
             })
         },
       )
-        .map(([subjectType, bodyTypes]) => {
+        .map(({exhaustiveType, ...rem}): GetRuntimeResult<SwitchCompileInfo> => {
           if (elseExpr) {
-            if (subjectType === Types.NeverType) {
+            if (exhaustiveType === Types.NeverType) {
               return err(
                 new RuntimeError(
                   elseExpr,
-                  `Unreachable case detected. '${subjectExpr}' is of type '${subjectType}' because the previous cases are exhaustive.`,
+                  `Unreachable case detected. '${subjectExpr}' is of type '${exhaustiveType}' because the previous cases are exhaustive.`,
                 ),
               )
             }
 
-            const typeResult = elseExpr.getType(nextRuntime)
-            if (typeResult.isErr()) {
-              return err(typeResult.error)
+            const nodeResult = elseExpr.compile(nextRuntime)
+            if (nodeResult.isErr()) {
+              return err(nodeResult.error)
             }
 
-            bodyTypes.push(typeResult.get())
-            return [Types.NeverType, bodyTypes]
+            const elseNode = nodeResult.get()
+            return ok({...rem, exhaustiveType: Types.NeverType, elseNode})
           } else {
-            return [subjectType, bodyTypes]
+            return ok({...rem, exhaustiveType})
           }
         })
-        .map(([subjectType, bodyTypes]) => {
-          if (subjectType !== Types.NeverType) {
+        .map(({exhaustiveType, caseNodes, elseNode}) => {
+          if (exhaustiveType !== Types.NeverType) {
             return err(
-              `Switch is not exhaustive, '${subjectExpr}' has unhandled type '${subjectType}'`,
+              `Switch is not exhaustive, '${subjectExpr}' has unhandled type '${exhaustiveType}'`,
             )
           }
 
-          return Types.oneOf(bodyTypes)
-        })
-        .map(bodyType => {
-          // TODO TODAY
-          return new Nodes.Switch(toSource(this), bodyType, subjectNode)
+          const bodyTypes = caseNodes.map(node => node.type)
+          if (elseNode) {
+            bodyTypes.push(elseNode.type)
+          }
+          const bodyType = Types.oneOf(bodyTypes)
+          return new Nodes.Switch(toSource(this), bodyType, subjectNode, caseNodes, elseNode)
         })
     })
   }
@@ -7635,23 +8004,18 @@ export class SwitchExpression extends Expression {
 
     return subjectExpr.eval(runtime).map(subject => {
       for (const caseExpr of caseExprs) {
-        const allAssigns = allNamesFrom(caseExpr.matches)
+        const didMatchResult = caseExpr.matchExpr.evalWithSubjectReturningRuntime(
+          runtime,
+          caseExpr,
+          subject,
+        )
+        if (didMatchResult.isErr()) {
+          return err(didMatchResult.error)
+        }
 
-        for (const matchExpr of caseExpr.matches) {
-          const didMatchResult = matchExpr.evalWithSubjectReturningRuntime(
-            runtime,
-            caseExpr,
-            subject,
-          )
-          if (didMatchResult.isErr()) {
-            return err(didMatchResult.error)
-          }
-
-          const [didMatch, matchRuntimeUnchecked] = didMatchResult.value
-          if (didMatch.isTruthy()) {
-            const matchRuntime = includeMissingNames(matchRuntimeUnchecked, allAssigns, matchExpr)
-            return caseExpr.bodyExpression.eval(matchRuntime)
-          }
+        const [didMatch, matchRuntime] = didMatchResult.value
+        if (didMatch.isTruthy()) {
+          return caseExpr.bodyExpression.eval(matchRuntime)
         }
       }
 

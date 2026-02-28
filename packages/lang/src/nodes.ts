@@ -567,61 +567,266 @@ export class Guard extends Node {
   }
 }
 
-class Case extends Node {
-  constructor(
-    readonly source: Source,
-    readonly body: Node,
-  ) {
-    super(source, Types.AlwaysType)
-  }
-}
-
-abstract class CaseMatch extends Node {
-  constructor(
-    readonly source: Source,
-    readonly body: Node,
-  ) {
-    super(source, Types.AlwaysType)
-  }
-}
-
-export class MatchOne extends CaseMatch {
-  constructor(
-    readonly source: Source,
-    readonly cases: CaseMatch[],
-    readonly body: Node,
-  ) {
-    super(source, body)
-  }
-}
-
-export class MatchType extends CaseMatch {
-  constructor(
-    readonly source: Source,
-    readonly name: string,
-    readonly body: Node,
-  ) {
-    super(source, body)
-  }
-}
-
-export class MatchReference extends CaseMatch {
-  constructor(
-    readonly source: Source,
-    readonly name: string,
-    readonly body: Node,
-  ) {
-    super(source, body)
-  }
-}
-
 export class Switch extends Node {
   constructor(
     readonly source: Source,
     readonly type: Types.Type,
     readonly subject: Node,
     readonly cases: Case[],
-    readonly elseBranch: Node,
+    readonly elseBranch: Node | undefined,
+  ) {
+    super(source, type)
+  }
+}
+
+export class Case extends Node {
+  constructor(
+    readonly source: Source,
+    readonly match: CaseMatch,
+    readonly body: Node,
+  ) {
+    super(source, body.type)
+  }
+}
+
+export abstract class CaseMatch extends Node {}
+
+/**
+ * Matches any of the patterns
+ *     case a or b
+ */
+export class MatchAnyOneOf extends CaseMatch {
+  constructor(readonly cases: CaseMatch[]) {
+    const start = cases[0].source.start
+    const stop = cases[cases.length - 1].source.stop
+    const source = {
+      start,
+      stop,
+      precedingComments: [],
+      followingComments: [],
+    }
+    const type = Types.oneOf(cases.map(node => node.type))
+    super(source, type)
+  }
+}
+
+/**
+ * Matches if the subject is a subtype of the match type
+ *     case Int
+ */
+export class MatchType extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly matchType: Types.Type,
+  ) {
+    super(source, matchType)
+  }
+}
+
+/**
+ * Only matches the literal value
+ *     case 1
+ *
+ * Regex literals can have named groups
+ *     case /(?<first-name>\w+)\b/
+ *       -- first-name is available here
+ */
+export class MatchLiteral extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly literal: Node,
+  ) {
+    super(source, literal.type)
+  }
+}
+
+/**
+ * Always matches - identical to `else` case
+ *     case _
+ */
+export class MatchIgnore extends CaseMatch {
+  constructor(readonly source: Source) {
+    super(source, Types.AlwaysType)
+  }
+}
+
+/**
+ *     case foo -- always matches
+ */
+export class MatchReference extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+  ) {
+    super(source, Types.AlwaysType)
+  }
+}
+
+/**
+ *     case [...] -- matches and ignores the remaining entries in an array
+ */
+export class MatchIgnoreRemaining extends CaseMatch {
+  constructor(readonly source: Source) {
+    super(source, Types.AlwaysType)
+  }
+}
+
+/**
+ *     case [...foo] -- matches and assigns the remaining entries in an array
+ */
+export class MatchAssignRemaining extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+  ) {
+    super(source, Types.AlwaysType)
+  }
+}
+
+export abstract class MatchArgument extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly match: CaseMatch,
+    readonly isOptional: boolean,
+  ) {
+    super(source, match.type)
+  }
+}
+
+/**
+ * In the context of an enum or object matcher, matches if the enum data or
+ * object property matches the named argument
+ *     case .rgb(red: 0)
+ *     case {red: 0}
+ *     case {red?: 0} -- optional
+ */
+export class MatchNamedArgument extends MatchArgument {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+    readonly match: CaseMatch,
+    readonly isOptional: boolean,
+  ) {
+    super(source, match, isOptional)
+  }
+}
+
+/**
+ * In the context of an enum or object matcher, matches if the enum data or
+ * object property matches the positional argument
+ *     case .rgb(0)
+ *     case {0}
+ *     case {?0} -- optional
+ */
+export class MatchPositionalArgument extends MatchArgument {
+  constructor(
+    readonly source: Source,
+    readonly match: CaseMatch,
+    readonly isOptional: boolean,
+  ) {
+    super(source, match, isOptional)
+  }
+}
+
+/**
+ * Matches an open-ended range
+ *     case >=1
+ */
+export class MatchUnaryRange extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly op: '>' | '>=' | '<' | '<=',
+    readonly start: Node,
+  ) {
+    super(source, Types.AlwaysType)
+  }
+}
+
+/**
+ * Matches a closed range
+ *     case 1...5
+ *     case 1.5 <.< 5.0
+ */
+export class MatchBinaryRange extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly op: '...' | '..<' | '<..' | '<.<',
+    readonly start: Node,
+    readonly stop: Node,
+  ) {
+    super(source, Types.AlwaysType)
+  }
+}
+
+/**
+ * Matches concatenated strings
+ *     case "test" <> foo
+ *     case "test" <> foo <> "."
+ *     case foo <> "!"
+ *     case foo <> "==" <> bar
+ *
+ *     case "test" ❌ this is a MatchLiteral
+ */
+export class MatchStringConcat extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly stringType: Types.Type,
+    readonly matches: CaseMatch[],
+  ) {
+    super(source, stringType)
+  }
+}
+
+/**
+ * Matches enums
+ *     case .some
+ *     case .some(args)
+ *     case Maybe.some
+ *     case Module.Maybe.some(args)
+ */
+export class MatchEnum extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly enumType: Types.AnonymousEnumDefinitionType,
+    readonly moduleNames: string[],
+    readonly enumName: string | undefined,
+    readonly caseName: string,
+    readonly args: (MatchNamedArgument | MatchPositionalArgument)[] | undefined,
+  ) {
+    super(source, Types.AlwaysType)
+  }
+}
+
+/**
+ * Matches objects
+ *     case {}
+ *     case {_}
+ *     case {name: Int as a, arg: String as b}
+ */
+export class MatchObject extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+    readonly args: (MatchNamedArgument | MatchPositionalArgument)[],
+  ) {
+    super(source, type)
+  }
+}
+
+/**
+ * Matches arrays
+ *     case []
+ *     case [_]
+ *     case [Int as a, String as b]
+ *     case [a, ...b]
+ */
+export class MatchArray extends CaseMatch {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+    readonly initial: CaseMatch[],
+    readonly remaining: CaseMatch | undefined,
+    readonly trailing: CaseMatch[],
   ) {
     super(source, type)
   }

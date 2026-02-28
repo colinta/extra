@@ -86,7 +86,7 @@ enum RemoteData<Tsuccess, Tfail> {
         .none
 }
 `,
-      '((enum RemoteData) <Tsuccess Tfail> (.notLoaded .loading .success((# value: Tsuccess)) .failure((# value: Tfail))) ((fn toMaybe() : (Maybe Tsuccess) => (switch `this` (case (.success(value)) : .some(value)) (else: .none)))))',
+      '((enum RemoteData) <Tsuccess Tfail> (.notLoaded .loading .success((# value: Tsuccess)) .failure((# value: Tfail))) ((fn toMaybe() : (Maybe Tsuccess) => (switch `this` (case .success((value)) : (fn .some (value))) (else: .none)))))',
       `\
 enum RemoteData<Tsuccess, Tfail> {
   .notLoaded

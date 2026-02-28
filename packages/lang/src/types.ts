@@ -605,6 +605,13 @@ export abstract class Type {
   }
 
   /**
+   * Called from arrayAccessType and propAccessType - the behavior
+   */
+  literalAccessType(propName: Key): Type | undefined {
+    return undefined
+  }
+
+  /**
    * The PropertyAccessOperator 'expr.prop' calls this method to get properties.
    */
   abstract propAccessType(name: string | number): Type | undefined
@@ -1263,7 +1270,7 @@ export abstract class OneOfType extends Type {
     let mergedType: Type | undefined
     for (const ofType of this.of) {
       const accessType = mapAccessType(ofType)
-      if (!accessType) {
+      if (!accessType || accessType === NeverType) {
         return
       }
       mergedType = mergedType ? compatibleWithBothTypes(mergedType, accessType) : accessType
@@ -1290,6 +1297,10 @@ export abstract class OneOfType extends Type {
 
   propAccessType(name: string | number) {
     return this.mergeAccessTypes(this.of, (ofType: Type) => ofType.propAccessType(name))
+  }
+
+  literalAccessType(propName: Key): Type | undefined {
+    return this.mergeAccessTypes(this.of, (ofType: Type) => ofType.literalAccessType(propName))
   }
 
   safePropAccessType(name: string) {
@@ -2320,6 +2331,10 @@ export class MetaStringType extends Type {
   literalAccessType(propName: Key): Type | undefined {
     if (typeof propName !== 'number') {
       return
+    }
+
+    if (propName < 0) {
+      return this.literalAccessType(-1 - propName)
     }
 
     // if N >= max(string.length)
@@ -3364,7 +3379,11 @@ export class DictType extends ContainerType<DictType> {
   /**
    * DictType.arrayAccessType
    */
-  arrayAccessType(_rhs: Type) {
+  arrayAccessType(rhs: Type) {
+    if (rhs.isLiteral('key')) {
+      return this.literalAccessType(rhs.value)
+    }
+
     return optional(this.of)
   }
 
@@ -3495,8 +3514,8 @@ export class ObjectType extends Type {
 
   declare static types: Record<string, ((object: ObjectType) => Type) | undefined>
 
-  private _namedProps: Map<String, Type> = new Map()
-  private _positionalProps: Map<number, Type> = new Map()
+  readonly namedTypes: Map<string, Type> = new Map()
+  readonly positionalTypes: Map<number, Type> = new Map()
 
   constructor(readonly props: ObjectProp[]) {
     super()
@@ -3504,19 +3523,19 @@ export class ObjectType extends Type {
     let propIndex = 0
     for (const prop of props) {
       if (prop.is === 'named') {
-        this._namedProps.set(prop.name, prop.type)
+        this.namedTypes.set(prop.name, prop.type)
       } else {
-        this._positionalProps.set(propIndex++, prop.type)
+        this.positionalTypes.set(propIndex++, prop.type)
       }
     }
   }
 
   namedProp(name: string) {
-    return this._namedProps.get(name)
+    return this.namedTypes.get(name)
   }
 
   positionalProp(index: number) {
-    return this._positionalProps.get(index)
+    return this.positionalTypes.get(index)
   }
 
   isObject(): this is ObjectType {
@@ -3595,11 +3614,7 @@ export class ObjectType extends Type {
       )
     }
 
-    if (rhs.isLiteral()) {
-      if (rhs.value instanceof RegExp) {
-        return undefined
-      }
-
+    if (rhs.isLiteral('key')) {
       return this.literalAccessType(rhs.value)
     }
 
@@ -3757,8 +3772,18 @@ export class EnumCase {
 export class AnonymousEnumDefinitionType extends Type {
   is = 'enum-definition'
 
+  private membersLookup: Map<string, EnumCase> = new Map()
+
   constructor(readonly members: EnumCase[]) {
     super()
+    for (const member of members) {
+      this.membersLookup.set(member.name, member)
+    }
+    Object.defineProperty(this, 'membersLookup', {enumerable: false})
+  }
+
+  lookupCase(name: string) {
+    return this.membersLookup.get(name)
   }
 
   propAccessType(_name: string): Type | undefined {
@@ -4675,8 +4700,8 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     }
   } else if (lhs instanceof ArrayType && rhs instanceof ArrayType) {
     // merge the types if they are compatible, otherwise retain their types
-    // e.g. Array(Int) | Array(Float) --> Array(Float)
-    // e.g. Array(Int) | Array(String) --> Array(Int) | Array(String)
+    // e.g. [Int] | [Float] --> [Float]
+    // e.g. [Int] | [String] --> [Int] | [String]
     const common = canBeAssignedTo(lhs.of, rhs.of)
       ? rhs.of
       : canBeAssignedTo(rhs.of, lhs.of)
@@ -5458,7 +5483,7 @@ function _checkFormulaArguments(
   // the argument list, so they are separated out.
   //     example: foo(...manyUsers)
   spreadPositionalArguments: Type[],
-  // similar - these are ...bar: values (Array(Type))
+  // similar - these are ...bar: values ([Type])
   //     example: foo(...bar: manyCases)
   spreadDictArguments: Map<string, Type[]>,
   // remaining named args **args (Dict(Type))
@@ -5826,7 +5851,7 @@ export function cannotAssignToError(testType: Type, assignTo: Type) {
  * (`mappedType`). If the type is unchanged, we return the originalType.
  *
  * @example
- *     // this: Array(T)
+ *     // this: [T]
  *     maybeResolve(this.of, this, type => new ArrayType(type), resolvedGenericsMap)
  */
 function maybeResolve(

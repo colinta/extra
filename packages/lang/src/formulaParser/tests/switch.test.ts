@@ -24,7 +24,7 @@ describe('switch', () => {
     cases<[string, string] | [string, string, string]>(
       c([
         `switch a-letter case _  ''`,
-        "(switch a-letter (case (_) : ''))",
+        "(switch a-letter (case _ : ''))",
         `\
 switch a-letter
 case _
@@ -32,7 +32,7 @@ case _
       ]),
       c([
         `switch a-letter case _ then ''`,
-        "(switch a-letter (case (_) : ''))",
+        "(switch a-letter (case _ : ''))",
         `\
 switch a-letter
 case _
@@ -40,7 +40,7 @@ case _
       ]),
       c([
         `switch a-letter\ncase _\n  ''`,
-        "(switch a-letter (case (_) : ''))",
+        "(switch a-letter (case _ : ''))",
         `\
 switch a-letter
 case _
@@ -48,7 +48,7 @@ case _
       ]),
       c([
         `switch a-letter\ncase 'a'\n  [1]\nelse\n  [3]`,
-        "(switch a-letter (case ('a') : [1]) (else: [3]))",
+        "(switch a-letter (case 'a' : [1]) (else: [3]))",
         `\
 switch a-letter
 case 'a'

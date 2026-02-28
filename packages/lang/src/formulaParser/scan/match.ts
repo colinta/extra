@@ -39,7 +39,9 @@ import {scanStringLiteral} from './string'
  *   'or' operator:
  *     Int or String
  *   Enum:
+ *     .some -- enum case (enum type is inferred)
  *     .some(value) -- assigned enum value
+ *     Maybe.some -- qualified enum case
  *   Types, via scanArgumentType:
  *     Int as var -- checks for 'Int' and assigns to 'var'
  *     Int, String, String(length: =8)
@@ -95,7 +97,9 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): MatchExpression {
     throw new ParseError(scanner, "TODO: support '(...)' in scanMatch")
   }
 
-  if (
+  if (scanner.test(isQualifiedEnum)) {
+    return scanMatchEnum(scanner, parseNext)
+  } else if (
     // these need to be an exhaustive check of type declarations
     //     case Foo as foo
     //     case view as foo
@@ -154,6 +158,24 @@ function scanMatchReference(scanner: Scanner) {
   return new Expressions.MatchReference(reference)
 }
 
+function scanMatchPositionalReference(index: number, scanner: Scanner, parseNext: ParseNext) {
+  scanner.whereAmI(`scanMatchPositionalReference @ ${index}`)
+  const arg0 = scanner.charIndex
+  const isOptional = scanner.scanIfString('?')
+  if (isOptional) {
+    scanner.scanAllWhitespace()
+  }
+
+  const matchExpr = scanMatch(scanner, parseNext)
+  return new Expressions.MatchPositionalArgument(
+    [arg0, scanner.charIndex],
+    [],
+    index,
+    matchExpr,
+    isOptional,
+  )
+}
+
 function scanMatchNamedReference(scanner: Scanner, parseNext: ParseNext, closer: string) {
   scanner.whereAmI(`scanMatchNamedReference until ${closer}`)
   const arg0 = scanner.charIndex
@@ -190,7 +212,7 @@ function scanMatchNamedReference(scanner: Scanner, parseNext: ParseNext, closer:
   return new Expressions.MatchNamedArgument(
     [arg0, scanner.charIndex],
     precedingComments,
-    nameRef,
+    nameRef.name,
     reference,
     isOptional,
   )
@@ -199,36 +221,38 @@ function scanMatchNamedReference(scanner: Scanner, parseNext: ParseNext, closer:
 function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
   scanner.whereAmI('scanMatchEnum')
   const range0 = scanner.charIndex
+
+  const qualifiers: string[] = []
+  while (isArgumentStartChar(scanner)) {
+    const qualifier = scanValidTypeName(scanner)
+    scanner.scanAllWhitespace()
+    qualifier.followingComments = scanner.flushComments()
+
+    qualifiers.push(qualifier.name)
+
+    scanner.expectString('.', `Expected '.' after type name '${qualifier.name}'`)
+  }
+  const enumName = qualifiers.pop()
+
   scanner.expectString('.')
   // enum '.some' or '.some(value, name: value, _...)'
   const enumCaseName = scanAnyReference(scanner).name
   scanner.scanSpaces()
 
-  const args: MatchExpression[] = []
+  const args: (Expressions.MatchNamedArgument | Expressions.MatchPositionalArgument)[] = []
+  let argIndex = 0
+  let ignoreRemaining = false
   if (scanner.scanIfString(ARGS_OPEN)) {
     for (;;) {
       scanner.scanSpaces()
 
-      const arg0 = scanner.charIndex
       if (scanner.scanIfString('...')) {
-        args.push(
-          new Expressions.MatchIgnoreRemainingExpression(
-            [arg0, scanner.charIndex],
-            scanner.flushComments(),
-          ),
-        )
-        scanner.scanAllWhitespace()
-        scanner.expectString(
-          ARGS_CLOSE,
-          "Remaining match '...' must be the last argument in the enum match expression",
-        )
-        break
-      }
-
-      if (scanner.test(isNamedArg)) {
+        ignoreRemaining = true
+      } else if (scanner.test(isNamedArg)) {
         args.push(scanMatchNamedReference(scanner, parseNext, ARGS_CLOSE))
       } else {
-        args.push(scanMatch(scanner, parseNext))
+        args.push(scanMatchPositionalReference(argIndex, scanner, parseNext))
+        argIndex += 1
       }
 
       const shouldBreak = scanner.scanCommaOrBreak(
@@ -239,14 +263,24 @@ function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
       if (shouldBreak) {
         break
       }
+
+      if (ignoreRemaining) {
+        scanner.expectString(
+          ARGS_CLOSE,
+          "Remaining match '...' must be the last argument in the enum match expression",
+        )
+      }
     }
   }
 
   return new Expressions.MatchEnumExpression(
     [range0, scanner.charIndex],
     scanner.flushComments(),
+    qualifiers,
+    enumName,
     enumCaseName,
     args,
+    ignoreRemaining,
   )
 }
 
@@ -302,6 +336,17 @@ function scanMatchRange(scanner: Scanner) {
 
   scanner.scanSpaces()
   const stop = scanNumber(scanner, 'float')
+  if (op === '...' && start.value.value === stop.value.value) {
+    if (start.value.isInt()) {
+      return new Expressions.MatchLiteralInt(start)
+    }
+    return new Expressions.MatchLiteralFloat(start)
+  } else if (start.value.value === stop.value.value) {
+    throw new ParseError(
+      scanner,
+      `Unexpected empty range '${start}${op}${stop}'. start and stop values must not be the same value (use literal matcher '${start}' instead)`,
+    )
+  }
 
   return new Expressions.MatchBinaryRange(
     [range0, scanner.charIndex],
@@ -399,33 +444,29 @@ function scanMatchRegex(scanner: Scanner) {
 function scanMatchObject(scanner: Scanner, parseNext: ParseNext) {
   scanner.whereAmI('scanMatchObject')
   const precedingComments = scanner.flushComments()
-  const exprs: {match: MatchExpression; isOptional: boolean}[] = []
+  const exprs: (Expressions.MatchNamedArgument | Expressions.MatchPositionalArgument)[] = []
   const range0 = scanner.charIndex
   scanner.expectString(OBJECT_OPEN)
   scanner.scanAllWhitespace()
-  let wasOptional = false
+  let positionalWasOptional = false
+  let argIndex = 0
   if (!scanner.scanIfString(OBJECT_CLOSE)) {
     for (;;) {
+      let matchExpr: Expressions.MatchNamedArgument | Expressions.MatchPositionalArgument
       if (scanner.test(isNamedArg)) {
-        const matchNamed = scanMatchNamedReference(scanner, parseNext, OBJECT_CLOSE)
-        exprs.push({
-          match: matchNamed,
-          isOptional: matchNamed.isOptional,
-        })
+        matchExpr = scanMatchNamedReference(scanner, parseNext, OBJECT_CLOSE)
       } else {
-        const isOptional = scanner.scanIfString('?')
-        if (isOptional) {
-          scanner.scanAllWhitespace()
-        } else if (wasOptional) {
+        matchExpr = scanMatchPositionalReference(argIndex, scanner, parseNext)
+        argIndex += 1
+        if (positionalWasOptional && !matchExpr.isOptional) {
           throw new ParseError(
             scanner,
             'Required positional fields cannot come after optional fields in an object match expression',
           )
         }
-        const matchPosition = scanMatch(scanner, parseNext)
-        exprs.push({match: matchPosition, isOptional})
-        wasOptional = isOptional
+        positionalWasOptional = matchExpr.isOptional
       }
+      exprs.push(matchExpr)
 
       const shouldBreak = scanner.scanCommaOrBreak(
         OBJECT_CLOSE,
@@ -550,10 +591,21 @@ export function scanCase(scanner: Scanner, parseNext: ParseNext): Expressions.Ca
   const bodyExpression = parseNext('case-then')
   scanner.whereAmI(`case: ${bodyExpression}`)
 
+  let matchExpr: Expressions.MatchExpression
+  if (matches.length === 1) {
+    matchExpr = matches[0]
+  } else {
+    matchExpr = new Expressions.MatchAnyOneOfExpression(
+      [range0, scanner.charIndex],
+      precedingComments,
+      matches,
+    )
+  }
+
   return new Expressions.CaseExpression(
     [range0, scanner.charIndex],
     precedingComments,
-    matches,
+    matchExpr,
     bodyExpression,
   )
 }
@@ -612,4 +664,35 @@ function isStringList(scanner: Scanner) {
   scanStringLiteral(scanner)
   scanner.scanAllWhitespace()
   return scanner.is('|')
+}
+
+/**
+ * case SomeEnum.foo
+ * case SomeModule.Enum.foo
+ */
+function isQualifiedEnum(scanner: Scanner) {
+  // must have at least one type name
+  if (!isArgumentStartChar(scanner)) {
+    return false
+  }
+
+  // scan any number of module and enum names (we don't validate them here -
+  // scanAnyReference is a very accepting scan function)
+  while (isArgumentStartChar(scanner)) {
+    try {
+      scanAnyReference(scanner)
+    } catch (e) {
+      if (e instanceof ParseError) {
+        return false
+      }
+      throw e
+    }
+
+    if (!scanner.scanIfString('.')) {
+      return false
+    }
+  }
+
+  // and finally an enum start char
+  return isArgumentStartChar(scanner)
 }

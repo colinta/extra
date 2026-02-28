@@ -148,7 +148,7 @@ export type RelationshipAssign =
   | RelationshipReferenceMask
   | {type: 'array-access'; of: RelationshipFormula; index: RelationshipFormula}
   | {type: 'nullable-array-access'; of: RelationshipFormula; index: RelationshipFormula}
-  | {type: 'property-access'; of: RelationshipFormula; name: string}
+  | {type: 'property-access'; of: RelationshipFormula; name: string | number}
   | {type: 'nullable-property-access'; of: RelationshipFormula; name: string}
 
 export type RelationshipFormula =
@@ -246,7 +246,7 @@ export const relationshipFormula = {
   /**
    * foo.bar
    */
-  propertyAccess(of: RelationshipFormula, name: string): RelationshipAssign {
+  propertyAccess(of: RelationshipFormula, name: string | number): RelationshipAssign {
     return {type: 'property-access', of, name}
   },
   /**
