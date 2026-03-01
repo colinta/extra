@@ -370,7 +370,8 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       successText += '──╼━━━━╾──\n'
     }
 
-    const parsed = parseModule(formula)
+    // const parsed = parseModule(formula)
+    const parsed = parse(formula)
     if (parsed.isErr()) {
       successText += red(parsed.error.toString())
       return {type: 'error', text: successText}

@@ -4489,7 +4489,7 @@ function functionInvocationOperatorType(
   let positionIndex = 0
   let hasSpreadArrayType = false
   const hasSpreadDictName: Set<string> = new Set()
-  const argsResult = mapAll(
+  return mapAll(
     // argsList.args is an array of:
     // - NamedArgument `foo(bar: bar)`
     // - PositionalArgument `foo(bar)`
@@ -4584,108 +4584,110 @@ function functionInvocationOperatorType(
         }
       })
     }),
-  ).map(args => args.flat())
-
-  if (argsResult.isErr()) {
-    return err(argsResult.error)
-  }
-
-  const positional: Types.Type[] = []
-  const named: Map<string, Types.Type[]> = new Map()
-  const names: string[] = []
-  const spreadPositionalArguments: Types.Type[] = []
-  const spreadDictArguments: Map<string, Types.Type[]> = new Map()
-  const keywordListArguments: Types.Type[] = []
-
-  for (const [is, alias, type] of argsResult.value) {
-    if (is === 'spread-array') {
-      spreadPositionalArguments.push(type)
-    } else if (is === 'spread-dict') {
-      if (spreadDictArguments.has(alias)) {
-        spreadDictArguments.get(alias)!.push(type)
-      } else {
-        spreadDictArguments.set(alias, [type])
-      }
-    } else if (is === 'named-and-spread' && alias) {
-      // look in formulaType for an argument named 'alias', if it is a
-      // repeated-named-argument, treat this entry as an array of repeated
-      // entries
-      const repeatedNamedArg = formulaType.args.find(
-        arg => arg.is === 'repeated-named-argument' && arg.alias === alias,
-      )
-      if (repeatedNamedArg && type instanceof Types.ArrayType) {
-        named.set(alias, [type.of])
-        names.push(alias)
-      } else {
-        if (named.has(alias)) {
-          named.get(alias)!.push(type)
-        } else {
-          named.set(alias, [type])
-        }
-        names.push(alias)
-      }
-    } else if (alias) {
-      if (named.has(alias)) {
-        named.get(alias)!.push(type)
-      } else {
-        named.set(alias, [type])
-      }
-      names.push(alias)
-    } else {
-      positional.push(type)
-    }
-  }
-
-  let resolvedGenerics: Map<Types.GenericType, Types.GenericType> | undefined
-  if (formulaType.genericTypes.length) {
-    resolvedGenerics = new Map()
-    // for (const generic of formulaType.generics()) {
-    for (const generic of formulaType.genericTypes) {
-      resolvedGenerics.set(generic, generic.copy())
-    }
-    const argGenerics = argsResult.value.map(([_is, _alias, type]) => [...type.generics()]).flat()
-    for (const generic of argGenerics) {
-      resolvedGenerics.set(generic, generic.copy())
-    }
-  } else {
-    resolvedGenerics = undefined
-  }
-
-  const errorMessage = Types.checkFormulaArguments(
-    formulaType,
-    positional.length,
-    names,
-    function argumentAt(position: number) {
-      return positional[position]
-    },
-    function argumentsNamed(name: string) {
-      return named.get(name) ?? []
-    },
-    spreadPositionalArguments,
-    spreadDictArguments,
-    keywordListArguments,
-    resolvedGenerics,
   )
+    .map(args => args.flat())
+    .map(argsResult => {
+      const positional: Types.Type[] = []
+      const named: Map<string, Types.Type[]> = new Map()
+      const names: string[] = []
+      const spreadPositionalArguments: Types.Type[] = []
+      const spreadDictArguments: Map<string, Types.Type[]> = new Map()
+      const keywordListArguments: Types.Type[] = []
 
-  if (errorMessage) {
-    return err(new RuntimeError(formulaExpression, errorMessage))
-  }
+      for (const [is, alias, type] of argsResult) {
+        if (is === 'spread-array') {
+          spreadPositionalArguments.push(type)
+        } else if (is === 'spread-dict') {
+          if (spreadDictArguments.has(alias)) {
+            spreadDictArguments.get(alias)!.push(type)
+          } else {
+            spreadDictArguments.set(alias, [type])
+          }
+        } else if (is === 'named-and-spread' && alias) {
+          // look in formulaType for an argument named 'alias', if it is a
+          // repeated-named-argument, treat this entry as an array of repeated
+          // entries
+          const repeatedNamedArg = formulaType.args.find(
+            arg => arg.is === 'repeated-named-argument' && arg.alias === alias,
+          )
+          if (repeatedNamedArg && type instanceof Types.ArrayType) {
+            if (named.has(alias)) {
+              named.get(alias)!.push(type.of)
+            } else {
+              named.set(alias, [type.of])
+            }
+            names.push(alias)
+          } else {
+            if (named.has(alias)) {
+              named.get(alias)!.push(type)
+            } else {
+              named.set(alias, [type])
+            }
+            names.push(alias)
+          }
+        } else if (alias) {
+          if (named.has(alias)) {
+            named.get(alias)!.push(type)
+          } else {
+            named.set(alias, [type])
+          }
+          names.push(alias)
+        } else {
+          positional.push(type)
+        }
+      }
 
-  if (!resolvedGenerics) {
-    // this could easily be a generic type, for example, resolving the return type of a
-    // generic formula:
-    //     fn<T, U>(# v: T, # apply: fn(# in: T): U) => apply(v)
-    // resolves to 'U'. It's not until *this* formula is invoked that all the generics
-    // will (hopefully!) be resolved.
-    return ok(formulaType.returnType)
-  } else {
-    const resolved = formulaType.returnType.resolve(resolvedGenerics)
-    if (resolved.isErr()) {
-      return err(new RuntimeError(formulaExpression, resolved.error))
-    }
+      let resolvedGenerics: Map<Types.GenericType, Types.GenericType> | undefined
+      if (formulaType.genericTypes.length) {
+        resolvedGenerics = new Map()
+        // for (const generic of formulaType.generics()) {
+        for (const generic of formulaType.genericTypes) {
+          resolvedGenerics.set(generic, generic.copy())
+        }
+        const argGenerics = argsResult.map(([_is, _alias, type]) => [...type.generics()]).flat()
+        for (const generic of argGenerics) {
+          resolvedGenerics.set(generic, generic.copy())
+        }
+      } else {
+        resolvedGenerics = undefined
+      }
 
-    return ok(resolved.get())
-  }
+      const errorMessage = Types.checkFormulaArguments(
+        formulaType,
+        positional.length,
+        names,
+        function argumentAt(position: number) {
+          return positional[position]
+        },
+        function argumentsNamed(name: string) {
+          return named.get(name) ?? []
+        },
+        spreadPositionalArguments,
+        spreadDictArguments,
+        keywordListArguments,
+        resolvedGenerics,
+      )
+
+      if (errorMessage) {
+        return err(new RuntimeError(formulaExpression, errorMessage))
+      }
+
+      if (!resolvedGenerics) {
+        // this could easily be a generic type, for example, resolving the return type of a
+        // generic formula:
+        //     fn<T, U>(# v: T, # apply: fn(# in: T): U) => apply(v)
+        // resolves to 'U'. It's not until *this* formula is invoked that all the generics
+        // will (hopefully!) be resolved.
+        return ok(formulaType.returnType)
+      } else {
+        const resolved = formulaType.returnType.resolve(resolvedGenerics)
+        if (resolved.isErr()) {
+          return err(new RuntimeError(formulaExpression, resolved.error))
+        }
+
+        return ok(resolved.get())
+      }
+    })
 }
 
 // hasSpreadArrayType, spreadDictName, Result

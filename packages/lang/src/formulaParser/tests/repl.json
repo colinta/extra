@@ -386,6 +386,23 @@
       "expectedType": "0 | 1 | 2",
       "expectedValue": "1",
       "variables": []
+    },
+    {
+      "desc": "tuple invocation and spread args",
+      "formula": "foo(5, 6, bb: 5, ...tuple, bb: 3)\n-- foo(0, b: 'b', bb: 1)",
+      "expectedCode": "foo(5, 6, bb: 5, ...tuple, bb: 3)",
+      "expectedType": "String(length: >=14)",
+      "expectedValue": "'test=5:aa:[6, 0, 1, -1]:len(bb)=[5, 1, 2, 3]'",
+      "variables": [
+        [
+          "foo",
+          "fn(# a: Int, b: String, ...# aa: [Int], ...bb: [Int]) => b .. `=${a}:aa:${aa}:len(bb)=` .. $bb"
+        ],
+        [
+          "tuple",
+          "{0, 1, -1, b: 'test', bb: [1, 2]}"
+        ]
+      ]
     }
   ]
 }

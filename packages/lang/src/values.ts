@@ -1424,8 +1424,12 @@ export class TypeValue extends Value {
  */
 export class FormulaArgs {
   private _positional: Value[] = []
-  private _named: Map<string, Value[]> = new Map()
-  private _possibleSpread: Map<string, ArrayValue[]> = new Map()
+  /**
+   * We need to store whether the argument was passed as a spread tuple, in
+   * which case if the value being fetched is a repeated-named-arg, the return
+   * value is 'spread' out
+   */
+  private _named: Map<string, ['spread' | 'arg', Value][]> = new Map()
   readonly length: number
   readonly names: Set<string>
 
@@ -1438,21 +1442,9 @@ export class FormulaArgs {
 
       const prevNamed = this._named.get(alias)
       if (prevNamed) {
-        prevNamed.push(arg)
+        prevNamed.push([argType, arg])
       } else {
-        this._named.set(alias, [arg])
-      }
-
-      // if this spread-argument is being used in the context of a repeated-named-argument,
-      // then `safeAllNamed` will be used to fetch all the values. In that case,
-      // we "spread" this array, rather than return it as *one* of the values.
-      if (argType === 'spread' && arg instanceof ArrayValue) {
-        const prevPossibleSpread = this._possibleSpread.get(alias)
-        if (prevPossibleSpread) {
-          prevPossibleSpread.push(arg)
-        } else {
-          this._possibleSpread.set(alias, [arg])
-        }
+        this._named.set(alias, [[argType, arg]])
       }
     }
 
@@ -1496,14 +1488,14 @@ export class FormulaArgs {
   }
 
   safeNamed(name: string): Value | undefined {
-    return this._named.get(name)?.[0]
+    return this._named.get(name)?.[0][1]
   }
 
   named<V extends Value>(
     name: string,
     type?: new (...args: any[]) => V,
   ): Result<V, string | RuntimeError> {
-    const arg = this._named.get(name)?.[0]
+    const arg = this._named.get(name)?.[0][1]
     if (arg !== undefined) {
       if (type === undefined || arg instanceof type) {
         return ok(arg as V)
@@ -1518,12 +1510,20 @@ export class FormulaArgs {
   }
 
   safeAllNamed(name: string): Value[] {
-    const possibleSpread = this._possibleSpread.get(name)
-    if (possibleSpread) {
-      return possibleSpread.flatMap(v => v.values)
+    const args = this._named.get(name)
+    if (!args) {
+      return []
+    }
+    const values: Value[] = []
+    for (const [argType, arg] of args) {
+      if (argType === 'spread' && arg instanceof ArrayValue) {
+        values.push(...arg.values)
+      } else {
+        values.push(arg)
+      }
     }
 
-    return this._named.get(name) ?? []
+    return values
   }
 
   alias(index: number) {
