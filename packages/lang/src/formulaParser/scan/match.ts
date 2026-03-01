@@ -111,14 +111,7 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): MatchExpression {
     scanner.test(isNumberList) ||
     scanner.test(isStringList)
   ) {
-    const argType = scanArgumentType(scanner, 'argument_type', parseNext)
-    let assignRef: Expressions.Reference | undefined
-    if (scanner.test(isAsKeyword)) {
-      scanner.scanSpaces()
-      scanner.expectWord(AS_KEYWORD)
-      assignRef = scanValidLocalName(scanner)
-    }
-    return new Expressions.MatchTypeExpression(argType, assignRef)
+    return scanMatchType(scanner, parseNext)
   } else if (scanner.is(IGNORE_TOKEN)) {
     return scanMatchIgnore(scanner)
   } else if (scanner.is('/')) {
@@ -140,6 +133,17 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): MatchExpression {
   } else {
     throw new ParseError(scanner, `Invalid match expression (else) '${unexpectedToken(scanner)}'`)
   }
+}
+
+function scanMatchType(scanner: Scanner, parseNext: ParseNext) {
+  const argType = scanArgumentType(scanner, 'argument_type', parseNext)
+  let assignRef: Expressions.Reference | undefined
+  if (scanner.test(isAsKeyword)) {
+    scanner.scanSpaces()
+    scanner.expectWord(AS_KEYWORD)
+    assignRef = scanValidLocalName(scanner)
+  }
+  return new Expressions.MatchTypeExpression(argType, assignRef)
 }
 
 function scanMatchIgnore(scanner: Scanner) {

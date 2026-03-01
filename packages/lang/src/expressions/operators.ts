@@ -45,6 +45,7 @@ import {
   OR_OPERATOR,
 } from '@/formulaParser/grammars'
 import * as Expressions from './expressions'
+import {MatchExpression} from './match-expressions'
 import {
   comparisonOperation,
   expectedNumberMessage,
@@ -1743,7 +1744,7 @@ abstract class MatchOperator extends BinaryOperator {
     const [lhsExpr, rhsExpr] = this.args
 
     const formula = lhsExpr.relationshipFormula(runtime)
-    if (!formula || !(rhsExpr instanceof Expressions.MatchExpression)) {
+    if (!formula || !(rhsExpr instanceof MatchExpression)) {
       return ok([])
     }
 
@@ -1760,7 +1761,7 @@ abstract class MatchOperator extends BinaryOperator {
     const [lhsExpr, rhsExpr] = this.args
 
     const formula = lhsExpr.relationshipFormula(runtime)
-    if (!formula || !(rhsExpr instanceof Expressions.MatchExpression)) {
+    if (!formula || !(rhsExpr instanceof MatchExpression)) {
       return ok([])
     }
 
@@ -1784,7 +1785,7 @@ abstract class MatchOperator extends BinaryOperator {
     lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
-    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+    if (!(rhsExpr instanceof MatchExpression)) {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr, rhs)))
     }
 
@@ -1817,7 +1818,7 @@ abstract class MatchOperator extends BinaryOperator {
    */
   evalReturningRuntime(runtime: ValueRuntime): GetValueRuntimeResult {
     const [lhsExpr, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+    if (!(rhsExpr instanceof MatchExpression)) {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
     }
 
@@ -1836,7 +1837,7 @@ class MatchRefutationOperator extends MatchOperator {
 
   evalReturningRuntime(runtime: ValueRuntime): GetValueRuntimeResult {
     const [lhsExpr, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Expressions.MatchExpression)) {
+    if (!(rhsExpr instanceof MatchExpression)) {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr)))
     }
     return lhsExpr
