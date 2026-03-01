@@ -1091,13 +1091,13 @@ describe('match operator', () => {
       ]),
       c([
         Types.oneOf([
-          Types.object([Types.namedProp('bar', Types.array(Types.string()))]),
+          Types.object([Types.namedProp('bar', Types.array(Types.string(), {min: 2, max: 8}))]),
           Types.int(),
         ]),
         [],
         'foo is {bar: [head, ...tail]}',
         {
-          truthy: Types.array(Types.string()),
+          truthy: Types.array(Types.string(), {min: 1, max: 7}),
           typeOf: 'tail',
         },
       ]),

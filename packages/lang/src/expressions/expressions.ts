@@ -6943,6 +6943,24 @@ export class MatchArrayExpression extends MatchExpression {
     return allProvides(this.all())
   }
 
+  private calculateArrayInformation(subjectType: Types.ArrayType) {
+    const matchExprs = this.initialExprs
+      .concat(this.remainingExpr ? [this.remainingExpr] : [])
+      .concat(this.trailingExprs)
+    const minLength = this.initialExprs.length + this.trailingExprs.length
+    const maxLength = this.remainingExpr ? undefined : minLength
+    const remainingMin =
+      subjectType.narrowedLength.min === undefined
+        ? undefined
+        : Math.max(0, subjectType.narrowedLength.min - minLength)
+    const remainingMax =
+      subjectType.narrowedLength.max === undefined
+        ? undefined
+        : Math.max(0, subjectType.narrowedLength.max - minLength)
+    const remainingArray = Types.array(subjectType.of, {min: remainingMin, max: remainingMax})
+    return {matchExprs, minLength, maxLength, remainingArray}
+  }
+
   /**
    * Constructs and combines a map of all the match expressions to the narrowed
    * array type for that matcher.
@@ -6982,14 +7000,12 @@ export class MatchArrayExpression extends MatchExpression {
       return ok(undefined)
     }
 
-    const matchExprs = this.initialExprs
-      .concat(this.remainingExpr ? [this.remainingExpr] : [])
-      .concat(this.trailingExprs)
+    const {matchExprs, remainingArray} = this.calculateArrayInformation(subjectType)
     return mapAll(
       matchExprs.map(matchExpr => {
         // remainingExpr has special handling in many places - when narrowing with
         // narrowUsingMatcherType, remainingExpr needs an array type.
-        const arrayOfType = matchExpr === this.remainingExpr ? subjectType : subjectType.of
+        const arrayOfType = matchExpr === this.remainingExpr ? remainingArray : subjectType.of
         return matchExpr
           .narrowUsingMatcherType(runtime, arrayOfType)
           .map(matchType => [matchExpr, matchType] as const)
@@ -7011,11 +7027,8 @@ export class MatchArrayExpression extends MatchExpression {
       return ok(Types.NeverType)
     }
 
-    const minLength = this.initialExprs.length + this.trailingExprs.length
-    const maxLength = this.remainingExpr ? undefined : minLength
-    const matchExprs = this.initialExprs
-      .concat(this.remainingExpr ? [this.remainingExpr] : [])
-      .concat(this.trailingExprs)
+    const {matchExprs, minLength, maxLength, remainingArray} =
+      this.calculateArrayInformation(subjectType)
 
     if (!matchExprs.length) {
       return ok(subjectType.narrowLength(0, 0))
@@ -7031,7 +7044,7 @@ export class MatchArrayExpression extends MatchExpression {
 
       // remainingExpr has special handling in many places - when narrowing with
       // narrowUsingMatcherType, remainingExpr needs the original subjectType
-      const arrayOfType = matchExpr === this.remainingExpr ? subjectType : subjectType.of
+      const arrayOfType = matchExpr === this.remainingExpr ? remainingArray : subjectType.of
       return matchExpr.narrowUsingMatcherType(runtime, arrayOfType).map(narrowedType => {
         // remainingExpr has special handling in many places - here we expect an array type
         // but it could be NeverType

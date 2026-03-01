@@ -108,6 +108,26 @@ describe('narrowed types', () => {
       Types.int({min: 2, max: 4}),
       Types.oneOf([Types.literal(1), Types.int({min: 5, max: 7})]),
     ]),
+    c([Types.int({min: 1, max: 7}), 'foo is 1.5', Types.never(), Types.int({min: 1, max: 7})]),
+    c([Types.int({min: 1, max: 7}), 'foo is 1.0', Types.literal(1), Types.int({min: 2, max: 7})]),
+    c([
+      Types.int({min: 1, max: 7}),
+      'foo is 2..<5.5',
+      Types.int({min: 2, max: 5}),
+      Types.oneOf([Types.literal(1), Types.int({min: 6, max: 7})]),
+    ]),
+    c([
+      Types.int({min: 1, max: 7}),
+      'foo is 1.5..<5.5',
+      Types.int({min: 2, max: 5}),
+      Types.oneOf([Types.literal(1), Types.int({min: 6, max: 7})]),
+    ]),
+    c([
+      Types.int({min: 1, max: 7}),
+      'foo is 1.5<.<5.5',
+      Types.int({min: 2, max: 5}),
+      Types.oneOf([Types.literal(1), Types.int({min: 6, max: 7})]),
+    ]),
     //|
     //|  Float checks
     //|

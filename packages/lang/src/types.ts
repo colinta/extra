@@ -4303,6 +4303,22 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
     (lhsType.isFloat() && typeAssertion.isFloat()) ||
     (lhsType.isRange() && typeAssertion.isRange())
   ) {
+    if (
+      (lhsType.isInt() || lhsType.isIntRange()) &&
+      !(typeAssertion.isInt() || typeAssertion.isIntRange())
+    ) {
+      const narrowed = Narrowed.narrowedFloatToInt(typeAssertion.narrowed)
+      if (Narrowed.narrowedIsNever(narrowed)) {
+        return NeverType
+      }
+      if (Narrowed.isInNarrowedRange(narrowed, lhsType.narrowed)) {
+        if (lhsType.isRange()) {
+          return intRange(narrowed)
+        }
+        return int(narrowed)
+      }
+      return lhsType.narrow(narrowed.min, narrowed.max)
+    }
     // if typeAssertion is entirely within lhsType, return typeAssertion
     if (Narrowed.isInNarrowedRange(typeAssertion.narrowed, lhsType.narrowed)) {
       return typeAssertion
@@ -4323,11 +4339,6 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
  * "are not b"
  */
 export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
-  const narrowed = _narrowTypeIsNot(lhsType, typeAssertion)
-  return narrowed
-}
-
-function _narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
   if (lhsType instanceof OneOfType && typeAssertion instanceof OneOfType) {
     return oneOf(
       lhsType.of.flatMap(lhsOfType => {
@@ -4379,6 +4390,11 @@ function _narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
     (lhsType.isFloat() && typeAssertion.isFloat()) ||
     (lhsType.isRange() && typeAssertion.isRange())
   ) {
+    if (lhsType.isInt() || lhsType.isIntRange()) {
+      const narrowed = Narrowed.narrowedFloatToInt(typeAssertion.narrowed)
+      // no need to check if narrowed is a never range, exclude takes care of it
+      return lhsType.exclude(narrowed)
+    }
     return lhsType.exclude(typeAssertion.narrowed)
   }
 
