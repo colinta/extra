@@ -67,7 +67,6 @@ import {scanStringLiteral} from './string'
  *     { name: } -- name is assigned to 'name'
  *     { name: foo } -- name is assigned to 'foo'
  *     { name: _ }  -- name must be present, not assigned
- *     { name?: foo }  -- name is optional, assigned to foo
  *   Array:
  *     []  -- empty
  *     [foo] -- one item, assigned
@@ -161,19 +160,9 @@ function scanMatchReference(scanner: Scanner) {
 function scanMatchPositionalReference(index: number, scanner: Scanner, parseNext: ParseNext) {
   scanner.whereAmI(`scanMatchPositionalReference @ ${index}`)
   const arg0 = scanner.charIndex
-  const isOptional = scanner.scanIfString('?')
-  if (isOptional) {
-    scanner.scanAllWhitespace()
-  }
 
   const matchExpr = scanMatch(scanner, parseNext)
-  return new Expressions.MatchPositionalArgument(
-    [arg0, scanner.charIndex],
-    [],
-    index,
-    matchExpr,
-    isOptional,
-  )
+  return new Expressions.MatchPositionalArgument([arg0, scanner.charIndex], [], index, matchExpr)
 }
 
 function scanMatchNamedReference(scanner: Scanner, parseNext: ParseNext, closer: string) {
@@ -182,12 +171,6 @@ function scanMatchNamedReference(scanner: Scanner, parseNext: ParseNext, closer:
   const precedingComments = scanner.flushComments()
   const nameRef = scanAnyReference(scanner)
   scanner.scanSpaces()
-  let isOptional = false
-  // objects (only) support optional named arguments
-  if (closer === OBJECT_CLOSE && scanner.scanIfString('?')) {
-    isOptional = true
-    scanner.scanSpaces()
-  }
   scanner.expectString(ARG_SEPARATOR)
   // only scan spaces for now, so that we can check for \n in the shorthand check
   //     case {name: }  -- terminated with 'closer'
@@ -214,7 +197,6 @@ function scanMatchNamedReference(scanner: Scanner, parseNext: ParseNext, closer:
     precedingComments,
     nameRef.name,
     reference,
-    isOptional,
   )
 }
 
@@ -448,7 +430,6 @@ function scanMatchObject(scanner: Scanner, parseNext: ParseNext) {
   const range0 = scanner.charIndex
   scanner.expectString(OBJECT_OPEN)
   scanner.scanAllWhitespace()
-  let positionalWasOptional = false
   let argIndex = 0
   if (!scanner.scanIfString(OBJECT_CLOSE)) {
     for (;;) {
@@ -458,13 +439,6 @@ function scanMatchObject(scanner: Scanner, parseNext: ParseNext) {
       } else {
         matchExpr = scanMatchPositionalReference(argIndex, scanner, parseNext)
         argIndex += 1
-        if (positionalWasOptional && !matchExpr.isOptional) {
-          throw new ParseError(
-            scanner,
-            'Required positional fields cannot come after optional fields in an object match expression',
-          )
-        }
-        positionalWasOptional = matchExpr.isOptional
       }
       exprs.push(matchExpr)
 

@@ -77,15 +77,11 @@ describe('match operator', () => {
       c(['foo is /(?<name>a+)/']),
       c(['foo is {}']),
       c(['foo is {Int}']),
-      c(['foo is {foo}']),
-      c(['foo is {?foo}']),
-      c(['foo is {a, ?foo}']),
-      c(['foo is {?a, ?foo}']),
+      c(['foo is {Int as var}']),
+      c(['foo is {var}']),
       c(['foo is {name: _}']),
-      c(['foo is {name?: _}']),
       c(['foo is {name:}']),
-      c(['foo is {name?:}']),
-      c(['foo is {name: foo}']),
+      c(['foo is {name: var}']),
       c(['foo is {name: _, address:}']),
     ).run(([formula, expectedLisp], {only, skip}) => {
       ;(only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {

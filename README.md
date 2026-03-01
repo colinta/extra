@@ -542,7 +542,7 @@ _ --> same but ignore the value
 "foo" --> string literal
 "<" .. tag .. ">"  --> prefixed/suffixed string (assigns middle to 'tag')
 
-/^<(?<tag>.*)>$/   --> matches a regex, assigns 'tag' the named capture group contents
+/^<(?<tag>.*)>$/   --> matches a regex, assigns named capture group to variable 'tag'
 
 [] --> matches an empty array
 [a, _, b] --> matches an array with exactly least 3 items
@@ -550,6 +550,10 @@ _ --> same but ignore the value
 
 .blue --> matches an enum case
 .rgb(r,g,b) --> matches and assigns values
+
+{name:, address:} --> matches the object if it has properties name: and
+                  --> address:, and assigns to 'name' and 'address' variables
+
 ```
 
 ###### Numbers
@@ -605,11 +609,14 @@ enum Permission {
   .sudo
   .sure-why-not
   .readonly
+  .special(level: Int)
 }
 
 switch permission
 case .sudo, .readonly
   true
+case .special(level:)
+  level > 10
 else
   false
 ```

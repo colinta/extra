@@ -5183,7 +5183,6 @@ abstract class MatchArgumentExpression extends MatchExpression {
     range: Range,
     precedingComments: Comment[],
     readonly matchExpr: MatchExpression,
-    readonly isOptional: boolean,
   ) {
     super(range, precedingComments)
   }
@@ -5238,9 +5237,8 @@ export class MatchNamedArgument extends MatchArgumentExpression {
     precedingComments: Comment[],
     readonly name: string,
     readonly matchExpr: MatchExpression,
-    readonly isOptional: boolean,
   ) {
-    super(range, precedingComments, matchExpr, isOptional)
+    super(range, precedingComments, matchExpr)
   }
 
   compileWithSubject(
@@ -5249,24 +5247,20 @@ export class MatchNamedArgument extends MatchArgumentExpression {
   ): GetRuntimeResult<Nodes.MatchNamedArgument> {
     return this.matchExpr
       .compileWithSubject(runtime, subjectType)
-      .map(
-        matchNode =>
-          new Nodes.MatchNamedArgument(toSource(this), this.name, matchNode, this.isOptional),
-      )
+      .map(matchNode => new Nodes.MatchNamedArgument(toSource(this), this.name, matchNode))
   }
 
   toLisp() {
-    return `(${this.name}${this.isOptional ? '?' : ''}: ${this.matchExpr.toLisp()})`
+    return `(${this.name}: ${this.matchExpr.toLisp()})`
   }
 
   toCode() {
-    const colon = this.isOptional ? '?:' : ':'
     if (this.matchExpr instanceof MatchReference && this.matchExpr.name === this.name) {
       // special case for {name: name} shorthand
-      return this.name + colon
+      return this.name + ':'
     }
 
-    return `${this.name}${colon} ${this.matchExpr.toCode()}`
+    return `${this.name}: ${this.matchExpr.toCode()}`
   }
 }
 
@@ -5286,9 +5280,8 @@ export class MatchPositionalArgument extends MatchArgumentExpression {
     precedingComments: Comment[],
     readonly index: number,
     readonly matchExpr: MatchExpression,
-    readonly isOptional: boolean,
   ) {
-    super(range, precedingComments, matchExpr, isOptional)
+    super(range, precedingComments, matchExpr)
   }
 
   compileWithSubject(
@@ -5297,17 +5290,15 @@ export class MatchPositionalArgument extends MatchArgumentExpression {
   ): GetRuntimeResult<Nodes.MatchPositionalArgument> {
     return this.matchExpr
       .compileWithSubject(runtime, subjectType)
-      .map(
-        matchNode => new Nodes.MatchPositionalArgument(toSource(this), matchNode, this.isOptional),
-      )
+      .map(matchNode => new Nodes.MatchPositionalArgument(toSource(this), matchNode))
   }
 
   toLisp() {
-    return `(${this.isOptional ? '?' : ''}${this.matchExpr.toLisp()})`
+    return `(${this.matchExpr.toLisp()})`
   }
 
   toCode() {
-    return `${this.isOptional ? '?' : ''}${this.matchExpr.toCode()}`
+    return this.matchExpr.toCode()
   }
 }
 
@@ -6432,9 +6423,7 @@ export class MatchEnumExpression extends MatchExpression {
             argType = enumCase.positionalTypes.at(argIndex)
           }
 
-          if (!argType && arg.isOptional) {
-            return ok(undefined)
-          } else if (!argType) {
+          if (!argType) {
             return err(
               new RuntimeError(this, `No argument type for '${argKey}' of ${enumType.toCode()}`),
             )
@@ -6444,7 +6433,7 @@ export class MatchEnumExpression extends MatchExpression {
             if (node instanceof Nodes.MatchNamedArgument) {
               return node
             } else {
-              return new Nodes.MatchPositionalArgument(toSource(this), node, arg.isOptional)
+              return new Nodes.MatchPositionalArgument(toSource(this), node)
             }
           })
         }),
@@ -6543,9 +6532,7 @@ export class MatchObjectExpression extends MatchExpression {
         argIndex += 1
       }
 
-      if (matchExpr.isOptional && !propType) {
-        continue
-      } else if (!propType) {
+      if (!propType) {
         // propType is required in the matcher, but this ObjectType doesn't
         // define it. this is a "neverMatches" case, if there was such a thing.
         return false
@@ -6579,8 +6566,7 @@ export class MatchObjectExpression extends MatchExpression {
    * - Iterate over all the matchExpressions.
    * - Get the corresponding type from the ObjectType, either named or
    *   positional
-   * - If the prop doesn't exist, either continue (isOptional) or abort (return
-   *   NeverType)
+   * - If the prop doesn't exist, abort (return NeverType)
    * - Narrow the propType using
    *   `matchExpr.narrowUsingMatcherTypeSkippingOneOf(runtime, propType)`
    * - Replace the prop on the original ObjectType.
@@ -6615,8 +6601,6 @@ export class MatchObjectExpression extends MatchExpression {
           return matchExpr
             .narrowUsingMatcherType(runtime, propType)
             .map(type => subjectType.replacingProp(propName, type))
-        } else if (matchExpr.isOptional) {
-          return ok(subjectType)
         } else {
           return ok(undefined)
         }
@@ -6651,10 +6635,6 @@ export class MatchObjectExpression extends MatchExpression {
         prop = matchExpr.name
       } else {
         prop = argIndex++
-      }
-
-      if (matchExpr.isOptional) {
-        continue
       }
 
       const errorType = matchedObjectType.find(type => type.literalAccessType(prop) === undefined)
@@ -6754,11 +6734,7 @@ export class MatchObjectExpression extends MatchExpression {
 
       const propType = type.literalAccessType(prop)
       if (!propType) {
-        if (matchExpr.isOptional) {
-          continue
-        } else {
-          return ok(Types.NeverType)
-        }
+        return ok(Types.NeverType)
       } else {
         objectType = objectType.replacingProp(prop, propType).get()
       }
@@ -6830,9 +6806,7 @@ export class MatchObjectExpression extends MatchExpression {
           }
           argType = types.get(argKey)
 
-          if (!argType && arg.isOptional) {
-            return ok(undefined)
-          } else if (!argType) {
+          if (!argType) {
             return err(
               new RuntimeError(this, `No argument type for '${argKey}' of ${objectType.toCode()}`),
             )
@@ -6842,7 +6816,7 @@ export class MatchObjectExpression extends MatchExpression {
             if (node instanceof Nodes.MatchNamedArgument) {
               return node
             } else {
-              return new Nodes.MatchPositionalArgument(toSource(this), node, arg.isOptional)
+              return new Nodes.MatchPositionalArgument(toSource(this), node)
             }
           })
         }),

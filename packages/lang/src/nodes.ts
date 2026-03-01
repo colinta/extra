@@ -687,7 +687,6 @@ export abstract class MatchArgument extends CaseMatch {
   constructor(
     readonly source: Source,
     readonly match: CaseMatch,
-    readonly isOptional: boolean,
   ) {
     super(source, match.type)
   }
@@ -698,16 +697,14 @@ export abstract class MatchArgument extends CaseMatch {
  * object property matches the named argument
  *     case .rgb(red: 0)
  *     case {red: 0}
- *     case {red?: 0} -- optional
  */
 export class MatchNamedArgument extends MatchArgument {
   constructor(
     readonly source: Source,
     readonly name: string,
     readonly match: CaseMatch,
-    readonly isOptional: boolean,
   ) {
-    super(source, match, isOptional)
+    super(source, match)
   }
 }
 
@@ -716,15 +713,13 @@ export class MatchNamedArgument extends MatchArgument {
  * object property matches the positional argument
  *     case .rgb(0)
  *     case {0}
- *     case {?0} -- optional
  */
 export class MatchPositionalArgument extends MatchArgument {
   constructor(
     readonly source: Source,
     readonly match: CaseMatch,
-    readonly isOptional: boolean,
   ) {
-    super(source, match, isOptional)
+    super(source, match)
   }
 }
 
