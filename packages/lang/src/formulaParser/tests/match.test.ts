@@ -53,14 +53,6 @@ describe('match operator', () => {
       c(['foo is 0']),
       c(['foo is 0 | 1 | 2', '(is foo (0 | 1 | 2))']),
       c(["foo is 'test'"]),
-      c(['foo is .some']),
-      c(['foo is .some(_)']),
-      c(['foo is .some(_, _)']),
-      c(['foo is .some(value)']),
-      c(['foo is .some(name: value, value2)']),
-      c(['foo is .some(value, ...)']),
-      c(['foo is .some(...)']),
-      c(['foo is .some(name: value, ...)']),
       c(["foo is 'a' | 'b' | 'c'", "(is foo ('a' | 'b' | 'c'))"]),
       c(["foo is 'test' .. value"]),
       c(["foo is value .. 'test'"]),
@@ -75,14 +67,25 @@ describe('match operator', () => {
       c(['foo is [a] or foo is [a, _]']),
       c(['foo is /a/']),
       c(['foo is /(?<name>a+)/']),
+      c(['foo is .some']),
+      c(['foo is .some(_)']),
+      c(['foo is .some(_, _)']),
+      c(['foo is .some(value)']),
+      c(['foo is .some(name: value, value2)']),
+      c(['foo is .some(value, ...)']),
+      c(['foo is .some(...)']),
+      c(['foo is .some(name: value, ...)']),
       c(['foo is {}']),
       c(['foo is {Int}']),
+      c(['foo is {Int, ...}']),
       c(['foo is {Int as var}']),
       c(['foo is {var}']),
       c(['foo is {name: _}']),
       c(['foo is {name:}']),
       c(['foo is {name: var}']),
       c(['foo is {name: _, address:}']),
+      c(['foo is User{}']),
+      c(['foo is User{name:}']),
     ).run(([formula, expectedLisp], {only, skip}) => {
       ;(only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         const expectedCode = formula
@@ -99,12 +102,15 @@ describe('match operator', () => {
   describe('getType / eval', () => {
     const Ints = Types.anonymousEnumDefinition([Types.enumCase('zero'), Types.enumCase('one')])
     const LiteralInts = Types.oneOf([Types.literal(0), Types.literal(1)])
+    const UserStruct = Types.namedObject('User', [Types.namedProp('name', Types.string())])
+
     beforeEach(() => {
       runtimeTypes['Ints'] = [Types.typeConstructor('Ints', Ints), Values.string('test')]
       runtimeTypes['LiteralInts'] = [
         Types.typeConstructor('LiteralInts', LiteralInts),
         Values.string('test'),
       ]
+      runtimeTypes['User'] = [Types.typeConstructor('User', UserStruct), Values.string('test')]
     })
 
     cases<
@@ -1047,9 +1053,48 @@ describe('match operator', () => {
       c([
         Types.oneOf([Types.object([Types.namedProp('bar', Types.string())]), Types.int()]),
         [],
-        'foo is {}',
+        'foo is Object',
         {
           truthy: Types.object([Types.namedProp('bar', Types.string())]),
+          falsey: Types.int(),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.object([Types.namedProp('bar', Types.string())]), Types.int()]),
+        [],
+        'foo is {...}',
+        {
+          truthy: Types.object([Types.namedProp('bar', Types.string())]),
+          falsey: Types.int(),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.object([]), Types.int()]),
+        [],
+        'foo is {...}',
+        {
+          truthy: Types.object([]),
+          falsey: Types.int(),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.object([Types.namedProp('bar', Types.string())]), Types.int()]),
+        [],
+        'foo is {}',
+        {
+          truthy: Types.never(),
+          falsey: Types.oneOf([
+            Types.object([Types.namedProp('bar', Types.string())]),
+            Types.int(),
+          ]),
+        },
+      ]),
+      c([
+        Types.oneOf([Types.object([]), Types.int()]),
+        [],
+        'foo is {}',
+        {
+          truthy: Types.object([]),
           falsey: Types.int(),
         },
       ]),
@@ -1115,11 +1160,40 @@ describe('match operator', () => {
           Types.int(),
         ]),
         [],
-        'foo is {bar}',
+        'foo is {bar, ...}',
         {
           truthy: Types.int(),
           falsey: Types.never(),
           typeOf: 'bar',
+        },
+      ]),
+      c([
+        Types.oneOf([
+          Types.object([Types.positionalProp(Types.int()), Types.namedProp('bar', Types.string())]),
+          Types.int(),
+        ]),
+        [],
+        'foo is {bar}',
+        {
+          truthy: Types.never(),
+          falsey: Types.oneOf([
+            Types.object([
+              Types.positionalProp(Types.int()),
+              Types.namedProp('bar', Types.string()),
+            ]),
+            Types.int(),
+          ]),
+          typeOf: 'foo',
+        },
+      ]),
+      c([
+        Types.oneOf([UserStruct, Types.int()]),
+        [],
+        'foo is User{name:}',
+        {
+          truthy: UserStruct,
+          falsey: Types.int(),
+          typeOf: 'foo',
         },
       ]),
     ).run(([fooType, values, formula, expectedTypes], {only, skip}) => {
@@ -1273,6 +1347,11 @@ describe('match operator', () => {
         'foo is [bar] or foo',
         [['foo', Types.array(Types.string())]],
         "Invalid expressions in 'or'. 'foo is [bar]' assigns to 'bar', but 'foo' does not.",
+      ]),
+      c([
+        '1 is {a, ..., b}',
+        [],
+        "Remaining match '...' must be the last argument in the object match expression",
       ]),
     ).run(([formula, values, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not parse ${formula}`, () => {

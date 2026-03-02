@@ -1945,6 +1945,7 @@ export class MatchEnumExpression extends MatchExpression {
               this.enumName,
               this.name,
               args,
+              this.ignoreRemaining,
             ),
         )
     })
@@ -1996,27 +1997,37 @@ export class MatchEnumExpression extends MatchExpression {
 }
 /**
  * foo is {}
- * foo is {name: _} {name:} {name: foo} {name?: _}
- * foo is {a, b, _, bar:}
+ * foo is {name: _} {name:, ...} {name: foo} {name?: _}
+ * foo is {a, b, _, bar:, ...}
+ * foo is User{name:}
+ * foo is User{a, b, _, bar:}
  */
 
 export class MatchObjectExpression extends MatchExpression {
+  readonly ignoreRemaining: boolean
+
   constructor(
     range: Range,
     precedingComments: Comment[],
+    readonly typeName: Reference | undefined,
     readonly exprs: (MatchNamedArgument | MatchPositionalArgument)[],
+    ignoreRemaining: boolean,
   ) {
     super(range, precedingComments)
+    this.ignoreRemaining = ignoreRemaining || !!this.typeName
   }
 
   alwaysMatches(lhs: Types.Type): boolean {
     if (lhs instanceof Types.OneOfType) {
-      return lhs.of.every(type => this.alwaysMatches(lhs))
+      return lhs.of.every(type => this.alwaysMatches(type))
     }
 
     if (!(lhs instanceof Types.ObjectType)) {
       return false
     }
+
+    const names = new Set(lhs.namedTypes.keys())
+    let positions = lhs.positionalTypes.size
 
     let argIndex = 0
     for (const matchExpr of this.exprs) {
@@ -2024,9 +2035,11 @@ export class MatchObjectExpression extends MatchExpression {
       const matcher: MatchExpression = matchExpr.matchExpr
       if (matchExpr instanceof MatchNamedArgument) {
         propType = lhs.literalAccessType(matchExpr.name)
+        names.delete(matchExpr.name)
       } else {
         propType = lhs.literalAccessType(argIndex)
         argIndex += 1
+        positions -= 1
       }
 
       if (!propType) {
@@ -2038,6 +2051,10 @@ export class MatchObjectExpression extends MatchExpression {
       if (!matcher.alwaysMatches(propType)) {
         return false
       }
+    }
+
+    if (!this.ignoreRemaining && (names.size || positions)) {
+      return false
     }
 
     return true
@@ -2076,6 +2093,34 @@ export class MatchObjectExpression extends MatchExpression {
       return ok(Types.NeverType)
     }
 
+    const typeResult = mapOptional(
+      this.typeName ? getChildAsTypeExpression(this, this.typeName, runtime) : undefined,
+    )
+    if (typeResult.isErr()) {
+      return err(typeResult.error)
+    }
+    const typeAssert = typeResult.value
+    if (typeAssert && !Types.canBeAssignedTo(subjectType, typeAssert)) {
+      return ok(Types.NeverType)
+    }
+
+    // do an exhaustive check first
+    if (!this.ignoreRemaining) {
+      const names = new Set(subjectType.namedTypes.keys())
+      let positions = subjectType.positionalTypes.size
+      for (const matchExpr of this.exprs) {
+        if (matchExpr instanceof MatchNamedArgument) {
+          names.delete(matchExpr.name)
+        } else {
+          positions -= 1
+        }
+      }
+
+      if (names.size || positions) {
+        return ok(Types.NeverType)
+      }
+    }
+
     return reduceAll(
       subjectType as Types.ObjectType | undefined,
       this.exprs,
@@ -2102,7 +2147,15 @@ export class MatchObjectExpression extends MatchExpression {
           return ok(undefined)
         }
       },
-    ).map(objectType => objectType ?? Types.NeverType)
+    ).map(objectType => {
+      if (objectType === undefined) {
+        return Types.NeverType
+      } else if (typeAssert) {
+        return typeAssert
+      } else {
+        return objectType
+      }
+    })
   }
 
   private earlyExitCheck(
@@ -2207,39 +2260,6 @@ export class MatchObjectExpression extends MatchExpression {
     })
   }
 
-  private gimmeTrueTypes(type: Types.Type): GetTypeResult {
-    if (type instanceof Types.OneOfType) {
-      return mapAll(
-        type.of
-          .filter(ofType => ofType instanceof Types.ObjectType)
-          .map(objectType => this.gimmeTrueTypes(objectType)),
-      ).map(types => Types.oneOf(types))
-    } else if (!(type instanceof Types.ObjectType)) {
-      return ok(Types.NeverType)
-    }
-
-    let objectType = type
-    let argIndex = 0
-    for (const matchExpr of this.exprs) {
-      let prop: string | number
-      if (matchExpr instanceof MatchNamedArgument) {
-        prop = matchExpr.name
-      } else {
-        prop = argIndex
-        argIndex += 1
-      }
-
-      const propType = type.literalAccessType(prop)
-      if (!propType) {
-        return ok(Types.NeverType)
-      } else {
-        objectType = objectType.replacingProp(prop, propType).get()
-      }
-    }
-
-    return ok(objectType)
-  }
-
   gimmeFalseStuffWith(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
@@ -2319,7 +2339,7 @@ export class MatchObjectExpression extends MatchExpression {
         }),
       )
         .map(args => args.filter(arg => arg !== undefined))
-        .map(args => new Nodes.MatchObject(toSource(this), objectType, args))
+        .map(args => new Nodes.MatchObject(toSource(this), objectType, args, this.ignoreRemaining))
     })
   }
 
@@ -2337,22 +2357,31 @@ export class MatchObjectExpression extends MatchExpression {
   }
 
   toLisp() {
-    const args = this.all().map(arg => arg.toLisp())
+    const exprCode = this.all().map(arg => arg.toLisp())
+    if (this.ignoreRemaining && !this.typeName) {
+      exprCode.push('...')
+    }
 
-    return `{${args.join(' ')}}`
+    return `{${this.typeName ? this.typeName.toLisp() + ' ' : ''}${exprCode.join(' ')}}`
   }
 
   toCode() {
-    let code = '{'
+    let code = `${this.typeName?.toCode() ?? ''}{`
     let first = true
-    for (const matchExpr of this.exprs) {
+    const exprCode = this.exprs.map(expr => expr.toCode())
+    if (this.ignoreRemaining && !this.typeName) {
+      exprCode.push('...')
+    }
+
+    for (const matchCode of exprCode) {
       if (!first) {
         code += ', '
       }
       first = false
-      code += matchExpr.toCode()
+      code += matchCode
     }
     code += '}'
+
     return code
   }
 }
@@ -2384,13 +2413,15 @@ export class MatchArrayExpression extends MatchExpression {
 
   alwaysMatches(lhs: Types.Type): boolean {
     if (lhs instanceof Types.OneOfType) {
-      return lhs.of.every(type => this.alwaysMatches(lhs))
+      return lhs.of.every(type => this.alwaysMatches(type))
     }
+
     if (!(lhs instanceof Types.ArrayType)) {
       return false
     }
-    if (this.remainingExpr) {
-      return this.remainingExpr.alwaysMatches(lhs.of)
+
+    if (this.remainingExpr && !this.remainingExpr.alwaysMatches(lhs.of)) {
+      return false
     }
 
     const minLength = this.initialExprs.length + this.trailingExprs.length

@@ -122,8 +122,6 @@ export type ExpressionType =
   | 'view_property' // view property
   | 'argument_type' // argument types, like Int, Array<Int>, String[:], (Int | String)
 
-export type ArgumentType = 'module_type_definition' | 'argument_type'
-
 export type Options = {
   debug?: number
   isInPipe?: boolean

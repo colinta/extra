@@ -88,7 +88,7 @@ export function scanObject(
       entry.followingComments.push(...followingComments)
       props.push(entry)
       scanner.whereAmI(`scanObjectArg: ...${expression}`)
-    } else if (isNamedObjectArgument(scanner)) {
+    } else if (scanner.test(isNamedObjectArgument)) {
       const nameComments = scanner.flushComments()
       scanner.whereAmI('nameComments: ' + nameComments)
       const dictName = scanAnyReference(scanner)
@@ -482,13 +482,11 @@ function scanDictKey(
 }
 
 function isNamedObjectArgument(scanner: Scanner) {
-  return scanner.test(() => {
-    // check for key: ...
-    if (!isArgumentStartChar(scanner)) {
-      return false
-    }
-    scanIdentifier(scanner)
-    scanner.scanSpaces() // if we hit a newline, we should treat it as a tuple value
-    return scanner.is(DICT_SEPARATOR)
-  })
+  // check for key: ...
+  if (!isArgumentStartChar(scanner)) {
+    return false
+  }
+  scanIdentifier(scanner)
+  scanner.scanSpaces() // if we hit a newline, we should treat it as a tuple value
+  return scanner.is(DICT_SEPARATOR)
 }

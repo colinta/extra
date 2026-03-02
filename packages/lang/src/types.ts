@@ -3734,6 +3734,29 @@ export class NamedObjectType extends ObjectType {
     super(props)
   }
 
+  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
+    const props: ObjectProp[] = []
+    for (const arg of this.props) {
+      const {type} = arg
+      const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)
+      if (resolved.isErr()) {
+        return err(resolved.error)
+      }
+      props.push({
+        ...arg,
+        type: resolved.get(),
+      })
+    }
+    return ok(new NamedObjectType(this.name, props))
+  }
+
+  /**
+   * Returns a copy of the NamedObjectType, deferring to ObjectType.replacingProps
+   */
+  replacingProp(propName: string | number, type: Type): Guarantee<NamedObjectType, any> {
+    return ok(new NamedObjectType(this.name, this.replacingProps(propName, type).value))
+  }
+
   defaultInferredClassProp() {
     return new NamedObjectType(
       this.name,
@@ -5124,13 +5147,16 @@ export function canBeAssignedTo(
     testType instanceof EnumInstanceType &&
     assignTo instanceof AnonymousEnumDefinitionType
   ) {
-    if (testType.enumDefinition !== assignTo) {
-      return why(
-        false,
-        `Incompatible types in enum. '${testType.enumDefinition.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
-      )
-    }
-    return true
+    return why(
+      testType.enumDefinition === assignTo,
+      `Incompatible types in enum. '${testType.enumDefinition.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
+    )
+  } else if (assignTo instanceof NamedObjectType) {
+    // this is akin to a 'struct' assignment.
+    return why(
+      testType === assignTo,
+      `Incompatible object types. '${testType.toCode()}' cannot be assigned to struct '${assignTo.toCode()}'.`,
+    )
   } else if (testType instanceof ObjectType && assignTo instanceof ObjectType) {
     const assignToTupleProps: PositionalProp[] = []
     const assignToNamedProps: NamedProp[] = []

@@ -81,7 +81,7 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
  */
 export function scanValidLocalName(scanner: Scanner): Expressions.Reference {
   const ref = scanValidName(scanner)
-  if (!isValidLowercased(ref.name)) {
+  if (!isValidLocalName(ref.name)) {
     throw new ParseError(
       scanner,
       `Invalid reference name '${ref.name}'. References must start with a lowercased letter.`,
@@ -96,7 +96,7 @@ export function scanValidLocalName(scanner: Scanner): Expressions.Reference {
  */
 export function scanValidViewName(scanner: Scanner): Expressions.Reference {
   const ref = scanValidName(scanner)
-  if (!isValidUppercased(ref.name)) {
+  if (!isValidTypeName(ref.name)) {
     throw new ParseError(
       scanner,
       `Invalid view name '${ref.name}'. Views must start with an uppercased letter.`,
@@ -111,7 +111,7 @@ export function scanValidViewName(scanner: Scanner): Expressions.Reference {
  */
 export function scanValidTypeName(scanner: Scanner): Expressions.Reference {
   const ref = scanValidName(scanner)
-  if (!isValidUppercased(ref.name)) {
+  if (!isValidTypeName(ref.name)) {
     throw new ParseError(
       scanner,
       `Invalid type name '${ref.name}'. Types must start with an uppercased letter.`,
@@ -129,7 +129,7 @@ export function scanValidTypeName(scanner: Scanner): Expressions.Reference {
 export function scanValidClassPropertyName(scanner: Scanner): Expressions.Reference {
   const isState = scanner.scanIfString(STATE_START)
   const ref = scanValidName(scanner)
-  if (!isValidLowercased(ref.name)) {
+  if (!isValidLocalName(ref.name)) {
     const name = (isState ? STATE_START : '') + ref.name
     throw new ParseError(
       scanner,
@@ -317,10 +317,10 @@ export function scanAnyReference(scanner: Scanner): Expressions.Reference {
  * This just checks for *not* uppercased, because we do want to allow emoji as
  * valid start characters. Blame Surma for that one. 🫡
  */
-function isValidLowercased(str: string) {
+export function isValidLocalName(str: string) {
   return !/^[A-Z]/.test(str)
 }
 
-function isValidUppercased(str: string) {
+export function isValidTypeName(str: string) {
   return /^[A-Z]/.test(str)
 }

@@ -348,7 +348,8 @@ export function isViewStart(input: string) {
 
 /**
  * `isRef` allows for variables named "like-this" *or* "like_this", because I've
- * always admired that in Lisp.
+ * always admired that in Lisp. Also allows upper-case, even though 'reference'
+ * typically refers to a lowercase name.
  *
  * But not as the first character, because -like-this --> -(like-this)
  */

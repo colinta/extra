@@ -787,6 +787,7 @@ export class MatchEnum extends CaseMatch {
     readonly enumName: string | undefined,
     readonly caseName: string,
     readonly args: (MatchNamedArgument | MatchPositionalArgument)[] | undefined,
+    readonly ignoreRemaining: boolean,
   ) {
     super(source, Types.AlwaysType)
   }
@@ -803,6 +804,7 @@ export class MatchObject extends CaseMatch {
     readonly source: Source,
     readonly type: Types.Type,
     readonly args: (MatchNamedArgument | MatchPositionalArgument)[],
+    readonly ignoreRemaining: boolean,
   ) {
     super(source, type)
   }

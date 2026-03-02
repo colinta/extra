@@ -27,7 +27,12 @@ import {ParseError, type ParseNext} from '../types'
 import {scanArgumentType} from './argument_type'
 
 import {unexpectedToken} from './basics'
-import {scanAnyReference, scanValidLocalName, scanValidTypeName} from './identifier'
+import {
+  isValidLocalName,
+  scanAnyReference,
+  scanValidLocalName,
+  scanValidTypeName,
+} from './identifier'
 import {scanNumber} from './number'
 import {scanRegex} from './regex'
 import {scanStringLiteral} from './string'
@@ -62,11 +67,6 @@ import {scanStringLiteral} from './string'
  *     /foo/ -- regex literal
  *     /foo/i -- regex literal with flags
  *     /(?<name>foo)/ -- regex with named group - foo is assigned the matching regular expression
- *   Object:
- *     { } -- any fields
- *     { name: } -- name is assigned to 'name'
- *     { name: foo } -- name is assigned to 'foo'
- *     { name: _ }  -- name must be present, not assigned
  *   Array:
  *     []  -- empty
  *     [foo] -- one item, assigned
@@ -75,6 +75,13 @@ import {scanStringLiteral} from './string'
  *     [ foo, ..., last ] -- at least 2 items, first and last are assigned
  *     [ foo, ...items ] -- first is assigned, remainder are in items
  *     [ ...items, z1, z0 ] -- last two are assigned, remainder are in items
+ *   Object or Class:
+ *     { } -- just makes sure it's an object
+ *     { name: } -- name is assigned to 'name'
+ *     { name: foo } -- name is assigned to 'foo'
+ *     { name: _ }  -- name must be present, not assigned
+ *   Named Object or Class:
+ *     User(name:)  -- Type is User, assign name
  *   TODO: Dict, Set
  */
 export function scanMatch(scanner: Scanner, parseNext: ParseNext): MatchExpression {
@@ -98,12 +105,17 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): MatchExpression {
 
   if (scanner.test(isQualifiedEnum)) {
     return scanMatchEnum(scanner, parseNext)
+  } else if (scanner.test(isMatchNamedObject)) {
+    // scans User{...}
+    return scanMatchObject(scanner, parseNext)
+  } else if (scanner.is(/^[A-Z]/)) {
+    // scans User | Int | ...
+    return scanMatchType(scanner, parseNext)
   } else if (
     // these need to be an exhaustive check of type declarations
     //     case Foo as foo
     //     case view as foo
     //     case null as foo
-    scanner.is(/[A-Z]/) ||
     scanner.isWord('view') ||
     scanner.isWord('null') ||
     scanner.isWord('true') ||
@@ -118,14 +130,12 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): MatchExpression {
     return scanMatchRegex(scanner)
   } else if (isNumberStart(scanner) || scanner.is(/[<=>]/)) {
     return scanMatchRange(scanner)
-  } else if (scanner.test(isReferenceThenConcat)) {
+  } else if (scanner.test(isReferenceThenConcat) || scanner.is(/[\'"`]/)) {
     return scanMatchString(scanner)
   } else if (isArgumentStartChar(scanner)) {
     return scanMatchReference(scanner)
   } else if (scanner.is(ENUM_START)) {
     return scanMatchEnum(scanner, parseNext)
-  } else if (scanner.is(/[\'"`]/)) {
-    return scanMatchString(scanner)
   } else if (scanner.is(ARRAY_OPEN)) {
     return scanMatchArray(scanner, parseNext)
   } else if (scanner.is(OBJECT_OPEN)) {
@@ -136,7 +146,7 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): MatchExpression {
 }
 
 function scanMatchType(scanner: Scanner, parseNext: ParseNext) {
-  const argType = scanArgumentType(scanner, 'argument_type', parseNext)
+  const argType = scanArgumentType(scanner, 'match_type', parseNext)
   let assignRef: Expressions.Reference | undefined
   if (scanner.test(isAsKeyword)) {
     scanner.scanSpaces()
@@ -190,6 +200,14 @@ function scanMatchNamedReference(scanner: Scanner, parseNext: ParseNext, closer:
   let reference: MatchExpression
   if (scanner.lookAhead(closer) || scanner.lookAhead(',') || scanner.is('\n')) {
     scanner.scanAllWhitespace()
+    // shorthand {name:}
+    if (!isValidLocalName(nameRef.name)) {
+      // ❌ { Name: }
+      throw new ParseError(
+        scanner,
+        `Invalid shorthand '{ ${nameRef.name}: }' because '${nameRef.name}' is not a valid reference name.`,
+      )
+    }
     reference = new Expressions.MatchReference(nameRef)
   } else {
     scanner.scanAllWhitespace()
@@ -232,6 +250,13 @@ function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
     for (;;) {
       scanner.scanSpaces()
 
+      if (ignoreRemaining) {
+        scanner.expectString(
+          ARGS_CLOSE,
+          "Remaining match '...' must be the last argument in the enum match expression",
+        )
+      }
+
       if (scanner.scanIfString('...')) {
         ignoreRemaining = true
       } else if (scanner.test(isNamedArg)) {
@@ -248,13 +273,6 @@ function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
 
       if (shouldBreak) {
         break
-      }
-
-      if (ignoreRemaining) {
-        scanner.expectString(
-          ARGS_CLOSE,
-          "Remaining match '...' must be the last argument in the enum match expression",
-        )
       }
     }
   }
@@ -427,24 +445,46 @@ function scanMatchRegex(scanner: Scanner) {
   return new Expressions.MatchLiteralRegex(regex)
 }
 
+/**
+ *     {}  {name:} {name:, ...}
+ * or named variant:
+ *     User{} User{name:, ...}
+ */
 function scanMatchObject(scanner: Scanner, parseNext: ParseNext) {
   scanner.whereAmI('scanMatchObject')
   const precedingComments = scanner.flushComments()
+  let typeName: Expressions.Reference | undefined
+  if (isArgumentStartChar(scanner)) {
+    typeName = scanValidTypeName(scanner)
+  }
+
   const exprs: (Expressions.MatchNamedArgument | Expressions.MatchPositionalArgument)[] = []
   const range0 = scanner.charIndex
   scanner.expectString(OBJECT_OPEN)
   scanner.scanAllWhitespace()
   let argIndex = 0
+  let ignoreRemaining = false
   if (!scanner.scanIfString(OBJECT_CLOSE)) {
     for (;;) {
-      let matchExpr: Expressions.MatchNamedArgument | Expressions.MatchPositionalArgument
-      if (scanner.test(isNamedArg)) {
-        matchExpr = scanMatchNamedReference(scanner, parseNext, OBJECT_CLOSE)
-      } else {
-        matchExpr = scanMatchPositionalReference(argIndex, scanner, parseNext)
-        argIndex += 1
+      if (ignoreRemaining) {
+        scanner.expectString(
+          ARGS_CLOSE,
+          "Remaining match '...' must be the last argument in the object match expression",
+        )
       }
-      exprs.push(matchExpr)
+
+      if (scanner.scanIfString('...')) {
+        ignoreRemaining = true
+      } else {
+        let matchExpr: Expressions.MatchNamedArgument | Expressions.MatchPositionalArgument
+        if (scanner.test(isNamedArg)) {
+          matchExpr = scanMatchNamedReference(scanner, parseNext, OBJECT_CLOSE)
+        } else {
+          matchExpr = scanMatchPositionalReference(argIndex, scanner, parseNext)
+          argIndex += 1
+        }
+        exprs.push(matchExpr)
+      }
 
       const shouldBreak = scanner.scanCommaOrBreak(
         OBJECT_CLOSE,
@@ -462,7 +502,9 @@ function scanMatchObject(scanner: Scanner, parseNext: ParseNext) {
   return new Expressions.MatchObjectExpression(
     [range0, scanner.charIndex],
     precedingComments,
+    typeName,
     exprs,
+    ignoreRemaining,
   )
 }
 
@@ -673,4 +715,16 @@ function isQualifiedEnum(scanner: Scanner) {
 
   // and finally an enum start char
   return isArgumentStartChar(scanner)
+}
+
+/**
+ *     User{ ... }
+ */
+function isMatchNamedObject(scanner: Scanner) {
+  if (!scanner.is(/^[A-Z]/)) {
+    return false
+  }
+  scanAnyReference(scanner)
+  scanner.scanAllWhitespace()
+  return scanner.is('{')
 }

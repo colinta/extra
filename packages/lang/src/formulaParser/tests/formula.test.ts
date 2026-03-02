@@ -151,7 +151,7 @@ fn(
       ]),
       c([
         'fn(# arg: enum Foo { .a }): T => b()',
-        'The `enum` type is not allowed as a formula argument type',
+        'The `enum` type is not allowed as an argument type',
       ]),
     ).run(([formula, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not parse ${formula}`, () => {

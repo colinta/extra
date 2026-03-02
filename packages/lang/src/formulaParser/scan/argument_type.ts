@@ -26,7 +26,7 @@ import {
   PROPERTY_ACCESS_OPERATOR,
 } from '../grammars'
 import {type Scanner} from '../scanner'
-import {type ArgumentType, ParseError, type ParseNext} from '../types'
+import {ParseError, type ParseNext} from '../types'
 
 import {unexpectedToken} from './basics'
 import {scanGenerics} from './formula'
@@ -70,8 +70,8 @@ import {scanString} from './string'
  */
 export function scanArgumentType(
   scanner: Scanner,
-  // argument_type | module_type_definition
-  // only module_type_definition supports enum definitions
+  // argument_type | module_type_definition | match_type
+  // only argument_type supports anonymous/shorthand enum definitions
   moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
 ): Expression {
@@ -99,12 +99,12 @@ export function scanArgumentType(
     if (scanner.isWord(CLASS_KEYWORD)) {
       throw new ParseError(
         scanner,
-        'The `class` type is not allowed as a formula argument type, you should move it to the module scope',
+        'The `class` type is not allowed as an argument type, you should move it to the module scope',
       )
     } else if (scanner.isWord(ENUM_KEYWORD)) {
       throw new ParseError(
         scanner,
-        'The `enum` type is not allowed as a formula argument type, however you *can* use the enum shorthand syntax: `arg: .case1 | .case2`, or you should move it to the module scope',
+        'The `enum` type is not allowed as an argument type, however you *can* use the enum shorthand syntax: `arg: .case1 | .case2`, or you should move it to the module scope',
       )
     } else if (scanner.isWord(FN_KEYWORD)) {
       argType = scanFormulaType(scanner, arg0, parseNext, moduleOrArgument)
@@ -553,7 +553,35 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
   }
 
   if (typeName instanceof Expressions.ContainerTypeIdentifier) {
-    throw new ParseError(scanner, `${typeName.name} requires a type (${typeName.name}(Type))`)
+    if (moduleOrArgument === 'match_type') {
+      if (typeName.name === ARRAY) {
+        return new Expressions.ArrayTypeExpression(
+          [arg0, scanner.charIndex],
+          scanner.flushComments(),
+          new Expressions.AlwaysTypePlaceholder(),
+        )
+      } else if (typeName.name === DICT) {
+        return new Expressions.DictTypeExpression(
+          [arg0, scanner.charIndex],
+          scanner.flushComments(),
+          new Expressions.AlwaysTypePlaceholder(),
+        )
+      } else if (typeName.name === SET) {
+        return new Expressions.SetTypeExpression(
+          [arg0, scanner.charIndex],
+          scanner.flushComments(),
+          new Expressions.AlwaysTypePlaceholder(),
+        )
+      } else if (typeName.name === OBJECT) {
+        return new Expressions.ObjectTypeExpression(
+          [arg0, scanner.charIndex],
+          scanner.flushComments(),
+          [],
+        )
+      }
+    } else {
+      throw new ParseError(scanner, `${typeName.name} requires a type (${typeName.name}(Type))`)
+    }
   }
 
   if (typeName.name === 'null' || typeName.name === 'true' || typeName.name === 'false') {
@@ -666,3 +694,5 @@ function hasMoreEnum(scanner: Scanner) {
   scanner.scanAllWhitespace()
   return scanner.scanIfString(ENUM_START) && isArgumentStartChar(scanner)
 }
+
+export type ArgumentType = 'module_type_definition' | 'argument_type' | 'match_type'

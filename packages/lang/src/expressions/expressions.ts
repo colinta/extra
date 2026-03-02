@@ -2097,7 +2097,38 @@ export class ObjectTypeExpression extends TypeExpression {
   }
 }
 
+export class AlwaysTypePlaceholder extends Expression {
+  constructor() {
+    super([0, 0], [])
+  }
+
+  toCode() {
+    return 'always'
+  }
+
+  toLisp() {
+    return 'always'
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return ok(Types.AlwaysType)
+  }
+
+  getType() {
+    return ok(Types.AlwaysType)
+  }
+
+  compile(runtime: TypeRuntime): GetNodeResult {
+    return err(new RuntimeError(this, 'AlwaysTypePlaceholder cannot be compiled'))
+  }
+
+  eval() {
+    return err(new RuntimeError(this, 'AlwaysTypePlaceholder cannot be evaluated'))
+  }
+}
+
 /**
+ * Array(Int)
  * [Int]
  * [Int, length: >=6]
  */
@@ -2155,8 +2186,8 @@ export class DictTypeExpression extends TypeExpression {
     range: Range,
     precedingComments: Comment[],
     readonly of: Expression,
-    readonly narrowedLength: Narrowed.NarrowedLength,
-    readonly narrowedNames: Set<string>,
+    readonly narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
+    readonly narrowedNames: Set<string> = new Set(),
   ) {
     super(range, precedingComments)
     this.narrowedLength = {
@@ -2205,7 +2236,7 @@ export class SetTypeExpression extends TypeExpression {
     range: Range,
     precedingComments: Comment[],
     readonly of: Expression,
-    readonly narrowedLength: Narrowed.NarrowedLength,
+    readonly narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
   ) {
     super(range, precedingComments)
   }
