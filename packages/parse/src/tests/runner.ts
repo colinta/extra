@@ -1,4 +1,5 @@
 // eslint-disable
+import {describe, it, expect} from 'bun:test'
 import {inspect as nodeInspect} from 'util'
 import {err, ok} from '@extra-lang/result'
 import * as Parse from '..'
