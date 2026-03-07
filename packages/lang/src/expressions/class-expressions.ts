@@ -62,10 +62,6 @@ export abstract class ClassPropertyExpression extends Expression {
     return this.nameRef.name
   }
 
-  get stateName() {
-    return STATE_START + this.name
-  }
-
   dependencies(parentScopes: Scope[]) {
     let deps = new Set<string>()
     if (this.argType) {
@@ -140,6 +136,10 @@ export class ClassStatePropertyExpression extends ClassPropertyExpression {
     super(range, precedingComments, nameRef, argType, defaultValue)
   }
 
+  get stateName() {
+    return STATE_START + this.name
+  }
+
   provides() {
     return new Set([this.stateName])
   }
@@ -184,14 +184,19 @@ export class ClassStatePropertyExpression extends ClassPropertyExpression {
 }
 
 /**
- * A static property on a class or enum.
+ * A static/singleton property on a class or enum.
  *
  *     class User {
  *       static default-name = 'Guest'
+ *       static default = User(name: default-name)
  *     }
  *
  *     enum Colour {
  *       static background: Colour = .gray
+ *
+ *       .black
+ *       .white
+ *       .gray
  *     }
  */
 export class ClassStaticPropertyExpression extends ClassPropertyExpression {
