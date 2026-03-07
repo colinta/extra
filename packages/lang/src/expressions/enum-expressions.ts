@@ -1,22 +1,20 @@
 import {err, mapAll, ok, type Result} from '@extra-lang/result'
 
 import {indent} from '@/util'
-import {type TypeRuntime, MutableTypeRuntime} from '@/runtime'
+import {type TypeRuntime, MutableTypeRuntime, type ValueRuntime} from '@/runtime'
 import * as Types from '@/types'
 import * as Nodes from '@/nodes'
+import * as Values from '@/values'
 import {
   Expression,
   type Reference,
   type GenericExpression,
-  type FormulaArgumentDefinition,
   type NamedFormulaExpression,
   type Range,
   RuntimeError,
   toSource,
   allDependencies,
   wrapValues,
-  argumentToArgumentType,
-  argumentToArgumentNode,
   ReferenceRuntimeError,
   InstanceFormulaExpression,
 } from './expressions'
@@ -30,7 +28,7 @@ import {
 } from '@/formulaParser/types'
 import {EXPORT_KEYWORD, ENUM_START} from '@/formulaParser/grammars'
 import {Scope} from '@/scope'
-import {stablePointAlgorithm} from '@extra-lang/util'
+import {stablePointAlgorithm, uid} from '@extra-lang/util'
 
 /**
  * Raised from ReferenceExpression and others when a variable refers to
@@ -59,6 +57,10 @@ export class EnumLookupExpression extends Expression {
     super(range, precedingComments)
   }
 
+  get enumName() {
+    return `${ENUM_START}${this.name}`
+  }
+
   toLisp() {
     return `${ENUM_START}${this.name}`
   }
@@ -68,7 +70,7 @@ export class EnumLookupExpression extends Expression {
   }
 
   compile(runtime: TypeRuntime) {
-    const type = runtime.getLocalType(ENUM_START + this.name)
+    const type = runtime.getLocalType(this.enumName)
     if (type) {
       return ok(new Nodes.EnumLookup(toSource(this), this.name, type))
     }
@@ -81,11 +83,16 @@ export class EnumLookupExpression extends Expression {
     )
   }
 
-  getType(): GetTypeResult {
-    return err(new RuntimeError(this, 'EnumLookupExpression does not have a type'))
+  getType(runtime: TypeRuntime): GetTypeResult {
+    return this.compile(runtime).map(node => node.type)
   }
 
-  eval(): GetValueResult {
+  eval(runtime: ValueRuntime): GetValueResult {
+    const value = runtime.getLocalValue(this.enumName)
+    if (value) {
+      return ok(value)
+    }
+
     return err(
       new RuntimeError(
         this,
@@ -97,13 +104,11 @@ export class EnumLookupExpression extends Expression {
 
 /**
  * Within an 'enum' type, EnumMemberExpression is one of the case values.
- *     -- Examples
- *     .red
- *     .blue
- *     .rgb(r: Int, g: Int, b: Int)
- *
- * Enum values don't have a type outside of the parent enum expression, so the
- * Node of an EnumMemberExpression has type `never`
+ *     enum Colour {
+ *       .red
+ *       .blue
+ *       .rgb(r: Int, g: Int, b: Int)
+ *     }
  */
 export class EnumMemberExpression extends Expression {
   constructor(
@@ -111,27 +116,43 @@ export class EnumMemberExpression extends Expression {
     precedingComments: Comment[],
     readonly name: string,
     /**
-     * Uses FormulaLiteralArgument, which supports default arguments.
-     * EnumMemberExpression acts very much like a formula literal, which returns
-     * an instance of the EnumTypeExpression
+     * an array of arguments, named or unnamed
+     *     .foo(A, B, C)           -- unnamed
+     *     .foo(a: A, b: B, c: C)  -- named
+     *     .foo(A, b: B, c: C)     -- mixed
      */
-    readonly args: FormulaArgumentDefinition[],
+    readonly args: [name: Reference | undefined, type: Expression][],
   ) {
     super(range, precedingComments)
   }
 
+  get enumName() {
+    return `${ENUM_START}${this.name}`
+  }
+
   dependencies(parentScopes: Scope[]) {
-    return allDependencies(this.args, parentScopes)
+    return allDependencies(
+      this.args.map(([_, type]) => type),
+      parentScopes,
+    )
   }
 
   childExpressions() {
-    return this.args
+    return this.args.map(([_, type]) => type)
   }
 
   toLisp() {
     let code = ENUM_START + this.name
     if (this.args.length) {
-      code += `(${this.args.map(arg => arg.toLisp()).join(' ')})`
+      code += `(${this.args
+        .map(([name, type]) => {
+          if (name) {
+            return `${name}: ${type.toLisp()}`
+          } else {
+            return type.toLisp()
+          }
+        })
+        .join(' ')})`
     }
 
     return code
@@ -140,14 +161,22 @@ export class EnumMemberExpression extends Expression {
   toCode() {
     let code = ENUM_START + this.name
     if (this.args.length) {
-      code += `(${this.args.map(arg => arg.toCode()).join(', ')})`
+      code += `(${this.args
+        .map(([name, type]) => {
+          if (name) {
+            return `${name}: ${type.toCode()}`
+          } else {
+            return type.toCode()
+          }
+        })
+        .join(', ')})`
     }
 
     return code
   }
 
-  getType(): GetTypeResult {
-    return err(new RuntimeError(this, 'EnumEntryExpression does not have a type'))
+  getType(runtime: TypeRuntime): GetTypeResult {
+    return this.compile(runtime).map(node => node.type)
   }
 
   eval(): GetValueResult {
@@ -156,9 +185,15 @@ export class EnumMemberExpression extends Expression {
 
   compile(runtime: TypeRuntime): GetNodeResult {
     return mapAll(
-      this.args.map(argExpr =>
-        argumentToArgumentType(argExpr, runtime, undefined, 0).map(argType =>
-          argumentToArgumentNode(argExpr, argType),
+      this.args.map(([nameRef, type]) =>
+        type.compileAsTypeExpression(runtime).map(node =>
+          nameRef
+            ? ({
+                is: 'named-value',
+                node,
+                name: nameRef.name,
+              } as const)
+            : ({is: 'positional-value', node} as const),
         ),
       ),
     ).map(args => new Nodes.EnumMember(toSource(this), this.name, args))
@@ -217,46 +252,90 @@ export abstract class EnumTypeExpression extends Expression {
     return this.compile(runtime).map(node => node.type)
   }
 
-  getType(runtime: TypeRuntime): GetTypeResult {
+  getType(_runtime: TypeRuntime): GetTypeResult {
     return err(new RuntimeError(this, 'EnumTypeExpression does not have a type'))
   }
 
-  getEnumCases(runtime: TypeRuntime): GetRuntimeResult<Nodes.EnumCase[]> {
+  getEnumCases(runtime: TypeRuntime): GetRuntimeResult<Nodes.EnumMember[]> {
     return mapAll(
       // get types of all args, store along with the argument name
       this.members.map(member =>
         mapAll(
-          member.args.map(arg => arg.argType.compile(runtime).map(argNode => ({arg, argNode}))),
-        ).map(nodes => ({
-          name: member.name,
-          args: nodes,
-        })),
+          member.args.map(([nameRef, arg]) =>
+            arg
+              .compileAsTypeExpression(runtime)
+              .map(
+                (argNode): Nodes.EnumEntry =>
+                  nameRef
+                    ? {is: 'named-value', name: nameRef.name, node: argNode}
+                    : {is: 'positional-value', node: argNode},
+              ),
+          ),
+        ).map(nodes => new Nodes.EnumMember(toSource(member), member.name, nodes)),
       ),
-    ).map(members =>
-      // map into Array(Types.PositionalArgument | Types.NamedArgument)
-      members.map(({name, args}) => {
-        // turn args into enumArgs (positional/named arguments)
-        const enumArgs = args.map(({arg, argNode}) => {
-          if (arg.isPositional) {
-            return new Nodes.PositionalArgument(toSource(arg), argNode.type, arg.nameRef.name, true)
-          } else {
-            return new Nodes.NamedArgument(
-              toSource(arg),
-              argNode.type,
-              arg.nameRef.name,
-              arg.nameRef.name,
-              true,
-            )
-          }
-        })
-
-        return new Nodes.EnumCase(toSource(this), name, enumArgs)
-      }),
     )
   }
 
   eval(): GetValueResult {
     return err(new RuntimeError(this, 'EnumTypeExpression cannot be evaluated'))
+  }
+}
+
+export class EnumShorthandExpression extends EnumTypeExpression {
+  readonly id: string = uid()
+
+  constructor(
+    readonly range: Range,
+    readonly member: EnumMemberExpression,
+  ) {
+    // no preceding comments, those are kept on the EnumMemberExpression
+    super(range, [], [member])
+  }
+
+  formulaLocalAssigns(_runtime: ValueRuntime): GetRuntimeResult<[string, Values.Value][]> {
+    if (this.member.args.length === 0) {
+      const value = new Values.EnumShorthandValue(this.member.enumName, new Map(), this.id)
+      return ok([[this.member.enumName, value]])
+    } else {
+      return ok([])
+    }
+  }
+
+  compile(runtime: TypeRuntime): GetRuntimeResult<Nodes.AnonymousEnum> {
+    // I don't *really* need all the work that getEnumCases does (it packs the
+    // type information into Nodes), but it's more convenient to convert a
+    // Nodes.EnumCase into a Types.EnumCase than to build it from scratch.
+    return this.getEnumCases(runtime).map(enumCases => {
+      if (enumCases.length !== 1) {
+        return err(new RuntimeError(this, 'EnumShorthandExpression must have exactly one member'))
+      }
+
+      const enumMember = enumCases[0]
+      const enumCaseType = new Types.EnumCase(
+        enumMember.name,
+        enumMember.args.map((entry): Types.PositionalProp | Types.NamedProp => {
+          if (entry.is === 'named-value') {
+            return Types.namedProp(entry.name, entry.node.type)
+          } else {
+            return Types.positionalProp(entry.node.type)
+          }
+        }),
+      )
+      const enumType = new Types.AnonymousEnumType(enumCaseType)
+      return new Nodes.AnonymousEnum(toSource(this), enumType, this.member.name, enumMember.args)
+    })
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'EnumTypeExpression cannot be evaluated'))
+  }
+
+  toLisp() {
+    return this.member.toLisp()
+  }
+
+  toCode() {
+    return this.member.toCode()
   }
 }
 
@@ -462,7 +541,7 @@ export class NamedEnumDefinition extends EnumTypeExpression {
         // I guess enum cases don't need access to the temporary User class
         // object, because they are just names + arguments.
         this.getEnumCases(moduleRuntime)
-          .map(enumMembers => {
+          .map(enumCases => {
             const staticPropertyTypes = new Map<string, Types.Type>()
             const staticPropertyNodes = new Map<string, Nodes.Node>()
 
@@ -475,12 +554,17 @@ export class NamedEnumDefinition extends EnumTypeExpression {
 
             const enumDefinition = new Types.NamedEnumDefinitionType(
               name,
-              enumMembers.map(
-                enumCaseNode =>
-                  new Types.EnumCase(
-                    enumCaseNode.name,
-                    enumCaseNode.args.map(arg => arg.toArgumentType()),
-                  ),
+              enumCases.map(enumCaseNode =>
+                Types.enumCase(
+                  enumCaseNode.name,
+                  enumCaseNode.args.map(arg => {
+                    if (arg.is === 'named-value') {
+                      return Types.namedProp(arg.name, arg.node.type)
+                    } else {
+                      return Types.positionalProp(arg.node.type)
+                    }
+                  }),
+                ),
               ),
               //
               staticPropertyTypes,
@@ -491,14 +575,13 @@ export class NamedEnumDefinition extends EnumTypeExpression {
 
             const instanceType = new Types.NamedEnumInstanceType(
               enumDefinition,
-              name,
               // will hold formulas, they get assigned as they are resolved
               new Map(),
             )
             enumDefinition.resolveInstanceType(instanceType)
             const thisRuntime = new MutableTypeRuntime(moduleRuntime, instanceType)
 
-            for (const enumCaseNode of enumMembers) {
+            for (const enumCaseNode of enumCases) {
               // TODO: ideally each enum case would have a corresponding
               // "literal" value
               //     enum Letter {
@@ -515,7 +598,22 @@ export class NamedEnumDefinition extends EnumTypeExpression {
               if (enumCaseNode.args.length === 0) {
                 moduleRuntime.addLocalType(ENUM_START + enumCaseNode.name, instanceType)
               } else {
-                const argTypes = enumCaseNode.args.map(arg => arg.toArgumentType())
+                const argTypes = enumCaseNode.args.map((arg): Types.Argument => {
+                  if (arg.is === 'named-value') {
+                    return Types.namedArgument({
+                      name: arg.name,
+                      type: arg.node.type,
+                      isRequired: true,
+                    })
+                  } else {
+                    return Types.positionalArgument({
+                      name: '',
+                      type: arg.node.type,
+                      isRequired: true,
+                    })
+                  }
+                })
+
                 moduleRuntime.addLocalType(
                   ENUM_START + enumCaseNode.name,
                   // TODO: determine the generics - are they just the genericNodes from above?
@@ -555,7 +653,7 @@ export class NamedEnumDefinition extends EnumTypeExpression {
               },
               {
                 enumType: enumDefinition,
-                enumMembers,
+                enumCases,
                 instanceType,
                 staticPropertyNodes,
                 formulaProperties,
@@ -563,12 +661,12 @@ export class NamedEnumDefinition extends EnumTypeExpression {
             ).mapError(errors => new RuntimeError(this, 'TODO - 526', errors))
           })
           .map(
-            ({enumType, enumMembers, instanceType, staticPropertyNodes, formulaProperties}) =>
+            ({enumType, enumCases, instanceType, staticPropertyNodes, formulaProperties}) =>
               new Nodes.NamedEnumDefinition(
                 toSource(this),
                 name,
                 enumType,
-                enumMembers,
+                enumCases,
                 instanceType,
                 staticPropertyNodes,
                 formulaProperties,
@@ -585,36 +683,5 @@ export class NamedEnumDefinition extends EnumTypeExpression {
 
   eval(): GetValueResult {
     return err(new RuntimeError(this, 'EnumDefinition cannot be evaluated'))
-  }
-}
-
-/**
- * An anonymous enum expression as part of a formula argument list
- *
- *     fn (foo: .a | .b | .c(Int))
- */
-export class AnonymousEnumTypeExpression extends EnumTypeExpression {
-  constructor(
-    readonly range: Range,
-    readonly precedingComments: Comment[],
-    readonly members: EnumMemberExpression[],
-  ) {
-    super(range, precedingComments, members)
-  }
-
-  toLisp() {
-    return '(enum | ' + this.members.map(m => m.toLisp()).join(' | ') + ')'
-  }
-
-  toCode() {
-    return this.members.map(m => m.toCode()).join(' | ')
-  }
-
-  compile(runtime: TypeRuntime) {
-    // TODO TODAY
-    // return this.getEnumCases(runtime)
-    //   .map(enumMembers => Types.enumType(enumDefinition, enumMembers))
-    //   .map(enumType => ok(new Nodes.AnonymousEnumDefinition(toSource(this), enumType)))
-    return {} as any
   }
 }

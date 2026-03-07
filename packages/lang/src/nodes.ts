@@ -284,6 +284,16 @@ type KeyValuePair = {
 }
 
 //     {
+//       a: b
+//     }
+// but the name is a string, not a Node
+type NamedValue = {
+  is: 'named-value'
+  name: string
+  node: Node
+}
+
+//     {
 //       ...a
 //     }
 type SpreadObject = {
@@ -782,7 +792,7 @@ export class MatchStringConcat extends CaseMatch {
 export class MatchEnum extends CaseMatch {
   constructor(
     readonly source: Source,
-    readonly enumType: Types.AnonymousEnumDefinitionType,
+    readonly enumType: Types.EnumType,
     readonly moduleNames: string[],
     readonly enumName: string | undefined,
     readonly caseName: string,
@@ -926,84 +936,7 @@ export class ClassInstance extends Node {
   }
 }
 
-/**
- * The case inside an enum definition. Each case has the type of the containing
- * enum definition, and so that information is not important for this Node.
- */
-export class EnumMember extends Node {
-  constructor(
-    readonly source: Source,
-    readonly name: string,
-    readonly args: Argument[],
-  ) {
-    super(source, Types.NeverType)
-  }
-}
-
-/**
- * Either a NamedEnumDefinition or AnonymousEnumDefinition
- *
- * NamedEnumDefinition some in common with ClassDefinition, without a
- * parent-class concept. AnonymousEnumDefinition do not have any static
- * properties.
- */
-export abstract class EnumDefinition extends Node {
-  constructor(
-    readonly source: Source,
-    readonly type: Types.AnonymousEnumDefinitionType | Types.NamedEnumDefinitionType,
-    readonly members: EnumMember[],
-  ) {
-    super(source, type)
-  }
-}
-
-/**
- *       -- ↓generics
- * enum Foo<T> {
- *   -- ↑name
- *   case A
- *   case B(Int)
- *   -- ↑members
- *
- *   static default-int = 5
- *   static calc(input: Int) => input + default-int
- *   -- ↑staticProperties
- *
- *   fn value() =>
- *     switch (this) {
- *       case .A: 0
- *       case .B(val): val
- *     }
- *   -- ↑memberFunctions
- *
- *   -- unlike classes, state/instance properties are not allowed
- * }
- */
-export class NamedEnumDefinition extends EnumDefinition {
-  constructor(
-    readonly source: Source,
-    readonly name: string,
-    readonly type: Types.NamedEnumDefinitionType,
-    readonly members: EnumMember[],
-    readonly instanceType: Types.NamedEnumInstanceType,
-    readonly staticProperties: Map<string, Node>,
-    readonly memberFunctions: Map<string, Node>,
-    readonly generics: Generic[],
-    readonly isExport: boolean,
-  ) {
-    super(source, type, members)
-  }
-}
-
-export class EnumCase extends Node {
-  constructor(
-    readonly source: Source,
-    readonly name: string,
-    readonly args: (PositionalArgument | NamedArgument)[],
-  ) {
-    super(source, Types.AlwaysType)
-  }
-}
+export type EnumEntry = PositionalValue | NamedValue
 
 export class EnumLookup extends Node {
   constructor(
@@ -1016,16 +949,68 @@ export class EnumLookup extends Node {
 }
 
 /**
- * fn foo(arg: .a | .b | .c(Int))
- *          -- ↑ AnonymousEnumDefinition.members
+ * Shorthand enum definition with optional arguments
  */
-export class AnonymousEnumDefinition extends EnumDefinition {
+export class AnonymousEnum extends Node {
   constructor(
     readonly source: Source,
-    readonly type: Types.AnonymousEnumDefinitionType,
-    readonly members: EnumMember[],
+    readonly type: Types.AnonymousEnumType,
+    readonly name: string,
+    readonly args: EnumEntry[],
   ) {
-    super(source, type, members)
+    super(source, type)
+  }
+}
+
+/**
+ * The case inside an enum definition. Each case has the type of the containing
+ * enum definition, and so that information is not important for this Node.
+ */
+export class EnumMember extends Node {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+    readonly args: EnumEntry[],
+  ) {
+    super(source, Types.NeverType)
+  }
+}
+
+/**
+ *       -- ↓generics
+ * enum Foo<T> {
+ *   -- ↑name
+ *   .a
+ *   .b(Int)
+ *   -- ↑members
+ *
+ *   static default-int = 5
+ *   static calc(input: Int) => input + default-int
+ *   -- ↑staticProperties
+ *
+ *   fn value() =>
+ *     switch (this) {
+ *       case .a: 0
+ *       case .b(val): val
+ *     }
+ *   -- ↑memberFunctions
+ *
+ *   -- unlike classes, state/instance properties are not allowed
+ * }
+ */
+export class NamedEnumDefinition extends Node {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+    readonly type: Types.NamedEnumDefinitionType,
+    readonly members: EnumMember[],
+    readonly instanceType: Types.NamedEnumInstanceType,
+    readonly staticProperties: Map<string, Node>,
+    readonly memberFunctions: Map<string, Node>,
+    readonly generics: Generic[],
+    readonly isExport: boolean,
+  ) {
+    super(source, type)
   }
 }
 

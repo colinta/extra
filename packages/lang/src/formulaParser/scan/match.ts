@@ -227,18 +227,22 @@ function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
   const range0 = scanner.charIndex
 
   const qualifiers: string[] = []
-  while (isArgumentStartChar(scanner)) {
-    const qualifier = scanValidTypeName(scanner)
-    scanner.scanAllWhitespace()
-    qualifier.followingComments = scanner.flushComments()
+  if (isArgumentStartChar(scanner)) {
+    while (isArgumentStartChar(scanner)) {
+      const qualifier = scanValidTypeName(scanner)
+      scanner.scanAllWhitespace()
+      qualifier.followingComments = scanner.flushComments()
 
-    qualifiers.push(qualifier.name)
+      qualifiers.push(qualifier.name)
 
-    scanner.expectString('.', `Expected '.' after type name '${qualifier.name}'`)
+      scanner.expectString('.', `Expected '.' after type name '${qualifier.name}'`)
+    }
+  } else {
+    scanner.expectString('.')
   }
+
   const enumName = qualifiers.pop()
 
-  scanner.expectString('.')
   // enum '.some' or '.some(value, name: value, _...)'
   const enumCaseName = scanAnyReference(scanner).name
   scanner.scanSpaces()

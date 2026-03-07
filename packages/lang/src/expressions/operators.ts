@@ -566,10 +566,10 @@ class PipeOperator extends BinaryOperator {
   symbol = '|>'
 
   rhsCompile(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
-    let myRuntime = new MutableTypeRuntime(runtime)
-    myRuntime.setPipeType(lhs)
+    let nextRuntime = new MutableTypeRuntime(runtime)
+    nextRuntime.setPipeType(lhs)
 
-    return getChildNode(this, rhsExpr, myRuntime)
+    return getChildNode(this, rhsExpr, nextRuntime)
   }
 
   operatorType(_runtime: TypeRuntime, _lhs: Types.Type, rhs: Types.Type) {
@@ -581,10 +581,10 @@ class PipeOperator extends BinaryOperator {
   }
 
   rhsEval(runtime: ValueRuntime, lhs: Values.Value, _lhsExpr: Expression, rhsExpr: Expression) {
-    let myRuntime = new MutableValueRuntime(runtime)
-    myRuntime.setPipeValue(lhs)
+    let nextRuntime = new MutableValueRuntime(runtime)
+    nextRuntime.setPipeValue(lhs)
 
-    return rhsExpr.eval(myRuntime)
+    return rhsExpr.eval(nextRuntime)
   }
 
   operatorEval(_runtime: ValueRuntime, _lhs: Values.Value, rhs: () => GetValueResult) {
@@ -623,10 +623,10 @@ class NullColescingPipeOperator extends BinaryOperator {
     }
 
     const safeTypes = Types.oneOf(lhs.of.filter(type => type !== Types.NullType))
-    let myRuntime = new MutableTypeRuntime(runtime)
-    myRuntime.setPipeType(safeTypes)
+    let nextRuntime = new MutableTypeRuntime(runtime)
+    nextRuntime.setPipeType(safeTypes)
 
-    return getChildNode(this, rhsExpr, myRuntime)
+    return getChildNode(this, rhsExpr, nextRuntime)
   }
 
   operatorType(
@@ -660,10 +660,10 @@ class NullColescingPipeOperator extends BinaryOperator {
       return ok(Values.NullValue)
     }
 
-    let myRuntime = new MutableValueRuntime(runtime)
-    myRuntime.setPipeValue(lhs)
+    let nextRuntime = new MutableValueRuntime(runtime)
+    nextRuntime.setPipeValue(lhs)
 
-    return rhsExpr.eval(myRuntime)
+    return rhsExpr.eval(nextRuntime)
   }
 
   operatorEval(_runtime: ValueRuntime, _lhs: Values.Value, rhs: () => GetValueResult) {
@@ -3664,7 +3664,7 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
     lhFormulaType: Types.Type,
     lhFormulaExpression: Expression,
     rhArgsExpression: Expression,
-    originalLhs: Types.Type,
+    _originalLhs: Types.Type,
   ) {
     if (lhFormulaType instanceof Types.ClassDefinitionType) {
       lhFormulaType = lhFormulaType.konstructor!
@@ -3731,7 +3731,16 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
       )
     }
 
-    return rhArgsExpression.formulaArgs(runtime).map(args => {
+    let mutableRuntime: MutableValueRuntime | undefined
+    for (const [name, value] of lhFormula.localAssigns) {
+      if (!mutableRuntime) {
+        mutableRuntime = new MutableValueRuntime(runtime)
+      }
+      mutableRuntime.addLocalValue(name, value)
+    }
+    const nextRuntime = mutableRuntime ?? runtime
+
+    return rhArgsExpression.formulaArgs(nextRuntime).map(args => {
       return lhFormula.call(args).mapResult(result => {
         if (result.isOk()) {
           return ok(result.get())
@@ -4489,6 +4498,26 @@ function functionInvocationOperatorType(
   let positionIndex = 0
   let hasSpreadArrayType = false
   const hasSpreadDictName: Set<string> = new Set()
+
+  // check formulaType arguments for any enum shorthands and provide them in runtime
+  let mutableRuntime: MutableTypeRuntime | undefined
+  const allTypes = formulaType.args
+    .flatMap(arg => {
+      if (arg.type instanceof Types.OneOfType) {
+        return arg.type.of
+      } else {
+        return [arg.type]
+      }
+    })
+    .filter(type => type instanceof Types.AnonymousEnumType)
+  for (const argType of allTypes) {
+    if (!mutableRuntime) {
+      mutableRuntime = new MutableTypeRuntime(runtime)
+    }
+    mutableRuntime.addLocalType(argType.enumName, argType)
+  }
+  const nextRuntime = mutableRuntime ?? runtime
+
   return mapAll(
     // argsList.args is an array of:
     // - NamedArgument `foo(bar: bar)`
@@ -4539,7 +4568,7 @@ function functionInvocationOperatorType(
 
         // FormulaExpression.getType accepts a FormulaType which it can use to resolve inferred arguments.
         return providedArg.value
-          .getType(runtime, expectedFormulaType)
+          .getType(nextRuntime, expectedFormulaType)
           .mapResult(decorateError(formulaExpression))
           .map(type => [
             providedArg.alias
@@ -4548,8 +4577,8 @@ function functionInvocationOperatorType(
           ])
       }
 
-      if (providedArg instanceof Expressions.SpreadFunctionArgument) {
-        return getChildType(formulaExpression, providedArg.value, runtime).map(type => {
+      return getChildType(formulaExpression, providedArg.value, nextRuntime).map(type => {
+        if (providedArg instanceof Expressions.SpreadFunctionArgument) {
           const [foundSpreadArrayType, foundSpreadDictName, result] = (() => {
             if (providedArg.spread === 'spread' && providedArg.alias === undefined) {
               return spreadArrayArg(providedArg, type)
@@ -4566,10 +4595,8 @@ function functionInvocationOperatorType(
           }
 
           return result
-        })
-      }
+        }
 
-      return getChildType(formulaExpression, providedArg.value, runtime).map(type => {
         if (providedArg.alias && hasSpreadDictName.has(providedArg.alias)) {
           return [['spread-dict', providedArg.alias, type]]
         } else if (providedArg.alias) {

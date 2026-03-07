@@ -37,7 +37,7 @@ enum User {
         `\
 enum Operation {
   .add(a: Int, b: Int)
-  .negate(# value: Int)
+  .negate(Int)
   .identity
 }
 `,
@@ -154,7 +154,7 @@ enum Color {
       c([
         `\
 enum Shape {
-  .circle(# radius: Float)
+  .circle(Float)
   .rect(width: Float, height: Float)
   .point
 
@@ -177,14 +177,14 @@ enum Shape {
     this == .point
   static unit-circle() =>
     .circle(1.0)
-  .circle(# radius: Float)
+  .circle(Float)
   .rect(width: Float, height: Float)
   .point
 }
 `,
         `\
 enum Shape {
-  .circle(# radius: Float)
+  .circle(Float)
   .rect(width: Float, height: Float)
   .point
 
@@ -232,19 +232,17 @@ enum Role { -- simple members
         `\
 enum Operation { -- members with arguments
   .add(a: Int, b: Int)
-  .negate(# value: Int)
+  .negate(Int)
   .identity
 }`,
         Types.namedEnumDefinition({
           name: 'Operation',
           members: [
             Types.enumCase('add', [
-              Types.namedArgument({name: 'a', type: Types.int(), isRequired: true}),
-              Types.namedArgument({name: 'b', type: Types.int(), isRequired: true}),
+              Types.namedProp('a', Types.int()),
+              Types.namedProp('b', Types.int()),
             ]),
-            Types.enumCase('negate', [
-              Types.positionalArgument({name: 'value', type: Types.int(), isRequired: true}),
-            ]),
+            Types.enumCase('negate', [Types.positionalProp(Types.int())]),
             Types.enumCase('identity'),
           ],
         }),
@@ -361,10 +359,9 @@ enum Color { -- instance function
 }`,
         Types.namedEnumDefinition({
           name: 'Color',
-          class: def =>
+          definition: def =>
             Types.enumType(
               def,
-              'Color',
               new Map([['is-red', Types.namedFormula('is-red', [], Types.booleanType())]]),
             ),
           members: [Types.enumCase('red'), Types.enumCase('green'), Types.enumCase('blue')],
@@ -376,13 +373,12 @@ enum Color { -- instance function
         const shapeInstance = (def: Types.NamedEnumDefinitionType) =>
           Types.enumType(
             def,
-            'Shape',
             new Map([['is-point', Types.namedFormula('is-point', [], Types.booleanType())]]),
           )
         return c([
           `\
 enum Shape { -- all together
-  .circle(# radius: Float)
+  .circle(Float)
   .rect(width: Float, height: Float)
   .point
 
@@ -396,14 +392,12 @@ enum Shape { -- all together
 }`,
           Types.namedEnumDefinition({
             name: 'Shape',
-            class: shapeInstance,
+            definition: shapeInstance,
             members: [
-              Types.enumCase('circle', [
-                Types.positionalArgument({name: 'radius', type: Types.float(), isRequired: true}),
-              ]),
+              Types.enumCase('circle', [Types.positionalProp(Types.float())]),
               Types.enumCase('rect', [
-                Types.namedArgument({name: 'width', type: Types.float(), isRequired: true}),
-                Types.namedArgument({name: 'height', type: Types.float(), isRequired: true}),
+                Types.namedProp('width', Types.float()),
+                Types.namedProp('height', Types.float()),
               ]),
               Types.enumCase('point'),
             ],

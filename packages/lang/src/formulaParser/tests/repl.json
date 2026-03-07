@@ -1,19 +1,6 @@
 {
   "tests": [
     {
-      "desc": "test",
-      "formula": "test",
-      "expectedCode": "test",
-      "expectedType": "\"test\"",
-      "expectedValue": "'test'",
-      "variables": [
-        [
-          "test",
-          "'test'"
-        ]
-      ]
-    },
-    {
       "desc": "tuples",
       "formula": "{ formula1(1), formula2(two: 2) }",
       "expectedCode": "{formula1(1), formula2(two: 2)}",
@@ -403,6 +390,15 @@
           "{0, 1, -1, b: 'test', bb: [1, 2]}"
         ]
       ]
+    },
+    {
+      "desc": "enum shorthand",
+      "formula": "let\n  fn f(test: .a | .b) =>\n    switch test\n    case .a\n      'a'\n    case .b\n      'b'\nin\n  f(test: .a)\n",
+      "skip": false,
+      "expectedCode": "let\n  fn f(test: .a | .b) =>\n    switch test\n    case .a\n      'a'\n    case .b\n      'b'\nin\n  f(test: .a)\n",
+      "expectedType": "\"a\" | \"b\"",
+      "expectedValue": "'a'",
+      "variables": []
     }
   ]
 }

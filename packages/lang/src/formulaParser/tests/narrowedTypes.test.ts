@@ -409,6 +409,39 @@ describe('narrowed types', () => {
       ]),
       Types.object([Types.positionalProp(Types.int()), Types.namedProp('b', Types.string())]),
     ]),
+    //|
+    //|  Anonymouse enum
+    //|
+    c([
+      Types.oneOf([
+        Types.enumShorthand('a'),
+        Types.enumShorthand('b', [Types.positionalProp(Types.int())]),
+      ]),
+      'foo is .a',
+      Types.enumShorthand('a'),
+      Types.enumShorthand('b', [Types.positionalProp(Types.int())]),
+    ]),
+    c([
+      Types.oneOf([
+        Types.enumShorthand('a'),
+        Types.enumShorthand('b', [Types.positionalProp(Types.int())]),
+      ]),
+      'foo is .b',
+      Types.enumShorthand('b', [Types.positionalProp(Types.int())]),
+      Types.enumShorthand('a'),
+    ]),
+    c(() => {
+      const metaType_B = Types.enumShorthand('b', [Types.positionalProp(Types.int())])
+      return [
+        Types.oneOf([Types.enumShorthand('a'), metaType_B]),
+        'foo is .b(Int(>0))',
+        Types.enumShorthand('b', [Types.positionalProp(Types.int({min: 1}))], metaType_B),
+        Types.oneOf([
+          Types.enumShorthand('a'),
+          Types.enumShorthand('b', [Types.positionalProp(Types.int())]),
+        ]),
+      ]
+    }),
   ).run(([type, formula, truthyType, falseyType], {only, skip}) => {
     const name = 'foo'
     describe(`${name}: ${type}, ${formula}`, () => {

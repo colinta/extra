@@ -932,6 +932,10 @@ export class ClassDefinition extends Expression {
         thisSharedRuntime.addLocalValue(name, value)
       }
 
+      // TODO: localAssigns? I don't think class constructor would have an enum
+      // shorthand, but if it did, we need to assign it here
+      const localAssigns: [string, Values.Value][] = []
+
       const konstructor = (classDef: Values.ClassDefinitionValue) =>
         // this NamedFormulaValue is run in the context of the static class
         // definition, plus whatever is already in runtime, plus whatever args
@@ -1002,6 +1006,7 @@ export class ClassDefinition extends Expression {
               },
             ),
           undefined,
+          localAssigns,
         )
 
       return ok(
@@ -1192,6 +1197,11 @@ export class ViewClassDefinition extends ClassDefinition {
         metaClass.name,
         classDef => {
           const konstructor = metaClass.konstructor(classDef)
+
+          // TODO: localAssigns? I don't think class constructor would have an enum
+          // shorthand, but if it did, we need to assign it here
+          const localAssigns: [string, Values.Value][] = []
+
           return new Values.NamedFormulaValue(
             konstructor.name,
             (args: Values.FormulaArgs) =>
@@ -1209,6 +1219,7 @@ export class ViewClassDefinition extends ClassDefinition {
                   ),
                 ),
             undefined,
+            localAssigns,
           )
         },
         metaClass.parent,

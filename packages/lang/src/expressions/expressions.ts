@@ -321,7 +321,7 @@ export abstract class Expression {
    * The compiled "Node", which roughly corresponds to an expression, but
    * includes Type information.
    */
-  compile(runtime: TypeRuntime): GetNodeResult {
+  compile(_runtime: TypeRuntime): GetNodeResult {
     throw `compile is not yet implemented in ${this.constructor.name}`
   }
 
@@ -452,6 +452,15 @@ export abstract class Expression {
    */
   isInclusionOp(): this is Operation {
     return false
+  }
+
+  /**
+   * Another import ordering correction, `EnumShorthandExpression` needs to make
+   * its types and values available in the runtime that invokes the formula,
+   * these are called "localAssigns" in the FormulaValue.
+   */
+  formulaLocalAssigns(_runtime: ValueRuntime): GetRuntimeResult<[string, Values.Value][]> {
+    return ok([])
   }
 
   /**
@@ -1936,6 +1945,12 @@ export class OneOfTypeExpression extends TypeExpression {
     return this.of
   }
 
+  formulaLocalAssigns(runtime: ValueRuntime): GetRuntimeResult<[string, Values.Value][]> {
+    return mapAll(this.of.map(expr => expr.formulaLocalAssigns(runtime))).map(assigns =>
+      assigns.flat(),
+    )
+  }
+
   toLisp() {
     return `(${this.of.map(ref => ref.toLisp()).join(' | ')})`
   }
@@ -2027,7 +2042,7 @@ export class ObjectTypeExpression extends TypeExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly values: [string | undefined, Expression][],
+    readonly values: [Reference | undefined, Expression][],
   ) {
     super(range, precedingComments)
   }
@@ -2042,30 +2057,30 @@ export class ObjectTypeExpression extends TypeExpression {
 
   toLisp() {
     const code = this.values
-      .map(([name, it]) => {
-        if (name === undefined) {
+      .map(([nameRef, it]) => {
+        if (nameRef === undefined) {
           return it.toLisp()
         }
 
-        return `(${name}: ${it.toLisp()})`
+        return `(${nameRef}: ${it.toLisp()})`
       })
       .join(' ')
     return `{${code}}`
   }
 
   toCode() {
-    const code = this.values.map(([name, it]) => {
+    const code = this.values.map(([nameRef, it]) => {
       // if we want to support `{ fn foo() => Value }`
       // (currently this is `{ foo: fn() => Value }`)
       // if (it instanceof NamedFormulaTypeExpression) {
       //   return it.toCode()
       // }
 
-      if (name === undefined) {
+      if (nameRef === undefined) {
         return it.toCode()
       }
 
-      return `${name}: ${it.toCode()}`
+      return `${nameRef}: ${it.toCode()}`
     })
 
     return wrapStrings('{', code, '}')
@@ -2077,16 +2092,16 @@ export class ObjectTypeExpression extends TypeExpression {
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return mapAll(
-      this.values.map(([name, expr]) =>
+      this.values.map(([nameRef, expr]) =>
         expr
           .getAsTypeExpression(runtime)
-          .map(type => [name, type] as [string | undefined, Types.Type]),
+          .map(type => [nameRef, type] as [Reference | undefined, Types.Type]),
       ),
     ).map(
       types =>
         new Types.ObjectType(
-          types.map(([name, type]) =>
-            name ? Types.namedProp(name, type) : Types.positionalProp(type),
+          types.map(([nameRef, type]) =>
+            nameRef ? Types.namedProp(nameRef.name, type) : Types.positionalProp(type),
           ),
         ),
     )
@@ -2943,7 +2958,7 @@ export class LetExpression extends Expression {
         exprCode = arg.value.toCode()
       }
 
-      if (exprCode.includes('\n') || line.length + exprCode.length > MAX_INNER_LEN) {
+      if ((line && exprCode.includes('\n')) || line.length + exprCode.length > MAX_INNER_LEN) {
         line += '\n' + indent(exprCode)
       } else {
         line += exprCode
@@ -2964,7 +2979,7 @@ export class LetExpression extends Expression {
   assignRelationships(
     runtime: MutableTypeRuntime,
     name: string,
-    assignment: LetAssign,
+    assignment: LetAssign | NamedFormulaExpression,
     inferredType: Types.Type,
     explicitType: Types.Type | undefined,
   ) {
@@ -2977,9 +2992,9 @@ export class LetExpression extends Expression {
 
     const id = runtime.addLocalType(name, localType)
 
-    if (localType === inferredType) {
-      const refFormula = relationshipFormula.reference(name, id)
+    if (localType === inferredType && assignment instanceof LetAssign) {
       const assignmentRelationship = assignment.value.relationshipFormula(runtime)
+      const refFormula = relationshipFormula.reference(name, id)
       if (assignmentRelationship) {
         runtime.addRelationshipFormula({
           formula: refFormula,
@@ -3002,40 +3017,38 @@ export class LetExpression extends Expression {
             ([name, assignment]): GetRuntimeResult<Nodes.LetEntry> =>
               assignment
                 .compile(nextRuntime)
-                .map((inferredNode): GetRuntimeResult<[Nodes.Node, Nodes.Node | undefined]> => {
+                .map((assignmentNode): GetRuntimeResult<[Nodes.Node, Nodes.Node | undefined]> => {
                   if (assignment instanceof LetAssign && assignment.typeExpression) {
                     return assignment.typeExpression
                       .compile(runtime)
                       .mapResult(decorateError(this))
-                      .map(explicitType => [inferredNode, explicitType])
+                      .map(explicitType => [assignmentNode, explicitType])
                   } else {
-                    return ok([inferredNode, undefined])
+                    return ok([assignmentNode, undefined])
                   }
                 })
-                .map(([inferredNode, explicitNode]) => {
+                .map(([assignmentNode, explicitNode]) => {
                   if (
                     explicitNode &&
-                    !Types.canBeAssignedTo(inferredNode.type, explicitNode.type)
+                    !Types.canBeAssignedTo(assignmentNode.type, explicitNode.type)
                   ) {
                     return err(
                       new RuntimeError(
                         this,
-                        `Cannot assign inferred type '${inferredNode.type.toCode()}' to '${explicitNode.type.toCode()}'`,
+                        `Cannot assign inferred type '${assignmentNode.type.toCode()}' to '${explicitNode.type.toCode()}'`,
                       ),
                     )
                   }
 
-                  if (assignment instanceof LetAssign) {
-                    this.assignRelationships(
-                      nextRuntime,
-                      name,
-                      assignment,
-                      inferredNode.type,
-                      explicitNode?.type,
-                    )
-                  }
+                  this.assignRelationships(
+                    nextRuntime,
+                    name,
+                    assignment,
+                    assignmentNode.type,
+                    explicitNode?.type,
+                  )
 
-                  return ok({is: 'let-assign', name, node: inferredNode, type: explicitNode})
+                  return ok({is: 'let-assign', name, node: assignmentNode, type: explicitNode})
                 }),
           ),
         ),
@@ -3050,9 +3063,9 @@ export class LetExpression extends Expression {
     return this.sortedBindings(name => runtime.has(name), runtime.parentScopes())
       .map(deps =>
         mapAll(
-          deps.map(([alias, dep]) =>
+          deps.map(([name, dep]) =>
             dep.eval(nextRuntime).map(value => {
-              nextRuntime.addLocalValue(alias, value)
+              nextRuntime.addLocalValue(name, value)
               return ok()
             }),
           ),
@@ -4108,17 +4121,29 @@ export class FormulaExpression extends Expression {
 
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.FormulaValue> {
     const argDefinitions = this.argDefinitions
-    // this is the function that is invoked by 'FunctionInvocationOperator', via
-    // FormulaValue.call(args)
-    const fn = (
-      args: Values.FormulaArgs,
-      boundThis: Values.ClassInstanceValue | undefined,
-    ): Result<Values.Value, RuntimeError> =>
-      argumentValues(runtime, argDefinitions, args, boundThis).map(nextRuntime =>
-        this.body.eval(nextRuntime),
-      )
+    return mapAll(argDefinitions.map(definition => definition.argType.formulaLocalAssigns(runtime)))
+      .map(assigns => assigns.flat())
+      .map(localAssigns => {
+        // this is the function that is invoked by 'FunctionInvocationOperator', via
+        // FormulaValue.call(args)
+        const fn = (
+          args: Values.FormulaArgs,
+          boundThis: Values.ClassInstanceValue | undefined,
+        ): Result<Values.Value, RuntimeError> =>
+          argumentValues(runtime, argDefinitions, args, boundThis).map(argRuntime => {
+            let mutableRuntime: MutableValueRuntime | undefined
+            for (const [name, value] of localAssigns) {
+              if (!mutableRuntime) {
+                mutableRuntime = new MutableValueRuntime(argRuntime)
+              }
+              mutableRuntime.addLocalValue(name, value)
+            }
+            const nextRuntime = mutableRuntime ?? argRuntime
+            return this.body.eval(nextRuntime)
+          })
 
-    return ok(this.getFormulaValueWith(runtime, fn))
+        return this.getFormulaValueWith(runtime, fn, localAssigns)
+      })
   }
 
   getFormulaValueWith(
@@ -4127,8 +4152,9 @@ export class FormulaExpression extends Expression {
       args: Values.FormulaArgs,
       boundThis: Values.ClassInstanceValue | undefined,
     ) => Result<Values.Value, RuntimeError>,
+    localAssigns: [string, Values.Value][],
   ) {
-    return new Values.FormulaValue(fn, undefined)
+    return new Values.FormulaValue(fn, undefined, localAssigns)
   }
 }
 
@@ -4516,8 +4542,9 @@ export class NamedFormulaExpression extends FormulaExpression {
       args: Values.FormulaArgs,
       boundThis: Values.ClassInstanceValue | undefined,
     ) => Result<Values.Value, RuntimeError>,
+    localAssigns: [string, Values.Value][],
   ) {
-    return new Values.NamedFormulaValue(this.nameRef.name, fn, undefined)
+    return new Values.NamedFormulaValue(this.nameRef.name, fn, undefined, localAssigns)
   }
 }
 

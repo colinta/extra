@@ -1,3 +1,5 @@
+import {uid} from '@extra-lang/util'
+
 import {
   findEventualRef,
   type AssignedRelationship,
@@ -13,7 +15,6 @@ import {
   ClassInstanceValue,
 } from './values'
 import {type Node} from './nodes'
-import {uid} from './uid'
 import {Scope} from './scope'
 
 export type TypeRuntime = Omit<

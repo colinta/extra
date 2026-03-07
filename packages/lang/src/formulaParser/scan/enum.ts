@@ -1,5 +1,6 @@
 import * as Expressions from '../../expressions'
 import {
+  ARGS_CLOSE,
   ARGS_OPEN,
   BLOCK_CLOSE,
   BLOCK_OPEN,
@@ -13,9 +14,9 @@ import type {Scanner} from '../scanner'
 import {type ParseNext, ParseError} from '../types'
 import {unexpectedToken} from './basics'
 import {scanGenerics, scanInstanceFormula, scanStaticFormula} from './formula'
-import {scanFormulaLiteralArguments} from './formula_arguments'
 import {scanValidTypeName, scanEnumName} from './identifier'
 import {isStaticFunction, isStaticProperty, scanClassProperty} from './class'
+import {scanInsideObjectType} from './argument_type'
 
 export function scanNamedEnum(
   scanner: Scanner,
@@ -64,21 +65,10 @@ export function scanNamedEnum(
       caseNames.add(enumCaseName)
 
       scanner.whereAmI(`scanEnum: ${enumCaseName}`)
-      let args: Expressions.FormulaArgumentDefinition[]
-      if (scanner.is(ARGS_OPEN)) {
-        args = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)
-
-        // TODO: I'm being lazy, and don't want to implement spread arguments support
-        // in the new enum code (specifically in the matching code)
-        args.forEach(arg => {
-          if (arg.spreadArg) {
-            throw new ParseError(
-              scanner,
-              'Spread, repeated, and keyword-list arguments are not allowed in enum case definitions, only positional and named arguments.',
-              scanner.charIndex - 1,
-            )
-          }
-        })
+      let args: [Expressions.Reference | undefined, Expressions.Expression][]
+      if (scanner.scanIfString(ARGS_OPEN)) {
+        // scans `Type` and `named: Type` until it reaches ')'
+        args = scanInsideObjectType(scanner, 'argument_type', ARGS_CLOSE, parseNext)
       } else {
         args = []
       }

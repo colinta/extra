@@ -6,10 +6,10 @@ export interface Case<T> {
 }
 
 export interface CaseCreate {
-  <T>(input: T): Case<T>
-  only<T>(input: T): Case<T>
-  hold<T>(input: T): Case<T>
-  skip<T>(input: T): Case<T>
+  <T>(input: T | (() => T)): Case<T>
+  only<T>(input: T | (() => T)): Case<T>
+  hold<T>(input: T | (() => T)): Case<T>
+  skip<T>(input: T | (() => T)): Case<T>
 }
 
 export interface CaseRunner<T> {
@@ -34,10 +34,10 @@ export function cases<T>(...cases: Case<T>[]): CaseRunner<T> {
   }
 }
 
-function createCase<T>(input: T, only: boolean, skip: boolean) {
+function createCase<T>(input: T | (() => T), only: boolean, skip: boolean) {
   let description = ''
   return {
-    input,
+    input: input instanceof Function ? input() : input,
     only,
     skip,
     description() {
@@ -50,18 +50,18 @@ function createCase<T>(input: T, only: boolean, skip: boolean) {
 }
 
 export const c: CaseCreate = Object.assign(
-  <T>(input: T) => {
+  <T>(input: T | (() => T)) => {
     return createCase(input, false, false)
   },
   {
-    only<T>(input: T) {
+    only<T>(input: T | (() => T)) {
       return createCase(input, true, false)
     },
     // identical to 'skip', it's just handy having an alias for it
-    hold<T>(input: T) {
+    hold<T>(input: T | (() => T)) {
       return createCase(input, false, true)
     },
-    skip<T>(input: T) {
+    skip<T>(input: T | (() => T)) {
       return createCase(input, false, true)
     },
   },

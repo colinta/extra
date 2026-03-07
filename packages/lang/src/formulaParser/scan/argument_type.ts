@@ -30,7 +30,7 @@ import {ParseError, type ParseNext} from '../types'
 
 import {unexpectedToken} from './basics'
 import {scanGenerics} from './formula'
-import {scanFormulaLiteralArguments, scanFormulaTypeArguments} from './formula_arguments'
+import {scanFormulaTypeArguments} from './formula_arguments'
 import {scanAnyReference, scanEnumName, scanIdentifier} from './identifier'
 import {
   scanNarrowedDict,
@@ -214,6 +214,28 @@ export function scanArgumentType(
   }
 
   if (oneOfExpressions.length > 1) {
+    // check oneOfExpressions for duplicate named EnumShorthandExpression
+    for (const expression of oneOfExpressions) {
+      if (!(expression instanceof Expressions.EnumShorthandExpression)) {
+        continue
+      }
+
+      const name = expression.member.name
+      const duplicate = oneOfExpressions.find(
+        otherExpression =>
+          otherExpression instanceof Expressions.EnumShorthandExpression &&
+          otherExpression !== expression &&
+          otherExpression.member.name === name,
+      )
+      if (duplicate) {
+        throw new ParseError(
+          scanner,
+          `Duplicate enum case name '${name}' in oneOf type definition. Enum case names must be unique.`,
+          expression.range[0],
+        )
+      }
+    }
+
     argType = new Expressions.OneOfTypeExpression(
       [range0, scanner.charIndex],
       scanner.flushComments(),
@@ -291,16 +313,40 @@ function scanArrayLiteralType(
   )
 }
 
-function scanObjectType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNext: ParseNext) {
+export function scanObjectType(
+  scanner: Scanner,
+  moduleOrArgument: ArgumentType,
+  parseNext: ParseNext,
+) {
   scanner.whereAmI(`scanObjectType`)
   const range0 = scanner.charIndex
   scanner.expectString(OBJECT_OPEN)
   scanner.scanAllWhitespace()
+  const values = scanInsideObjectType(scanner, moduleOrArgument, OBJECT_CLOSE, parseNext)
 
-  const values: [string | undefined, Expression][] = []
+  scanner.whereAmI(
+    `scanObjectType: {${values
+      .map(([name, value]) => (name ? name + ':' : '') + value.toCode())
+      .join(' ')}}`,
+  )
+
+  return new Expressions.ObjectTypeExpression(
+    [range0, scanner.charIndex],
+    scanner.flushComments(),
+    values,
+  )
+}
+
+export function scanInsideObjectType(
+  scanner: Scanner,
+  moduleOrArgument: ArgumentType,
+  closer: string,
+  parseNext: ParseNext,
+) {
+  const values: [Expressions.Reference | undefined, Expression][] = []
   for (;;) {
     scanner.whereAmI(`objectArgType: start of loop`)
-    let name: string | undefined
+    let nameRef: Expressions.Reference | undefined
 
     //     I played with the idea of having
     //     {
@@ -329,7 +375,7 @@ function scanObjectType(scanner: Scanner, moduleOrArgument: ArgumentType, parseN
     // } else {
     // }
     if (isNamedArg(scanner)) {
-      name = scanAnyReference(scanner).name
+      nameRef = scanAnyReference(scanner)
       scanner.scanAllWhitespace()
       scanner.expectString(TYPE_START)
       scanner.scanAllWhitespace()
@@ -338,31 +384,16 @@ function scanObjectType(scanner: Scanner, moduleOrArgument: ArgumentType, parseN
     const objectArgType = scanArgumentType(scanner, moduleOrArgument, parseNext)
 
     scanner.whereAmI(`objectArgType: ${objectArgType.toCode()}`)
-    values.push([name, objectArgType])
+    values.push([nameRef, objectArgType])
 
-    if (
-      scanner.scanCommaOrBreak(
-        OBJECT_CLOSE,
-        `Expected ',' or '${OBJECT_CLOSE}' in object type definition`,
-      )
-    ) {
+    if (scanner.scanCommaOrBreak(closer, `Expected ',' or '${closer}' in object type definition`)) {
       break
     }
 
     scanner.scanAllWhitespace()
   }
 
-  scanner.whereAmI(
-    `scanObjectType: {${values
-      .map(([name, value]) => (name ? name + ':' : '') + value.toCode())
-      .join(' ')}}`,
-  )
-
-  return new Expressions.ObjectTypeExpression(
-    [range0, scanner.charIndex],
-    scanner.flushComments(),
-    values,
-  )
+  return values
 }
 
 function scanEnumShorthand(scanner: Scanner, moduleOrArgument: ArgumentType, parseNext: ParseNext) {
@@ -373,53 +404,26 @@ function scanEnumShorthand(scanner: Scanner, moduleOrArgument: ArgumentType, par
     )
   }
 
-  const range0 = scanner.charIndex
-  const enumExpressions: Expressions.EnumMemberExpression[] = []
-
-  for (;;) {
-    const arg0 = scanner.charIndex
-    scanner.expectString(ENUM_START)
-    // whitespace not allowed after '.'
-    const enumCaseName = scanEnumName(scanner).name
-    scanner.whereAmI(`scanEnum: ${enumCaseName}`)
-    let args: Expressions.FormulaArgumentDefinition[] = []
-    if (scanner.is(ARGS_OPEN)) {
-      args = scanFormulaLiteralArguments(scanner, 'fn', parseNext, false)
-
-      // TODO: I'm being lazy, and don't want to implement spread arguments support
-      // in the new enum code (specifically in the matching code)
-      args.forEach(arg => {
-        if (arg.spreadArg) {
-          throw new ParseError(
-            scanner,
-            'Spread, repeated, and keyword-list arguments are not allowed in enum case definitions, only positional and named arguments.',
-            arg.range[0],
-          )
-        }
-      })
-    }
-
-    enumExpressions.push(
-      new Expressions.EnumMemberExpression(
-        [arg0, scanner.charIndex],
-        scanner.flushComments(),
-        enumCaseName,
-        args,
-      ),
-    )
-
-    if (!scanner.test(hasMoreEnum)) {
-      break
-    }
-
-    scanner.scanAhead('|')
-    scanner.scanAllWhitespace()
+  const arg0 = scanner.charIndex
+  scanner.expectString(ENUM_START)
+  // whitespace not allowed after '.'
+  const enumCaseName = scanEnumName(scanner).name
+  scanner.whereAmI(`scanEnum: ${enumCaseName}`)
+  let args: [Expressions.Reference | undefined, Expressions.Expression][]
+  if (scanner.is(ARGS_OPEN)) {
+    args = scanInsideObjectType(scanner, 'argument_type', ARGS_CLOSE, parseNext)
+  } else {
+    args = []
   }
 
-  return new Expressions.AnonymousEnumTypeExpression(
-    [range0, scanner.charIndex],
-    scanner.flushComments(),
-    enumExpressions,
+  return new Expressions.EnumShorthandExpression(
+    [arg0, scanner.charIndex],
+    new Expressions.EnumMemberExpression(
+      [arg0, scanner.charIndex],
+      scanner.flushComments(),
+      enumCaseName,
+      args,
+    ),
   )
 }
 
@@ -641,15 +645,6 @@ function scanOfAndLength(
   scanner.expectString(closer)
 
   return {ofType, narrowedLength}
-}
-
-function hasMoreEnum(scanner: Scanner) {
-  if (!scanner.scanAhead('|')) {
-    return false
-  }
-
-  scanner.scanAllWhitespace()
-  return scanner.scanIfString(ENUM_START) && isArgumentStartChar(scanner)
 }
 
 export type ArgumentType = 'module_type_definition' | 'argument_type' | 'match_type'

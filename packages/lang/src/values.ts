@@ -75,14 +75,16 @@ export function set(values: Value[]) {
 }
 
 export function formula(fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>) {
-  return new FormulaValue(fn, undefined)
+  // localAssigns = []
+  return new FormulaValue(fn, undefined, [])
 }
 
 export function namedFormula(
   name: string,
   fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>,
 ) {
-  return new NamedFormulaValue(name, fn, undefined)
+  // localAssigns = []
+  return new NamedFormulaValue(name, fn, undefined, [])
 }
 
 export function classDefinition({
@@ -1542,6 +1544,7 @@ export class FormulaValue extends Value {
       _2: ClassInstanceValue | undefined,
     ) => Result<Value, string | RuntimeError>,
     readonly boundThis: ClassInstanceValue | undefined,
+    readonly localAssigns: [string, Value][],
   ) {
     super()
   }
@@ -1587,7 +1590,7 @@ export class FormulaValue extends Value {
   }
 
   bound(boundThis: ClassInstanceValue) {
-    return new FormulaValue(this.fn, boundThis)
+    return new FormulaValue(this.fn, boundThis, this.localAssigns)
   }
 }
 
@@ -1601,12 +1604,13 @@ export class NamedFormulaValue extends FormulaValue {
       _2: ClassInstanceValue | undefined,
     ) => Result<Value, string | RuntimeError>,
     boundThis: ClassInstanceValue | undefined,
+    localAssigns: [string, Value][],
   ) {
-    super(fn, boundThis)
+    super(fn, boundThis, localAssigns)
   }
 
   bound(boundThis: ClassInstanceValue) {
-    return new NamedFormulaValue(this.name, this.fn, boundThis)
+    return new NamedFormulaValue(this.name, this.fn, boundThis, this.localAssigns)
   }
 }
 
@@ -1667,13 +1671,67 @@ export class EnumDefinitionValue extends Value {
   }
 }
 
+export class EnumShorthandValue extends Value {
+  readonly is = 'enum-shorthand'
+
+  constructor(
+    readonly name: string,
+    readonly args: Map<number | string, Value>,
+    readonly id: string,
+  ) {
+    super()
+  }
+
+  isEqual(value: Value): boolean {
+    if (!(value instanceof EnumShorthandValue)) {
+      return false
+    }
+    if (value.id !== this.id) {
+      return false
+    }
+    for (const [key, thisValue] of this.args) {
+      const otherValue = value.args.get(key)
+      if (otherValue === undefined || !thisValue.isEqual(otherValue)) {
+        return false
+      }
+    }
+    return true
+  }
+
+  isTruthy() {
+    return true
+  }
+
+  getType(): Types.Type {
+    return Types.NullType
+  }
+
+  toLisp() {
+    return ''
+  }
+
+  toCode() {
+    return `.${this.name}`
+  }
+
+  printable() {
+    return ''
+  }
+
+  static _props: Map<string, (value: EnumValue) => Value> = new Map([])
+
+  propValue(_propName: string): Value | undefined {
+    return
+  }
+}
+
 export class EnumValue extends Value {
   readonly is = 'enum-value'
 
   constructor(
     readonly namespace: EnumDefinitionValue,
     readonly name: string,
-    readonly args: Map<string, Value>,
+    readonly args: Map<number | string, Value>,
   ) {
     super()
   }
@@ -1699,7 +1757,7 @@ export class EnumValue extends Value {
   }
 
   getType(): Types.Type {
-    return Types.NullType
+    return Types.NeverType
   }
 
   toLisp() {
@@ -1737,7 +1795,8 @@ export class ViewFormulaValue<Node> extends NamedFormulaValue {
       _2: ClassInstanceValue | undefined,
     ) => Result<Node, string | RuntimeError>,
   ) {
-    super(name, fn, boundThis)
+    // localAssigns = []
+    super(name, fn, boundThis, [])
   }
 
   bound(boundThis: ClassInstanceValue) {

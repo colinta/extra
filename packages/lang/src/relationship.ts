@@ -1,8 +1,9 @@
 import {err, ok, type Result} from '@extra-lang/result'
+import {uid} from '@extra-lang/util'
+
 import {MutableTypeRuntime, type TypeRuntime} from './runtime'
 import * as Types from './types'
 import {type NarrowedInt, type NarrowedFloat, type NarrowedString} from './narrowed'
-import {uid} from './uid'
 import {union} from './util'
 
 /**

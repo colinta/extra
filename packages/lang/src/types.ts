@@ -1,10 +1,10 @@
 import {err, mapAll, mapOptional, ok, type Result, Guarantee} from '@extra-lang/result'
-import {intersection} from './util'
+import {indent, intersection} from './util'
 import {splitter} from './graphemes'
 import * as Narrowed from './narrowed'
 import {narrowedFloatToInt, narrowedFloatToLength} from './narrowed'
-import {SPREAD_OPERATOR, KWARG_OPERATOR} from './formulaParser/grammars'
-import {isEqualRegex} from '@extra-lang/util'
+import {SPREAD_OPERATOR, KWARG_OPERATOR, ENUM_START} from './formulaParser/grammars'
+import {combineIterators, isEqualRegex} from '@extra-lang/util'
 
 export const FN = 'fn'
 export const VIEW = 'view'
@@ -224,31 +224,30 @@ export function classType({
  */
 export function enumType(
   definition: NamedEnumDefinitionType,
-  name: string,
   formulas: Map<string, FormulaType> = new Map(),
 ) {
-  return new NamedEnumInstanceType(definition, name, formulas)
+  return new NamedEnumInstanceType(definition, formulas)
 }
 
-export function enumCase(name: string, args: (PositionalArgument | NamedArgument)[] = []) {
+export function enumCase(name: string, args: ObjectProp[] = []) {
   return new EnumCase(name, args)
 }
 
-export function anonymousEnumDefinition(members: EnumCase[]) {
-  return new AnonymousEnumDefinitionType(members)
+export function enumShorthand(name: string, args: ObjectProp[] = [], parent?: AnonymousEnumType) {
+  return new AnonymousEnumType(new EnumCase(name, args), parent)
 }
 
 export function namedEnumDefinition({
   name,
   members,
-  class: classType,
+  definition: classType,
   staticProps = new Map(),
   genericTypes = [],
   moreStatics,
 }: {
   name: string
   members: EnumCase[]
-  class?: (def: NamedEnumDefinitionType) => NamedEnumInstanceType
+  definition?: (def: NamedEnumDefinitionType) => NamedEnumInstanceType
   staticProps?: Map<string, Type>
   genericTypes?: GenericType[]
   moreStatics?: (
@@ -257,7 +256,7 @@ export function namedEnumDefinition({
   ) => Map<string, Type>
 }) {
   const definition = new NamedEnumDefinitionType(name, members, staticProps, genericTypes)
-  const classInstanceType = classType?.(definition) ?? enumType(definition, name)
+  const classInstanceType = classType?.(definition) ?? enumType(definition)
   definition.resolveInstanceType(classInstanceType)
 
   if (moreStatics) {
@@ -1315,148 +1314,6 @@ export abstract class OneOfType extends Type {
       (ofType: Type) => ofType.propAccessType(name),
     )
   }
-}
-
-function scoreType(type: Type): number | undefined {
-  if (type instanceof LiteralIntType) {
-    return 1
-  }
-  if (type instanceof LiteralFloatType) {
-    return 2
-  }
-  if (type instanceof LiteralStringType) {
-    return 3
-  }
-  if (type instanceof LiteralRegexType) {
-    return 4
-  }
-  if (type instanceof ArrayType) {
-    return 5
-  }
-  if (type instanceof SetType) {
-    return 6
-  }
-  if (type instanceof DictType) {
-    return 7
-  }
-  if (type instanceof ObjectType) {
-    return 8
-  }
-  if (type instanceof ClassInstanceType) {
-    return 9
-  }
-  if (type instanceof AnonymousEnumDefinitionType) {
-    return 10
-  }
-  if (type instanceof EnumCase || type instanceof EnumInstanceType) {
-    return 11
-  }
-  if (type instanceof MetaBooleanType) {
-    return 12
-  }
-  if (type instanceof MetaIntType) {
-    return 13
-  }
-  if (type instanceof MetaIntRangeType) {
-    return 14
-  }
-  if (type instanceof MetaFloatRangeType) {
-    return 15
-  }
-  if (type instanceof MetaFloatType) {
-    return 16
-  }
-  if (type instanceof MetaStringType) {
-    return 17
-  }
-  if (type instanceof MetaRegexType) {
-    return 18
-  }
-  switch (type) {
-    case LiteralTrueType:
-      return 19
-    case LiteralFalseType:
-      return 20
-    case NullType:
-      return 21
-    case AlwaysType:
-      return 22
-    case NeverType:
-      return 23
-  }
-  return 24
-}
-
-function _sortNarrowed(a: Narrowed.NarrowedFloat, b: Narrowed.NarrowedFloat) {
-  let aMin = Array.isArray(a.min) ? a.min[0] : a.min
-  let aMax = Array.isArray(a.max) ? a.max[0] : a.max
-  let bMin = Array.isArray(b.min) ? b.min[0] : b.min
-  let bMax = Array.isArray(b.max) ? b.max[0] : b.max
-
-  if (aMax !== undefined && bMin !== undefined) {
-    return aMax - bMin
-  }
-  if (aMin !== undefined && bMax !== undefined) {
-    return aMin - bMax
-  }
-  if (aMax !== undefined && bMax !== undefined) {
-    return aMax - bMax
-  }
-  if (aMin !== undefined && bMin !== undefined) {
-    return aMin - bMin
-  }
-  if (aMax !== undefined) {
-    return -1
-  }
-  if (bMax !== undefined) {
-    return 1
-  }
-  if (aMin !== undefined) {
-    return -1
-  }
-  if (bMin !== undefined) {
-    return 1
-  }
-  return 0
-}
-
-function _sortTypes(a: Type, b: Type): number {
-  if (a instanceof OneOfType) {
-    return _sortTypes(a.of[0], b instanceof OneOfType ? b.of[0] : b)
-  }
-
-  if (a instanceof ContainerType && b instanceof ContainerType && a.constructor === b.constructor) {
-    const sorted = _sortTypes(a.of, b.of)
-    if (sorted !== 0) return sorted
-    return _sortNarrowed(a.narrowedLength, b.narrowedLength)
-  }
-
-  if (a instanceof LiteralFloatType && b instanceof LiteralFloatType) {
-    return a.value - b.value
-  }
-
-  if (a instanceof MetaFloatType && b instanceof MetaFloatType) {
-    return _sortNarrowed(a.narrowed, b.narrowed)
-  }
-
-  const [lhsScore, rhsScore] = [scoreType(a), scoreType(b)]
-  if (lhsScore && rhsScore && lhsScore !== rhsScore) {
-    return lhsScore - rhsScore
-  }
-
-  return a.toString().toLowerCase().localeCompare(b.toString().toLowerCase())
-}
-
-/**
- * Only used when you are really sure the types don't overlap. Sorts the types
- * into a consistent order.
- */
-export function _privateOneOf(types: Type[]): __OneOfType {
-  if (types.some(type => type instanceof OneOfType)) {
-    throw 'I should not be. OneOfType passed to _privateOneOf'
-  }
-
-  return new __OneOfType(types.slice().sort(_sortTypes))
 }
 
 /**
@@ -3740,49 +3597,32 @@ export class EnumCase {
 
   constructor(
     readonly name: string,
-    readonly args: (PositionalArgument | NamedArgument)[],
+    readonly args: ObjectProp[],
   ) {
     for (const arg of args) {
-      if (arg.is === 'positional-argument') {
+      if (arg.is === 'positional') {
         this.positionalTypes.push(arg.type)
       } else {
         this.namedTypes.set(arg.name, arg.type)
       }
     }
   }
+
+  get enumName() {
+    return `${ENUM_START}${this.name}`
+  }
 }
 
-/**
- * "Simple" enum type, used in formula shorthands
- *
- *     fn(foo: .a | .b(Int))
- */
-export class AnonymousEnumDefinitionType extends Type {
-  is = 'enum-definition'
-
-  private membersLookup: Map<string, EnumCase> = new Map()
-
+export abstract class EnumType extends Type {
   constructor(readonly members: EnumCase[]) {
     super()
-    for (const member of members) {
-      this.membersLookup.set(member.name, member)
-    }
-    Object.defineProperty(this, 'membersLookup', {enumerable: false})
-  }
-
-  lookupCase(name: string) {
-    return this.membersLookup.get(name)
-  }
-
-  propAccessType(_name: string): Type | undefined {
-    return undefined
   }
 
   toCodeMember(member: EnumCase) {
     if (member.args.length) {
       const members = member.args
         .map(arg => {
-          if (arg.is === 'positional-argument') {
+          if (arg.is === 'positional') {
             return arg.type.toCode(false)
           } else {
             return `${arg.name}: ${arg.type.toCode(false)}`
@@ -3794,31 +3634,92 @@ export class AnonymousEnumDefinitionType extends Type {
 
     return `.${member.name}`
   }
+}
 
-  toCode(embedded = false): string {
-    if (embedded) {
-      return `(${this.toCode(false)})`
-    }
+/**
+ * "Shorthand" enum type, used in formula shorthands. If a function defines multiple
+ * enum cases, each case is given a different type. They do not share a common
+ * super-type.
+ *
+ * If the enum case is able to be subtyped/narrowed, it will hold a reference
+ * to the parent (original) type. All subtypes will hold a reference to the same
+ * 'meta' type, this is necessary to implement 'canBeAssignedTo' and
+ * 'compatibleWithBothTypes'.
+ *
+ *     -- foo is either `.a` or `.b(Int)`, and these two enums are separate
+ *     -- types (no common super type).
+ *     fn(foo: .a | .b(Int)) =>
+ *       switch foo
+ *       -- the .a type has an internal "meta" type, but in this case that
+ *       -- doesn't matter, because .a is not capable of being narrowed
+ *       case .a
+ *         'a'
+ *       -- ah but here, `.b(Int(>0))` *is* a subtype of .b(Int). So the
+ *       -- narrowed type's parent is .b(Int)
+ *       case .b(Int(>0))
+ *         if foo is .b(Int(>10))
+ *           -- and here, foo has type `.b(Int(>10))`, which is a subtype of
+ *           -- `.b(Int(>0))`, both are subtypes of `.b(Int)` (parent type)
+ *           ...
+ */
+export class AnonymousEnumType extends EnumType {
+  is = 'enum-definition'
 
-    return this.members.map(member => this.toCodeMember(member)).join(' | ')
+  constructor(
+    readonly member: EnumCase,
+    readonly _parent?: AnonymousEnumType | undefined,
+  ) {
+    super([member])
+    Object.defineProperty(this, 'members', {enumerable: false})
+  }
+
+  get metaType(): AnonymousEnumType {
+    return this._parent ?? this
+  }
+
+  get enumName() {
+    return `${ENUM_START}${this.member.name}`
+  }
+
+  propAccessType(_name: string): Type | undefined {
+    return undefined
+  }
+
+  toCode() {
+    return this.toCodeMember(this.member)
   }
 }
 
 /**
- * Enum type defined at module scope – with functions, support for generics
+ * Enum type defined at module scope – with functions, support for generics,
+ * static properties.
+ *
+ * All members of the enum definition are subtypes of the
+ * `NamedEnumInstanceType`. To test for this (in canBeAssignedTo etc) we check
+ * for the enum instance's enumDefinition type.
  */
-export class NamedEnumDefinitionType extends AnonymousEnumDefinitionType {
+export class NamedEnumDefinitionType extends EnumType {
   is = 'named-enum-definition'
+
+  private membersLookup: Map<string, EnumCase> = new Map()
 
   instanceType: NamedEnumInstanceType | undefined
 
   constructor(
     readonly name: string,
-    members: EnumCase[],
+    readonly members: EnumCase[],
     readonly staticProps: Map<string, Type>,
     readonly genericTypes: GenericType[],
   ) {
     super(members)
+    for (const member of members) {
+      this.membersLookup.set(member.name, member)
+    }
+    Object.defineProperty(this, 'membersLookup', {enumerable: false})
+  }
+
+  lookupCase(name: string) {
+    return this.membersLookup.get(name)
   }
 
   resolveInstanceType(instanceType: NamedEnumInstanceType) {
@@ -3838,7 +3739,24 @@ export class NamedEnumDefinitionType extends AnonymousEnumDefinitionType {
       const member = this.lookupCase(name)
       if (member) {
         if (member.positionalTypes.length || member.namedTypes.size) {
-          return new NamedFormulaType(this.name, this.instanceType, member.args, [])
+          let argIndex = 0
+          const args = member.args.map(arg => {
+            if (arg.is === 'positional') {
+              const argName = `_${argIndex++}`
+              return positionalArgument({
+                name: arg.name ?? argName,
+                type: arg.type,
+                isRequired: true,
+              })
+            } else {
+              return namedArgument({
+                name: arg.name,
+                type: arg.type,
+                isRequired: true,
+              })
+            }
+          })
+          return new NamedFormulaType(this.name, this.instanceType, args, [])
         }
 
         return this.instanceType
@@ -3854,54 +3772,22 @@ export class NamedEnumDefinitionType extends AnonymousEnumDefinitionType {
       code += `(${this.genericTypes.map(generic => generic.toCode()).join(', ')})`
     }
     code += ' {\n'
-    // TODO: members, formulas, staticProps
+    code += indent(this.members.map(member => this.toCodeMember(member)).join('\n'))
+    // TODO: formulas, staticProps
     code += '}'
 
     return code
   }
 }
 
-/**
- * An instance of an AnonymousEnumDefinitionType
- */
-export class EnumInstanceType extends Type {
-  readonly is = 'enum'
-
-  constructor(
-    readonly enumDefinition: AnonymousEnumDefinitionType,
-    readonly name: string,
-  ) {
-    super()
-  }
-
-  /**
-   * This doesn't have a meaningful code output, as far as I can tell...
-   */
-  toCode() {
-    return this.name
-  }
-
-  propAccessType(name: string | number): Type | undefined {
-    return undefined
-  }
-
-  /**
-   * Instances of an enum are always true
-   */
-  isOnlyTruthyType() {
-    return true
-  }
-}
-
-export class NamedEnumInstanceType extends EnumInstanceType {
+export class NamedEnumInstanceType extends Type {
   readonly is = 'enum'
 
   constructor(
     readonly enumDefinition: NamedEnumDefinitionType,
-    readonly name: string,
     readonly formulas: Map<string, Type>,
   ) {
-    super(enumDefinition, name)
+    super()
   }
 
   addFormula(name: string, formula: Type) {
@@ -3920,6 +3806,13 @@ export class NamedEnumInstanceType extends EnumInstanceType {
    */
   isOnlyTruthyType() {
     return true
+  }
+
+  /**
+   * This doesn't have a meaningful code output, as far as I can tell...
+   */
+  toCode() {
+    return this.enumDefinition.name
   }
 }
 
@@ -4214,6 +4107,11 @@ export class ModuleType extends Type {
 
 /**
  * For `a is b` operator, this returns the subtypes of a that "are b"
+ * - Ints, Floats, Strings are narrowed
+ * - Ints/Floats can be narrowed by range
+ * - Containers are narrowed by length
+ * - OneOf types are filtered (and each type is narrowed)
+ * - Each value in the enum is narrowed (if the case matches)
  */
 export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
   if (typeAssertion === AlwaysType) {
@@ -4257,47 +4155,24 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
     return lhsType
   }
 
-  // covers type narrowing, e.g. `Human is Student --> Student`
+  // covers type narrowing, e.g. `Human is Student --> Student`, because
+  // Student can be assigned to Human it is the "narrower" type.
   if (canBeAssignedTo(typeAssertion, lhsType)) {
     return typeAssertion
   }
 
-  // covers "5.0 is 0...10 --> 5.0" and `0...10 is <5 --> 0...5`
-  // Yeah ranges don't really work as a 'canBeAssignedTo' case, and it was just
-  // easier to put it in here than work it into canBeAssignedTo (where it
-  // definitely doesn't belong)
-  if (lhsType.isFloat() && typeAssertion.isRange()) {
-    if (Narrowed.isInNarrowedRange(typeAssertion.narrowed, lhsType.narrowed)) {
-      if (lhsType.isInt()) {
-        const narrowed = narrowedFloatToInt(typeAssertion.narrowed)
-        if (Narrowed.narrowedIsNever(narrowed)) {
-          return NeverType
-        }
-        return int(narrowed)
-      } else {
-        return float(typeAssertion.narrowed)
-      }
-    }
-
-    if (lhsType.isInt()) {
-      const narrowed = narrowedFloatToInt(typeAssertion.narrowed)
-      if (Narrowed.narrowedIsNever(narrowed)) {
-        return NeverType
-      }
-      return lhsType.narrow(narrowed.min, narrowed.max)
-    }
-    return lhsType.narrow(typeAssertion.narrowed.min, typeAssertion.narrowed.max)
-  }
-
+  // covers "5.0 is 0...10 --> 5.0", `0...10 is <5 --> 0...5`,
+  // `Int is Float(>0) --> Int(>0)`, `0...10 is 0...5 --> 0...5`
   if (
-    (lhsType.isFloat() && typeAssertion.isFloat()) ||
+    (lhsType.isFloat() && (typeAssertion.isFloat() || typeAssertion.isRange())) ||
     (lhsType.isRange() && typeAssertion.isRange())
   ) {
+    // If lhs is int-typed but assertion isn't, convert assertion narrowing to int
     if (
       (lhsType.isInt() || lhsType.isIntRange()) &&
       !(typeAssertion.isInt() || typeAssertion.isIntRange())
     ) {
-      const narrowed = Narrowed.narrowedFloatToInt(typeAssertion.narrowed)
+      const narrowed = narrowedFloatToInt(typeAssertion.narrowed)
       if (Narrowed.narrowedIsNever(narrowed)) {
         return NeverType
       }
@@ -4309,8 +4184,21 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
       }
       return lhsType.narrow(narrowed.min, narrowed.max)
     }
-    // if typeAssertion is entirely within lhsType, return typeAssertion
+
+    // if typeAssertion is entirely within lhsType, return the narrowed type
     if (Narrowed.isInNarrowedRange(typeAssertion.narrowed, lhsType.narrowed)) {
+      // When lhs is a number type (Float/Int) and assertion is a range,
+      // return the number type with assertion's narrowing (not the range itself)
+      if (lhsType.isFloat() && typeAssertion.isRange()) {
+        if (lhsType.isInt()) {
+          const narrowed = narrowedFloatToInt(typeAssertion.narrowed)
+          if (Narrowed.narrowedIsNever(narrowed)) {
+            return NeverType
+          }
+          return int(narrowed)
+        }
+        return float(typeAssertion.narrowed)
+      }
       return typeAssertion
     }
 
@@ -5150,13 +5038,38 @@ export function canBeAssignedTo(
       `Incompatible set types '${testType}' and '${assignTo}'.`,
     )
   } else if (
-    testType instanceof EnumInstanceType &&
-    assignTo instanceof AnonymousEnumDefinitionType
+    testType instanceof NamedEnumInstanceType &&
+    assignTo instanceof NamedEnumInstanceType
   ) {
     return why(
-      testType.enumDefinition === assignTo,
+      testType.enumDefinition === assignTo.enumDefinition,
       `Incompatible types in enum. '${testType.enumDefinition.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
     )
+  } else if (testType instanceof AnonymousEnumType && assignTo instanceof AnonymousEnumType) {
+    if (testType.metaType !== assignTo.metaType) {
+      return why(
+        false,
+        `Unrelated enum values. '${testType.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
+      )
+    }
+    const combined = combineIterators(testType.member.args, assignTo.member.args)
+    if (combined.isErr()) {
+      return why(
+        testType === assignTo,
+        `Unrelated enum values. '${testType.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
+      )
+    }
+
+    for (const {lhs, rhs} of combined.value) {
+      if (!canBeAssignedTo(lhs.type, rhs.type, resolvedGenericsMap, reason)) {
+        return why(
+          false,
+          `Incompatible types in enum argument. '${lhs.type.toCode()}' cannot be assigned to '${rhs.type.toCode()}'.`,
+        )
+      }
+    }
+
+    return true
   } else if (testType instanceof ObjectType && assignTo instanceof ObjectType) {
     const assignToTupleProps: PositionalProp[] = []
     const assignToNamedProps: NamedProp[] = []
@@ -6399,3 +6312,145 @@ function addRequirement(
       ),
   }
 })()
+
+function scoreType(type: Type): number | undefined {
+  if (type instanceof LiteralIntType) {
+    return 1
+  }
+  if (type instanceof LiteralFloatType) {
+    return 2
+  }
+  if (type instanceof LiteralStringType) {
+    return 3
+  }
+  if (type instanceof LiteralRegexType) {
+    return 4
+  }
+  if (type instanceof ArrayType) {
+    return 5
+  }
+  if (type instanceof SetType) {
+    return 6
+  }
+  if (type instanceof DictType) {
+    return 7
+  }
+  if (type instanceof ObjectType) {
+    return 8
+  }
+  if (type instanceof ClassInstanceType) {
+    return 9
+  }
+  if (type instanceof AnonymousEnumType) {
+    return 10
+  }
+  if (type instanceof NamedEnumInstanceType) {
+    return 11
+  }
+  if (type instanceof MetaBooleanType) {
+    return 12
+  }
+  if (type instanceof MetaIntType) {
+    return 13
+  }
+  if (type instanceof MetaIntRangeType) {
+    return 14
+  }
+  if (type instanceof MetaFloatRangeType) {
+    return 15
+  }
+  if (type instanceof MetaFloatType) {
+    return 16
+  }
+  if (type instanceof MetaStringType) {
+    return 17
+  }
+  if (type instanceof MetaRegexType) {
+    return 18
+  }
+  switch (type) {
+    case LiteralTrueType:
+      return 19
+    case LiteralFalseType:
+      return 20
+    case NullType:
+      return 21
+    case AlwaysType:
+      return 22
+    case NeverType:
+      return 23
+  }
+  return 24
+}
+
+function _sortNarrowed(a: Narrowed.NarrowedFloat, b: Narrowed.NarrowedFloat) {
+  let aMin = Array.isArray(a.min) ? a.min[0] : a.min
+  let aMax = Array.isArray(a.max) ? a.max[0] : a.max
+  let bMin = Array.isArray(b.min) ? b.min[0] : b.min
+  let bMax = Array.isArray(b.max) ? b.max[0] : b.max
+
+  if (aMax !== undefined && bMin !== undefined) {
+    return aMax - bMin
+  }
+  if (aMin !== undefined && bMax !== undefined) {
+    return aMin - bMax
+  }
+  if (aMax !== undefined && bMax !== undefined) {
+    return aMax - bMax
+  }
+  if (aMin !== undefined && bMin !== undefined) {
+    return aMin - bMin
+  }
+  if (aMax !== undefined) {
+    return -1
+  }
+  if (bMax !== undefined) {
+    return 1
+  }
+  if (aMin !== undefined) {
+    return -1
+  }
+  if (bMin !== undefined) {
+    return 1
+  }
+  return 0
+}
+
+function _sortTypes(a: Type, b: Type): number {
+  if (a instanceof OneOfType) {
+    return _sortTypes(a.of[0], b instanceof OneOfType ? b.of[0] : b)
+  }
+
+  if (a instanceof ContainerType && b instanceof ContainerType && a.constructor === b.constructor) {
+    const sorted = _sortTypes(a.of, b.of)
+    if (sorted !== 0) return sorted
+    return _sortNarrowed(a.narrowedLength, b.narrowedLength)
+  }
+
+  if (a instanceof LiteralFloatType && b instanceof LiteralFloatType) {
+    return a.value - b.value
+  }
+
+  if (a instanceof MetaFloatType && b instanceof MetaFloatType) {
+    return _sortNarrowed(a.narrowed, b.narrowed)
+  }
+
+  const [lhsScore, rhsScore] = [scoreType(a), scoreType(b)]
+  if (lhsScore && rhsScore && lhsScore !== rhsScore) {
+    return lhsScore - rhsScore
+  }
+
+  return a.toString().toLowerCase().localeCompare(b.toString().toLowerCase())
+}
+
+/**
+ * Only used when you are really sure the types don't overlap. Sorts the types
+ * into a consistent order.
+ */
+export function _privateOneOf(types: Type[]): __OneOfType {
+  if (types.some(type => type instanceof OneOfType)) {
+    throw 'I should not be. OneOfType passed to _privateOneOf'
+  }
+
+  return new __OneOfType(types.slice().sort(_sortTypes))
+}
