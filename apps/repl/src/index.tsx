@@ -552,4 +552,8 @@ let doExit = () => {}
   doExit = () => {
     screen.exit()
   }
+
+  if (process.argv.includes('--exit')) {
+    screen.exit()
+  }
 })()
