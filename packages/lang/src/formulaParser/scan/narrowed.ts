@@ -7,6 +7,7 @@ import {
   ARGS_CLOSE,
   isNumberChar,
   isNumberStart,
+  isIntStart,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
@@ -112,7 +113,7 @@ export function scanNarrowedInt(scanner: Scanner): Narrowed.NarrowedInt {
     scanner.scanAllWhitespace()
     const count = Math.floor((scanNumber(scanner, 'int').value as Values.IntValue).value)
     return {min: count + 1, max: undefined}
-  } else if (scanner.is('-') || (isNumberChar(scanner.char) && isNumberStart(scanner))) {
+  } else if (scanner.is('-') || (isNumberChar(scanner.char) && isIntStart(scanner))) {
     let min = Math.floor((scanNumber(scanner, 'int').value as Values.IntValue).value)
     let max: number | undefined
     scanner.scanAllWhitespace()
@@ -254,7 +255,7 @@ export function scanNarrowedLength(scanner: Scanner): Narrowed.NarrowedLength {
     scanner.scanAllWhitespace()
     const count = Math.floor((scanNumber(scanner, 'length').value as Values.IntValue).value)
     return {min: count + 1, max: undefined}
-  } else if (isNumberChar(scanner.char) && isNumberStart(scanner)) {
+  } else if (isIntStart(scanner)) {
     let min = Math.floor((scanNumber(scanner, 'length').value as Values.IntValue).value)
     let max: number | undefined
     scanner.scanAllWhitespace()
@@ -280,10 +281,7 @@ export function scanNarrowedLength(scanner: Scanner): Narrowed.NarrowedLength {
       min = a
       max = b
     } else {
-      throw new ParseError(
-        scanner,
-        `Invalid guard on length '${min}', expected comparison (< <= = >= >) or range (<.. <.< ..> ...) or min/max (n+ n-)`,
-      )
+      return {min: min, max: min}
     }
 
     checkTypeGuard(scanner, min, max)

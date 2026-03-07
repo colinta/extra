@@ -264,6 +264,7 @@ In my mind, an "empty String/Array" is a different _type_ than "a String with 5 
 
 ```extra
 String(length: =8)      -- String of exactly length 8
+String(length: 8)       -- same, but =8 is canonical
 String(matches: /^\d!$/) -- String matching a regex
 String(matches: [/^.\d+!$/, /^a/]) -- String matching multiple regexes
 

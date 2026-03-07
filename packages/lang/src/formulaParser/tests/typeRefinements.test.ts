@@ -19,6 +19,7 @@ describe('type refinements', () => {
     cases<[string] | [string, string]>(
       c(['Array(Int, length: =3)', '[Int, length: =3]']),
       c(['[Int, length: =3]']),
+      c(['[Int, length: 3]', '[Int, length: =3]']),
       c(['[Int, length: 3...3]', '[Int, length: =3]']),
       c(['[Int, length: >=3]']),
       c(['[Int, length: ≥3]', '[Int, length: >=3]']),
@@ -43,6 +44,7 @@ describe('type refinements', () => {
         'Dict(Int, keys: [:key1, :key2], length: >=3)',
       ]),
       c(['Dict(Int, length: =3)']),
+      c(['Dict(Int, length: 3)', 'Dict(Int, length: =3)']),
       c(['Dict(Int, length: >=3)', 'Dict(Int, length: >=3)']),
       c(['Dict(Int, length: <=3)', 'Dict(Int, length: <=3)']),
       c(['Dict(Int, keys: [:key1], length: =3)', 'Dict(Int, keys: [:key1], length: =3)']),
@@ -64,6 +66,7 @@ describe('type refinements', () => {
   describe('strings', () => {
     cases<[string] | [string, string]>(
       c(['String(length: =3)']),
+      c(['String(length: 3)', 'String(length: =3)']),
       c(['String(length: 3...3)', 'String(length: =3)']),
       c(['String(length: >=3)']),
       c(['String(length: ≥3)', 'String(length: >=3)']),

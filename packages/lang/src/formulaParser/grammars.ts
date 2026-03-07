@@ -261,6 +261,10 @@ export function isNumberStart(scanner: Scanner) {
   return scanner.is(/^(\d|\.\d)/)
 }
 
+export function isIntStart(scanner: Scanner) {
+  return scanner.is(/^(\d)/)
+}
+
 export function isNumber(input: string) {
   return !isNaN(Number(input))
 }
