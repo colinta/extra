@@ -554,30 +554,28 @@ export class NamedEnumDefinition extends EnumTypeExpression {
 
             const enumDefinition = new Types.NamedEnumDefinitionType(
               name,
-              enumCases.map(enumCaseNode =>
-                Types.enumCase(
-                  enumCaseNode.name,
-                  enumCaseNode.args.map(arg => {
-                    if (arg.is === 'named-value') {
-                      return Types.namedProp(arg.name, arg.node.type)
-                    } else {
-                      return Types.positionalProp(arg.node.type)
-                    }
-                  }),
-                ),
-              ),
-              //
               staticPropertyTypes,
+              // will hold formulas, they get assigned as they are resolved
+              new Map(),
               genericTypes,
             )
 
             moduleRuntime.addLocalType(name, enumDefinition)
 
-            const instanceType = new Types.NamedEnumInstanceType(
-              enumDefinition,
-              // will hold formulas, they get assigned as they are resolved
-              new Map(),
+            const members = enumCases.map(enumCaseNode =>
+              Types.enumCase(
+                enumCaseNode.name,
+                enumCaseNode.args.map(arg => {
+                  if (arg.is === 'named-value') {
+                    return Types.namedProp(arg.name, arg.node.type)
+                  } else {
+                    return Types.positionalProp(arg.node.type)
+                  }
+                }),
+              ),
             )
+
+            const instanceType = new Types.NamedEnumInstanceType(enumDefinition, members)
             enumDefinition.resolveInstanceType(instanceType)
             const thisRuntime = new MutableTypeRuntime(moduleRuntime, instanceType)
 
@@ -639,7 +637,7 @@ export class NamedEnumDefinition extends EnumTypeExpression {
                 }
 
                 if (isMemberProp) {
-                  instanceType.addFormula(expr.name, remainingProp.value.type)
+                  enumDefinition.addFormula(expr.name, remainingProp.value.type)
                   formulaProperties.set(expr.name, remainingProp.value)
                 } else {
                   // static properties can be treated as local variables

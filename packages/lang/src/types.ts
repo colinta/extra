@@ -222,11 +222,8 @@ export function classType({
 /**
  * An 'instance' of an enum.
  */
-export function enumType(
-  definition: NamedEnumDefinitionType,
-  formulas: Map<string, FormulaType> = new Map(),
-) {
-  return new NamedEnumInstanceType(definition, formulas)
+export function enumType(definition: NamedEnumDefinitionType, members: EnumCase[]) {
+  return new NamedEnumInstanceType(definition, members)
 }
 
 export function enumCase(name: string, args: ObjectProp[] = []) {
@@ -242,21 +239,23 @@ export function namedEnumDefinition({
   members,
   definition: classType,
   staticProps = new Map(),
+  formulas = new Map(),
   genericTypes = [],
   moreStatics,
 }: {
   name: string
   members: EnumCase[]
-  definition?: (def: NamedEnumDefinitionType) => NamedEnumInstanceType
+  definition?: (def: NamedEnumDefinitionType, members: EnumCase[]) => NamedEnumInstanceType
   staticProps?: Map<string, Type>
+  formulas?: Map<string, Type>
   genericTypes?: GenericType[]
   moreStatics?: (
     definition: NamedEnumDefinitionType,
     classType: NamedEnumInstanceType,
   ) => Map<string, Type>
 }) {
-  const definition = new NamedEnumDefinitionType(name, members, staticProps, genericTypes)
-  const classInstanceType = classType?.(definition) ?? enumType(definition)
+  const definition = new NamedEnumDefinitionType(name, staticProps, formulas, genericTypes)
+  const classInstanceType = classType?.(definition, members) ?? enumType(definition, members)
   definition.resolveInstanceType(classInstanceType)
 
   if (moreStatics) {
@@ -266,6 +265,21 @@ export function namedEnumDefinition({
   }
 
   return definition
+}
+
+export function narrowAnonymousEnum(prevType: AnonymousEnumType, enumCase: EnumCase) {
+  if (!canCasesBeAssignedTo([enumCase], prevType.members)) {
+    throw new Error("You should've done a better job")
+  }
+  return new AnonymousEnumType(enumCase, prevType.metaType)
+}
+
+export function narrowNamedEnum(prevType: NamedEnumInstanceType, enumCase: EnumCase | EnumCase[]) {
+  const cases = Array.isArray(enumCase) ? enumCase : [enumCase]
+  if (!canCasesBeAssignedTo(cases, prevType.members)) {
+    throw new Error("You should've done a better job")
+  }
+  return new NamedEnumInstanceType(prevType.metaType, cases)
 }
 
 export function optional(type: Type) {
@@ -3698,28 +3712,25 @@ export class AnonymousEnumType extends EnumType {
  * `NamedEnumInstanceType`. To test for this (in canBeAssignedTo etc) we check
  * for the enum instance's enumDefinition type.
  */
-export class NamedEnumDefinitionType extends EnumType {
+export class NamedEnumDefinitionType extends Type {
   is = 'named-enum-definition'
 
-  private membersLookup: Map<string, EnumCase> = new Map()
-
-  instanceType: NamedEnumInstanceType | undefined
+  instanceType: NamedEnumInstanceType
 
   constructor(
     readonly name: string,
-    readonly members: EnumCase[],
     readonly staticProps: Map<string, Type>,
+    readonly formulas: Map<string, Type>,
     readonly genericTypes: GenericType[],
   ) {
-    super(members)
-    for (const member of members) {
-      this.membersLookup.set(member.name, member)
-    }
-    Object.defineProperty(this, 'membersLookup', {enumerable: false})
-  }
+    super()
 
-  lookupCase(name: string) {
-    return this.membersLookup.get(name)
+    // yeah yeah yeah don't *worry* about it. The two preferred ways of creating
+    // a NamedEnumDefinitionType – the namedEnumDefinition helper, and via
+    // the NamedEnumDefinition expression – both call 'resolveInstanceType' as
+    // part of the "creation process". Don't question the process.
+    this.instanceType = {} as NamedEnumInstanceType
+    Object.defineProperty(this, 'membersLookup', {enumerable: false})
   }
 
   resolveInstanceType(instanceType: NamedEnumInstanceType) {
@@ -3730,13 +3741,17 @@ export class NamedEnumDefinitionType extends EnumType {
     this.staticProps.set(name, type)
   }
 
+  addFormula(name: string, formula: Type) {
+    this.formulas.set(name, formula)
+  }
+
   propAccessType(name: string | number): Type | undefined {
     if (typeof name === 'number') {
       return undefined
     }
 
     if (this.instanceType) {
-      const member = this.lookupCase(name)
+      const member = this.instanceType.lookupCase(name)
       if (member) {
         if (member.positionalTypes.length || member.namedTypes.size) {
           let argIndex = 0
@@ -3772,7 +3787,9 @@ export class NamedEnumDefinitionType extends EnumType {
       code += `(${this.genericTypes.map(generic => generic.toCode()).join(', ')})`
     }
     code += ' {\n'
-    code += indent(this.members.map(member => this.toCodeMember(member)).join('\n'))
+    code += indent(
+      this.instanceType.members.map(member => this.instanceType.toCodeMember(member)).join('\n'),
+    )
     // TODO: formulas, staticProps
     code += '}'
 
@@ -3780,25 +3797,31 @@ export class NamedEnumDefinitionType extends EnumType {
   }
 }
 
-export class NamedEnumInstanceType extends Type {
+export class NamedEnumInstanceType extends EnumType {
   readonly is = 'enum'
 
+  private membersLookup: Map<string, EnumCase> = new Map()
+
   constructor(
-    readonly enumDefinition: NamedEnumDefinitionType,
-    readonly formulas: Map<string, Type>,
+    readonly metaType: NamedEnumDefinitionType,
+    readonly members: EnumCase[],
   ) {
-    super()
+    super(members)
+    for (const member of members) {
+      this.membersLookup.set(member.name, member)
+    }
+    Object.defineProperty(this, 'membersLookup', {enumerable: false})
   }
 
-  addFormula(name: string, formula: Type) {
-    this.formulas.set(name, formula)
+  lookupCase(name: string) {
+    return this.membersLookup.get(name)
   }
 
   propAccessType(name: string | number): Type | undefined {
     if (typeof name === 'number') {
       return undefined
     }
-    return this.formulas.get(name)
+    return this.metaType.formulas.get(name)
   }
 
   /**
@@ -3812,7 +3835,7 @@ export class NamedEnumInstanceType extends Type {
    * This doesn't have a meaningful code output, as far as I can tell...
    */
   toCode() {
-    return this.enumDefinition.name
+    return this.metaType.name
   }
 }
 
@@ -4246,9 +4269,105 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
     )
   }
 
-  // if lhsType is a subet of typeAssertion, the resulting set is empty
+  // if lhsType is a subset of typeAssertion, the resulting set is empty
   if (canBeAssignedTo(lhsType, typeAssertion)) {
     return NeverType
+  }
+
+  if (lhsType instanceof EnumType && typeAssertion instanceof EnumType) {
+    // typeAssertion must be a subtype of lhsType, otherwise we can't narrow.
+    if (!canBeAssignedTo(typeAssertion, lhsType)) {
+      return lhsType
+    }
+
+    const resultMembers: EnumCase[] = []
+    for (const lhsMember of lhsType.members) {
+      const assertionMember = typeAssertion.members.find(m => m.name === lhsMember.name)
+
+      // typeAssertion did not include the member in its narrowed member list,
+      // so keep it in there
+      if (!assertionMember) {
+        resultMembers.push(lhsMember)
+        continue
+      }
+
+      // no args in the typeAssertion
+      //     lhs: .a(Int) | .b(Int)
+      //     lhs !is .a
+      //     --> lhs: .b(Int)
+      if (assertionMember.args.length === 0) {
+        continue
+      }
+
+      // otherwise we have args, and therefore we expect the number of args to
+      // match on both sides. check which args (if any) were narrowed.
+      const positionalIter = combineIterators(
+        lhsMember.positionalTypes,
+        assertionMember.positionalTypes,
+      ).getOr()
+      const namedIter = combineIterators(lhsMember.namedTypes, assertionMember.namedTypes).getOr()
+
+      // should be impossible; we checked canBeAssignedTo above, and we checked
+      // for zero args in assertionMember. 🤷‍♂️
+      if (!positionalIter || !namedIter) {
+        throw new Error('TODO: should be impossible? (!positionalIter || !namedIter)')
+        // return lhsType
+      }
+
+      const allArgs = [...positionalIter, ...namedIter]
+      let narrowedCount = 0
+      let narrowedIndex = -1
+
+      for (let i = 0; i < allArgs.length; i++) {
+        const {lhs, rhs} = allArgs[i]
+        if (!canBeAssignedTo(lhs, rhs)) {
+          narrowedCount++
+          narrowedIndex = i
+        }
+      }
+
+      if (narrowedCount === 0) {
+        // all args in this (excluded) enum case are excluded, ie the assertion
+        // fully covers the lhsMember — exclude it
+        continue
+      }
+
+      if (narrowedCount === 1) {
+        // narrow just the one arg
+        const {lhs: lhsArg, rhs: assertionArg} = allArgs[narrowedIndex]
+        const narrowedArg = narrowTypeIsNot(lhsArg, assertionArg)
+        if (narrowedArg === NeverType) {
+          return lhsType
+        }
+
+        const newArgs = lhsMember.args.map((arg, i) => {
+          if (i === narrowedIndex) {
+            return {...arg, type: narrowedArg}
+          }
+          return arg
+        })
+        resultMembers.push(new EnumCase(lhsMember.name, newArgs))
+      } else {
+        // multiple args narrowed or 0 args — can't narrow, keep original
+        resultMembers.push(lhsMember)
+      }
+    }
+
+    // resultMembers.length === 0 is impossible, but if no members were
+    // narrowed, early exit
+    if (resultMembers.length === 0) {
+      return lhsType
+    }
+
+    if (lhsType instanceof NamedEnumInstanceType) {
+      return narrowNamedEnum(lhsType, resultMembers)
+    }
+
+    if (lhsType instanceof AnonymousEnumType && resultMembers.length === 1) {
+      return narrowAnonymousEnum(lhsType, resultMembers[0])
+    }
+
+    return lhsType
   }
 
   if (lhsType instanceof ContainerType && typeAssertion instanceof ContainerType) {
@@ -5041,10 +5160,22 @@ export function canBeAssignedTo(
     testType instanceof NamedEnumInstanceType &&
     assignTo instanceof NamedEnumInstanceType
   ) {
-    return why(
-      testType.enumDefinition === assignTo.enumDefinition,
-      `Incompatible types in enum. '${testType.enumDefinition.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
-    )
+    if (testType.metaType !== assignTo.metaType) {
+      return why(
+        false,
+        `Unrelated enum values. '${testType.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
+      )
+    }
+
+    // true if all cases of testType can be assigned to assignTo
+    if (!canCasesBeAssignedTo(testType.members, assignTo.members)) {
+      return why(
+        false,
+        `Unrelated enum values. '${testType.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
+      )
+    }
+
+    return true
   } else if (testType instanceof AnonymousEnumType && assignTo instanceof AnonymousEnumType) {
     if (testType.metaType !== assignTo.metaType) {
       return why(
@@ -5052,6 +5183,7 @@ export function canBeAssignedTo(
         `Unrelated enum values. '${testType.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
       )
     }
+
     const combined = combineIterators(testType.member.args, assignTo.member.args)
     if (combined.isErr()) {
       return why(
@@ -5132,6 +5264,54 @@ export function canBeAssignedTo(
   }
 
   return why(false, `Type '${testType.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`)
+}
+
+// matches name and arg types - every lhsCases needs to match one of the rhsCases
+//   lhs.name === rhs.name
+//   same number of positional args
+//   same named args
+//   all args : canBeAssignedTo(lhs, rhs)
+function canCasesBeAssignedTo(lhsCases: EnumCase[], rhsCases: EnumCase[]): boolean {
+  if (lhsCases.length !== 1) {
+    return lhsCases.every(member => canCasesBeAssignedTo([member], rhsCases))
+  }
+
+  const lhsCase = lhsCases[0]
+  return rhsCases.some(rhsCase => {
+    if (lhsCase.name !== rhsCase.name) {
+      return false
+    }
+
+    // .a(Int) is .a -- canBeAssignedTo(.a(Int), .a) -> true
+    if (rhsCase.args.length === 0) {
+      return true
+    }
+
+    const positionalIterator = combineIterators(
+      lhsCase.positionalTypes,
+      rhsCase.positionalTypes,
+    ).getOr()
+    if (!positionalIterator) {
+      return false
+    }
+    for (const {lhs, rhs} of positionalIterator) {
+      if (!canBeAssignedTo(lhs, rhs)) {
+        return false
+      }
+    }
+
+    const namedIterator = combineIterators(lhsCase.namedTypes, rhsCase.namedTypes).getOr()
+    if (!namedIterator) {
+      return false
+    }
+    for (const {lhs, rhs} of namedIterator) {
+      if (!canBeAssignedTo(lhs, rhs)) {
+        return false
+      }
+    }
+
+    return true
+  })
 }
 
 function canBeAssignedToRange(

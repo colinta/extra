@@ -675,7 +675,7 @@ export function combineEitherTypeRuntimes(
  * All others are retained in the form of a "one-of" relationship.
  *     x is String or x >= 5 => String | Int(>=5)
  */
-function combineOrRelationships(
+export function combineOrRelationships(
   lhsStuff: Relationship[],
   rhsStuff: Relationship[],
 ): Relationship[] {

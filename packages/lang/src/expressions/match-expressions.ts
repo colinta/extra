@@ -18,6 +18,7 @@ import {
   type Relationship,
   invertSymbol,
   combineEitherTypeRuntimes,
+  combineOrRelationships,
 } from '@/relationship'
 import {
   type TypeRuntime,
@@ -1662,11 +1663,15 @@ export class MatchEnumExpression extends MatchExpression {
     readonly qualifiers: string[],
     readonly enumName: string | undefined,
     readonly name: string,
-    readonly args: (MatchNamedArgument | MatchPositionalArgument)[],
+    readonly enumArgs: (
+      | MatchNamedArgument
+      | MatchPositionalArgument
+      | MatchIgnoreRemainingExpression
+    )[],
     readonly ignoreRemaining: boolean,
   ) {
     super(range, precedingComments)
-    for (const arg of args) {
+    for (const arg of enumArgs) {
       if (arg instanceof MatchIgnoreRemainingExpression) {
         continue
       }
@@ -1680,11 +1685,11 @@ export class MatchEnumExpression extends MatchExpression {
   }
 
   provides() {
-    return allProvides(this.args)
+    return allProvides(this.enumArgs)
   }
 
   matchAssignReferences() {
-    return this.args.flatMap(match => match.matchAssignReferences())
+    return this.enumArgs.flatMap(match => match.matchAssignReferences())
   }
 
   narrowUsingMatcherTypeSkippingOneOf(runtime: TypeRuntime, subjectType: Types.Type) {
@@ -1705,8 +1710,8 @@ export class MatchEnumExpression extends MatchExpression {
   private findEnumTypeThatMatchesCase(
     runtime: TypeRuntime,
     subjectType: Types.Type,
-  ): GetRuntimeResult<[Types.EnumType, Types.EnumCase]> {
-    const result = this._findOptionalEnumTypeThatMatchesCase(runtime, subjectType)
+  ): GetRuntimeResult<[Types.Type, Types.EnumCase[]]> {
+    const result = this._findOneEnumTypeThatMatchesCase(runtime, subjectType)
     if (result.isErr()) {
       return err(result.error)
     }
@@ -1724,50 +1729,52 @@ export class MatchEnumExpression extends MatchExpression {
   }
 
   /**
-   * See findEnumTypeThatMatchesCase, this function actually does the checking. Three
-   * possible return values:
+   * See findEnumTypeThatMatchesCase – this function actually does the checking.
+   * Three possible return values:
    * - `undefined` => no match found
    * - Err => Multiple matches found
-   * - Ok([Types.EnumType, Types.EnumCase]) => match found
+   * - Ok([Types.Type, Types.EnumCase]) => match found
    */
-  private _findOptionalEnumTypeThatMatchesCase(
+  private _findOneEnumTypeThatMatchesCase(
     runtime: TypeRuntime,
-    enumType: Types.Type,
-  ): GetRuntimeResult<[Types.EnumType, Types.EnumCase] | undefined> {
-    if (enumType instanceof Types.OneOfType) {
-      let enumInfo: [Types.EnumType, Types.EnumCase] | undefined
-      for (const oneType of enumType.of) {
-        const oneCheckResult = this._findOptionalEnumTypeThatMatchesCase(runtime, oneType)
-        if (oneCheckResult.isErr()) {
-          return err(oneCheckResult.error)
+    subjectType: Types.Type,
+  ): GetRuntimeResult<[Types.Type, Types.EnumCase[]] | undefined> {
+    if (subjectType instanceof Types.OneOfType) {
+      let enumInfo: [Types.Type[], Types.EnumCase[]] | undefined
+      for (const oneType of subjectType.of) {
+        const result = this._findOneEnumTypeThatMatchesCase(runtime, oneType)
+        if (result.isErr()) {
+          return err(result.error)
         }
 
-        if (!oneCheckResult.value) {
+        if (!result.value) {
           continue
         }
 
+        const [type, cases] = result.value
         if (enumInfo) {
-          // TODO: could possibly support this, if all the matching enum cases have
-          // compatible arguments
-          return err(
-            new RuntimeError(
-              this,
-              `More than one matching case expression (${enumInfo[0]} and ${oneCheckResult.value[0]}). Consider using a fully-qualified name.`,
-            ),
-          )
+          const [prevTypes, prevCases] = enumInfo
+          prevTypes.push(type)
+          prevCases.push(...cases)
         } else {
-          enumInfo = oneCheckResult.value
+          // NB these arrays will be mutated in this loop via prevTypes
+          enumInfo = [[type], cases]
         }
       }
 
-      return ok(enumInfo)
+      if (!enumInfo) {
+        return ok(undefined)
+      }
+      const [types, cases] = enumInfo
+      return ok([Types.oneOf(types), cases])
     }
 
     // must be an enum
-    if (!(enumType instanceof Types.EnumType)) {
+    if (!(subjectType instanceof Types.EnumType)) {
       return ok(undefined)
     }
 
+    let enumType: Types.EnumType = subjectType
     if (this.enumName) {
       // when the enumName is present, `type` must be of that named enum type
       // so it must first be a NamedEnumInstanceType
@@ -1810,7 +1817,7 @@ export class MatchEnumExpression extends MatchExpression {
 
       // the type must come from the same enumDefinition - this is the qualifed
       // name check, after this we can use the default enum checking logic below
-      if (!(enumType.enumDefinition === enumDef)) {
+      if (!(enumType.metaType === enumDef)) {
         return ok(undefined)
       }
     }
@@ -1822,89 +1829,86 @@ export class MatchEnumExpression extends MatchExpression {
     }
 
     // if there are no args, then this is a match
-    if (this.args.length === 0) {
-      return ok([enumType, enumCase])
-    }
-
-    // all match args must be at least *present* in the enumType
-    let ignoreRemaining = false
-    const foundNames = new Set<string>()
-    let argIndex = 0
-    for (const arg of this.args) {
-      if (arg instanceof MatchIgnoreRemainingExpression) {
-        ignoreRemaining = true
-      } else if (arg instanceof MatchNamedArgument) {
-        foundNames.add(arg.name)
-        const argType = enumCase.namedTypes.get(arg.name)
-        if (!argType) {
-          return ok(undefined)
-        }
-      } else {
-        const argType = enumCase.positionalTypes.at(argIndex)
-        if (!argType) {
-          return ok(undefined)
-        }
-        argIndex++
+    let enumCaseResult: GetRuntimeResult<Types.EnumCase>
+    if (this.enumArgs.length === 0) {
+      enumCaseResult = ok(enumCase)
+    } else {
+      // if there is no ignoreRemaining matcher, counts of all args must equal
+      if (
+        !this.ignoreRemaining &&
+        (enumCase.positionalTypes.length !== this.minimumPositionalCount ||
+          enumCase.namedTypes.size !== this.names.size)
+      ) {
+        return ok(undefined)
       }
-    }
 
-    // now run the types through the match expressions
-    argIndex = 0
-    return mapAll(
-      this.args.map((arg): GetRuntimeResult<(Types.PositionalProp | Types.NamedProp)[]> => {
+      // all match args must be at least *present* in the enumType
+      let argIndex = 0
+      for (const arg of this.enumArgs) {
         if (arg instanceof MatchIgnoreRemainingExpression) {
-          ignoreRemaining = true
-          const remaining: (Types.PositionalProp | Types.NamedProp)[] = []
-          let remainingIndex = 0
-          for (const arg of enumCase.args) {
-            if (arg.is === 'positional') {
-              if (remainingIndex >= argIndex) {
-                remaining.push(arg)
-              }
-              argIndex++
-            } else if (!foundNames.has(arg.name)) {
-              remaining.push(arg)
-            }
-          }
-          return ok(remaining)
+          continue
         } else if (arg instanceof MatchNamedArgument) {
           const argType = enumCase.namedTypes.get(arg.name)
-          return arg
-            .narrowUsingMatcherType(runtime, argType!)
-            .map(narrowedType => [Types.namedProp(arg.name, narrowedType)])
+          if (!argType) {
+            return ok(undefined)
+          }
         } else {
-          const argType = enumCase.positionalTypes[argIndex]
-          argIndex += 1
-          return arg
-            .narrowUsingMatcherType(runtime, argType)
-            .map(narrowedType => [Types.positionalProp(narrowedType)])
+          const argType = enumCase.positionalTypes.at(argIndex)
+          if (!argType) {
+            return ok(undefined)
+          }
+          argIndex++
         }
-      }),
-    )
-      .map(args => new Types.EnumCase(enumCase.name, args.flat()))
-      .map(enumCase => {
-        if (enumCase.args.some(arg => arg.type === Types.NeverType)) {
-          return
-        }
+      }
 
-        // at this point we have checked all the names (they are all present and
-        // match) and positional arguments (there were enough to satisfy the
-        // match conditions).
-        // if there is no ignoreRemaining matcher, counts of all args must equal
-        if (
-          !ignoreRemaining &&
-          (enumCase.positionalTypes.length !== this.minimumPositionalCount ||
-            enumCase.namedTypes.size !== this.names.size)
-        ) {
-          return
-        }
+      // now run the types through the match expressions
+      argIndex = 0
+      enumCaseResult = mapAll(
+        this.enumArgs.map((arg): GetRuntimeResult<(Types.PositionalProp | Types.NamedProp)[]> => {
+          if (arg instanceof MatchIgnoreRemainingExpression) {
+            // combine remaining types
+            const remaining: (Types.PositionalProp | Types.NamedProp)[] = []
+            let remainingIndex = 0
+            for (const arg of enumCase.args) {
+              if (arg.is === 'positional') {
+                if (remainingIndex >= argIndex) {
+                  remaining.push(arg)
+                }
+                argIndex++
+              } else if (!this.names.has(arg.name)) {
+                remaining.push(arg)
+              }
+            }
+            return ok(remaining)
+          } else if (arg instanceof MatchNamedArgument) {
+            const argType = enumCase.namedTypes.get(arg.name)
+            return arg
+              .narrowUsingMatcherType(runtime, argType!)
+              .map(narrowedType => [Types.namedProp(arg.name, narrowedType)])
+          } else {
+            const argType = enumCase.positionalTypes[argIndex]
+            argIndex += 1
+            return arg
+              .narrowUsingMatcherType(runtime, argType)
+              .map(narrowedType => [Types.positionalProp(narrowedType)])
+          }
+        }),
+      ).map(args => new Types.EnumCase(enumCase.name, args.flat()))
+    }
 
-        if (enumType instanceof Types.AnonymousEnumType) {
-          enumType = new Types.AnonymousEnumType(enumCase, enumType.metaType)
-        }
+    return enumCaseResult.map(enumCase => {
+      if (enumCase.args.some(arg => arg.type === Types.NeverType)) {
+        return
+      }
 
-        return [enumType, enumCase]
-      })
+      if (enumType instanceof Types.AnonymousEnumType) {
+        enumType = Types.narrowAnonymousEnum(enumType, enumCase)
+      } else if (enumType instanceof Types.NamedEnumInstanceType) {
+        enumType = Types.narrowNamedEnum(enumType, enumCase)
+      }
+
+      return [enumType, [enumCase]]
+    })
   }
 
   gimmeTrueStuffWith(
@@ -1915,35 +1919,58 @@ export class MatchEnumExpression extends MatchExpression {
     // TODO: add `ENUM_START + subjectType.members` to the runtime, so that
     // lookups can be inferred based on the subject
     return this.findEnumTypeThatMatchesCase(runtime, subjectType).map(enumInfo => {
-      const [enumType, enumCase] = enumInfo
+      const [enumType, enumCases] = enumInfo
       const relationships: Relationship[] = []
 
       if (formula) {
-        // TODO: create an enumType that only contains the enumCase
         relationships.push({formula, comparison: {operator: 'instanceof', rhs: enumType}})
       }
 
-      if (!this.args.length) {
+      if (!this.enumArgs.length) {
         return ok(relationships)
       }
 
-      let index = 0
-      for (const arg of this.args) {
-        let type: Types.Type
-        if (arg instanceof MatchNamedArgument) {
-          type = enumCase.namedTypes.get(arg.name)!
-        } else {
-          type = enumCase.positionalTypes[index]
-          index += 1
-        }
+      let enumRelationships: Relationship[] = []
+      for (const enumCase of enumCases) {
+        let argIndex = 0
+        for (const arg of this.enumArgs) {
+          let type: Types.Type
+          if (arg instanceof MatchIgnoreRemainingExpression) {
+            // combine remaining types in the ObjectType
+            const remaining: (Types.PositionalProp | Types.NamedProp)[] = []
+            let remainingIndex = 0
+            for (const arg of enumCase.args) {
+              if (arg.is === 'positional') {
+                if (remainingIndex >= argIndex) {
+                  remaining.push(arg)
+                }
+                argIndex++
+              } else if (!this.names.has(arg.name)) {
+                remaining.push(arg)
+              }
+            }
+            type = Types.object(remaining)
+          } else if (arg instanceof MatchNamedArgument) {
+            type = enumCase.namedTypes.get(arg.name)!
+          } else {
+            type = enumCase.positionalTypes[argIndex]
+            argIndex += 1
+          }
 
-        const result = arg.gimmeTrueStuffWith(runtime, undefined, type)
-        if (result.isErr()) {
-          return err(result.error)
+          const result = arg.gimmeTrueStuffWith(runtime, undefined, type)
+          if (result.isErr()) {
+            return err(result.error)
+          }
+
+          if (enumRelationships.length) {
+            enumRelationships = combineOrRelationships(enumRelationships, result.value)
+          } else {
+            enumRelationships = result.value
+          }
         }
-        relationships.push(...result.value)
       }
 
+      relationships.push(...enumRelationships)
       return relationships
     })
   }
@@ -1960,7 +1987,6 @@ export class MatchEnumExpression extends MatchExpression {
       const relationships: Relationship[] = []
 
       if (formula) {
-        // TODO: create an enumType that only contains the enumCase
         relationships.push({formula, comparison: {operator: '!instanceof', rhs: enumType}})
       }
 
@@ -1975,18 +2001,46 @@ export class MatchEnumExpression extends MatchExpression {
     // TODO: add `ENUM_START + subjectType.members` to the runtime, so that
     // lookups can be inferred based on the subject
     return this.findEnumTypeThatMatchesCase(runtime, subjectType).map(enumInfo => {
-      const [enumType, enumCase] = enumInfo
+      const [enumType, enumCases] = enumInfo
       let argIndex = 0
       return mapAll(
-        this.args.map((arg): GetRuntimeResult<Nodes.MatchArgument | undefined> => {
+        this.enumArgs.map((arg): GetRuntimeResult<Nodes.MatchArgument | undefined> => {
           let argKey: string | number
           let argType: Types.Type | undefined
-          if (arg instanceof MatchNamedArgument) {
+          if (arg instanceof MatchIgnoreRemainingExpression) {
+            argKey = -1
+            const types = enumCases.map(enumCase => {
+              const remaining: (Types.PositionalProp | Types.NamedProp)[] = []
+              let remainingIndex = 0
+              for (const prop of enumCase.args) {
+                if (prop.is === 'positional') {
+                  if (remainingIndex >= argIndex) {
+                    remaining.push(prop)
+                  }
+                  remainingIndex++
+                } else if (!this.names.has(prop.name)) {
+                  remaining.push(prop)
+                }
+              }
+              return Types.object(remaining)
+            })
+            argType = Types.oneOf(types)
+          } else if (arg instanceof MatchNamedArgument) {
             argKey = arg.name
-            argType = enumCase.namedTypes.get(arg.name)
+            const types = enumCases
+              .map(enumCase => enumCase.namedTypes.get(arg.name))
+              .filter(arg => arg !== undefined)
+            if (types.length) {
+              argType = Types.oneOf(types)
+            }
           } else {
             argKey = argIndex
-            argType = enumCase.positionalTypes.at(argIndex)
+            const types = enumCases
+              .map(enumCase => enumCase.positionalTypes.at(argIndex))
+              .filter(arg => arg !== undefined)
+            if (types.length) {
+              argType = Types.oneOf(types)
+            }
           }
 
           if (!argType) {
@@ -2041,10 +2095,10 @@ export class MatchEnumExpression extends MatchExpression {
 
     code += ENUM_START + this.name
 
-    const args = this.args.map(arg => arg.toLisp())
+    const args = this.enumArgs.map(arg => arg.toLisp())
     if (args.length || this.ignoreRemaining) {
       code += '('
-      code += args.concat(this.ignoreRemaining ? ['...'] : []).join(' ')
+      code += args.join(' ')
       code += ')'
     }
 
@@ -2059,10 +2113,10 @@ export class MatchEnumExpression extends MatchExpression {
 
     code += ENUM_START + this.name
 
-    const args = this.args.map(arg => arg.toCode())
+    const args = this.enumArgs.map(arg => arg.toCode())
     if (args.length || this.ignoreRemaining) {
       code += '('
-      code += args.concat(this.ignoreRemaining ? ['...'] : []).join(', ')
+      code += args.join(', ')
       code += ')'
     }
 

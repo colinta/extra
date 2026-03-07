@@ -792,7 +792,7 @@ export class MatchStringConcat extends CaseMatch {
 export class MatchEnum extends CaseMatch {
   constructor(
     readonly source: Source,
-    readonly enumType: Types.EnumType,
+    readonly enumType: Types.Type,
     readonly moduleNames: string[],
     readonly enumName: string | undefined,
     readonly caseName: string,

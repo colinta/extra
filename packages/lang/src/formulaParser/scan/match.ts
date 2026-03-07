@@ -247,7 +247,11 @@ function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
   const enumCaseName = scanAnyReference(scanner).name
   scanner.scanSpaces()
 
-  const args: (Expressions.MatchNamedArgument | Expressions.MatchPositionalArgument)[] = []
+  const args: (
+    | Expressions.MatchNamedArgument
+    | Expressions.MatchPositionalArgument
+    | Expressions.MatchIgnoreRemainingExpression
+  )[] = []
   let argIndex = 0
   let ignoreRemaining = false
   if (scanner.scanIfString(ARGS_OPEN)) {
@@ -263,6 +267,13 @@ function scanMatchEnum(scanner: Scanner, parseNext: ParseNext) {
 
       if (scanner.scanIfString('...')) {
         ignoreRemaining = true
+        args.push(
+          new Expressions.MatchIgnoreRemainingExpression(
+            [scanner.charIndex - 3, scanner.charIndex],
+            [],
+            [],
+          ),
+        )
       } else if (scanner.test(isNamedArg)) {
         args.push(scanMatchNamedReference(scanner, parseNext, ARGS_CLOSE))
       } else {

@@ -15,6 +15,32 @@ beforeEach(() => {
 })
 
 describe('narrowed types', () => {
+  const IntsDefinition = Types.namedEnumDefinition({
+    name: 'Ints',
+    members: [
+      Types.enumCase('one'),
+      Types.enumCase('two'),
+      Types.enumCase('lots', [Types.positionalProp(Types.int({min: 3}))]),
+    ],
+  })
+  const Ints = IntsDefinition.instanceType
+
+  const LetterDefinition = Types.namedEnumDefinition({
+    name: 'Letter',
+    members: [
+      Types.enumCase('a'),
+      Types.enumCase('b'),
+      Types.enumCase('other', [Types.positionalProp(Types.string({max: 1}))]),
+    ],
+  })
+  const Letter = LetterDefinition.instanceType
+
+  const WordDefinition = Types.namedEnumDefinition({
+    name: 'Word',
+    members: [Types.enumCase('a'), Types.enumCase('bee')],
+  })
+  const Word = WordDefinition.instanceType
+
   cases<[Types.Type, string, Types.Type, Types.Type]>(
     //|
     //|  Int checks
@@ -410,7 +436,7 @@ describe('narrowed types', () => {
       Types.object([Types.positionalProp(Types.int()), Types.namedProp('b', Types.string())]),
     ]),
     //|
-    //|  Anonymouse enum
+    //|  Anonymous enum
     //|
     c([
       Types.oneOf([
@@ -438,10 +464,43 @@ describe('narrowed types', () => {
         Types.enumShorthand('b', [Types.positionalProp(Types.int({min: 1}))], metaType_B),
         Types.oneOf([
           Types.enumShorthand('a'),
-          Types.enumShorthand('b', [Types.positionalProp(Types.int())]),
+          Types.enumShorthand('b', [Types.positionalProp(Types.int({max: 0}))], metaType_B),
         ]),
       ]
     }),
+    //|
+    //|  Named enum
+    //|
+    c([
+      Types.oneOf([Ints, Letter]),
+      'foo is .one',
+      Types.narrowNamedEnum(Ints, Types.enumCase('one')),
+      Types.oneOf([
+        Types.narrowNamedEnum(
+          Ints,
+          Ints.members.filter(member => member.name !== 'one'),
+        ),
+        Letter,
+      ]),
+    ]),
+    c([
+      Types.oneOf([Letter, Word]),
+      'foo is .a',
+      Types.oneOf([
+        Types.narrowNamedEnum(Letter, Types.enumCase('a')),
+        Types.narrowNamedEnum(Word, Types.enumCase('a')),
+      ]),
+      Types.oneOf([
+        Types.narrowNamedEnum(
+          Letter,
+          Letter.members.filter(member => member.name !== 'a'),
+        ),
+        Types.narrowNamedEnum(
+          Word,
+          Word.members.filter(member => member.name !== 'a'),
+        ),
+      ]),
+    ]),
   ).run(([type, formula, truthyType, falseyType], {only, skip}) => {
     const name = 'foo'
     describe(`${name}: ${type}, ${formula}`, () => {

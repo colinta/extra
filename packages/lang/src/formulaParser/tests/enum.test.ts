@@ -359,22 +359,14 @@ enum Color { -- instance function
 }`,
         Types.namedEnumDefinition({
           name: 'Color',
-          definition: def =>
-            Types.enumType(
-              def,
-              new Map([['is-red', Types.namedFormula('is-red', [], Types.booleanType())]]),
-            ),
+          definition: (def, members) => Types.enumType(def, members),
           members: [Types.enumCase('red'), Types.enumCase('green'), Types.enumCase('blue')],
+          formulas: new Map([['is-red', Types.namedFormula('is-red', [], Types.booleanType())]]),
         }),
         [],
       ]),
       // all together: members with args, static props, static fns, instance fns
       (() => {
-        const shapeInstance = (def: Types.NamedEnumDefinitionType) =>
-          Types.enumType(
-            def,
-            new Map([['is-point', Types.namedFormula('is-point', [], Types.booleanType())]]),
-          )
         return c([
           `\
 enum Shape { -- all together
@@ -392,7 +384,7 @@ enum Shape { -- all together
 }`,
           Types.namedEnumDefinition({
             name: 'Shape',
-            definition: shapeInstance,
+            definition: (def, members) => Types.enumType(def, members),
             members: [
               Types.enumCase('circle', [Types.positionalProp(Types.float())]),
               Types.enumCase('rect', [
@@ -401,6 +393,9 @@ enum Shape { -- all together
               ]),
               Types.enumCase('point'),
             ],
+            formulas: new Map([
+              ['is-point', Types.namedFormula('is-point', [], Types.booleanType())],
+            ]),
             moreStatics: (_, enumInstance) =>
               new Map<string, Types.Type>([
                 ['default', enumInstance],

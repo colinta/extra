@@ -67,16 +67,14 @@ type Entriesable<T> = Array<T> | Map<string | number, T>
  * element in rhs. If a key is missing in rhs, the missing key is returned as an
  * error.
  *
- * If ignoreExtras is false, the lhs and rhs must have the same number of keys.
  * If the count doesn't match, `false` is returned as an error. Otherwise it is
  * enough if rhs contains all the keys in lhs.
  */
 export function combineIterators<T, U>(
   lhs: Entriesable<T>,
   rhs: Entriesable<U>,
-  {ignoreExtras = false}: {ignoreExtras: boolean} = {ignoreExtras: false},
-): Result<CombinedIterator<T, U>, string | number | false> {
-  if (!ignoreExtras && getSize(lhs) !== getSize(rhs)) {
+): Result<CombinedIterator<T, U>, false> {
+  if (getSize(lhs) !== getSize(rhs)) {
     return err(false)
   }
   const result: CombinedIterator<T, U> = []
@@ -84,7 +82,7 @@ export function combineIterators<T, U>(
   for (const [index, item] of lhs.entries()) {
     const match = rhsMap.get(index)
     if (match === undefined) {
-      return err(index)
+      return err(false)
     }
     result.push({key: index, lhs: item, rhs: match})
   }
