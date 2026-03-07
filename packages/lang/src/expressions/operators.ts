@@ -3954,7 +3954,7 @@ addUnaryOperator({
   name: 'logical not',
   symbol: 'not',
   precedence: PRECEDENCE.UNARY['not'],
-  associativity: 'left',
+  associativity: 'right',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -4010,7 +4010,7 @@ addUnaryOperator({
   name: 'negate',
   symbol: '-',
   precedence: PRECEDENCE.UNARY['-'],
-  associativity: 'left',
+  associativity: 'right',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -4048,7 +4048,7 @@ addUnaryOperator({
   name: 'binary negate',
   symbol: '~',
   precedence: PRECEDENCE.UNARY['~'],
-  associativity: 'left',
+  associativity: 'right',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -4211,7 +4211,7 @@ addUnaryOperator({
   name: 'unary-range-equals',
   symbol: '=',
   precedence: PRECEDENCE.UNARY['='],
-  associativity: 'left',
+  associativity: 'right',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -4234,7 +4234,7 @@ addUnaryOperator({
   name: 'unary-range-max-exclusive',
   symbol: '<',
   precedence: PRECEDENCE.UNARY['<'],
-  associativity: 'left',
+  associativity: 'right',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -4257,7 +4257,7 @@ addUnaryOperator({
   name: 'unary-range-max',
   symbol: '<=',
   precedence: PRECEDENCE.UNARY['<='],
-  associativity: 'left',
+  associativity: 'right',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -4280,7 +4280,7 @@ addUnaryOperator({
   name: 'unary-range-min-exclusive',
   symbol: '>',
   precedence: PRECEDENCE.UNARY['>'],
-  associativity: 'left',
+  associativity: 'right',
   create(
     range: [number, number],
     precedingComments: Comment[],
@@ -4303,7 +4303,7 @@ addUnaryOperator({
   name: 'unary-range-min',
   symbol: '>=',
   precedence: PRECEDENCE.UNARY['>='],
-  associativity: 'left',
+  associativity: 'right',
   create(
     range: [number, number],
     precedingComments: Comment[],
