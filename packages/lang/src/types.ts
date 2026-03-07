@@ -116,10 +116,6 @@ export function object(props: ObjectProp[]) {
   return new ObjectType(props)
 }
 
-export function namedObject(name: string, props: ObjectProp[]) {
-  return new NamedObjectType(name, props)
-}
-
 export function array(type: Type, narrowed?: Partial<Narrowed.NarrowedLength>) {
   return new ArrayType(
     type,
@@ -3510,7 +3506,7 @@ export class SetType extends ContainerType<SetType> {
 }
 
 export class ObjectType extends Type {
-  readonly is: 'object' | 'named-object' = 'object'
+  readonly is = 'object'
 
   declare static types: Record<string, ((object: ObjectType) => Type) | undefined>
 
@@ -3717,49 +3713,6 @@ export class ObjectType extends Type {
 
   defaultInferredClassProp() {
     return new ObjectType(
-      this.props.map(
-        ({is, name, type}) => ({is, name, type: type.defaultInferredClassProp()}) as ObjectProp,
-      ),
-    )
-  }
-}
-
-export class NamedObjectType extends ObjectType {
-  readonly is = 'named-object'
-
-  constructor(
-    readonly name: string,
-    props: ObjectProp[],
-  ) {
-    super(props)
-  }
-
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    const props: ObjectProp[] = []
-    for (const arg of this.props) {
-      const {type} = arg
-      const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)
-      if (resolved.isErr()) {
-        return err(resolved.error)
-      }
-      props.push({
-        ...arg,
-        type: resolved.get(),
-      })
-    }
-    return ok(new NamedObjectType(this.name, props))
-  }
-
-  /**
-   * Returns a copy of the NamedObjectType, deferring to ObjectType.replacingProps
-   */
-  replacingProp(propName: string | number, type: Type): Guarantee<NamedObjectType, any> {
-    return ok(new NamedObjectType(this.name, this.replacingProps(propName, type).value))
-  }
-
-  defaultInferredClassProp() {
-    return new NamedObjectType(
-      this.name,
       this.props.map(
         ({is, name, type}) => ({is, name, type: type.defaultInferredClassProp()}) as ObjectProp,
       ),
@@ -5151,12 +5104,6 @@ export function canBeAssignedTo(
       testType.enumDefinition === assignTo,
       `Incompatible types in enum. '${testType.enumDefinition.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
     )
-  } else if (assignTo instanceof NamedObjectType) {
-    // this is akin to a 'struct' assignment.
-    return why(
-      testType === assignTo,
-      `Incompatible object types. '${testType.toCode()}' cannot be assigned to struct '${assignTo.toCode()}'.`,
-    )
   } else if (testType instanceof ObjectType && assignTo instanceof ObjectType) {
     const assignToTupleProps: PositionalProp[] = []
     const assignToNamedProps: NamedProp[] = []
@@ -6347,7 +6294,7 @@ function addRequirement(
   /*           */
   /* RegexType */
   /*           */
-  const RegexMatch = namedObject('RegexMatch', [
+  const RegexMatch = object([
     // int-based group
     // match.at(0) --> String | null
     namedProp(

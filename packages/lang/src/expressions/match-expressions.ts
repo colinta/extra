@@ -1995,14 +1995,16 @@ export class MatchEnumExpression extends MatchExpression {
     return code
   }
 }
+
 /**
+ * The MatchObjectExpression matches against ObjectType and ClassInstanceType
+ *
  * foo is {}
  * foo is {name: _} {name:, ...} {name: foo} {name?: _}
  * foo is {a, b, _, bar:, ...}
  * foo is User{name:}
  * foo is User{a, b, _, bar:}
  */
-
 export class MatchObjectExpression extends MatchExpression {
   readonly ignoreRemaining: boolean
 

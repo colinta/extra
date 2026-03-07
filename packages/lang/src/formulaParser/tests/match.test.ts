@@ -102,7 +102,7 @@ describe('match operator', () => {
   describe('getType / eval', () => {
     const Ints = Types.anonymousEnumDefinition([Types.enumCase('zero'), Types.enumCase('one')])
     const LiteralInts = Types.oneOf([Types.literal(0), Types.literal(1)])
-    const UserStruct = Types.namedObject('User', [Types.namedProp('name', Types.string())])
+    // const UserStruct = Types.namedObject('User', [Types.namedProp('name', Types.string())])
 
     beforeEach(() => {
       runtimeTypes['Ints'] = [Types.typeConstructor('Ints', Ints), Values.string('test')]
@@ -110,7 +110,7 @@ describe('match operator', () => {
         Types.typeConstructor('LiteralInts', LiteralInts),
         Values.string('test'),
       ]
-      runtimeTypes['User'] = [Types.typeConstructor('User', UserStruct), Values.string('test')]
+      // runtimeTypes['User'] = [Types.typeConstructor('User', UserStruct), Values.string('test')]
     })
 
     cases<
@@ -1186,16 +1186,16 @@ describe('match operator', () => {
           typeOf: 'foo',
         },
       ]),
-      c([
-        Types.oneOf([UserStruct, Types.int()]),
-        [],
-        'foo is User{name:}',
-        {
-          truthy: UserStruct,
-          falsey: Types.int(),
-          typeOf: 'foo',
-        },
-      ]),
+      // c([
+      //   Types.oneOf([UserStruct, Types.int()]),
+      //   [],
+      //   'foo is User{name:}',
+      //   {
+      //     truthy: UserStruct,
+      //     falsey: Types.int(),
+      //     typeOf: 'foo',
+      //   },
+      // ]),
     ).run(([fooType, values, formula, expectedTypes], {only, skip}) => {
       const typeOf = expectedTypes.typeOf ?? 'foo'
       describe(`(foo: ${fooType}) '${formula}'`, () => {
