@@ -9,7 +9,8 @@ class MockValueRuntime extends MutableValueRuntime {
 
   refId(name: string): string | undefined {
     if (!super.refId(name) && this.runtimeTypes[name]) {
-      this.addId(name)
+      this.addLocalType(name, this.runtimeTypes[name][0])
+      this.addLocalValue(name, this.runtimeTypes[name][1])
     }
     return super.refId(name)
   }
@@ -39,6 +40,5 @@ class MockValueRuntime extends MutableValueRuntime {
 }
 
 export function mockValueRuntime(runtimeTypes: {[K in string]: [Types.Type, Values.Value]}) {
-  const runtime = new MockValueRuntime(runtimeTypes)
-  return runtime
+  return new MockValueRuntime(runtimeTypes)
 }

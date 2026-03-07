@@ -245,7 +245,7 @@ export class MutableTypeRuntime {
   }
 
   addLocalType(name: string, type: Type) {
-    const id = this.addId(name)
+    const id = this.addTypeId(name)
     this.types.set(id, type)
     return id
   }
@@ -298,7 +298,7 @@ export class MutableTypeRuntime {
    * Creates a new id, even if the 'name' is already in ids - the name shadows the
    * previous reference.
    */
-  addId(name: string) {
+  addTypeId(name: string) {
     const id = uid(name)
     this.ids.set(name, id)
     this.names.set(id, name)
@@ -385,7 +385,7 @@ export class MutableValueRuntime extends MutableTypeRuntime {
   }
 
   addLocalValue(name: string, value: Value) {
-    const id = this.addId(name)
+    const id = this.addTypeId(name)
     this.values.set(id, value)
   }
 

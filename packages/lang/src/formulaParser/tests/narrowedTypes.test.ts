@@ -376,6 +376,39 @@ describe('narrowed types', () => {
         Types.array(Types.string(), {min: 0, max: 0}),
       ]),
     ]),
+    //|
+    //|  Object checks
+    //|
+    c([
+      Types.object([Types.positionalProp(Types.int()), Types.namedProp('b', Types.string())]),
+      'foo is {Int(>0), b: String}',
+      Types.object([
+        Types.positionalProp(Types.int({min: 1})),
+        Types.namedProp('b', Types.string()),
+      ]),
+      Types.object([
+        Types.positionalProp(Types.int({max: 0})),
+        Types.namedProp('b', Types.string()),
+      ]),
+    ]),
+    c([
+      Types.object([Types.positionalProp(Types.int()), Types.namedProp('b', Types.string())]),
+      'foo is {Int, b: String(>0)}',
+      Types.object([
+        Types.positionalProp(Types.int()),
+        Types.namedProp('b', Types.string({min: 1})),
+      ]),
+      Types.object([Types.positionalProp(Types.int()), Types.namedProp('b', Types.literal(''))]),
+    ]),
+    c([
+      Types.object([Types.positionalProp(Types.int()), Types.namedProp('b', Types.string())]),
+      'foo is {Int(>0), b: String(>0)}',
+      Types.object([
+        Types.positionalProp(Types.int({min: 1})),
+        Types.namedProp('b', Types.string({min: 1})),
+      ]),
+      Types.object([Types.positionalProp(Types.int()), Types.namedProp('b', Types.string())]),
+    ]),
   ).run(([type, formula, truthyType, falseyType], {only, skip}) => {
     const name = 'foo'
     describe(`${name}: ${type}, ${formula}`, () => {

@@ -31,8 +31,9 @@ import {ParseError, type ParseNext} from '../types'
 import {unexpectedToken} from './basics'
 import {scanGenerics} from './formula'
 import {scanFormulaLiteralArguments, scanFormulaTypeArguments} from './formula_arguments'
-import {scanAnyReference, scanAtom, scanEnumName, scanIdentifier} from './identifier'
+import {scanAnyReference, scanEnumName, scanIdentifier} from './identifier'
 import {
+  scanNarrowedDict,
   scanNarrowedFloat,
   scanNarrowedInt,
   scanNarrowedLength,
@@ -127,7 +128,7 @@ export function scanArgumentType(
     } else if (isStringStartChar(scanner)) {
       argType = scanString(scanner, false, parseNext)
     } else if (scanner.is(ENUM_START)) {
-      argType = scanEnumType(scanner, moduleOrArgument, parseNext)
+      argType = scanEnumShorthand(scanner, moduleOrArgument, parseNext)
     } else if (scanner.is(OBJECT_OPEN)) {
       // {arg: Type, Type}
       argType = scanObjectType(scanner, moduleOrArgument, parseNext)
@@ -364,7 +365,7 @@ function scanObjectType(scanner: Scanner, moduleOrArgument: ArgumentType, parseN
   )
 }
 
-function scanEnumType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNext: ParseNext) {
+function scanEnumShorthand(scanner: Scanner, moduleOrArgument: ArgumentType, parseNext: ParseNext) {
   if (moduleOrArgument === 'module_type_definition') {
     throw new ParseError(
       scanner,
@@ -475,7 +476,6 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
         scanner,
         moduleOrArgument,
         parseNext,
-        arg0,
       )
       return new Expressions.DictTypeExpression(
         [arg0, scanner.charIndex],
@@ -597,58 +597,12 @@ function scanDictOfAndLength(
   scanner: Scanner,
   moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
-  range0: number,
 ) {
   scanner.whereAmI(`scanDictType`)
   const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
   scanner.scanAllWhitespace()
 
-  let narrowedLength: NarrowedLength = DEFAULT_NARROWED_LENGTH
-  let didSetNarrowedLength = false
-  const narrowedNames: Set<string> = new Set()
-  let didSetNarrowedNames = false
-  while (scanner.scanIfString(',')) {
-    scanner.scanAllWhitespace()
-    if (!didSetNarrowedLength && scanner.scanIfWord('length')) {
-      didSetNarrowedLength = true
-
-      scanner.scanAllWhitespace()
-      scanner.expectString(DICT_SEPARATOR)
-      scanner.scanAllWhitespace()
-      narrowedLength = scanNarrowedLength(scanner)
-      scanner.scanAllWhitespace()
-      scanner.whereAmI(`scanDictType: (length: ${narrowedLength})`)
-    } else if (!didSetNarrowedNames && scanner.scanIfWord('keys')) {
-      didSetNarrowedNames = true
-
-      scanner.scanAllWhitespace()
-      scanner.expectString(DICT_SEPARATOR)
-      scanner.scanAllWhitespace()
-      scanner.expectString(ARRAY_OPEN)
-      scanner.scanAllWhitespace()
-      for (;;) {
-        const name = scanAtom(scanner)
-        narrowedNames.add(name.stringValue)
-
-        if (
-          scanner.scanCommaOrBreak(ARRAY_CLOSE, `Expected ',' or '${ARRAY_CLOSE}' in dict keys`)
-        ) {
-          break
-        }
-
-        scanner.scanAllWhitespace()
-      }
-
-      scanner.scanAllWhitespace()
-      scanner.whereAmI(`scanDictType: (names: ${narrowedNames})`)
-    } else {
-      throw new ParseError(
-        scanner,
-        `Unexpected token '${unexpectedToken(scanner)}'`,
-        scanner.charIndex - 1,
-      )
-    }
-  }
+  const {narrowedLength, narrowedNames} = scanNarrowedDict(scanner)
 
   scanner.expectString(PARENS_CLOSE)
   scanner.whereAmI(
@@ -672,10 +626,13 @@ function scanOfAndLength(
   let narrowedLength: NarrowedLength = DEFAULT_NARROWED_LENGTH
   if (scanner.scanIfString(',')) {
     scanner.scanAllWhitespace()
-    scanner.expectString('length')
-    scanner.scanAllWhitespace()
-    scanner.expectString(DICT_SEPARATOR)
-    scanner.scanAllWhitespace()
+    // support shorthand, skipping 'length:'
+    if (scanner.lookAhead('length')) {
+      scanner.expectString('length')
+      scanner.scanAllWhitespace()
+      scanner.expectString(DICT_SEPARATOR)
+      scanner.scanAllWhitespace()
+    }
 
     narrowedLength = scanNarrowedLength(scanner)
     scanner.scanAllWhitespace()

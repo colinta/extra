@@ -8,11 +8,13 @@ import {
   isNumberChar,
   isNumberStart,
   isIntStart,
+  DICT_SEPARATOR,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
 
 import {unexpectedToken} from './basics'
+import {scanAtom} from './identifier'
 import {scanNumber} from './number'
 import {scanRegex} from './regex'
 
@@ -26,7 +28,7 @@ function checkTypeGuard(scanner: Scanner, min: number, max: number | undefined) 
 }
 
 export function scanNarrowedFloat(scanner: Scanner): Narrowed.NarrowedFloat {
-  scanner.whereAmI('scanNarrowedLength')
+  scanner.whereAmI('scanNarrowedFloat')
 
   if (scanner.scanIfString('=')) {
     scanner.scanAllWhitespace()
@@ -153,6 +155,63 @@ export function scanNarrowedInt(scanner: Scanner): Narrowed.NarrowedInt {
   return Narrowed.DEFAULT_NARROWED_NUMBER
 }
 
+export function scanNarrowedDict(scanner: Scanner) {
+  scanner.whereAmI('scanNarrowedDict')
+
+  let narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH
+  let didSetNarrowedLength = false
+  const narrowedNames: Set<string> = new Set()
+  let didSetNarrowedNames = false
+  while (scanner.scanIfString(',')) {
+    scanner.scanAllWhitespace()
+    if (!didSetNarrowedLength && scanner.scanIfWord('length')) {
+      didSetNarrowedLength = true
+
+      scanner.scanAllWhitespace()
+      scanner.expectString(DICT_SEPARATOR)
+      scanner.scanAllWhitespace()
+      narrowedLength = scanNarrowedLength(scanner)
+      scanner.scanAllWhitespace()
+      scanner.whereAmI(`scanDictType: (length: ${narrowedLength})`)
+    } else if (!didSetNarrowedLength && isNarrowedLength(scanner)) {
+      // support shorthand, skipping 'length:'
+      didSetNarrowedLength = true
+      narrowedLength = scanNarrowedLength(scanner)
+    } else if (!didSetNarrowedNames && scanner.scanIfWord('keys')) {
+      didSetNarrowedNames = true
+
+      scanner.scanAllWhitespace()
+      scanner.expectString(DICT_SEPARATOR)
+      scanner.scanAllWhitespace()
+      scanner.expectString(ARRAY_OPEN)
+      scanner.scanAllWhitespace()
+      for (;;) {
+        const name = scanAtom(scanner)
+        narrowedNames.add(name.stringValue)
+
+        if (
+          scanner.scanCommaOrBreak(ARRAY_CLOSE, `Expected ',' or '${ARRAY_CLOSE}' in dict keys`)
+        ) {
+          break
+        }
+
+        scanner.scanAllWhitespace()
+      }
+
+      scanner.scanAllWhitespace()
+      scanner.whereAmI(`scanDictType: (names: ${narrowedNames})`)
+    } else {
+      throw new ParseError(
+        scanner,
+        `Unexpected token '${unexpectedToken(scanner)}'`,
+        scanner.charIndex - 1,
+      )
+    }
+  }
+
+  return {narrowedLength, narrowedNames}
+}
+
 /**
  * String(matches: /regex/)
  * String(matches: [/regex1/, /regex2/])
@@ -183,6 +242,10 @@ export function scanNarrowedString(scanner: Scanner): Narrowed.NarrowedString {
       narrowedLength = scanNarrowedLength(scanner)
       scanner.scanAllWhitespace()
       scanner.whereAmI(`scanDictType: (length: ${narrowedLength})`)
+    } else if (!didSetNarrowedLength && isNarrowedLength(scanner)) {
+      // support shorthand, skipping 'length:'
+      didSetNarrowedLength = true
+      narrowedLength = scanNarrowedLength(scanner)
     } else if (
       !didSetNarrowedRegex &&
       (scanner.scanIfWord('matches') || scanner.scanIfWord('regex'))
@@ -230,6 +293,14 @@ export function scanNarrowedString(scanner: Scanner): Narrowed.NarrowedString {
   }
 
   return {length: narrowedLength, regex: narrowedRegex}
+}
+
+const narrowedOperator = /^(=|<=|≤|<|>|≥|>=|[<.]\.[<.])/
+export function isNarrowedLength(scanner: Scanner) {
+  if (scanner.is(narrowedOperator)) {
+    return true
+  }
+  return isIntStart(scanner)
 }
 
 export function scanNarrowedLength(scanner: Scanner): Narrowed.NarrowedLength {

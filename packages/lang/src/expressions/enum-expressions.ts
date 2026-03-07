@@ -74,7 +74,10 @@ export class EnumLookupExpression extends Expression {
     }
 
     return err(
-      new EnumReferenceRuntimeError(this, `There is no reference in scope named '${this.name}'`),
+      new EnumReferenceRuntimeError(
+        this,
+        `There is no enum in scope named '${ENUM_START}${this.name}'`,
+      ),
     )
   }
 

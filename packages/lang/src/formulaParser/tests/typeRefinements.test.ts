@@ -15,7 +15,7 @@ beforeEach(() => {
 })
 
 describe('type refinements', () => {
-  describe('arrays and dicts', () => {
+  describe('container types', () => {
     cases<[string] | [string, string]>(
       c(['Array(Int, length: =3)', '[Int, length: =3]']),
       c(['[Int, length: =3]']),
@@ -52,6 +52,27 @@ describe('type refinements', () => {
         'Dict(Int, keys: [:key1,:key2],length: >=3)',
         'Dict(Int, keys: [:key1, :key2], length: >=3)',
       ]),
+      c(['Set(Int, length: =3)']),
+      c(['Set(Int, length: 3)', 'Set(Int, length: =3)']),
+      c(['Set(Int, length: 3...3)', 'Set(Int, length: =3)']),
+      c(['Set(Int, length: >=3)']),
+      c(['Set(Int, length: ≥3)', 'Set(Int, length: >=3)']),
+      c(['Set(Int, length: >2)', 'Set(Int, length: >=3)']),
+      c(['Set(Int, length: <=3)']),
+      c(['Set(Int, length: ≤3)', 'Set(Int, length: <=3)']),
+      c(['Set(Int, length: <4)', 'Set(Int, length: <=3)']),
+      c(['Set(Int, length: 1...3)']),
+      c(['Set(Int, length: 1..<3)', 'Set(Int, length: 1...2)']),
+      c(['Set(Int, length: 1<..3)', 'Set(Int, length: 2...3)']),
+      c(['Set(Int, length: 1<.<3)', 'Set(Int, length: =2)']),
+      c(['Set(Int, length: 1...5)']),
+      c(['Set(Int, length: 1<..5)', 'Set(Int, length: 2...5)']),
+      c(['Set(Int, length: 1..<5)', 'Set(Int, length: 1...4)']),
+      c(['Set(Int, length: 1<.<5)', 'Set(Int, length: 2...4)']),
+      c(['Array(Int, =3)', '[Int, length: =3]']),
+      c(['[Int, =3]', '[Int, length: =3]']),
+      c(['Dict(Int, =3)', 'Dict(Int, length: =3)']),
+      c(['Set(Int, =3)', 'Set(Int, length: =3)']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
         const expression = parseType(formula).get()
@@ -90,6 +111,15 @@ describe('type refinements', () => {
       c(['String(matches: [/\\w+\\d+/, /[a-z]/])']),
       c(['String(length: =3, matches: [/test1/, /test2/])']),
       c(['String(matches: /test1/, length: =3)', 'String(length: =3, matches: /test1/)']),
+      // length shorthands
+      c(['String(=3)', 'String(length: =3)']),
+      c(['String(>=3)', 'String(length: >=3)']),
+      c(['String(≥3)', 'String(length: >=3)']),
+      c(['String(>2)', 'String(length: >=3)']),
+      c(['String(<=3)', 'String(length: <=3)']),
+      c(['String(≤3)', 'String(length: <=3)']),
+      c(['String(<4)', 'String(length: <=3)']),
+      c(['String(1...3)', 'String(length: 1...3)']),
     ).run(([formula, expected], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
         const expression = parseType(formula).get()

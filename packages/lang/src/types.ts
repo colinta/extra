@@ -273,8 +273,8 @@ export function optional(type: Type) {
   return OptionalType.createOptional(type)
 }
 
-export function oneOf(types: Type[]) {
-  return OneOfType.createOneOf(types)
+export function oneOf(types: Type[], compare?: OneOfType) {
+  return OneOfType.createOneOf(types, compare)
 }
 
 export function formula(args: Argument[], returnType: Type, genericTypes: GenericType[] = []) {
@@ -1148,7 +1148,7 @@ export abstract class OneOfType extends Type {
     super()
   }
 
-  static createOneOf(types: Type[]): Type {
+  static createOneOf(types: Type[], compareWithOneOfType?: OneOfType): Type {
     // remove duplicates - especially important to remove duplicate NullType
     // and remove NeverTypes
     types = Array.from(
@@ -1177,6 +1177,16 @@ export abstract class OneOfType extends Type {
 
     if (types.length === 1) {
       return types[0]
+    }
+
+    if (compareWithOneOfType) {
+      // weird optimization here - we can pass in a OneOfType, and if we end up
+      // with all the same types, we should return the original. This is useful
+      // in `narrowTypeIs` / `narrowTypeIsNot` to compare the before/after
+      // values using identity.
+      if (compareWithOneOfType.of.every(type => types.includes(type))) {
+        return compareWithOneOfType
+      }
     }
 
     // combine the types - compatibleWithBothTypes will take care of merging
@@ -2279,16 +2289,18 @@ export class MetaStringType extends Type {
     }
 
     // final case, we have new ranges, and our regex is the same
-    const type = oneOf(
-      ranges.map(Narrowed.narrowedFloatToLength).map(
-        range =>
-          new MetaStringType({
+    return oneOf(
+      ranges.map(Narrowed.narrowedFloatToLength).map(range => {
+        if (range.max === 0) {
+          return new LiteralStringType('')
+        } else {
+          return new MetaStringType({
             length: range,
             regex: this.narrowedString.regex,
-          }),
-      ),
+          })
+        }
+      }),
     )
-    return type
   }
 
   compatibleWithBothNarrowed(rhs: MetaStringType) {
@@ -4218,6 +4230,7 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
           return [narrowed]
         }
       }),
+      typeAssertion,
     )
   }
 
@@ -4231,6 +4244,7 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
           return [narrowed]
         }
       }),
+      lhsType,
     )
   }
 
@@ -4317,24 +4331,31 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
 export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
   if (lhsType instanceof OneOfType && typeAssertion instanceof OneOfType) {
     return oneOf(
-      lhsType.of.flatMap(lhsOfType => {
-        return typeAssertion.of.reduce((reducedType, typeAssertionOf) => {
+      lhsType.of.flatMap(lhsOfType =>
+        typeAssertion.of.reduce((reducedType, typeAssertionOf) => {
           if (reducedType === NeverType) {
             return NeverType
           }
 
           return narrowTypeIsNot(reducedType, typeAssertionOf)
-        }, lhsOfType)
-      }),
+        }, lhsOfType),
+      ),
+      lhsType,
     )
   }
 
   if (lhsType instanceof OneOfType) {
-    return oneOf(lhsType.of.flatMap(ofType => narrowTypeIsNot(ofType, typeAssertion)))
+    return oneOf(
+      lhsType.of.flatMap(ofType => narrowTypeIsNot(ofType, typeAssertion)),
+      lhsType,
+    )
   }
 
   if (typeAssertion instanceof OneOfType) {
-    return oneOf(typeAssertion.of.flatMap(ofType => narrowTypeIsNot(lhsType, ofType)))
+    return oneOf(
+      typeAssertion.of.flatMap(ofType => narrowTypeIsNot(lhsType, ofType)),
+      typeAssertion,
+    )
   }
 
   // if lhsType is a subet of typeAssertion, the resulting set is empty
@@ -4372,6 +4393,38 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
       return lhsType.exclude(narrowed)
     }
     return lhsType.exclude(typeAssertion.narrowed)
+  }
+
+  if (lhsType.isObject() && typeAssertion.isObject()) {
+    // if all the props are the same except *one*, we can narrow just that type
+    let isDifferent = false
+    const props: ObjectProp[] = []
+    let propIndex = 0
+    for (const prop of lhsType.props) {
+      let assertionProp: Type | undefined
+      if (prop.is === 'named') {
+        assertionProp = typeAssertion.namedProp(prop.name)
+      } else {
+        assertionProp = typeAssertion.positionalProp(propIndex++)
+      }
+      if (!assertionProp) {
+        return lhsType
+      }
+
+      if (prop.type === assertionProp) {
+        props.push(prop)
+      } else if (isDifferent) {
+        return lhsType
+      } else {
+        isDifferent = true
+        const narrowedType = narrowTypeIsNot(prop.type, assertionProp)
+        if (narrowedType === NeverType) {
+          return NeverType
+        }
+        props.push({...prop, type: narrowedType})
+      }
+    }
+    return new ObjectType(props)
   }
 
   return lhsType

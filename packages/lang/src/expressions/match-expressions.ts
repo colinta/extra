@@ -716,6 +716,14 @@ abstract class MatchArgumentExpression extends MatchExpression {
   evalWithSubject(runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
     return this.matchExpr.evalWithSubject(runtime, op, lhs)
   }
+
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    op: Expression,
+    lhs: Values.Value,
+  ): GetValueRuntimeResult {
+    return this.matchExpr.evalWithSubjectReturningRuntime(runtime, op, lhs)
+  }
 }
 /**
  * A named reference within an enum or object match. Often contains a reference,
@@ -2355,6 +2363,32 @@ export class MatchObjectExpression extends MatchExpression {
     }
 
     let nextRuntime = runtime
+    let argIndex = 0
+    for (const matchExpr of this.exprs) {
+      let propValue: Values.Value | undefined
+      if (matchExpr instanceof MatchNamedArgument) {
+        propValue = lhs.arrayAccessValue(matchExpr.name)
+      } else {
+        propValue = lhs.arrayAccessValue(argIndex++)
+      }
+
+      if (!propValue) {
+        return ok([Values.FalseValue, runtime])
+      }
+
+      const nextRuntimeResult = matchExpr.evalWithSubjectReturningRuntime(
+        nextRuntime,
+        this,
+        propValue,
+      )
+      if (nextRuntimeResult.isErr()) {
+        return err(nextRuntimeResult.error)
+      }
+      if (!nextRuntimeResult.value[0].isTruthy()) {
+        return ok([Values.FalseValue, runtime])
+      }
+      nextRuntime = nextRuntimeResult.value[1]
+    }
     return ok([Values.TrueValue, nextRuntime])
   }
 
@@ -2773,7 +2807,7 @@ export class MatchArrayExpression extends MatchExpression {
     }
 
     const minLength = this.initialExprs.length + this.trailingExprs.length
-    if ((!this.remainingExpr && lhs.values.length !== minLength) || lhs.values.length < minLength) {
+    if (lhs.values.length < minLength || (!this.remainingExpr && lhs.values.length !== minLength)) {
       return ok([Values.FalseValue, runtime])
     }
 
@@ -2788,6 +2822,9 @@ export class MatchArrayExpression extends MatchExpression {
       if (nextRuntimeResult.isErr()) {
         return err(nextRuntimeResult.error)
       }
+      if (!nextRuntimeResult.value[0].isTruthy()) {
+        return ok([Values.FalseValue, runtime])
+      }
       nextRuntime = nextRuntimeResult.value[1]
     }
 
@@ -2801,6 +2838,9 @@ export class MatchArrayExpression extends MatchExpression {
       if (nextRuntimeResult.isErr()) {
         return err(nextRuntimeResult.error)
       }
+      if (!nextRuntimeResult.value[0].isTruthy()) {
+        return ok([Values.FalseValue, runtime])
+      }
       nextRuntime = nextRuntimeResult.value[1]
     }
 
@@ -2810,6 +2850,9 @@ export class MatchArrayExpression extends MatchExpression {
       const nextRuntimeResult = matchExpr.evalWithSubjectReturningRuntime(nextRuntime, this, value)
       if (nextRuntimeResult.isErr()) {
         return err(nextRuntimeResult.error)
+      }
+      if (!nextRuntimeResult.value[0].isTruthy()) {
+        return ok([Values.FalseValue, runtime])
       }
       nextRuntime = nextRuntimeResult.value[1]
     }

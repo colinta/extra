@@ -1721,6 +1721,9 @@ export class EnumValue extends Value {
   }
 }
 
+/**
+ * Node is generic because I don't want to import Node here
+ */
 export class ViewFormulaValue<Node> extends NamedFormulaValue {
   constructor(
     name: string,
