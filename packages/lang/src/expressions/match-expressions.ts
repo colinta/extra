@@ -358,9 +358,9 @@ export abstract class MatchExpression extends Expression {
    */
   narrowUsingMatcherType(runtime: TypeRuntime, subjectType: Types.Type): GetTypeResult {
     if (subjectType instanceof Types.OneOfType) {
-      return mapAll(
-        subjectType.of.map(ofType => this.narrowUsingMatcherTypeSkippingOneOf(runtime, ofType)),
-      ).map(types => Types.oneOf(types))
+      return mapAll(subjectType.of.map(ofType => this.narrowUsingMatcherType(runtime, ofType))).map(
+        types => Types.oneOf(types),
+      )
     }
 
     return this.narrowUsingMatcherTypeSkippingOneOf(runtime, subjectType)

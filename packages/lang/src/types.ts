@@ -268,18 +268,19 @@ export function namedEnumDefinition({
 }
 
 export function narrowAnonymousEnum(prevType: AnonymousEnumType, enumCase: EnumCase) {
-  if (!canCasesBeAssignedTo([enumCase], prevType.members)) {
-    throw new Error("You should've done a better job")
-  }
   return new AnonymousEnumType(enumCase, prevType.metaType)
 }
 
 export function narrowNamedEnum(prevType: NamedEnumInstanceType, enumCase: EnumCase | EnumCase[]) {
   const cases = Array.isArray(enumCase) ? enumCase : [enumCase]
-  if (!canCasesBeAssignedTo(cases, prevType.members)) {
-    throw new Error("You should've done a better job")
-  }
-  return new NamedEnumInstanceType(prevType.metaType, cases)
+  const nextCases = cases.map(enumCase => {
+    const prevCase = prevType.members.find(prevCase => prevCase.name === enumCase.name)
+    if (!prevCase) {
+      return new EnumCase(enumCase.name, [positionalProp(NeverType)])
+    }
+    return enumCase
+  })
+  return new NamedEnumInstanceType(prevType.metaType, nextCases)
 }
 
 export function optional(type: Type) {
@@ -3613,6 +3614,7 @@ export class EnumCase {
     readonly name: string,
     readonly args: ObjectProp[],
   ) {
+    Object.defineProperty(this, 'args', {enumerable: false})
     for (const arg of args) {
       if (arg.is === 'positional') {
         this.positionalTypes.push(arg.type)
@@ -3631,6 +3633,8 @@ export abstract class EnumType extends Type {
   constructor(readonly members: EnumCase[]) {
     super()
   }
+
+  abstract get metaType(): EnumType
 
   toCodeMember(member: EnumCase) {
     if (member.args.length) {
@@ -4232,6 +4236,62 @@ export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
     return lhsType.narrowString(typeAssertion.narrowedString)
   }
 
+  if (lhsType instanceof EnumType && typeAssertion instanceof EnumType) {
+    if (lhsType.metaType !== typeAssertion.metaType) {
+      return NeverType
+    }
+
+    const resultMembers: EnumCase[] = []
+    for (const assertionMember of typeAssertion.members) {
+      const lhsMember = lhsType.members.find(m => m.name === assertionMember.name)
+      if (!lhsMember) {
+        continue
+      }
+
+      const positionalIter = combineIterators(
+        lhsMember.positionalTypes,
+        assertionMember.positionalTypes,
+      ).getOr()
+      const namedIter = combineIterators(lhsMember.namedTypes, assertionMember.namedTypes).getOr()
+
+      // this is a weird case - somehow we constructed an EnumCase with the wrong members?
+      if (!positionalIter || !namedIter) {
+        throw new Error('TODO: should be impossible? (!positionalIter || !namedIter)')
+        // continue
+      }
+
+      const newArgs: ObjectProp[] = []
+      for (const {key, lhs, rhs} of [...positionalIter, ...namedIter]) {
+        const narrowed = narrowTypeIs(lhs, rhs)
+        if (narrowed === NeverType) {
+          return NeverType
+        }
+
+        if (typeof key === 'number') {
+          newArgs.push(positionalProp(narrowed))
+        } else {
+          newArgs.push(namedProp(key, narrowed))
+        }
+      }
+
+      resultMembers.push(new EnumCase(lhsMember.name, newArgs))
+    }
+
+    if (resultMembers.length === 0) {
+      return NeverType
+    }
+
+    if (lhsType instanceof NamedEnumInstanceType) {
+      return narrowNamedEnum(lhsType, resultMembers)
+    }
+
+    if (lhsType instanceof AnonymousEnumType && resultMembers.length === 1) {
+      return narrowAnonymousEnum(lhsType, resultMembers[0])
+    }
+
+    return lhsType
+  }
+
   return NeverType
 }
 
@@ -4275,8 +4335,7 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
   }
 
   if (lhsType instanceof EnumType && typeAssertion instanceof EnumType) {
-    // typeAssertion must be a subtype of lhsType, otherwise we can't narrow.
-    if (!canBeAssignedTo(typeAssertion, lhsType)) {
+    if (lhsType.metaType !== typeAssertion.metaType) {
       return lhsType
     }
 

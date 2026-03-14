@@ -438,7 +438,7 @@ describe('narrowed types', () => {
     //|
     //|  Anonymous enum
     //|
-    c([
+    c(() => [
       Types.oneOf([
         Types.enumShorthand('a'),
         Types.enumShorthand('b', [Types.positionalProp(Types.int())]),
@@ -447,7 +447,7 @@ describe('narrowed types', () => {
       Types.enumShorthand('a'),
       Types.enumShorthand('b', [Types.positionalProp(Types.int())]),
     ]),
-    c([
+    c(() => [
       Types.oneOf([
         Types.enumShorthand('a'),
         Types.enumShorthand('b', [Types.positionalProp(Types.int())]),
@@ -471,7 +471,7 @@ describe('narrowed types', () => {
     //|
     //|  Named enum
     //|
-    c([
+    c(() => [
       Types.oneOf([Ints, Letter]),
       'foo is .one',
       Types.narrowNamedEnum(Ints, Types.enumCase('one')),
@@ -483,7 +483,7 @@ describe('narrowed types', () => {
         Letter,
       ]),
     ]),
-    c([
+    c(() => [
       Types.oneOf([Letter, Word]),
       'foo is .a',
       Types.oneOf([
@@ -501,6 +501,28 @@ describe('narrowed types', () => {
         ),
       ]),
     ]),
+    c([
+      Types.oneOf([Letter, Word]),
+      'foo is .other(String)',
+      Types.narrowNamedEnum(
+        Letter,
+        Types.enumCase('other', [Types.positionalProp(Types.string({max: 1}))]),
+      ),
+      Types.oneOf([
+        Types.narrowNamedEnum(
+          Letter,
+          Letter.members.filter(member => member.name !== 'other'),
+        ),
+        Word,
+      ]),
+    ]),
+    c([
+      Types.oneOf([Letter, Word]),
+      'foo is .other(String(>1))',
+      Types.NeverType,
+      Types.oneOf([Letter, Word]),
+    ]),
+    c([Types.oneOf([Letter, Word]), 'foo is 1', Types.NeverType, Types.oneOf([Letter, Word])]),
   ).run(([type, formula, truthyType, falseyType], {only, skip}) => {
     const name = 'foo'
     describe(`${name}: ${type}, ${formula}`, () => {
