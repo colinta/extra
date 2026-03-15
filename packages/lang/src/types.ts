@@ -754,18 +754,22 @@ export class GenericType extends Type {
         }
       }
       resolvedType = this.resolvedType
-    } else {
-      resolvedType = oneOf(this.hints)
-    }
 
-    for (const type of this.requirements) {
-      if (!canBeAssignedTo(type, resolvedType, undefined, reason)) {
-        errorMessages.push(cannotAssignToError(type, resolvedType))
-        if (reason.reason) {
-          errorMessages.push(reason.reason)
-          reason.reason = ''
+      for (const type of this.requirements) {
+        if (!canBeAssignedTo(type, resolvedType, undefined, reason)) {
+          errorMessages.push(cannotAssignToError(type, resolvedType))
+          if (reason.reason) {
+            errorMessages.push(reason.reason)
+            reason.reason = ''
+          }
         }
       }
+    } else {
+      // When no explicit resolved type, unify hints and requirements together.
+      // Hints come from covariant positions (argument values), requirements from
+      // contravariant positions (callback parameter types). The resolved type
+      // must be broad enough to satisfy both.
+      resolvedType = oneOf([...this.hints, ...this.requirements])
     }
 
     const errorMessage = combineErrorMessages(errorMessages)
@@ -3703,6 +3707,46 @@ export class AnonymousEnumType extends EnumType {
     return undefined
   }
 
+  hasGeneric() {
+    return this.member.args.some(arg => arg.type.hasGeneric())
+  }
+
+  generics(): Set<GenericType> {
+    const result = new Set<GenericType>()
+    for (const arg of this.member.args) {
+      for (const generic of arg.type.generics()) {
+        result.add(generic)
+      }
+    }
+    return result
+  }
+
+  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
+    const resolvedArgs: ObjectProp[] = []
+    let changed = false
+    for (const arg of this.member.args) {
+      const resolved = maybeResolve(arg.type, arg.type, resolved => resolved, resolvedGenericsMap)
+      if (resolved.isErr()) {
+        return err(resolved.error)
+      }
+      const resolvedType = resolved.get()
+      if (resolvedType !== arg.type) {
+        changed = true
+      }
+      if (arg.is === 'named') {
+        resolvedArgs.push(namedProp(arg.name, resolvedType))
+      } else {
+        resolvedArgs.push(positionalProp(resolvedType))
+      }
+    }
+
+    if (!changed) {
+      return ok(this)
+    }
+
+    return ok(new AnonymousEnumType(new EnumCase(this.member.name, resolvedArgs), this.metaType))
+  }
+
   toCode() {
     return this.toCodeMember(this.member)
   }
@@ -5234,7 +5278,7 @@ export function canBeAssignedTo(
     }
 
     // single member comparison
-    if (!canCaseBeAssignedTo(testType.member, assignTo.member)) {
+    if (!canCaseBeAssignedTo(testType.member, assignTo.member, resolvedGenericsMap)) {
       return why(
         false,
         `Unrelated enum values. '${testType.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
@@ -5337,7 +5381,11 @@ export function canBeAssignedTo(
 //   same number of positional args
 //   same named args
 //   all args : canBeAssignedTo(lhs, rhs)
-function canCaseBeAssignedTo(lhsCase: EnumCase, rhsCase: EnumCase): boolean {
+function canCaseBeAssignedTo(
+  lhsCase: EnumCase,
+  rhsCase: EnumCase,
+  resolvedGenericsMap?: Map<GenericType, GenericType>,
+): boolean {
   if (lhsCase.name !== rhsCase.name) {
     return false
   }
@@ -5355,7 +5403,7 @@ function canCaseBeAssignedTo(lhsCase: EnumCase, rhsCase: EnumCase): boolean {
     return false
   }
   for (const {lhs, rhs} of positionalIterator) {
-    if (!canBeAssignedTo(lhs, rhs)) {
+    if (!canBeAssignedTo(lhs, rhs, resolvedGenericsMap)) {
       return false
     }
   }
@@ -5365,7 +5413,7 @@ function canCaseBeAssignedTo(lhsCase: EnumCase, rhsCase: EnumCase): boolean {
     return false
   }
   for (const {lhs, rhs} of namedIterator) {
-    if (!canBeAssignedTo(lhs, rhs)) {
+    if (!canBeAssignedTo(lhs, rhs, resolvedGenericsMap)) {
       return false
     }
   }
