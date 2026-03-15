@@ -86,6 +86,85 @@ enum Simple {
     expect(formulaType.returnType).toEqual(Types.optional(Types.GenericType.with(['U'], U => U)))
   })
 
+  it('can use generic named enums in functions', () => {
+    defineEnum(`\
+enum Result<T> {
+  .nil
+  .val(T)
+}`)
+    const code = `
+      fn<U>(value: Result(U), mapper: fn(# input: U): String): String? =>
+        switch value
+        case .nil
+          null
+        case .val(v)
+          mapper(v)
+    `
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
+
+    expect(resolvedType).toBeInstanceOf(Types.FormulaType)
+    const formulaType = resolvedType as Types.FormulaType
+    expect(formulaType.args).toHaveLength(2)
+    expect(formulaType.returnType).toEqual(Types.optional(Types.string()))
+  })
+
+  it('can return a generic named enum from a function', () => {
+    defineEnum(`\
+enum Result<T> {
+  .nil
+  .val(T)
+}`)
+    const resultDef = runtimeTypes['Result'][0] as Types.NamedEnumDefinitionType
+
+    // Test the formula definition compiles correctly
+    const formulaCode = `
+      fn<T>(value: T?): Result(T) =>
+        if value
+          Result.val(value)
+        else
+          Result.nil
+    `
+    const formulaExpr = parse(formulaCode).get()
+    const formulaType = formulaExpr.getType(typeRuntime).get()
+    expect(formulaType).toBeInstanceOf(Types.FormulaType)
+
+    // Test invocation via let binding
+    const code = `
+      let
+        wrap = fn<T>(value: T?): Result(T) =>
+          if value
+            Result.val(value)
+          else
+            Result.nil
+      in
+        wrap(value: 5)
+    `
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
+
+    // wrap(value: 5) resolves T=5, returning Result(5)
+    // which is Result.nil | Result.val(5)
+    expect(resolvedType).toBeInstanceOf(Types.OneOfType)
+    const oneOf = resolvedType as Types.OneOfType
+    expect(oneOf.of).toHaveLength(2)
+
+    const nilCase = oneOf.of.find(
+      t => t instanceof Types.NamedEnumInstanceType && t.member.name === 'nil',
+    ) as Types.NamedEnumInstanceType
+    const valCase = oneOf.of.find(
+      t => t instanceof Types.NamedEnumInstanceType && t.member.name === 'val',
+    ) as Types.NamedEnumInstanceType
+
+    expect(nilCase).toBeDefined()
+    expect(nilCase.metaType).toBe(resultDef)
+
+    expect(valCase).toBeDefined()
+    expect(valCase.metaType).toBe(resultDef)
+    expect(valCase.member.positionalTypes).toHaveLength(1)
+    expect(valCase.member.positionalTypes[0]).toEqual(Types.literal(5))
+  })
+
   it('can instantiate a generic enum', () => {
     defineEnum(`\
 enum Result<T> {

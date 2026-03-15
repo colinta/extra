@@ -775,10 +775,16 @@ export class GenericType extends Type {
     }
 
     if (resolvedType instanceof GenericType) {
-      this._resolvedResult = resolvedType.resolve(resolvedGenericsMap).map(type => {
-        this.resolvedType = type
-        return type
-      })
+      if (resolvedGenericsMap.has(resolvedType)) {
+        this._resolvedResult = resolvedType.resolve(resolvedGenericsMap).map(type => {
+          this.resolvedType = type
+          return type
+        })
+      } else {
+        // foreign generic from an outer scope — keep as-is
+        this.resolvedType = resolvedType
+        this._resolvedResult = ok(resolvedType)
+      }
     } else {
       this.resolvedType ??= resolvedType
       this._resolvedResult = ok(resolvedType)
