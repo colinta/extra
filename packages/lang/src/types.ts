@@ -6115,7 +6115,7 @@ function addHint(
   }
 
   if (!resolvedGenericsMap) {
-    throw `TODO: skipping - resolvedGenericsMap === undefined`
+    return
   }
 
   const resolvedGeneric = resolvedGenericsMap.get(generic)
@@ -6143,7 +6143,7 @@ function addRequirement(
   }
 
   if (!resolvedGenericsMap) {
-    throw `TODO: skipping - resolvedGenericsMap === undefined`
+    return
   }
 
   const resolvedGeneric = resolvedGenericsMap.get(generic)

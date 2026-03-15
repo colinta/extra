@@ -65,6 +65,27 @@ enum Simple {
     )
   })
 
+  it('can use generic anonymous enums in functions', () => {
+    // Defines a generic function with anonymous enum type containing generics.
+    // The function compiles and the body's switch correctly narrows the enum cases.
+    const code = `
+      fn<T, U>(value: .nil | .val(T), mapper: fn(# input: T): U): U? =>
+        switch value
+        case .nil
+          null
+        case .val(v)
+          mapper(v)
+    `
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
+
+    // The formula type should have the correct signature
+    expect(resolvedType).toBeInstanceOf(Types.FormulaType)
+    const formulaType = resolvedType as Types.FormulaType
+    expect(formulaType.args).toHaveLength(2)
+    expect(formulaType.returnType).toEqual(Types.optional(Types.GenericType.with(['U'], U => U)))
+  })
+
   it('can instantiate a generic enum', () => {
     defineEnum(`\
 enum Result<T> {

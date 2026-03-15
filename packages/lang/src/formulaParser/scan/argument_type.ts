@@ -410,7 +410,7 @@ function scanEnumShorthand(scanner: Scanner, moduleOrArgument: ArgumentType, par
   const enumCaseName = scanEnumName(scanner).name
   scanner.whereAmI(`scanEnum: ${enumCaseName}`)
   let args: [Expressions.Reference | undefined, Expressions.Expression][]
-  if (scanner.is(ARGS_OPEN)) {
+  if (scanner.scanIfString(ARGS_OPEN)) {
     args = scanInsideObjectType(scanner, 'argument_type', ARGS_CLOSE, parseNext)
   } else {
     args = []

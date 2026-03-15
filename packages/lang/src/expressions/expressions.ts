@@ -1983,6 +1983,10 @@ export class OneOfTypeExpression extends TypeExpression {
     ).map(types => Types.oneOf(types))
   }
 
+  compileAsTypeExpression(runtime: TypeRuntime): GetNodeResult {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.OneOfType(toSource(this), type))
+  }
+
   compile(runtime: TypeRuntime) {
     return this.getAsTypeExpression(runtime).map(type => new Nodes.OneOfType(toSource(this), type))
   }

@@ -3669,6 +3669,32 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
       lhFormulaType = lhFormulaType.konstructor!
     }
 
+    if (lhFormulaType instanceof Types.AnonymousEnumType && lhFormulaType.member.args.length > 0) {
+      let argIndex = 0
+      const args = lhFormulaType.member.args.map((arg): Types.Argument => {
+        if (arg.is === 'positional') {
+          return Types.positionalArgument({
+            name: `_${argIndex++}`,
+            type: arg.type,
+            isRequired: true,
+          })
+        } else {
+          return Types.namedArgument({
+            name: arg.name,
+            type: arg.type,
+            isRequired: true,
+          })
+        }
+      })
+      const genericTypes = [...lhFormulaType.generics()]
+      lhFormulaType = new Types.NamedFormulaType(
+        lhFormulaType.member.name,
+        lhFormulaType,
+        args,
+        genericTypes,
+      )
+    }
+
     if (!(lhFormulaType instanceof Types.FormulaType)) {
       return err(
         new Expressions.FunctionInvocationRuntimeError(
