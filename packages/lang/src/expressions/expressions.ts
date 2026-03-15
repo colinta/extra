@@ -2326,12 +2326,64 @@ export class TypeConstructorExpression extends TypeExpression {
     return `${this.nameRef.toLisp()}(${types})`
   }
 
-  getType(): GetTypeResult {
-    throw 'TODO - TypeConstructorExpression getType'
+  getType(runtime: TypeRuntime): GetTypeResult {
+    return this.compile(runtime).map(node => node.type)
   }
 
-  getAsTypeExpression(_runtime: TypeRuntime): GetTypeResult {
-    throw 'TODO - TypeConstructorExpression getAsTypeExpression'
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    // Resolve the name to get the definition type
+    return this.nameRef.compile(runtime).map(nameNode => {
+      const defType = nameNode.type
+
+      // Get the generic types from the definition
+      let genericTypes: Types.GenericType[]
+      if (defType instanceof Types.NamedEnumDefinitionType) {
+        genericTypes = defType.genericTypes
+      } else if (defType instanceof Types.ClassDefinitionType) {
+        genericTypes = defType.genericTypes
+      } else {
+        return err(
+          new RuntimeError(
+            this,
+            `Type '${this.nameRef.name}' does not support generic type arguments`,
+          ),
+        )
+      }
+
+      if (genericTypes.length !== this.types.length) {
+        return err(
+          new RuntimeError(
+            this,
+            `Type '${this.nameRef.name}' expects ${genericTypes.length} generic type argument(s), but got ${this.types.length}`,
+          ),
+        )
+      }
+
+      // Resolve each type argument
+      return mapAll(
+        this.types.map(typeExpr => typeExpr.compileAsTypeExpression(runtime)),
+      ).map(typeNodes => {
+        // Build the resolved generics map
+        const resolvedGenericsMap = new Map<Types.GenericType, Types.GenericType>()
+        for (let i = 0; i < genericTypes.length; i++) {
+          const resolved = genericTypes[i].copy()
+          resolved.hints.push(typeNodes[i].type)
+          resolvedGenericsMap.set(genericTypes[i], resolved)
+        }
+
+        // Get the instance type and resolve generics
+        const instanceType = defType.fromTypeConstructor()
+        return instanceType.resolve(resolvedGenericsMap).mapError(
+          msg => new RuntimeError(this, msg),
+        )
+      })
+    })
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime): GetNodeResult {
+    return this.getAsTypeExpression(runtime).map(
+      type => new Nodes.NamedType(toSource(this), type, this.nameRef.name),
+    )
   }
 
   compile(runtime: TypeRuntime) {
@@ -3028,14 +3080,15 @@ export class LetExpression extends Expression {
                   }
                 })
                 .map(([assignmentNode, explicitNode]) => {
+                  const explicitType = explicitNode?.type.fromTypeConstructor()
                   if (
-                    explicitNode &&
-                    !Types.canBeAssignedTo(assignmentNode.type, explicitNode.type)
+                    explicitType &&
+                    !Types.canBeAssignedTo(assignmentNode.type, explicitType)
                   ) {
                     return err(
                       new RuntimeError(
                         this,
-                        `Cannot assign inferred type '${assignmentNode.type.toCode()}' to '${explicitNode.type.toCode()}'`,
+                        `Cannot assign inferred type '${assignmentNode.type.toCode()}' to '${explicitType.toCode()}'`,
                       ),
                     )
                   }
@@ -3045,7 +3098,7 @@ export class LetExpression extends Expression {
                     name,
                     assignment,
                     assignmentNode.type,
-                    explicitNode?.type,
+                    explicitType,
                   )
 
                   return ok({is: 'let-assign', name, node: assignmentNode, type: explicitNode})

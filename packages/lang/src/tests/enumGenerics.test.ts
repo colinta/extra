@@ -1,0 +1,85 @@
+import * as Types from '../types'
+import * as Values from '../values'
+import {parse, parseModule} from '../formulaParser'
+import {type TypeRuntime} from '../runtime'
+import {mockTypeRuntime} from './mockTypeRuntime'
+
+let typeRuntime: TypeRuntime
+let runtimeTypes: {[K in string]: [Types.Type, any]}
+
+beforeEach(() => {
+  runtimeTypes = {}
+  typeRuntime = mockTypeRuntime(runtimeTypes)
+})
+
+function defineEnum(definition: string) {
+  const moduleDef = parseModule(definition).get()
+  const enumDef = moduleDef.expressions[0]
+  const enumType = enumDef.getType(typeRuntime).get() as Types.NamedEnumDefinitionType
+  runtimeTypes[enumDef.name] = [enumType, Values.nullValue()]
+
+  // Add enum cases to runtime scope (mirroring what NamedEnumDefinition.compile does)
+  const instanceType = enumType.instanceType
+  for (const member of instanceType.members) {
+    if (member.args.length === 0) {
+      runtimeTypes[`.${member.name}`] = [instanceType, Values.nullValue()]
+    } else {
+      const argTypes = member.args.map((arg): Types.Argument => {
+        if (arg.is === 'named') {
+          return Types.namedArgument({
+            name: arg.name,
+            type: arg.type,
+            isRequired: true,
+          })
+        } else {
+          return Types.positionalArgument({
+            name: '',
+            type: arg.type,
+            isRequired: true,
+          })
+        }
+      })
+      runtimeTypes[`.${member.name}`] = [
+        new Types.NamedFormulaType(member.name, instanceType, argTypes, enumType.genericTypes),
+        Values.nullValue(),
+      ]
+    }
+  }
+}
+
+describe('enum generics', () => {
+  it('can instantiate a simple enum', () => {
+    defineEnum(`\
+enum Simple {
+  .value
+}`)
+    const code = `let foo: Simple = .value in foo`
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
+
+    expect(resolvedType).toEqual(
+      Types.namedEnumDefinition({
+        name: 'Simple',
+        members: [Types.enumCase('value')],
+      }).instanceType,
+    )
+  })
+
+  it('can instantiate a generic enum', () => {
+    defineEnum(`\
+enum Result<T> {
+  .value(T)
+}`)
+    const code = `let foo: Result(Int) = .value(0) in foo`
+    const currentExpression = parse(code).get()
+    const resolvedType = currentExpression.getType(typeRuntime).get()
+
+    expect(resolvedType).toBeInstanceOf(Types.NamedEnumInstanceType)
+    const enumInstance = resolvedType as Types.NamedEnumInstanceType
+    expect(enumInstance.metaType.name).toEqual('Result')
+    expect(enumInstance.members).toHaveLength(1)
+    expect(enumInstance.members[0].name).toEqual('value')
+    expect(enumInstance.members[0].positionalTypes).toHaveLength(1)
+    expect(enumInstance.members[0].positionalTypes[0]).toEqual(Types.int())
+  })
+})

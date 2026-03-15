@@ -614,8 +614,7 @@ export class NamedEnumDefinition extends EnumTypeExpression {
 
                 moduleRuntime.addLocalType(
                   ENUM_START + enumCaseNode.name,
-                  // TODO: determine the generics - are they just the genericNodes from above?
-                  new Types.NamedFormulaType(enumCaseNode.name, instanceType, argTypes, []),
+                  new Types.NamedFormulaType(enumCaseNode.name, instanceType, argTypes, genericTypes),
                 )
               }
             }

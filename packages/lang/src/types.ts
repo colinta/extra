@@ -3634,7 +3634,7 @@ export abstract class EnumType extends Type {
     super()
   }
 
-  abstract get metaType(): EnumType
+  abstract get metaType(): Type
 
   toCodeMember(member: EnumCase) {
     if (member.args.length) {
@@ -3799,6 +3799,10 @@ export class NamedEnumDefinitionType extends Type {
 
     return code
   }
+
+  fromTypeConstructor(): Type {
+    return this.instanceType
+  }
 }
 
 export class NamedEnumInstanceType extends EnumType {
@@ -3833,6 +3837,44 @@ export class NamedEnumInstanceType extends EnumType {
    */
   isOnlyTruthyType() {
     return true
+  }
+
+  resolve(
+    resolvedGenericsMap: Map<GenericType, GenericType>,
+  ): Result<NamedEnumInstanceType, string> {
+    const resolvedMembers: EnumCase[] = []
+    let changed = false
+    for (const member of this.members) {
+      const resolvedArgs: ObjectProp[] = []
+      let memberChanged = false
+      for (const arg of member.args) {
+        const resolved = maybeResolve(arg.type, arg.type, resolved => resolved, resolvedGenericsMap)
+        if (resolved.isErr()) {
+          return err(resolved.error)
+        }
+        const resolvedType = resolved.get()
+        if (resolvedType !== arg.type) {
+          memberChanged = true
+        }
+        if (arg.is === 'named') {
+          resolvedArgs.push(namedProp(arg.name, resolvedType))
+        } else {
+          resolvedArgs.push(positionalProp(resolvedType))
+        }
+      }
+      if (memberChanged) {
+        changed = true
+        resolvedMembers.push(new EnumCase(member.name, resolvedArgs))
+      } else {
+        resolvedMembers.push(member)
+      }
+    }
+
+    if (!changed) {
+      return ok(this)
+    }
+
+    return ok(new NamedEnumInstanceType(this.metaType, resolvedMembers))
   }
 
   /**
