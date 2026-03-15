@@ -19,10 +19,10 @@ function defineEnum(definition: string) {
   runtimeTypes[enumDef.name] = [enumType, Values.nullValue()]
 
   // Add enum cases to runtime scope (mirroring what NamedEnumDefinition.compile does)
-  const instanceType = enumType.instanceType
-  for (const member of instanceType.members) {
+  for (const caseType of enumType.instanceTypes) {
+    const member = caseType.member
     if (member.args.length === 0) {
-      runtimeTypes[`.${member.name}`] = [instanceType, Values.nullValue()]
+      runtimeTypes[`.${member.name}`] = [caseType, Values.nullValue()]
     } else {
       const argTypes = member.args.map((arg): Types.Argument => {
         if (arg.is === 'named') {
@@ -40,7 +40,7 @@ function defineEnum(definition: string) {
         }
       })
       runtimeTypes[`.${member.name}`] = [
-        new Types.NamedFormulaType(member.name, instanceType, argTypes, enumType.genericTypes),
+        new Types.NamedFormulaType(member.name, caseType, argTypes, enumType.genericTypes),
         Values.nullValue(),
       ]
     }
@@ -98,9 +98,8 @@ enum Result<T> {
     expect(resolvedType).toBeInstanceOf(Types.NamedEnumInstanceType)
     const enumInstance = resolvedType as Types.NamedEnumInstanceType
     expect(enumInstance.metaType.name).toEqual('Result')
-    expect(enumInstance.members).toHaveLength(1)
-    expect(enumInstance.members[0].name).toEqual('value')
-    expect(enumInstance.members[0].positionalTypes).toHaveLength(1)
-    expect(enumInstance.members[0].positionalTypes[0]).toEqual(Types.int())
+    expect(enumInstance.member.name).toEqual('value')
+    expect(enumInstance.member.positionalTypes).toHaveLength(1)
+    expect(enumInstance.member.positionalTypes[0]).toEqual(Types.int())
   })
 })

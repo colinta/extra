@@ -474,12 +474,9 @@ describe('narrowed types', () => {
     c(() => [
       Types.oneOf([Ints, Letter]),
       'foo is .one',
-      Types.narrowNamedEnum(Ints, Types.enumCase('one')),
+      IntsDefinition.lookupCase('one')!,
       Types.oneOf([
-        Types.narrowNamedEnum(
-          Ints,
-          Ints.members.filter(member => member.name !== 'one'),
-        ),
+        ...IntsDefinition.instanceTypes.filter(t => t.member.name !== 'one'),
         Letter,
       ]),
     ]),
@@ -487,32 +484,23 @@ describe('narrowed types', () => {
       Types.oneOf([Letter, Word]),
       'foo is .a',
       Types.oneOf([
-        Types.narrowNamedEnum(Letter, Types.enumCase('a')),
-        Types.narrowNamedEnum(Word, Types.enumCase('a')),
+        LetterDefinition.lookupCase('a')!,
+        WordDefinition.lookupCase('a')!,
       ]),
       Types.oneOf([
-        Types.narrowNamedEnum(
-          Letter,
-          Letter.members.filter(member => member.name !== 'a'),
-        ),
-        Types.narrowNamedEnum(
-          Word,
-          Word.members.filter(member => member.name !== 'a'),
-        ),
+        ...LetterDefinition.instanceTypes.filter(t => t.member.name !== 'a'),
+        ...WordDefinition.instanceTypes.filter(t => t.member.name !== 'a'),
       ]),
     ]),
     c([
       Types.oneOf([Letter, Word]),
       'foo is .other(String)',
       Types.narrowNamedEnum(
-        Letter,
+        LetterDefinition.lookupCase('other')!,
         Types.enumCase('other', [Types.positionalProp(Types.string({max: 1}))]),
       ),
       Types.oneOf([
-        Types.narrowNamedEnum(
-          Letter,
-          Letter.members.filter(member => member.name !== 'other'),
-        ),
+        ...LetterDefinition.instanceTypes.filter(t => t.member.name !== 'other'),
         Word,
       ]),
     ]),

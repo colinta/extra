@@ -1823,10 +1823,10 @@ export class MatchEnumExpression extends MatchExpression {
     }
 
     // must have a case with this name
-    const enumCase = enumType.members.find(({name}) => name === this.name)
-    if (!enumCase) {
+    if (enumType.member.name !== this.name) {
       return ok(undefined)
     }
+    const enumCase = enumType.member
 
     // if there are no args, then this is a match
     let enumCaseResult: GetRuntimeResult<Types.EnumCase>

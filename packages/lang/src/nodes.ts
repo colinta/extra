@@ -1004,7 +1004,7 @@ export class NamedEnumDefinition extends Node {
     readonly name: string,
     readonly type: Types.NamedEnumDefinitionType,
     readonly members: EnumMember[],
-    readonly instanceType: Types.NamedEnumInstanceType,
+    readonly instanceType: Types.Type,
     readonly staticProperties: Map<string, Node>,
     readonly memberFunctions: Map<string, Node>,
     readonly generics: Generic[],

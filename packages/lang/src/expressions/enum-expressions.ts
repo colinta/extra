@@ -562,8 +562,8 @@ export class NamedEnumDefinition extends EnumTypeExpression {
 
             moduleRuntime.addLocalType(name, enumDefinition)
 
-            const members = enumCases.map(enumCaseNode =>
-              Types.enumCase(
+            const instanceTypes = enumCases.map(enumCaseNode => {
+              const member = Types.enumCase(
                 enumCaseNode.name,
                 enumCaseNode.args.map(arg => {
                   if (arg.is === 'named-value') {
@@ -572,29 +572,20 @@ export class NamedEnumDefinition extends EnumTypeExpression {
                     return Types.positionalProp(arg.node.type)
                   }
                 }),
-              ),
-            )
+              )
+              return new Types.NamedEnumInstanceType(enumDefinition, member)
+            })
 
-            const instanceType = new Types.NamedEnumInstanceType(enumDefinition, members)
-            enumDefinition.resolveInstanceType(instanceType)
+            enumDefinition.resolveInstanceTypes(instanceTypes)
+            const instanceType = enumDefinition.instanceType
             const thisRuntime = new MutableTypeRuntime(moduleRuntime, instanceType)
 
-            for (const enumCaseNode of enumCases) {
-              // TODO: ideally each enum case would have a corresponding
-              // "literal" value
-              //     enum Letter {
-              //       .a
-              //       .b
-              //       .c
-              //     }
-              //
-              //     let a = .a in ...
-              // `a: Letter`, but more precisely it is of type `Letter.a`. Just
-              // like an Int can be narrowed to just one value, an enum should
-              // be narrowable to just one value. For now they are typed as the
-              // enum instance type.
+            for (let i = 0; i < enumCases.length; i++) {
+              const enumCaseNode = enumCases[i]
+              const caseType = instanceTypes[i]
+
               if (enumCaseNode.args.length === 0) {
-                moduleRuntime.addLocalType(ENUM_START + enumCaseNode.name, instanceType)
+                moduleRuntime.addLocalType(ENUM_START + enumCaseNode.name, caseType)
               } else {
                 const argTypes = enumCaseNode.args.map((arg): Types.Argument => {
                   if (arg.is === 'named-value') {
@@ -614,7 +605,7 @@ export class NamedEnumDefinition extends EnumTypeExpression {
 
                 moduleRuntime.addLocalType(
                   ENUM_START + enumCaseNode.name,
-                  new Types.NamedFormulaType(enumCaseNode.name, instanceType, argTypes, genericTypes),
+                  new Types.NamedFormulaType(enumCaseNode.name, caseType, argTypes, genericTypes),
                 )
               }
             }

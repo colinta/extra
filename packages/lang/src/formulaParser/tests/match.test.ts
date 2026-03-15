@@ -1295,8 +1295,8 @@ describe('match operator', () => {
           ],
           'foo is .one',
           {
-            truthy: Types.narrowNamedEnum(Ints, Types.enumCase('one')),
-            falsey: Types.optional(Types.narrowNamedEnum(Ints, Types.enumCase('zero'))),
+            truthy: IntsDefinition.lookupCase('one')!,
+            falsey: Types.optional(IntsDefinition.lookupCase('zero')!),
           },
         ]),
         c([
@@ -1307,12 +1307,10 @@ describe('match operator', () => {
           ],
           'foo is .a',
           {
-            truthy: Types.narrowNamedEnum(Letters, Types.enumCase('a')),
-            falsey: Types.narrowNamedEnum(Letters, [
-              Types.enumCase('b'),
-              Types.enumCase('c-w', [Types.positionalProp(Types.string({max: 1}))]),
-              Types.enumCase('xyz', [Types.positionalProp(XYZ)]),
-            ]),
+            truthy: LettersDefinition.lookupCase('a')!,
+            falsey: Types.oneOf(
+              LettersDefinition.instanceTypes.filter(t => t.member.name !== 'a'),
+            ),
           },
         ]),
       ).run(testMatchGetTypeCase)

@@ -261,7 +261,7 @@ enum Color { -- static property
         Types.namedEnumDefinition({
           name: 'Color',
           members: [Types.enumCase('red'), Types.enumCase('green'), Types.enumCase('blue')],
-          moreStatics: (_, enumInstance) => new Map([['default', enumInstance]]),
+          moreStatics: (def, _) => new Map([['default', def.lookupCase('red')!]]),
         }),
         [],
       ]),
@@ -279,10 +279,10 @@ enum Priority { -- multiple static properties
         Types.namedEnumDefinition({
           name: 'Priority',
           members: [Types.enumCase('low'), Types.enumCase('medium'), Types.enumCase('high')],
-          moreStatics: (_, enumInstance) =>
-            new Map([
-              ['fallback', enumInstance],
-              ['default', enumInstance],
+          moreStatics: (def, _) =>
+            new Map<string, Types.Type>([
+              ['fallback', def.lookupCase('low')!],
+              ['default', def.lookupCase('low')!],
             ]),
         }),
         [],
@@ -301,14 +301,14 @@ enum Color { -- static function
         Types.namedEnumDefinition({
           name: 'Color',
           members: [Types.enumCase('red'), Types.enumCase('green'), Types.enumCase('blue')],
-          moreStatics: (_, enumInstance) =>
+          moreStatics: (def, _) =>
             new Map([
               [
                 'from-name',
                 Types.namedFormula(
                   'from-name',
                   [Types.namedArgument({name: 'name', type: Types.string(), isRequired: true})],
-                  enumInstance,
+                  def.lookupCase('red')!,
                 ),
               ],
             ]),
@@ -331,15 +331,15 @@ enum Color { -- static property + static function
         Types.namedEnumDefinition({
           name: 'Color',
           members: [Types.enumCase('red'), Types.enumCase('green'), Types.enumCase('blue')],
-          moreStatics: (_, enumInstance) =>
+          moreStatics: (def, _) =>
             new Map<string, Types.Type>([
-              ['default', enumInstance],
+              ['default', def.lookupCase('red')!],
               [
                 'from-name',
                 Types.namedFormula(
                   'from-name',
                   [Types.namedArgument({name: 'name', type: Types.string(), isRequired: true})],
-                  enumInstance,
+                  def.lookupCase('red')!,
                 ),
               ],
             ]),
@@ -359,7 +359,7 @@ enum Color { -- instance function
 }`,
         Types.namedEnumDefinition({
           name: 'Color',
-          definition: (def, members) => Types.enumType(def, members),
+          definition: (def, members) => members.map(m => Types.enumType(def, m)),
           members: [Types.enumCase('red'), Types.enumCase('green'), Types.enumCase('blue')],
           formulas: new Map([['is-red', Types.namedFormula('is-red', [], Types.booleanType())]]),
         }),
@@ -384,7 +384,7 @@ enum Shape { -- all together
 }`,
           Types.namedEnumDefinition({
             name: 'Shape',
-            definition: (def, members) => Types.enumType(def, members),
+            definition: (def, members) => members.map(m => Types.enumType(def, m)),
             members: [
               Types.enumCase('circle', [Types.positionalProp(Types.float())]),
               Types.enumCase('rect', [
@@ -396,10 +396,10 @@ enum Shape { -- all together
             formulas: new Map([
               ['is-point', Types.namedFormula('is-point', [], Types.booleanType())],
             ]),
-            moreStatics: (_, enumInstance) =>
+            moreStatics: (def, _) =>
               new Map<string, Types.Type>([
-                ['default', enumInstance],
-                ['unit-circle', Types.namedFormula('unit-circle', [], enumInstance)],
+                ['default', def.lookupCase('point')!],
+                ['unit-circle', Types.namedFormula('unit-circle', [], def.lookupCase('circle')!)],
               ]),
           }),
           [],

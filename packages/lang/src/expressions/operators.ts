@@ -3669,7 +3669,7 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
       lhFormulaType = lhFormulaType.konstructor!
     }
 
-    if (lhFormulaType instanceof Types.AnonymousEnumType && lhFormulaType.member.args.length > 0) {
+    if (lhFormulaType instanceof Types.EnumType && lhFormulaType.member.args.length > 0) {
       let argIndex = 0
       const args = lhFormulaType.member.args.map((arg): Types.Argument => {
         if (arg.is === 'positional') {
