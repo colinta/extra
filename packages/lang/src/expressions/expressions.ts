@@ -2367,19 +2367,13 @@ export class TypeConstructorExpression extends TypeExpression {
       return mapAll(
         this.types.map(typeExpr => typeExpr.compileAsTypeExpression(runtime)),
       ).map(typeNodes => {
-        // Build the resolved generics map
-        const resolvedGenericsMap = new Map<Types.GenericType, Types.GenericType>()
+        // Use the definition's scheme to apply the provided type arguments.
+        // e.g. Result(Int) → scheme(T, Result.nil | Result.val(T)) with T → Int
+        const subst: Types.Substitution = new Map()
         for (let i = 0; i < genericTypes.length; i++) {
-          const resolved = genericTypes[i].copy()
-          resolved.hints.push(typeNodes[i].type)
-          resolvedGenericsMap.set(genericTypes[i], resolved)
+          subst.set(genericTypes[i], typeNodes[i].type)
         }
-
-        // Get the instance type and resolve generics
-        const instanceType = defType.fromTypeConstructor()
-        return instanceType.resolve(resolvedGenericsMap).mapError(
-          msg => new RuntimeError(this, msg),
-        )
+        return ok(Types.applySubst(subst, defType.fromTypeConstructor()))
       })
     })
   }
@@ -3869,7 +3863,13 @@ export class FormulaTypeExpression extends Expression {
     const genericTypes: Types.GenericType[] = []
     const mutableRuntime = new MutableTypeRuntime(runtime)
     for (const generic of this.generics) {
-      const genericType = new Types.GenericType(generic.name)
+      let bound: Types.Type | undefined
+      if (generic.boundExpression) {
+        const boundResult = generic.boundExpression.getAsTypeExpression(mutableRuntime)
+        if (boundResult.isErr()) return boundResult
+        bound = boundResult.get()
+      }
+      const genericType = new Types.GenericType(generic.name, undefined, bound)
       genericTypes.push(genericType)
       mutableRuntime.addLocalType(generic.name, genericType)
     }
@@ -3897,21 +3897,44 @@ export class GenericExpression extends Expression {
     range: Range,
     precedingComments: Comment[],
     readonly name: string,
+    /** Optional bound type expression: `<T is Float>` → bound is the Float type expression */
+    readonly boundExpression?: Expression,
   ) {
     super(range, precedingComments)
   }
 
   toCode() {
+    if (this.boundExpression) {
+      return `${this.name} is ${this.boundExpression.toCode()}`
+    }
     return this.name
   }
 
   toLisp() {
+    if (this.boundExpression) {
+      return `(${this.name} is ${this.boundExpression.toLisp()})`
+    }
     return this.name
   }
 
   compile(): GetRuntimeResult<Nodes.Generic> {
     const genericType = new Types.GenericType(this.name)
     return ok(new Nodes.Generic(toSource(this), genericType))
+  }
+
+  /**
+   * Compile the bound expression (if any) and return a GenericType with the bound set.
+   */
+  compileWithBound(runtime: TypeRuntime): GetRuntimeResult<Types.GenericType> {
+    if (!this.boundExpression) {
+      const genericType = new Types.GenericType(this.name)
+      return ok(genericType)
+    }
+
+    return this.boundExpression.compileAsTypeExpression(runtime).map(boundNode => {
+      const genericType = new Types.GenericType(this.name, undefined, boundNode.type)
+      return ok(genericType)
+    })
   }
 
   getType(): GetTypeResult {
@@ -4111,8 +4134,9 @@ export class FormulaExpression extends Expression {
 
     const generics = mapAll(
       this.generics.map(generic =>
-        generic.compile().map(node => {
-          mutableRuntime.addLocalType(generic.name, node.type)
+        generic.compileWithBound(mutableRuntime).map(genericType => {
+          const node = new Nodes.Generic(toSource(generic), genericType)
+          mutableRuntime.addLocalType(generic.name, genericType)
           return node
         }),
       ),

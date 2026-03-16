@@ -356,11 +356,7 @@ describe('canBeAssignedTo', () => {
     (only ? it.only : skip ? it.skip : it)(
       `canBeAssignedTo(${lhs}, ${rhs}) should be ${expected}${name ? ` (${name})` : ''}`,
       () => {
-        const resolved = new Map<Types.GenericType, Types.GenericType>()
-        if (rhs instanceof Types.GenericType) {
-          resolved.set(rhs, rhs)
-        }
-        const successful = Types.canBeAssignedTo(lhs, rhs, resolved)
+        const successful = Types.canBeAssignedTo(lhs, rhs)
         expect(successful).toEqual(expected)
       },
     ),

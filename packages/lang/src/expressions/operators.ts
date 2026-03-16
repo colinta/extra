@@ -1,5 +1,6 @@
 import {err, mapAll, ok, type Result} from '@extra-lang/result'
 import * as Types from '@/types'
+import {generateConstraints, solveConstraints} from '@/constraints'
 import * as Nodes from '@/nodes'
 import * as Values from '@/values'
 import {Scope} from '@/scope'
@@ -4689,23 +4690,30 @@ function functionInvocationOperatorType(
         }
       }
 
-      let resolvedGenerics: Map<Types.GenericType, Types.GenericType> | undefined
-      if (formulaType.genericTypes.length) {
-        resolvedGenerics = new Map()
-        // for (const generic of formulaType.generics()) {
-        for (const generic of formulaType.genericTypes) {
-          resolvedGenerics.set(generic, generic.copy())
+      // Instantiate the formula's type scheme to get fresh type variables.
+      // Each invocation gets independent generics, preventing cross-invocation
+      // interference in nested generic scopes.
+      const scheme = new Types.TypeScheme(formulaType.genericTypes, formulaType)
+      const {type: instantiatedType, freshVars} = scheme.instantiate()
+      const instantiatedFormula = instantiatedType instanceof Types.FormulaType
+        ? instantiatedType
+        : formulaType
+
+      // Collect generics to solve for: fresh formula vars + argument generics
+      // (from outer scopes, e.g. identity's T when calling map(1, map: identity)).
+      const allGenerics = new Set<Types.GenericType>()
+      for (const freshVar of freshVars.values()) {
+        allGenerics.add(freshVar)
+      }
+      for (const [_is, _alias, type] of argsResult) {
+        for (const generic of type.generics()) {
+          allGenerics.add(generic)
         }
-        const argGenerics = argsResult.map(([_is, _alias, type]) => [...type.generics()]).flat()
-        for (const generic of argGenerics) {
-          resolvedGenerics.set(generic, generic.copy())
-        }
-      } else {
-        resolvedGenerics = undefined
       }
 
+      // Validate arguments using the instantiated formula type.
       const errorMessage = Types.checkFormulaArguments(
-        formulaType,
+        instantiatedFormula,
         positional.length,
         names,
         function argumentAt(position: number) {
@@ -4717,28 +4725,49 @@ function functionInvocationOperatorType(
         spreadPositionalArguments,
         spreadDictArguments,
         keywordListArguments,
-        resolvedGenerics,
       )
 
       if (errorMessage) {
         return err(new RuntimeError(formulaExpression, errorMessage))
       }
 
-      if (!resolvedGenerics) {
-        // this could easily be a generic type, for example, resolving the return type of a
-        // generic formula:
-        //     fn<T, U>(# v: T, # apply: fn(# in: T): U) => apply(v)
-        // resolves to 'U'. It's not until *this* formula is invoked that all the generics
-        // will (hopefully!) be resolved.
-        return ok(formulaType.returnType)
-      } else {
-        const resolved = formulaType.returnType.resolve(resolvedGenerics)
-        if (resolved.isErr()) {
-          return err(new RuntimeError(formulaExpression, resolved.error))
+      if (allGenerics.size === 0) {
+        return ok(instantiatedFormula.returnType)
+      }
+
+      // Generate constraints against the instantiated formula's args
+      // (which use fresh type variables).
+      const constraints: import('@/constraints').Constraint[] = []
+      let posIdx = 0
+      for (const arg of instantiatedFormula.args) {
+        let providedTypes: Types.Type[] = []
+        if (arg.is === 'positional-argument') {
+          const provided = positional[posIdx]
+          if (provided) providedTypes = [provided]
+          posIdx += 1
+        } else if (arg.is === 'named-argument') {
+          providedTypes = named.get(arg.alias) ?? []
+        } else if (arg.is === 'spread-positional-argument') {
+          providedTypes = spreadPositionalArguments
+        } else if (arg.is === 'repeated-named-argument') {
+          providedTypes = named.get(arg.alias) ?? []
         }
 
-        return ok(resolved.get())
+        for (const provided of providedTypes) {
+          constraints.push(
+            ...generateConstraints(provided, arg.type, allGenerics),
+          )
+        }
       }
+
+      // Solve constraints and apply to the instantiated return type
+      // (which already uses fresh vars).
+      const solved = solveConstraints(constraints, [...allGenerics])
+      if (solved.isErr()) {
+        return err(new RuntimeError(formulaExpression, solved.error))
+      }
+
+      return ok(Types.applySubst(solved.get(), instantiatedFormula.returnType))
     })
 }
 

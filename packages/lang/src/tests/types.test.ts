@@ -3,6 +3,7 @@ import * as Types from '../types'
 import * as Values from '../values'
 import {parse} from '../formulaParser'
 import {privateOneOf} from './privateOneOf'
+import {generateConstraints, solveConstraints, type Constraint} from '../constraints'
 import {type TypeRuntime} from '../runtime'
 import {mockTypeRuntime} from './mockTypeRuntime'
 
@@ -288,25 +289,33 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
         c([[Types.int()], Types.int()]),
         // fn(1): 1
         c([[Types.literal(1)], Types.literal(1)]),
-      ).run(([args, expected], {only, skip}) => {
+      ).run(([argTypes, expected], {only, skip}) => {
         ;(only ? it.only : skip ? it.skip : it)(`successfully derives ${expected.toCode()}`, () => {
-          const genericResolution = new Map([[genericTypeT, Types.generic('T')]])
+          // Validate arguments
           const errorMessage = Types.checkFormulaArguments(
             formula,
-            args.length,
+            argTypes.length,
             [],
-            position => args[position],
-            position => [],
-            // spreadPositionalArguments:
+            position => argTypes[position],
+            _name => [],
             [],
-            // spreadDictArguments:
             new Map(),
-            // keywordListArguments:
             [],
-            genericResolution,
           )
           expect(errorMessage).toBeUndefined()
-          expect(genericResolution.get(genericTypeT)!.resolvedType).toEqual(expected)
+
+          // Collect and solve constraints
+          const generics = new Set(formula.genericTypes)
+          const constraints: Constraint[] = []
+          for (let i = 0; i < formula.args.length; i++) {
+            const provided = argTypes[i]
+            if (provided) {
+              constraints.push(...generateConstraints(provided, formula.args[i].type, generics))
+            }
+          }
+          const solved = solveConstraints(constraints, formula.genericTypes)
+          expect(solved.isOk()).toBe(true)
+          expect(solved.get().get(genericTypeT)).toEqual(expected)
         })
       })
     })
@@ -367,34 +376,25 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
           ],
           [Types.float(), Types.string()],
         ]),
-      ).run(([args, expected], {only, skip}) => {
+      ).run(([argTypes, expected], {only, skip}) => {
         let desc: string
         if (typeof expected === 'string') {
-          desc = `correctly fails on [${args.map(arg => arg.toString()).join(',')}]`
+          desc = `correctly fails on [${argTypes.map(arg => arg.toString()).join(',')}]`
         } else {
           const [expectedT, expectedU] = expected
           desc = `successfully derives T: ${expectedT.toCode()} and U: ${expectedU.toCode()}`
         }
 
         ;(only ? it.only : skip ? it.skip : it)(desc, () => {
-          const genericResolution = new Map([
-            [genericTypeT, Types.generic('T')],
-            [genericTypeU, Types.generic('U')],
-          ])
-
           const errorMessage = Types.checkFormulaArguments(
             mapFormula,
-            args.length,
+            argTypes.length,
             [],
-            position => args[position],
-            position => [],
-            // spreadPositionalArguments:
+            position => argTypes[position],
+            _name => [],
             [],
-            // spreadDictArguments:
             new Map(),
-            // keywordListArguments:
             [],
-            genericResolution,
           )
 
           if (typeof expected === 'string') {
@@ -402,8 +402,20 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
           } else {
             const [expectedT, expectedU] = expected
             expect(errorMessage).toBeUndefined()
-            expect(genericResolution.get(genericTypeT)!.resolvedType).toEqual(expectedT)
-            expect(genericResolution.get(genericTypeU)!.resolvedType).toEqual(expectedU)
+
+            // Collect and solve constraints
+            const generics = new Set(mapFormula.genericTypes)
+            const constraints: Constraint[] = []
+            for (let i = 0; i < mapFormula.args.length; i++) {
+              const provided = argTypes[i]
+              if (provided) {
+                constraints.push(...generateConstraints(provided, mapFormula.args[i].type, generics))
+              }
+            }
+            const solved = solveConstraints(constraints, mapFormula.genericTypes)
+            expect(solved.isOk()).toBe(true)
+            expect(solved.get().get(genericTypeT)).toEqual(expectedT)
+            expect(solved.get().get(genericTypeU)).toEqual(expectedU)
           }
         })
       })
@@ -443,23 +455,7 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
       const [expectedT, expectedU] = [Types.int(), Types.string()]
 
       it(`successfully derives T: ${expectedT.toCode()} and U: ${expectedU.toCode()}`, () => {
-        // fn<T, U>(
-        //   # callback: fn(# input: T): U?,
-        //   # values: [T],
-        // ): [U]
-        //
-        // # callback => fn(# value: Int): String?
-        // Int => requirement for T (must be Int or "smaller")
-        // String? => hint for U?
-        // (String => hint for U) (U could be "larger" than String)
-        //
-        // # values => [Int]
-        // [Int] => hint for [T] (T could be "larger" than Int)
-        // (Int => hint for T)
-        //
-        // T => Int,
-        // U => String
-        const args: Types.Type[] = [
+        const argTypes: Types.Type[] = [
           Types.formula(
             [Types.positionalArgument({name: 'value', type: Types.int(), isRequired: true})],
             Types.optional(Types.string()),
@@ -467,28 +463,31 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
           Types.array(Types.int()),
         ]
 
-        const genericResolution = new Map([
-          [genericTypeT, genericTypeT.copy()],
-          [genericTypeU, genericTypeU.copy()],
-        ])
         const errorMessage = Types.checkFormulaArguments(
           compactMapFormula,
-          args.length,
+          argTypes.length,
           [],
-          position => args[position],
+          position => argTypes[position],
           _name => [],
-          // spreadPositionalArguments:
           [],
-          // spreadDictArguments:
           new Map(),
-          // keywordListArguments:
           [],
-          genericResolution,
         )
-
         expect(errorMessage).toBeUndefined()
-        expect(genericResolution.get(genericTypeT)!.resolvedType).toEqual(expectedT)
-        expect(genericResolution.get(genericTypeU)!.resolvedType).toEqual(expectedU)
+
+        // Collect and solve constraints
+        const generics = new Set(compactMapFormula.genericTypes)
+        const constraints: Constraint[] = []
+        for (let i = 0; i < compactMapFormula.args.length; i++) {
+          const provided = argTypes[i]
+          if (provided) {
+            constraints.push(...generateConstraints(provided, compactMapFormula.args[i].type, generics))
+          }
+        }
+        const solved = solveConstraints(constraints, compactMapFormula.genericTypes)
+        expect(solved.isOk()).toBe(true)
+        expect(solved.get().get(genericTypeT)).toEqual(expectedT)
+        expect(solved.get().get(genericTypeU)).toEqual(expectedU)
       })
     })
   })

@@ -391,6 +391,7 @@ export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
       )
     }
 
+    let boundExpression: Expression | undefined
     if (
       scanner.test(() => {
         scanner.scanAllWhitespace()
@@ -400,9 +401,7 @@ export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
       scanner.scanAllWhitespace()
       scanner.expectString('is')
       scanner.scanAllWhitespace()
-      const type = scanArgumentType(scanner, 'argument_type', parseNext)
-      // generic.type = type
-      throw `TODO - support type on generic ${type}`
+      boundExpression = scanArgumentType(scanner, 'argument_type', parseNext)
     }
 
     generics.push(
@@ -410,6 +409,7 @@ export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
         genericRef.range,
         genericRef.precedingComments,
         genericName,
+        boundExpression,
       ),
     )
 

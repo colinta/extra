@@ -1,4 +1,4 @@
-import {err, mapAll, mapOptional, ok, type Result, Guarantee} from '@extra-lang/result'
+import {err, mapAll, ok, type Result, Guarantee} from '@extra-lang/result'
 import {indent, intersection} from './util'
 import {splitter} from './graphemes'
 import * as Narrowed from './narrowed'
@@ -400,13 +400,6 @@ export abstract class Type {
   }
 
   /**
-   * Returns the type with all generics resolved - if they cannot be resolved, returns an error
-   */
-  resolve(_resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    return ok(this)
-  }
-
-  /**
    * GenericType returns [self], FormulaType searches args and return type for
    * generics and returns all of them. Similarly for ArrayType, DictType, ObjectType,
    * and OneOfType.
@@ -660,7 +653,6 @@ export abstract class Type {
  */
 export class GenericType extends Type {
   is = 'generic'
-  _resolvedResult: Result<Type, string> | undefined
 
   static with<T>(names: [string], fn: (generic: GenericType) => T): T
   static with<T>(names: [string, string], fn: (generic: GenericType, generic2: GenericType) => T): T
@@ -679,134 +671,37 @@ export class GenericType extends Type {
   constructor(
     readonly name: string,
     /**
-     * All done, the hints and requirements must be assignable to this type. This type
-     * can be derived from the hints, or given explicitly.
-     *
-     * @example
-     *     example: <T>(# callback: (input: T): [T], # arg: T)
-     *
-     * Derived:
-     *     example((# foo: Int | String): [String], '')
-     *
-     * Explicit:
-     *     example<String>((# foo: Int | String): [String], '')
+     * Optional explicit type for this generic (e.g., from `Result<String>` where
+     * T has resolvedType = String). Used by canBeAssignedTo to check assignability
+     * against the concrete type, and by solveConstraints to validate hints.
      */
     public resolvedType?: Type | undefined,
     /**
-     * If there's no explicit/resolved type, hints can be used to derive one, otherwise they are
-     * treated as requirements. Hints can come from arguments or return types
-     * (`arg: T` or `callback: fn(): T`), but not from fn arguments (`callback: fn(arg: T): …`)
+     * Optional upper bound: `<T is Float>` constrains T to types assignable to Float.
+     * After unification resolves T, the resolved type is checked against this bound.
      */
-    public hints: Type[] = [],
-    /**
-     * These come from fn arguments, which can't be used to derive
-     * the resolved type, but the resolved type must be assignable to them.
-     *
-     * @example
-     *     example: <T>(# callback: (input: T): [T], # arg: T)
-     *     callback: fn(# foo: Int | String): [String]
-     *
-     *     example(callback, '')
-     *
-     * --> `# foo: Int | String` is a requirement
-     * --> `[String]` is a hint
-     * --> `''` is a hint
-     *
-     * `T` will resolve to `String`, because it is derived from the two hints, and
-     * also satisfies the requirement of `T: Int | String`
-     */
-    public requirements: Type[] = [],
+    readonly bound?: Type | undefined,
   ) {
     super()
-    Object.defineProperty(this, '_resolvedResult', {enumerable: false})
   }
 
   isGeneric(): this is GenericType {
     return true
   }
 
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    const self = resolvedGenericsMap.get(this)
-    if (!self) {
-      return err(`Invalid generic '${this.name}', was not part of generics resolution`)
-    }
-
-    return self.resolveSelf(resolvedGenericsMap)
-  }
-
-  resolveSelf(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    if (this._resolvedResult) {
-      return this._resolvedResult
-    }
-
-    const reason = {reason: ''}
-    const errorMessages: string[] = []
-    let resolvedType: Type
-
-    if (this.resolvedType) {
-      for (const type of this.hints) {
-        if (!canBeAssignedTo(type, this.resolvedType, undefined, reason)) {
-          errorMessages.push(cannotAssignToError(type, this.resolvedType))
-          if (reason.reason) {
-            errorMessages.push(reason.reason)
-            reason.reason = ''
-          }
-        }
-      }
-      resolvedType = this.resolvedType
-
-      for (const type of this.requirements) {
-        if (!canBeAssignedTo(type, resolvedType, undefined, reason)) {
-          errorMessages.push(cannotAssignToError(type, resolvedType))
-          if (reason.reason) {
-            errorMessages.push(reason.reason)
-            reason.reason = ''
-          }
-        }
-      }
-    } else {
-      // When no explicit resolved type, unify hints and requirements together.
-      // Hints come from covariant positions (argument values), requirements from
-      // contravariant positions (callback parameter types). The resolved type
-      // must be broad enough to satisfy both.
-      resolvedType = oneOf([...this.hints, ...this.requirements])
-    }
-
-    const errorMessage = combineErrorMessages(errorMessages)
-    if (errorMessage) {
-      this._resolvedResult = err(errorMessage)
-      return this._resolvedResult
-    }
-
-    if (resolvedType instanceof GenericType) {
-      if (resolvedGenericsMap.has(resolvedType)) {
-        this._resolvedResult = resolvedType.resolve(resolvedGenericsMap).map(type => {
-          this.resolvedType = type
-          return type
-        })
-      } else {
-        // foreign generic from an outer scope — keep as-is
-        this.resolvedType = resolvedType
-        this._resolvedResult = ok(resolvedType)
-      }
-    } else {
-      this.resolvedType ??= resolvedType
-      this._resolvedResult = ok(resolvedType)
-    }
-
-    return this._resolvedResult
-  }
-
   generics() {
     return new Set([this])
   }
 
-  copy() {
-    return new GenericType(this.name, this.resolvedType, [...this.hints], [...this.requirements])
-  }
-
   toCode() {
-    return `${this.name}${this.resolvedType ? ' = ' + this.resolvedType.toCode() : ''}`
+    let code = this.name
+    if (this.bound) {
+      code += ` is ${this.bound.toCode()}`
+    }
+    if (this.resolvedType) {
+      code += ` = ${this.resolvedType.toCode()}`
+    }
+    return code
   }
 
   propAccessType(name: string | number): Type | undefined {
@@ -1263,19 +1158,6 @@ export abstract class OneOfType extends Type {
 
       return memo
     }, new Set<GenericType>())
-  }
-
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    const types: Type[] = []
-    for (const type of this.of) {
-      const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)
-      if (resolved.isErr()) {
-        return err(resolved.error)
-      }
-      types.push(resolved.get())
-    }
-
-    return ok(OneOfType.createOneOf(types))
   }
 
   toCode(embedded = false) {
@@ -2995,15 +2877,6 @@ export class ArrayType extends ContainerType<ArrayType> {
     return new ArrayType(this.of.fromTypeConstructor(), this.narrowedLength)
   }
 
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    return maybeResolve(
-      this.of,
-      this,
-      type => new ArrayType(type, this.narrowedLength),
-      resolvedGenericsMap,
-    )
-  }
-
   static desc(typeDesc: string, narrowedLength: Narrowed.NarrowedLength, lisp = false) {
     const [start, end] = lisp ? ['Array(', ')'] : ['[', ']']
     const length = Narrowed.lengthDesc(narrowedLength)
@@ -3176,15 +3049,6 @@ export class DictType extends ContainerType<DictType> {
     return new DictType(this.of.fromTypeConstructor(), this.narrowedLength, this.narrowedNames)
   }
 
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    return maybeResolve(
-      this.of,
-      this,
-      type => new DictType(type, this.narrowedLength, this.narrowedNames),
-      resolvedGenericsMap,
-    )
-  }
-
   static desc(typeDesc: string, narrowedNames: Set<Key>, narrowedLength: Narrowed.NarrowedLength) {
     let namesDesc: string
     if (narrowedNames.size === 0) {
@@ -3347,15 +3211,6 @@ export class SetType extends ContainerType<SetType> {
     return new SetType(this.of.fromTypeConstructor(), this.narrowedLength)
   }
 
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    return maybeResolve(
-      this.of,
-      this,
-      type => new ArrayType(type, this.narrowedLength),
-      resolvedGenericsMap,
-    )
-  }
-
   static desc(typeDesc: string, narrowedLength: Narrowed.NarrowedLength) {
     const length = Narrowed.lengthDesc(narrowedLength)
     if (length) {
@@ -3458,22 +3313,6 @@ export class ObjectType extends Type {
     }
 
     return generics
-  }
-
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    const props: ObjectProp[] = []
-    for (const arg of this.props) {
-      const {type} = arg
-      const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)
-      if (resolved.isErr()) {
-        return err(resolved.error)
-      }
-      props.push({
-        ...arg,
-        type: resolved.get(),
-      })
-    }
-    return ok(new ObjectType(props))
   }
 
   toCode() {
@@ -3721,32 +3560,6 @@ export class AnonymousEnumType extends EnumType {
     return result
   }
 
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<Type, string> {
-    const resolvedArgs: ObjectProp[] = []
-    let changed = false
-    for (const arg of this.member.args) {
-      const resolved = maybeResolve(arg.type, arg.type, resolved => resolved, resolvedGenericsMap)
-      if (resolved.isErr()) {
-        return err(resolved.error)
-      }
-      const resolvedType = resolved.get()
-      if (resolvedType !== arg.type) {
-        changed = true
-      }
-      if (arg.is === 'named') {
-        resolvedArgs.push(namedProp(arg.name, resolvedType))
-      } else {
-        resolvedArgs.push(positionalProp(resolvedType))
-      }
-    }
-
-    if (!changed) {
-      return ok(this)
-    }
-
-    return ok(new AnonymousEnumType(new EnumCase(this.member.name, resolvedArgs), this.metaType))
-  }
-
   toCode() {
     return this.toCodeMember(this.member)
   }
@@ -3855,6 +3668,14 @@ export class NamedEnumDefinitionType extends Type {
   fromTypeConstructor(): Type {
     return this.instanceType
   }
+
+  /**
+   * Returns a TypeScheme wrapping this enum's generic type parameters
+   * and its instance type. Call instantiate() to get fresh type variables.
+   */
+  get scheme(): TypeScheme {
+    return new TypeScheme(this.genericTypes, this.instanceType)
+  }
 }
 
 export class NamedEnumInstanceType extends EnumType {
@@ -3881,32 +3702,8 @@ export class NamedEnumInstanceType extends EnumType {
     return true
   }
 
-  resolve(
-    resolvedGenericsMap: Map<GenericType, GenericType>,
-  ): Result<Type, string> {
-    const resolvedArgs: ObjectProp[] = []
-    let changed = false
-    for (const arg of this.member.args) {
-      const resolved = maybeResolve(arg.type, arg.type, resolved => resolved, resolvedGenericsMap)
-      if (resolved.isErr()) {
-        return err(resolved.error)
-      }
-      const resolvedType = resolved.get()
-      if (resolvedType !== arg.type) {
-        changed = true
-      }
-      if (arg.is === 'named') {
-        resolvedArgs.push(namedProp(arg.name, resolvedType))
-      } else {
-        resolvedArgs.push(positionalProp(resolvedType))
-      }
-    }
-
-    if (!changed) {
-      return ok(this)
-    }
-
-    return ok(new NamedEnumInstanceType(this.metaType, new EnumCase(this.member.name, resolvedArgs)))
+  hasGeneric() {
+    return this.member.args.some(arg => arg.type.hasGeneric())
   }
 
   /**
@@ -3990,6 +3787,14 @@ export class ClassDefinitionType extends Type {
 
   fromTypeConstructor(): Type {
     return this.classInstanceType!
+  }
+
+  /**
+   * Returns a TypeScheme wrapping this class's generic type parameters
+   * and its instance type.
+   */
+  get scheme(): TypeScheme {
+    return new TypeScheme(this.genericTypes, this.classInstanceType!)
   }
 
   propAccessType(name: string | number): Type | undefined {
@@ -4092,22 +3897,6 @@ export class ClassInstanceType extends Type {
     return generics
   }
 
-  resolve(resolvedGenericsMap: Map<GenericType, GenericType>): Result<ClassInstanceType, string> {
-    return mapOptional(this.parent?.resolve(resolvedGenericsMap)).map(parentClass => {
-      const props = new Map<string, Type>()
-      for (const [key, type] of this.myProps) {
-        const resolved = maybeResolve(type, type, resolved => resolved, resolvedGenericsMap)
-
-        if (resolved.isErr()) {
-          return err(resolved.error)
-        }
-        props.set(key, resolved.get())
-      }
-
-      return ok(new ClassInstanceType(this.name, parentClass, props, this.formulas))
-    })
-  }
-
   addFormula(name: string, formula: Type) {
     this.allProps.set(name, formula)
     this.formulas.set(name, formula)
@@ -4198,6 +3987,187 @@ export class ModuleType extends Type {
     }
     return this.definitions.get(name)
   }
+}
+
+/******************************************************************************/
+/******************************************************************************/
+/*                      Substitution & TypeScheme                             */
+/******************************************************************************/
+/******************************************************************************/
+
+export type Substitution = Map<GenericType, Type>
+
+/**
+ * Wraps a type with its bound type parameters. Calling instantiate() creates
+ * fresh GenericType instances so each invocation site gets independent type
+ * variables for constraint generation and solving.
+ */
+export class TypeScheme {
+  constructor(
+    readonly typeParams: GenericType[],
+    readonly body: Type,
+  ) {}
+
+  /**
+   * Create a fresh instance of this scheme. Returns the instantiated type
+   * and a mapping from original type parameters to fresh variables.
+   */
+  instantiate(): {type: Type; freshVars: Map<GenericType, GenericType>} {
+    if (this.typeParams.length === 0) {
+      return {type: this.body, freshVars: new Map()}
+    }
+
+    const freshVars = new Map<GenericType, GenericType>()
+    const subst: Substitution = new Map()
+    for (const param of this.typeParams) {
+      const fresh = new GenericType(param.name, param.resolvedType, param.bound)
+      freshVars.set(param, fresh)
+      subst.set(param, fresh)
+    }
+
+    return {
+      type: applySubst(subst, this.body),
+      freshVars,
+    }
+  }
+}
+
+/**
+ * Apply a substitution to a type, returning a new type with all generic
+ * type variables replaced according to the mapping. Generics not present
+ * in the substitution are left as-is (handles "foreign generics" from
+ * outer scopes).
+ *
+ * This is a pure function — no mutation occurs.
+ */
+export function applySubst(subst: Substitution, type: Type): Type {
+  if (subst.size === 0) {
+    return type
+  }
+
+  if (type instanceof GenericType) {
+    return subst.get(type) ?? type
+  }
+
+  // No generics anywhere in this type — nothing to substitute
+  if (!type.hasGeneric()) {
+    return type
+  }
+
+  if (type instanceof ArrayType) {
+    const inner = applySubst(subst, type.of)
+    if (inner === type.of) return type
+    return new ArrayType(inner, type.narrowedLength)
+  }
+
+  if (type instanceof DictType) {
+    const inner = applySubst(subst, type.of)
+    if (inner === type.of) return type
+    return new DictType(inner, type.narrowedLength, type.narrowedNames)
+  }
+
+  if (type instanceof SetType) {
+    const inner = applySubst(subst, type.of)
+    if (inner === type.of) return type
+    return new SetType(inner, type.narrowedLength)
+  }
+
+  if (type instanceof OneOfType) {
+    let changed = false
+    const resolved: Type[] = []
+    for (const member of type.of) {
+      const r = applySubst(subst, member)
+      if (r !== member) changed = true
+      resolved.push(r)
+    }
+    if (!changed) return type
+    return OneOfType.createOneOf(resolved)
+  }
+
+  if (type instanceof ObjectType) {
+    let changed = false
+    const props: ObjectProp[] = []
+    for (const prop of type.props) {
+      const r = applySubst(subst, prop.type)
+      if (r !== prop.type) changed = true
+      props.push({...prop, type: r})
+    }
+    if (!changed) return type
+    return new ObjectType(props)
+  }
+
+  if (type instanceof NamedEnumInstanceType) {
+    return _applySubstToEnumCase(subst, type.member, type, (member) =>
+      new NamedEnumInstanceType(type.metaType, member),
+    )
+  }
+
+  if (type instanceof AnonymousEnumType) {
+    return _applySubstToEnumCase(subst, type.member, type, (member) =>
+      new AnonymousEnumType(member, type.metaType),
+    )
+  }
+
+  if (type instanceof ClassInstanceType) {
+    const parent = type.parent ? applySubst(subst, type.parent) : undefined
+    let changed = parent !== type.parent
+    const props = new Map<string, Type>()
+    for (const [key, propType] of type.myProps) {
+      const r = applySubst(subst, propType)
+      if (r !== propType) changed = true
+      props.set(key, r)
+    }
+    if (!changed) return type
+    return new ClassInstanceType(
+      type.name,
+      parent as ClassInstanceType | undefined,
+      props,
+      type.formulas,
+    )
+  }
+
+  if (type instanceof FormulaType) {
+    let changed = false
+    const returnType = applySubst(subst, type.returnType)
+    if (returnType !== type.returnType) changed = true
+
+    const args = type.args.map(arg => {
+      const r = applySubst(subst, arg.type)
+      if (r !== arg.type) changed = true
+      return r === arg.type ? arg : {...arg, type: r}
+    })
+
+    if (!changed) return type
+
+    // Preserve the specific FormulaType subclass
+    if (type instanceof LazyFormulaType) {
+      return new LazyFormulaType(returnType, type.genericTypes)
+    }
+    return new FormulaType(returnType, args as any, type.genericTypes)
+  }
+
+  return type
+}
+
+function _applySubstToEnumCase<T extends Type>(
+  subst: Substitution,
+  member: EnumCase,
+  original: T,
+  create: (member: EnumCase) => T,
+): T {
+  let changed = false
+  const resolvedArgs: ObjectProp[] = []
+  for (const arg of member.args) {
+    const r = applySubst(subst, arg.type)
+    if (r !== arg.type) changed = true
+    if (arg.is === 'named') {
+      resolvedArgs.push(namedProp(arg.name, r))
+    } else {
+      resolvedArgs.push(positionalProp(r))
+    }
+  }
+  if (!changed) return original
+  return create(new EnumCase(member.name, resolvedArgs))
 }
 
 /******************************************************************************/
@@ -5126,7 +5096,6 @@ function compatibleWithBothFormulas(lhs: FormulaType, rhs: FormulaType) {
 export function canBeAssignedTo(
   testType: Type,
   assignTo: Type,
-  resolvedGenericsMap?: Map<GenericType, GenericType>,
   reason?: {reason: string}, // if provided, this object will be modified to include an error message.
 ): boolean {
   if (testType === NeverType || assignTo === NeverType) {
@@ -5165,7 +5134,7 @@ export function canBeAssignedTo(
   if (testType instanceof OneOfType) {
     // every type in testType must be assignable to assignTo
     return testType.of.every(lhType =>
-      canBeAssignedTo(lhType, assignTo, resolvedGenericsMap, reason),
+      canBeAssignedTo(lhType, assignTo, reason),
     )
   } else if (assignTo instanceof OneOfType) {
     const [nonGeneric, generic] = assignTo.of.reduce(
@@ -5181,33 +5150,32 @@ export function canBeAssignedTo(
 
     // testType must be assignable to any of the types in assignTo
     // (ie testType is a *narrowed* type of assignTo)
-    if (nonGeneric.some(rhType => canBeAssignedTo(testType, rhType, resolvedGenericsMap, reason))) {
+    if (nonGeneric.some(rhType => canBeAssignedTo(testType, rhType, reason))) {
       return true
     }
 
     return why(
-      generic.some(rhType => canBeAssignedTo(testType, rhType, resolvedGenericsMap, reason)),
+      generic.some(rhType => canBeAssignedTo(testType, rhType, reason)),
       `'${testType}' is not assignable to '${assignTo}'.`,
     )
   }
 
   if (testType.isGeneric() && !assignTo.isGeneric()) {
     if (testType.resolvedType) {
-      return canBeAssignedTo(testType.resolvedType, assignTo, resolvedGenericsMap, reason)
-    } else {
-      addRequirement(testType, assignTo, resolvedGenericsMap)
+      return canBeAssignedTo(testType.resolvedType, assignTo, reason)
     }
 
+    // Unresolved generic — compatible with anything (constraints are
+    // collected separately via generateConstraints)
     return true
   }
 
   if (assignTo.isGeneric()) {
     if (assignTo.resolvedType) {
-      return canBeAssignedTo(testType, assignTo.resolvedType, resolvedGenericsMap, reason)
-    } else {
-      addHint(assignTo, testType, resolvedGenericsMap)
+      return canBeAssignedTo(testType, assignTo.resolvedType, reason)
     }
 
+    // Unresolved generic — compatible with anything
     return true
   }
 
@@ -5225,7 +5193,7 @@ export function canBeAssignedTo(
       `Literal type ${testType.valueType()} is not assignable to ${assignTo.valueType()}.`,
     )
   } else if (testType.isLiteral()) {
-    return canBeAssignedTo(testType.valueType(), assignTo, resolvedGenericsMap, reason)
+    return canBeAssignedTo(testType.valueType(), assignTo, reason)
   } else if (assignTo.isLiteral()) {
     return why(false, `'${testType}' is not assignable to literal type '${assignTo.toCode()}'.`)
   } else if (testType.isRange() && assignTo.isRange()) {
@@ -5245,7 +5213,7 @@ export function canBeAssignedTo(
     }
 
     return why(
-      canBeAssignedTo(testType.of, assignTo.of, resolvedGenericsMap, reason),
+      canBeAssignedTo(testType.of, assignTo.of, reason),
       `Incompatible array types '${testType}' and '${assignTo}'.`,
     )
   } else if (testType instanceof DictType && assignTo instanceof DictType) {
@@ -5254,7 +5222,7 @@ export function canBeAssignedTo(
     }
 
     return why(
-      canBeAssignedTo(testType.of, assignTo.of, resolvedGenericsMap, reason),
+      canBeAssignedTo(testType.of, assignTo.of, reason),
       `Incompatible dict types '${testType}' and '${assignTo}'.`,
     )
   } else if (testType instanceof SetType && assignTo instanceof SetType) {
@@ -5263,7 +5231,7 @@ export function canBeAssignedTo(
     }
 
     return why(
-      canBeAssignedTo(testType.of, assignTo.of, resolvedGenericsMap, reason),
+      canBeAssignedTo(testType.of, assignTo.of, reason),
       `Incompatible set types '${testType}' and '${assignTo}'.`,
     )
   } else if (
@@ -5278,7 +5246,7 @@ export function canBeAssignedTo(
     }
 
     // single member comparison
-    if (!canCaseBeAssignedTo(testType.member, assignTo.member, resolvedGenericsMap)) {
+    if (!canCaseBeAssignedTo(testType.member, assignTo.member)) {
       return why(
         false,
         `Unrelated enum values. '${testType.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`,
@@ -5303,7 +5271,7 @@ export function canBeAssignedTo(
     }
 
     for (const {lhs, rhs} of combined.value) {
-      if (!canBeAssignedTo(lhs.type, rhs.type, resolvedGenericsMap, reason)) {
+      if (!canBeAssignedTo(lhs.type, rhs.type, reason)) {
         return why(
           false,
           `Incompatible types in enum argument. '${lhs.type.toCode()}' cannot be assigned to '${rhs.type.toCode()}'.`,
@@ -5336,7 +5304,7 @@ export function canBeAssignedTo(
     // every prop in testType also in assignTo must be assignable
     for (const {name, type: assignType} of assignToNamedProps) {
       const testProp = testType.literalAccessType(name) ?? NullType
-      if (!canBeAssignedTo(testProp, assignType, resolvedGenericsMap, reason)) {
+      if (!canBeAssignedTo(testProp, assignType, reason)) {
         return why(
           false,
           `Incompatible types in object property '${name}'. '${testProp.toCode()}' cannot be assigned to '${assignType.toCode()}'.`,
@@ -5346,7 +5314,7 @@ export function canBeAssignedTo(
 
     for (const [index, {type: assignType}] of assignToTupleProps.entries()) {
       const testProp = testType.literalAccessType(index)
-      if (testProp && !canBeAssignedTo(testProp, assignType, resolvedGenericsMap, reason)) {
+      if (testProp && !canBeAssignedTo(testProp, assignType, reason)) {
         return why(
           false,
           `Incompatible types in object at index '${index}'. '${testProp.toCode()}' cannot be assigned to '${assignType.toCode()}'.`,
@@ -5369,7 +5337,7 @@ export function canBeAssignedTo(
 
     return false
   } else if (testType instanceof FormulaType && assignTo instanceof FormulaType) {
-    const errorMessage = canBeAssignedToFormula(testType, assignTo, resolvedGenericsMap)
+    const errorMessage = canBeAssignedToFormula(testType, assignTo)
     return why(errorMessage === undefined, errorMessage ?? '')
   }
 
@@ -5384,7 +5352,6 @@ export function canBeAssignedTo(
 function canCaseBeAssignedTo(
   lhsCase: EnumCase,
   rhsCase: EnumCase,
-  resolvedGenericsMap?: Map<GenericType, GenericType>,
 ): boolean {
   if (lhsCase.name !== rhsCase.name) {
     return false
@@ -5403,7 +5370,7 @@ function canCaseBeAssignedTo(
     return false
   }
   for (const {lhs, rhs} of positionalIterator) {
-    if (!canBeAssignedTo(lhs, rhs, resolvedGenericsMap)) {
+    if (!canBeAssignedTo(lhs, rhs)) {
       return false
     }
   }
@@ -5413,7 +5380,7 @@ function canCaseBeAssignedTo(
     return false
   }
   for (const {lhs, rhs} of namedIterator) {
-    if (!canBeAssignedTo(lhs, rhs, resolvedGenericsMap)) {
+    if (!canBeAssignedTo(lhs, rhs)) {
       return false
     }
   }
@@ -5570,7 +5537,6 @@ export function checkFormulaArguments(
   spreadPositionalArguments: Type[],
   spreadDictArguments: Map<string, Type[]>,
   keywordListArguments: Type[],
-  resolvedGenericsMap?: Map<GenericType, GenericType>,
 ) {
   const errorMessages = _checkFormulaArguments(
     assignToFormula,
@@ -5582,18 +5548,8 @@ export function checkFormulaArguments(
     spreadDictArguments,
     keywordListArguments,
     () => true,
-    resolvedGenericsMap,
     true,
   )
-
-  if (!errorMessages.length && resolvedGenericsMap?.size) {
-    for (const generic of resolvedGenericsMap.values()) {
-      const result = generic.resolveSelf(resolvedGenericsMap)
-      if (result.isErr()) {
-        return result.error
-      }
-    }
-  }
 
   return combineErrorMessages(errorMessages)
 }
@@ -5619,7 +5575,6 @@ export function checkFormulaArguments(
 function canBeAssignedToFormula(
   formulaArgument: FormulaType,
   formulaType: FormulaType,
-  resolvedGenericsMap?: Map<GenericType, GenericType>,
 ) {
   const positionsLength = formulaType.args.reduce(
     (count, arg) => (arg.is === 'positional-argument' ? count + 1 : count),
@@ -5652,11 +5607,10 @@ function canBeAssignedToFormula(
         return formulaType.namedArg(id)?.isRequired ?? false
       }
     },
-    resolvedGenericsMap,
     false,
   )
 
-  if (!canBeAssignedTo(formulaArgument.returnType, formulaType.returnType, resolvedGenericsMap)) {
+  if (!canBeAssignedTo(formulaArgument.returnType, formulaType.returnType)) {
     const returnTypeMessage = `Return type '${formulaArgument.returnType}' cannot be assigned to '${formulaType.returnType}'.`
     errorMessages.push(returnTypeMessage)
   }
@@ -5732,21 +5686,12 @@ function _checkFormulaArguments(
   //     example: foo(**kwargs1, **kwargs2)
   keywordListArguments: Type[],
   isRequired: (id: string | number) => boolean,
-  resolvedGenericsMap: Map<GenericType, GenericType> | undefined,
-  // determines whether to use 'addHint' or 'addRequirement', and whether to support
-  // argument short-circuiting.
+  // determines whether to support argument short-circuiting.
   // argument short circuiting rewrites function invocations, so that passing a
   // function that only accepts named arguments to a function that only expects
   // positional arguments is allowed. This makes it easier to pass anonymous
   // functions (using named args) to, say, a map function (assuming the map
   // function uses positional arguments - which it should)
-  //
-  // checkFormulaArguments (isCheckingArguments: true) -> addHint
-  // (passing concrete type 'a'|'b', the generic "requires" String - this is a hint)
-  //
-  // canBeAssignedToFormula (isCheckingArguments: false) -> addRequirement
-  // (passing a function that only accepts 'a'|'b', but the receiving function
-  // says it will be sending a String - this is a requirement)
   isCheckingArguments: boolean,
 ): string[] {
   // short-circuit the special case of all-named-expected and all-positional-provided
@@ -5785,7 +5730,6 @@ function _checkFormulaArguments(
         const index = expectedNames.indexOf(id)
         return isRequired(index)
       },
-      resolvedGenericsMap,
       isCheckingArguments,
     )
   }
@@ -5877,7 +5821,7 @@ function _checkFormulaArguments(
           errors.push(outOfArgumentsMessageError(formulaBeingCalled, currentPosition))
         }
       }
-    } else if (!canBeAssignedTo(argumentType, formulaArgument.type, resolvedGenericsMap, reason)) {
+    } else if (!canBeAssignedTo(argumentType, formulaArgument.type, reason)) {
       if (formulaArgument.alias) {
         errors.push(
           cannotAssignToNamedArgumentError(
@@ -6085,86 +6029,6 @@ function requiredArgumentError(id: string | number, assignTo: Type, formulaType:
 
 export function cannotAssignToError(testType: Type, assignTo: Type) {
   return `Type '${testType.toCode()}' cannot be assigned to '${assignTo.toCode()}'.`
-}
-
-/**
- * Called from "container" types, e.g. Array calls this as with its 'of' type. If
- * the of type is a generic, and is resolved, then a new array type is created
- * (`mappedType`). If the type is unchanged, we return the originalType.
- *
- * @example
- *     // this: [T]
- *     maybeResolve(this.of, this, type => new ArrayType(type), resolvedGenericsMap)
- */
-function maybeResolve(
-  maybeGeneric: Type,
-  originalType: Type,
-  mappedType: (resolved: Type) => Type,
-  resolvedGenericsMap: Map<GenericType, GenericType>,
-) {
-  return maybeGeneric.resolve(resolvedGenericsMap).map(type => {
-    if (type === maybeGeneric) {
-      return originalType
-    } else {
-      return mappedType(type)
-    }
-  })
-}
-
-function addHint(
-  generic: GenericType,
-  type: Type,
-  resolvedGenericsMap?: Map<GenericType, GenericType>,
-) {
-  if (generic === type) {
-    return
-  }
-
-  if (!resolvedGenericsMap) {
-    return
-  }
-
-  const resolvedGeneric = resolvedGenericsMap.get(generic)
-  if (!resolvedGeneric) {
-    throw `TODO: skipping - resolvedGenericsMap.get(${generic.name}) === undefined`
-  }
-
-  if (type instanceof GenericType) {
-    // TODO: should the GenericType's hints and requirements be added here?
-    if (type.hints.length || type.requirements.length) {
-      throw `TODO: do something with the hints and requirements on ${type}`
-    }
-  }
-
-  resolvedGeneric.hints.push(type)
-}
-
-function addRequirement(
-  generic: GenericType,
-  type: Type,
-  resolvedGenericsMap?: Map<GenericType, GenericType>,
-) {
-  if (generic === type) {
-    return
-  }
-
-  if (!resolvedGenericsMap) {
-    return
-  }
-
-  const resolvedGeneric = resolvedGenericsMap.get(generic)
-  if (!resolvedGeneric) {
-    throw `TODO: skipping - resolvedGenericsMap.get(${generic.name}) === undefined`
-  }
-
-  if (type instanceof GenericType) {
-    // TODO: should the GenericType's hints and requirements be added here?
-    if (type.hints.length || type.requirements.length) {
-      throw `TODO: do something with the hints and requirements on ${type}`
-    }
-  }
-
-  resolvedGeneric.requirements.push(type)
 }
 
 // register props with types
