@@ -3664,11 +3664,10 @@ export class NamedEnumDefinitionType extends Type {
   }
 
   /**
-   * Returns a TypeScheme wrapping this enum's generic type parameters
-   * and its instance type. Call instantiate() to get fresh type variables.
+   * Returns a copy of `this` bound to fresh generic types.
    */
-  get scheme(): TypeScheme {
-    return new TypeScheme(this.genericTypes, this.instanceType)
+  instantiate(): Instantiation {
+    return instantiate(this.genericTypes, this.instanceType)
   }
 }
 
@@ -3784,11 +3783,10 @@ export class ClassDefinitionType extends Type {
   }
 
   /**
-   * Returns a TypeScheme wrapping this class's generic type parameters
-   * and its instance type.
+   * Returns a copy of `this` bound to fresh generic types.
    */
-  get scheme(): TypeScheme {
-    return new TypeScheme(this.genericTypes, this.classInstanceType!)
+  instantiate(): Instantiation {
+    return instantiate(this.genericTypes, this.classInstanceType!)
   }
 
   propAccessType(name: string | number): Type | undefined {
@@ -3985,44 +3983,33 @@ export class ModuleType extends Type {
 
 /******************************************************************************/
 /******************************************************************************/
-/*                      Substitution & TypeScheme                             */
+/*                      Substitution & Instantiation                          */
 /******************************************************************************/
 /******************************************************************************/
 
 export type Substitution = Map<GenericType, Type>
+export type Instantiation = {type: Type; freshVars: Map<GenericType, GenericType>}
 
 /**
- * Wraps a type with its bound type parameters. Calling instantiate() creates
- * fresh GenericType instances so each invocation site gets independent type
- * variables for constraint generation and solving.
+ * Returns the instantiated type (copy of `body` with generics replaced) and a
+ * mapping from original type parameters to fresh variables.
  */
-export class TypeScheme {
-  constructor(
-    readonly typeParams: GenericType[],
-    readonly body: Type,
-  ) {}
+export function instantiate(typeParams: GenericType[], body: Type): Instantiation {
+  if (typeParams.length === 0) {
+    return {type: body, freshVars: new Map()}
+  }
 
-  /**
-   * Create a fresh instance of this scheme. Returns the instantiated type
-   * and a mapping from original type parameters to fresh variables.
-   */
-  instantiate(): {type: Type; freshVars: Map<GenericType, GenericType>} {
-    if (this.typeParams.length === 0) {
-      return {type: this.body, freshVars: new Map()}
-    }
+  const freshVars = new Map<GenericType, GenericType>()
+  const subst: Substitution = new Map()
+  for (const param of typeParams) {
+    const fresh = new GenericType(param.name, param.resolvedType, param.bound)
+    freshVars.set(param, fresh)
+    subst.set(param, fresh)
+  }
 
-    const freshVars = new Map<GenericType, GenericType>()
-    const subst: Substitution = new Map()
-    for (const param of this.typeParams) {
-      const fresh = new GenericType(param.name, param.resolvedType, param.bound)
-      freshVars.set(param, fresh)
-      subst.set(param, fresh)
-    }
-
-    return {
-      type: applySubst(subst, this.body),
-      freshVars,
-    }
+  return {
+    type: applySubst(subst, body),
+    freshVars,
   }
 }
 
@@ -4117,12 +4104,18 @@ export function applySubst(subst: Substitution, type: Type): Type {
       if (r !== propType) changed = true
       props.set(key, r)
     }
+    const formulas = new Map<string, Type>()
+    for (const [key, formulaType] of type.formulas) {
+      const r = applySubst(subst, formulaType)
+      if (r !== formulaType) changed = true
+      formulas.set(key, r)
+    }
     if (!changed) return type
     return new ClassInstanceType(
       type.name,
       parent as ClassInstanceType | undefined,
       props,
-      type.formulas,
+      formulas,
     )
   }
 
@@ -5324,11 +5317,26 @@ export function canBeAssignedTo(
   } else if (testType instanceof ClassDefinitionType && assignTo instanceof ClassDefinitionType) {
     return testType === assignTo
   } else if (testType instanceof ClassInstanceType && assignTo instanceof ClassInstanceType) {
-    // quick test if assignTo is a parent type of testType
+    // Walk the inheritance chain: testType or any parent must match assignTo
     let parent: ClassInstanceType | undefined = testType
     while (parent) {
       if (parent === assignTo) {
         return true
+      }
+      // Structural comparison: same class name and all properties assignable.
+      // This is needed for generic classes where applySubst creates new instances.
+      if (parent.name === assignTo.name && parent.allProps.size === assignTo.allProps.size) {
+        let propsMatch = true
+        for (const [key, assignToType] of assignTo.allProps) {
+          const testPropType = parent.allProps.get(key)
+          if (!testPropType || !canBeAssignedTo(testPropType, assignToType, reason)) {
+            propsMatch = false
+            break
+          }
+        }
+        if (propsMatch) {
+          return true
+        }
       }
       parent = parent.parent
     }

@@ -1,17 +1,17 @@
-import {describe, expect, test} from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import * as Types from '../types'
-import {applySubst, TypeScheme, type Substitution} from '../types'
+import { applySubst, instantiate, type Substitution } from '../types'
 
 describe('applySubst', () => {
   test('base types are unchanged', () => {
     const subst: Substitution = new Map()
     expect(applySubst(subst, Types.int())).toEqual(Types.int())
-    expect(applySubst(subst, Types.int({min: 1}))).toEqual(Types.int({min: 1}))
+    expect(applySubst(subst, Types.int({ min: 1 }))).toEqual(Types.int({ min: 1 }))
     expect(applySubst(subst, Types.literal(1))).toEqual(Types.literal(1))
     expect(applySubst(subst, Types.float())).toEqual(Types.float())
-    expect(applySubst(subst, Types.float({max: 10}))).toEqual(Types.float({max: 10}))
+    expect(applySubst(subst, Types.float({ max: 10 }))).toEqual(Types.float({ max: 10 }))
     expect(applySubst(subst, Types.string())).toEqual(Types.string())
-    expect(applySubst(subst, Types.string({min: 1}))).toEqual(Types.string({min: 1}))
+    expect(applySubst(subst, Types.string({ min: 1 }))).toEqual(Types.string({ min: 1 }))
     expect(applySubst(subst, Types.booleanType())).toEqual(Types.booleanType())
     expect(applySubst(subst, Types.nullType())).toEqual(Types.nullType())
   })
@@ -161,7 +161,7 @@ describe('applySubst', () => {
     const T = new Types.GenericType('T')
     const subst: Substitution = new Map([[T, Types.int()]])
     const fn = Types.formula(
-      [Types.positionalArgument({name: '# x', type: T, isRequired: true})],
+      [Types.positionalArgument({ name: '# x', type: T, isRequired: true })],
       T,
       [T],
     )
@@ -176,7 +176,7 @@ describe('applySubst', () => {
     const T = new Types.GenericType('T')
     const subst: Substitution = new Map([[T, Types.int()]])
     const fn = Types.formula(
-      [Types.positionalArgument({name: '# x', type: Types.string(), isRequired: true})],
+      [Types.positionalArgument({ name: '# x', type: Types.string(), isRequired: true })],
       Types.float(),
     )
     expect(applySubst(subst, fn)).toEqual(fn)
@@ -249,10 +249,10 @@ describe('applySubst', () => {
   })
 })
 
-describe('TypeScheme', () => {
+describe('instantiate', () => {
   test('instantiate with no type params returns body as-is', () => {
-    const scheme = new TypeScheme([], Types.int())
-    const {type, freshVars} = scheme.instantiate()
+    const scheme = instantiate([], Types.int())
+    const { type, freshVars } = scheme
     expect(type).toEqual(Types.int())
     expect(freshVars.size).toEqual(0)
   })
@@ -260,9 +260,9 @@ describe('TypeScheme', () => {
   test('instantiate creates fresh generics', () => {
     const T = new Types.GenericType('T')
     const body = new Types.ArrayType(T)
-    const scheme = new TypeScheme([T], body)
+    const scheme = instantiate([T], body)
 
-    const {type, freshVars} = scheme.instantiate()
+    const { type, freshVars } = scheme
     expect(freshVars.size).toEqual(1)
 
     const freshT = freshVars.get(T)!
@@ -278,10 +278,9 @@ describe('TypeScheme', () => {
 
   test('multiple instantiations produce independent fresh vars', () => {
     const T = new Types.GenericType('T')
-    const scheme = new TypeScheme([T], T)
 
-    const inst1 = scheme.instantiate()
-    const inst2 = scheme.instantiate()
+    const inst1 = instantiate([T], T)
+    const inst2 = instantiate([T], T)
 
     const freshT1 = inst1.freshVars.get(T)!
     const freshT2 = inst2.freshVars.get(T)!
@@ -297,12 +296,12 @@ describe('TypeScheme', () => {
     const U = new Types.GenericType('U')
     const body = new Types.FormulaType(
       U,
-      [Types.positionalArgument({name: 'a', type: T, isRequired: true})],
+      [Types.positionalArgument({ name: 'a', type: T, isRequired: true })],
       [T, U],
     )
-    const scheme = new TypeScheme([T, U], body)
+    const scheme = instantiate([T, U], body)
 
-    const {type, freshVars} = scheme.instantiate()
+    const { type, freshVars } = scheme
     expect(freshVars.size).toEqual(2)
 
     const formula = type as Types.FormulaType
@@ -312,9 +311,9 @@ describe('TypeScheme', () => {
 
   test('instantiate preserves resolvedType on fresh generics', () => {
     const T = new Types.GenericType('T', Types.int())
-    const scheme = new TypeScheme([T], T)
+    const scheme = instantiate([T], T)
 
-    const {freshVars} = scheme.instantiate()
+    const { freshVars } = scheme
     const freshT = freshVars.get(T)!
     expect(freshT.resolvedType).toEqual(Types.int())
   })

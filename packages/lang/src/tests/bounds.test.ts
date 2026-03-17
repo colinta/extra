@@ -18,7 +18,6 @@ beforeEach(() => {
 describe('generic bounds', () => {
   describe('parsing', () => {
     cases<[string, Types.Type]>(
-      //
       c(['Float', Types.float()]),
       c(['Float(>=1)', Types.float({min: 1})]),
       c(['String(<10)', Types.string({max: 9})]),
@@ -82,11 +81,11 @@ describe('generic bounds', () => {
     })
   })
 
-  describe('TypeScheme instantiate preserves bounds', () => {
+  describe('instantiate preserves bounds', () => {
     test('fresh vars inherit bounds', () => {
       const T = new Types.GenericType('T', undefined, Types.float())
-      const scheme = new Types.TypeScheme([T], T)
-      const {freshVars} = scheme.instantiate()
+      const scheme = Types.instantiate([T], T)
+      const {freshVars} = scheme
       const freshT = freshVars.get(T)!
       expect(freshT.bound).toBe(Types.float())
     })
