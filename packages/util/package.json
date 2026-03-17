@@ -1,30 +1,25 @@
 {
   "name": "@extra-lang/util",
+  "version": "0.1.0",
   "description": "Utilities for Extra",
+  "keywords": [],
+  "homepage": "https://github.com/colinta/extra",
+  "bugs": {
+    "url": "http://github.com/colinta/extra/issues"
+  },
+  "license": "MIT",
   "author": "Colin T.A. Gray <colinta@colinta.com>",
   "contributors": [],
-  "version": "0.1.0",
-  "license": "MIT",
-  "preferGlobal": false,
   "repository": {
     "type": "git",
     "url": "git://github.com/colinta/extra.git"
   },
-  "homepage": "https://github.com/colinta/extra",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
   "files": [
     ".dist/"
   ],
-  "bugs": {
-    "url": "http://github.com/colinta/extra/issues"
-  },
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {},
-  "keywords": [],
-  "tags": [],
-  "engines": {
-    "node": ">= 18.12.0"
-  },
   "dependencies": {
     "@extra-lang/result": "workspace:*"
   },
@@ -33,5 +28,10 @@
     "@extra-lang/inspect": "workspace:*",
     "@extra-lang/shared": "workspace:*",
     "typescript": "^5.7.3"
-  }
+  },
+  "preferGlobal": false,
+  "engines": {
+    "node": ">= 18.12.0"
+  },
+  "tags": []
 }

@@ -270,7 +270,10 @@ describe('canBeAssignedTo', () => {
           {name: '# age', type: Types.int()},
           {name: '# name', type: Types.optional(Types.string())},
           {name: 'isFoo', type: Types.booleanType(), isRequired: false},
-          {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
+          {
+            name: 'args',
+            type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()]),
+          },
         ),
         Types.array(Types.int()),
       ),
@@ -284,7 +287,10 @@ describe('canBeAssignedTo', () => {
           // X require argument instead of optional
           {name: '# name', type: Types.optional(Types.string()), isRequired: false},
           {name: 'isFoo', type: Types.booleanType()},
-          {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
+          {
+            name: 'args',
+            type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()]),
+          },
         ),
         Types.array(Types.int()),
       ),
@@ -297,7 +303,10 @@ describe('canBeAssignedTo', () => {
           {name: '# age', type: Types.int()},
           {name: '# name', type: Types.optional(Types.string())},
           // missing optional argument
-          {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
+          {
+            name: 'args',
+            type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()]),
+          },
         ),
         Types.array(Types.int()),
       ),
@@ -310,7 +319,10 @@ describe('canBeAssignedTo', () => {
           {name: '# age', type: Types.int()},
           {name: '# name', type: Types.always()},
           {name: 'isFoo', type: Types.booleanType(), isRequired: false},
-          {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
+          {
+            name: 'args',
+            type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()]),
+          },
         ),
         Types.array(Types.int()),
       ),
@@ -323,7 +335,10 @@ describe('canBeAssignedTo', () => {
           {name: '# age', type: Types.int()},
           {name: '# name', type: Types.optional(Types.string())},
           // missing optional named argument
-          {name: 'args', type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()])},
+          {
+            name: 'args',
+            type: Types.oneOf([Types.literal(1), Types.literal(2), Types.nullType()]),
+          },
         ),
         Types.array(Types.int()),
       ),

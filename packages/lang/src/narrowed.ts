@@ -1,7 +1,10 @@
 export type NarrowedLength = {min: number; max: number | undefined}
 // min|max: number   --> _inclusive_check (e.g. >=x, <=x)
 // min|max: [number] --> _exclusive_ check (e.g. >x, <x)
-export type NarrowedFloat = {min: number | [number] | undefined; max: number | [number] | undefined}
+export type NarrowedFloat = {
+  min: number | [number] | undefined
+  max: number | [number] | undefined
+}
 export type NarrowedInt = {min: number | undefined; max: number | undefined}
 export type NarrowedString = {length: NarrowedLength; regex: RegExp[]}
 

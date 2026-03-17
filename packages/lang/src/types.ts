@@ -6457,7 +6457,11 @@ export function cannotAssignToError(testType: Type, assignTo: Type) {
         'matchGroup',
         [
           positionalArgument({name: 'input', type: StringType, isRequired: true}),
-          positionalArgument({name: 'group', type: oneOf([IntType, StringType]), isRequired: true}),
+          positionalArgument({
+            name: 'group',
+            type: oneOf([IntType, StringType]),
+            isRequired: true,
+          }),
         ],
         optional(StringType),
       ),

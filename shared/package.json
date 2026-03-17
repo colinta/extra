@@ -1,15 +1,15 @@
 {
   "name": "@extra-lang/shared",
-  "main": "index.js",
   "version": "*",
-  "type": "module",
+  "bin": {
+    "check": "./main.js"
+  },
   "files": [
     "main.js",
     "check.js",
     "tsconfig.json"
   ],
-  "bin": {
-    "check": "./main.js"
-  },
+  "type": "module",
+  "main": "index.js",
   "devDependencies": {}
 }

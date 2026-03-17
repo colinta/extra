@@ -1,9 +1,5 @@
 {
   "license": "MIT",
-  "scripts": {
-    "repl": "bun apps/repl/src/index.tsx",
-    "publish": "bun publish TODO"
-  },
   "workspaces": {
     "packages": [
       "shared",
@@ -13,6 +9,10 @@
     "catalog": {
       "typescript": "^5.7.3"
     }
+  },
+  "scripts": {
+    "repl": "bun apps/repl/src/index.tsx",
+    "publish": "bun publish TODO"
   },
   "dependencies": {},
   "devDependencies": {
