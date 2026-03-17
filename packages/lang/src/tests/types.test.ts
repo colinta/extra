@@ -265,11 +265,14 @@ describe('arrayAccess', () => {
     c(['items[indexMin0]', Types.optional(Types.int())]),
     c(['items[indexSafe]', Types.int()]),
   ).run(([code, expected], {only, skip}) =>
-    (only ? it.only : skip ? it.skip : it)(`type of ${code} should be ${expected}`, () => {
-      const currentExpression = parse(code).get()
-      const resolvedType = currentExpression.getType(typeRuntime).get()
-      expect(resolvedType).toEqual(expected)
-    }),
+    (only ? it.only : skip ? it.skip : it)(
+      `indexing items: Array(Int, length: 1..<5) with type ${code} should be ${expected}`,
+      () => {
+        const currentExpression = parse(code).get()
+        const resolvedType = currentExpression.getType(typeRuntime).get()
+        expect(resolvedType).toEqual(expected)
+      },
+    ),
   )
 })
 

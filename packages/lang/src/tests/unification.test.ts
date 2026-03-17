@@ -1,4 +1,3 @@
-import {describe, expect, test} from 'bun:test'
 import * as Types from '../types'
 import {unify, occursIn} from '../unification'
 
