@@ -344,7 +344,9 @@ export abstract class Expression {
    * instance of `T`) and as a type expression represent the type `T`
    */
   compileAsTypeExpression(_runtime: TypeRuntime): GetNodeResult {
-    return err(new RuntimeError(this, `Invalid for compileAsType: ${this}`))
+    return err(
+      new RuntimeError(this, `Invalid for compileAsType: ${this} (${this.constructor.name})`),
+    )
   }
 
   /**
@@ -2090,10 +2092,6 @@ export class ObjectTypeExpression extends TypeExpression {
     return wrapStrings('{', code, '}')
   }
 
-  getType(runtime: TypeRuntime) {
-    return err(new RuntimeError(this, 'ObjectTypeExpression does not have a type'))
-  }
-
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return mapAll(
       this.values.map(([nameRef, expr]) =>
@@ -2111,8 +2109,16 @@ export class ObjectTypeExpression extends TypeExpression {
     )
   }
 
-  compile(runtime: TypeRuntime) {
+  compileAsTypeExpression(runtime: TypeRuntime) {
     return this.getAsTypeExpression(runtime).map(type => new Nodes.ObjectType(toSource(this), type))
+  }
+
+  getType(_runtime: TypeRuntime): GetTypeResult {
+    return err(new RuntimeError(this, 'ObjectTypeExpression does not have a type'))
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.getType(runtime).map(type => new Nodes.ObjectType(toSource(this), type))
   }
 }
 
