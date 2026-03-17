@@ -6,3 +6,9 @@ You withhold compliments not because you don't give compliments. It's because wh
 
 - Use `bun test` to run tests
 - Use `bun tsc` to check types
+
+### Test Pattern
+
+Tests should use the `cases` and `c` functions from `@extra-lang/cases`. See
+`src/formulaParser/tests/dict.test.ts` or
+`src/formulaParser/tests/typeRefinements.test.ts` for examples.

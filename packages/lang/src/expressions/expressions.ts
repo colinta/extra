@@ -2364,17 +2364,17 @@ export class TypeConstructorExpression extends TypeExpression {
       }
 
       // Resolve each type argument
-      return mapAll(
-        this.types.map(typeExpr => typeExpr.compileAsTypeExpression(runtime)),
-      ).map(typeNodes => {
-        // Use the definition's scheme to apply the provided type arguments.
-        // e.g. Result(Int) → scheme(T, Result.nil | Result.val(T)) with T → Int
-        const subst: Types.Substitution = new Map()
-        for (let i = 0; i < genericTypes.length; i++) {
-          subst.set(genericTypes[i], typeNodes[i].type)
-        }
-        return ok(Types.applySubst(subst, defType.fromTypeConstructor()))
-      })
+      return mapAll(this.types.map(typeExpr => typeExpr.compileAsTypeExpression(runtime))).map(
+        typeNodes => {
+          // Use the definition's scheme to apply the provided type arguments.
+          // e.g. Result(Int) → scheme(T, Result.nil | Result.val(T)) with T → Int
+          const subst: Types.Substitution = new Map()
+          for (let i = 0; i < genericTypes.length; i++) {
+            subst.set(genericTypes[i], typeNodes[i].type)
+          }
+          return ok(Types.applySubst(subst, defType.fromTypeConstructor()))
+        },
+      )
     })
   }
 
@@ -3079,10 +3079,7 @@ export class LetExpression extends Expression {
                 })
                 .map(([assignmentNode, explicitNode]) => {
                   const explicitType = explicitNode?.type.fromTypeConstructor()
-                  if (
-                    explicitType &&
-                    !Types.canBeAssignedTo(assignmentNode.type, explicitType)
-                  ) {
+                  if (explicitType && !Types.canBeAssignedTo(assignmentNode.type, explicitType)) {
                     return err(
                       new RuntimeError(
                         this,

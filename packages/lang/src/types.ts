@@ -249,15 +249,11 @@ export function namedEnumDefinition({
   staticProps?: Map<string, Type>
   formulas?: Map<string, Type>
   genericTypes?: GenericType[]
-  moreStatics?: (
-    definition: NamedEnumDefinitionType,
-    enumInstance: Type,
-  ) => Map<string, Type>
+  moreStatics?: (definition: NamedEnumDefinitionType, enumInstance: Type) => Map<string, Type>
 }) {
   const definition = new NamedEnumDefinitionType(name, staticProps, formulas, genericTypes)
   const instanceTypes =
-    classType?.(definition, members) ??
-    members.map(member => enumType(definition, member))
+    classType?.(definition, members) ?? members.map(member => enumType(definition, member))
   definition.resolveInstanceTypes(instanceTypes)
 
   const enumInstance = definition.instanceType
@@ -3656,9 +3652,7 @@ export class NamedEnumDefinitionType extends Type {
       code += `(${this.genericTypes.map(generic => generic.toCode()).join(', ')})`
     }
     code += ' {\n'
-    code += indent(
-      this.instanceTypes.map(t => t.toCodeMember(t.member)).join('\n'),
-    )
+    code += indent(this.instanceTypes.map(t => t.toCodeMember(t.member)).join('\n'))
     // TODO: formulas, staticProps
     code += '}'
 
@@ -4097,14 +4091,20 @@ export function applySubst(subst: Substitution, type: Type): Type {
   }
 
   if (type instanceof NamedEnumInstanceType) {
-    return _applySubstToEnumCase(subst, type.member, type, (member) =>
-      new NamedEnumInstanceType(type.metaType, member),
+    return _applySubstToEnumCase(
+      subst,
+      type.member,
+      type,
+      member => new NamedEnumInstanceType(type.metaType, member),
     )
   }
 
   if (type instanceof AnonymousEnumType) {
-    return _applySubstToEnumCase(subst, type.member, type, (member) =>
-      new AnonymousEnumType(member, type.metaType),
+    return _applySubstToEnumCase(
+      subst,
+      type.member,
+      type,
+      member => new AnonymousEnumType(member, type.metaType),
     )
   }
 
@@ -5133,9 +5133,7 @@ export function canBeAssignedTo(
 
   if (testType instanceof OneOfType) {
     // every type in testType must be assignable to assignTo
-    return testType.of.every(lhType =>
-      canBeAssignedTo(lhType, assignTo, reason),
-    )
+    return testType.of.every(lhType => canBeAssignedTo(lhType, assignTo, reason))
   } else if (assignTo instanceof OneOfType) {
     const [nonGeneric, generic] = assignTo.of.reduce(
       ([nonGeneric, generic], current: Type) => {
@@ -5349,10 +5347,7 @@ export function canBeAssignedTo(
 //   same number of positional args
 //   same named args
 //   all args : canBeAssignedTo(lhs, rhs)
-function canCaseBeAssignedTo(
-  lhsCase: EnumCase,
-  rhsCase: EnumCase,
-): boolean {
+function canCaseBeAssignedTo(lhsCase: EnumCase, rhsCase: EnumCase): boolean {
   if (lhsCase.name !== rhsCase.name) {
     return false
   }
@@ -5572,10 +5567,7 @@ export function checkFormulaArguments(
  * @param formulaArgument The function being passed as an argument
  * @param formulaType The expected formula type
  */
-function canBeAssignedToFormula(
-  formulaArgument: FormulaType,
-  formulaType: FormulaType,
-) {
+function canBeAssignedToFormula(formulaArgument: FormulaType, formulaType: FormulaType) {
   const positionsLength = formulaType.args.reduce(
     (count, arg) => (arg.is === 'positional-argument' ? count + 1 : count),
     0,

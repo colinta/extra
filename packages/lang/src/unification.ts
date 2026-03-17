@@ -133,15 +133,19 @@ export function unify(
   }
 
   if (
-    a instanceof NamedEnumInstanceType && b instanceof NamedEnumInstanceType &&
-    a.metaType === b.metaType && a.member.name === b.member.name
+    a instanceof NamedEnumInstanceType &&
+    b instanceof NamedEnumInstanceType &&
+    a.metaType === b.metaType &&
+    a.member.name === b.member.name
   ) {
     return unifyEnumArgs(a.member.args, b.member.args, generics, subst)
   }
 
   if (
-    a instanceof AnonymousEnumType && b instanceof AnonymousEnumType &&
-    a.metaType === b.metaType && a.member.name === b.member.name
+    a instanceof AnonymousEnumType &&
+    b instanceof AnonymousEnumType &&
+    a.metaType === b.metaType &&
+    a.member.name === b.member.name
   ) {
     return unifyEnumArgs(a.member.args, b.member.args, generics, subst)
   }
@@ -164,9 +168,7 @@ export function unify(
     return ok(subst)
   }
 
-  return err(
-    `Type '${a.toCode()}' is not compatible with '${b.toCode()}'.`,
-  )
+  return err(`Type '${a.toCode()}' is not compatible with '${b.toCode()}'.`)
 }
 
 /**
@@ -185,9 +187,7 @@ function bindVar(
 
   // Occurs check — prevent T = Array(T) etc.
   if (occursIn(typeVar, type)) {
-    return err(
-      `Infinite type: '${typeVar.name}' occurs in '${type.toCode()}'.`,
-    )
+    return err(`Infinite type: '${typeVar.name}' occurs in '${type.toCode()}'.`)
   }
 
   // If already bound, unify the existing binding with the new type

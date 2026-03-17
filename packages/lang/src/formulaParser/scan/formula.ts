@@ -392,12 +392,7 @@ export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
     }
 
     let boundExpression: Expression | undefined
-    if (
-      scanner.test(() => {
-        scanner.scanAllWhitespace()
-        return scanner.isWord('is')
-      })
-    ) {
+    if (scanner.scanAhead('is')) {
       scanner.scanAllWhitespace()
       scanner.expectString('is')
       scanner.scanAllWhitespace()

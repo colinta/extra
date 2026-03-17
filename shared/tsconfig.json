@@ -16,7 +16,7 @@
     "skipLibCheck": true,
     "jsx": "react",
     "moduleResolution": "node",
-    "resolveJsonModule": true,
+    "resolveJsonModule": true
     // "paths": {
     //   "@/*": ["src/*"],
     // },

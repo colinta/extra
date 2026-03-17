@@ -136,11 +136,7 @@ describe('unify', () => {
   test('Array(T) vs Array(Int) → binds T to Int', () => {
     const T = new Types.GenericType('T')
     const generics = new Set([T])
-    const result = unify(
-      new Types.ArrayType(T),
-      new Types.ArrayType(Types.int()),
-      generics,
-    )
+    const result = unify(new Types.ArrayType(T), new Types.ArrayType(Types.int()), generics)
     expect(result.isOk()).toBe(true)
     expect(result.get().get(T)).toBe(Types.int())
   })

@@ -4695,9 +4695,8 @@ function functionInvocationOperatorType(
       // interference in nested generic scopes.
       const scheme = new Types.TypeScheme(formulaType.genericTypes, formulaType)
       const {type: instantiatedType, freshVars} = scheme.instantiate()
-      const instantiatedFormula = instantiatedType instanceof Types.FormulaType
-        ? instantiatedType
-        : formulaType
+      const instantiatedFormula =
+        instantiatedType instanceof Types.FormulaType ? instantiatedType : formulaType
 
       // Collect generics to solve for: fresh formula vars + argument generics
       // (from outer scopes, e.g. identity's T when calling map(1, map: identity)).
@@ -4754,9 +4753,7 @@ function functionInvocationOperatorType(
         }
 
         for (const provided of providedTypes) {
-          constraints.push(
-            ...generateConstraints(provided, arg.type, allGenerics),
-          )
+          constraints.push(...generateConstraints(provided, arg.type, allGenerics))
         }
       }
 

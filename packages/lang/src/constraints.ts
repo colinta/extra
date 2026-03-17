@@ -154,14 +154,8 @@ function _generate(
   }
 
   // Named enum instance types — match case args
-  if (
-    provided instanceof NamedEnumInstanceType &&
-    expected instanceof NamedEnumInstanceType
-  ) {
-    if (
-      provided.metaType === expected.metaType &&
-      provided.member.name === expected.member.name
-    ) {
+  if (provided instanceof NamedEnumInstanceType && expected instanceof NamedEnumInstanceType) {
+    if (provided.metaType === expected.metaType && provided.member.name === expected.member.name) {
       for (let i = 0; i < expected.member.args.length && i < provided.member.args.length; i++) {
         _generate(provided.member.args[i].type, expected.member.args[i].type, generics, out)
       }
@@ -170,14 +164,8 @@ function _generate(
   }
 
   // Anonymous enum types — match case args
-  if (
-    provided instanceof AnonymousEnumType &&
-    expected instanceof AnonymousEnumType
-  ) {
-    if (
-      provided.metaType === expected.metaType &&
-      provided.member.name === expected.member.name
-    ) {
+  if (provided instanceof AnonymousEnumType && expected instanceof AnonymousEnumType) {
+    if (provided.metaType === expected.metaType && provided.member.name === expected.member.name) {
       for (let i = 0; i < expected.member.args.length && i < provided.member.args.length; i++) {
         _generate(provided.member.args[i].type, expected.member.args[i].type, generics, out)
       }
@@ -228,10 +216,7 @@ function _generate(
  * Handles the "short circuit" case from _checkFormulaArguments: when one side
  * has all positional args and the other has all named args, match by index.
  */
-function _matchFormulaArgs(
-  expected: FormulaType,
-  provided: FormulaType,
-): [Type, Type][] {
+function _matchFormulaArgs(expected: FormulaType, provided: FormulaType): [Type, Type][] {
   const pairs: [Type, Type][] = []
 
   // Try direct matching first (positional-to-positional, named-to-named)

@@ -1,22 +1,36 @@
 import {describe, expect, test} from 'bun:test'
 import * as Types from '../types'
+import * as Values from '../values'
 import {parse} from '../formulaParser'
 import {mockTypeRuntime} from './mockTypeRuntime'
 import {solveConstraints, type Constraint} from '../constraints'
+import {c, cases} from '@extra-lang/cases'
+import {type TypeRuntime} from '@/runtime'
+
+let runtimeTypes: {[K in string]: [Types.Type, Values.Value]}
+
+let typeRuntime: TypeRuntime
+
+beforeEach(() => {
+  runtimeTypes = {}
+  typeRuntime = mockTypeRuntime(runtimeTypes)
+})
 
 describe('generic bounds', () => {
   describe('parsing', () => {
-    test('fn<T is Float> parses the bound', () => {
-      const runtimeTypes: {[K in string]: [Types.Type, any]} = {}
-      const typeRuntime = mockTypeRuntime(runtimeTypes)
-
-      const code = `fn<T is Float>(a: T, b: T): T => a`
-      const expression = parse(code).get()
-      const formulaType = expression.getType(typeRuntime).get() as Types.FormulaType
-      expect(formulaType.genericTypes).toHaveLength(1)
-      expect(formulaType.genericTypes[0].bound).toBeDefined()
-      expect(formulaType.genericTypes[0].bound).toBe(Types.float())
-    })
+    cases<[string, Types.Type]>(c(['Float', Types.float()])).run(
+      ([typeCode, expectedType], {only, skip}) =>
+        (only ? it.only : skip ? it.skip : it)(
+          `fn<T is ${typeCode}> binds to ${expectedType}`,
+          () => {
+            const code = `fn<T is ${typeCode}>(a: T, b: T): T => a`
+            const expression = parse(code).get()
+            const formulaType = expression.getType(typeRuntime).get() as Types.FormulaType
+            expect(formulaType.genericTypes).toHaveLength(1)
+            expect(formulaType.genericTypes[0].bound).toBe(Types.float())
+          },
+        ),
+    )
 
     test('fn<T is String> parses String bound', () => {
       const runtimeTypes: {[K in string]: [Types.Type, any]} = {}
@@ -27,6 +41,19 @@ describe('generic bounds', () => {
       const formulaType = expression.getType(typeRuntime).get() as Types.FormulaType
       expect(formulaType.genericTypes).toHaveLength(1)
       expect(formulaType.genericTypes[0].bound).toBe(Types.string())
+    })
+
+    test('fn<T is {name: String}> parses Object(name: String) bound', () => {
+      const runtimeTypes: {[K in string]: [Types.Type, any]} = {}
+      const typeRuntime = mockTypeRuntime(runtimeTypes)
+
+      const code = `fn<T is {name: String}>(a: T): T => a`
+      const expression = parse(code).get()
+      const formulaType = expression.getType(typeRuntime).get() as Types.FormulaType
+      expect(formulaType.genericTypes).toHaveLength(1)
+      expect(formulaType.genericTypes[0].bound).toBe(
+        Types.object([Types.namedProp('name', Types.string())]),
+      )
     })
 
     test('fn<T> without bound has no bound', () => {
@@ -89,8 +116,16 @@ describe('generic bounds', () => {
         add: [
           Types.formula(
             [
-              Types.positionalArgument({name: 'a', type: new Types.GenericType('T', undefined, Types.float()), isRequired: true}),
-              Types.positionalArgument({name: 'b', type: new Types.GenericType('T', undefined, Types.float()), isRequired: true}),
+              Types.positionalArgument({
+                name: 'a',
+                type: new Types.GenericType('T', undefined, Types.float()),
+                isRequired: true,
+              }),
+              Types.positionalArgument({
+                name: 'b',
+                type: new Types.GenericType('T', undefined, Types.float()),
+                isRequired: true,
+              }),
             ],
             new Types.GenericType('T', undefined, Types.float()),
             [new Types.GenericType('T', undefined, Types.float())],

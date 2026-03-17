@@ -4,7 +4,7 @@
 
 `bun run repl`
 
-Extra is a strongly-typed language and runtime that can be used to create client-side applications (and other things, I suppose but it's aimed at *frontend*). It's closest cousin is Elm, second cousin to React, long-time-listener-first-time-caller to Svelte, and uncanny valley similarity to TypeScript.
+Extra is a strongly-typed language and runtime that can be used to create client-side applications (and other things, I suppose but it's aimed at _frontend_). It's closest cousin is Elm, second cousin to React, long-time-listener-first-time-caller to Svelte, and uncanny valley similarity to TypeScript.
 
 ## OK, tell me moooore...
 
@@ -12,9 +12,9 @@ While Elm made good on the promise of being extremely well-reasoned, it was pain
 
 Extra will also feel familiar to React developers, but without the cognitive dissonance of "let it render" and "prevent too many rerenders", and obviously not the "this was your best idea?" mess that is hooks. Whenever someone says "React is (declarative|functional|good|fine/not-a-mess)!" I die a little inside.
 
-The big difference in Extra with all these frameworks is how views are *updated*. Think spreadsheets instead of DOM diffing.
+The big difference in Extra with all these frameworks is how views are _updated_. Think spreadsheets instead of DOM diffing.
 
-When you update a cell in a spreadsheet, the application is able to know exactly what cells were depending on that cell. It can create a dependency graph of all the downstream dependencies, including charts and pivot tables, triggers, etc, and only update *what is needed*. This is eerily similar to the goal that React and other virtual-dom-based frameworks attempted... but they work on a "render-and-diff" model instead of "render-what-changed". Extra tries to change that.
+When you update a cell in a spreadsheet, the application is able to know exactly what cells were depending on that cell. It can create a dependency graph of all the downstream dependencies, including charts and pivot tables, triggers, etc, and only update _what is needed_. This is eerily similar to the goal that React and other virtual-dom-based frameworks attempted... but they work on a "render-and-diff" model instead of "render-what-changed". Extra tries to change that.
 
 In Extra, your `<View/>` components create a runtime that is capable of tracking atomic changes. Think "assign new string value" and "push to an array". These atomic changes are handed to the components that were depending on that value, and the changes are propogated to the corresponding view object (dom or native view).
 
@@ -115,6 +115,7 @@ in
   'italic' onlyif @is-italic
 ]>Hello, World!</p>
 ```
+
 Apps/Components are created using the `view` keyword, which is either a class or
 pure function.
 
@@ -203,7 +204,7 @@ Words (`and` `or` `not` `is` `has` `else`) are used for logical operators, but n
 
 ## Match operator
 
-You would be forgiven for thinking `is` is the *instanceof* operator... and you'd be right, even though you're wrong: it's the "match" operator. ie `if x is .some(val)` will attempt to match the two sides. In this case, if the match succeeds, `val` will have the unwrapped value of `x`.
+You would be forgiven for thinking `is` is the _instanceof_ operator... and you'd be right, even though you're wrong: it's the "match" operator. ie `if x is .some(val)` will attempt to match the two sides. In this case, if the match succeeds, `val` will have the unwrapped value of `x`.
 
 ```extra
 let
@@ -434,6 +435,7 @@ Let's get interesting:
 The usual comment characters `#` and `//` both have special meaning in Extra, and so I looked elsewhere for inspiration, and looked no further than Ada (and yes, Ada, Elm, Lua _all_ use `--` for line comments... but Ada has a certain caché so I wanted to mention it first).
 
 **More examples**
+
 ```extra
 -- this is a line comment
 "no longer a comment"  <-- this is code (and this is a comment!)
@@ -452,7 +454,7 @@ multiple |>
 <-- so much so that I made `<--` a comment marker, too, and ← and →
 ```
 
-## Extra Comments, or *Let's Get Weird*
+## Extra Comments, or _Let's Get Weird_
 
 This is maybe a little out of hand, but I like drawing boxes using old-school ASCII characters, so there's support for these as line-comment start characters.
 
@@ -520,7 +522,7 @@ doSomething(1) {
 
 ## Pattern Matching
 
-*Obviously* Extra supports pattern matching. `switch` is the most canonical way to group a bunch of matchers, but `is` is handy in a pinch. This was hard so you better like it!
+_Obviously_ Extra supports pattern matching. `switch` is the most canonical way to group a bunch of matchers, but `is` is handy in a pinch. This was hard so you better like it!
 
 ```
 -- Syntax:
@@ -558,6 +560,7 @@ _ --> same but ignore the value
 ```
 
 ###### Numbers
+
 ```extra
 -- number matching works on literals and ranges
 switch volume
@@ -589,6 +592,7 @@ else
 ```
 
 ###### Arrays
+
 ```extra
 -- match specific lengths, or any length using the spread operator
 switch friends
@@ -605,6 +609,7 @@ case [...some, last]
 ```
 
 ###### Enums
+
 ```extra
 enum Permission {
   .sudo
@@ -623,6 +628,7 @@ else
 ```
 
 ###### Objects
+
 ```extra
 -- match named or positional arguments, and you can *nest* matchers, which makes
 -- this really useful
@@ -639,6 +645,7 @@ fn permission(user: User): Permission =>
 ```
 
 ###### Putting it all together
+
 ```extra
 -- input: String | [String]
 switch input
@@ -703,7 +710,7 @@ fn print(
 
 ### Classes
 
-Even functional programming languages deserve classes! And in Extra, classes serve a very special purpose. While all types are immutable, *classes* can at least *appear* to be mutable...
+Even functional programming languages deserve classes! And in Extra, classes serve a very special purpose. While all types are immutable, _classes_ can at least _appear_ to be mutable...
 
 ```extra
 class User {
@@ -719,7 +726,7 @@ class User {
 }
 ```
 
-This turns out to be magic sauce, and it is *the mechanism* that powers UI updates. More in a bit.
+This turns out to be magic sauce, and it is _the mechanism_ that powers UI updates. More in a bit.
 
 Classes have single-inheritance, support generics, and support static methods.
 
@@ -1011,7 +1018,7 @@ Syntax:
 #### Heterogenous types: Tuple, Object
 
 Object: a lookup/map/hashmap of different properties. Each key can have a different type.
-Tuple: same as an object, but indexed by number instead of string. Tuples and Objects are just one type that supports *both* string and numeric keys.
+Tuple: same as an object, but indexed by number instead of string. Tuples and Objects are just one type that supports _both_ string and numeric keys.
 
 Syntax:
 
@@ -1237,7 +1244,7 @@ returnIf(a == 1, and: b == 1, and: c == 2, then: 'yay!') --> 'yay!' | null
 
 #### Proposal: Function overrides
 
-*Warning*: I haven't implemented this - I'm, just considering this.
+_Warning_: I haven't implemented this - I'm, just considering this.
 
 You can define separate function implementations if you want to have lots of different signatures all wrapped up in one function name. The Extra compiler will verify that the implementations are unambiguous. The functions have to be distinguishable by their argument names and arity (number of required positional arguments).
 
@@ -1439,7 +1446,7 @@ $12345 .. 'dollars'  --> "12345 dollars"
 ### Array Concatenation
 
 Sure I could've implemented the `..` operator in a way that supported Strings
-_and Arrays_, why not have two operators so that the *intention* was that much
+_and Arrays_, why not have two operators so that the _intention_ was that much
 clearer? So that's what I did. `++` for Arrays.
 
 ```extra
@@ -1453,6 +1460,7 @@ case the values on the left-hand-side will be replaced with the values on the
 right-hand-side if they have the same keys.
 
 **Dict Example**
+
 ```extra
 let
   old_users = Dict(a: …, b: …)
@@ -1463,6 +1471,7 @@ in
 ```
 
 **Object Example**
+
 ```extra
 let
   user = {name: 'Alice', age: 50}
@@ -1574,7 +1583,7 @@ what I mean:
 
 1. Splat: `Dict(...dict1, ...dict2)`
 2. Merge: `dict1 ~~ dict2`
-(`dict2` overrides keys in `dict1` in both cases)
+   (`dict2` overrides keys in `dict1` in both cases)
 
 #### Set
 

@@ -1308,9 +1308,7 @@ describe('match operator', () => {
           'foo is .a',
           {
             truthy: LettersDefinition.lookupCase('a')!,
-            falsey: Types.oneOf(
-              LettersDefinition.instanceTypes.filter(t => t.member.name !== 'a'),
-            ),
+            falsey: Types.oneOf(LettersDefinition.instanceTypes.filter(t => t.member.name !== 'a')),
           },
         ]),
       ).run(testMatchGetTypeCase)

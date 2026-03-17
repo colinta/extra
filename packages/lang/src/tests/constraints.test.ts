@@ -120,10 +120,7 @@ describe('generateConstraints', () => {
     const expected = new Types.ArrayType(T)
     const result = generateConstraints(provided, expected, generics)
     // Each member of the provided OneOfType recurses into Array matching
-    expect(result).toEqual([
-      hint(T, Types.int()),
-      hint(T, Types.string()),
-    ])
+    expect(result).toEqual([hint(T, Types.int()), hint(T, Types.string())])
   })
 
   test('nested generics: Array(Array(T))', () => {
@@ -143,15 +140,9 @@ describe('generateConstraints', () => {
       Types.namedProp('a', Types.int()),
       Types.namedProp('b', Types.string()),
     ])
-    const expected = new Types.ObjectType([
-      Types.namedProp('a', T),
-      Types.namedProp('b', U),
-    ])
+    const expected = new Types.ObjectType([Types.namedProp('a', T), Types.namedProp('b', U)])
     const result = generateConstraints(provided, expected, generics)
-    expect(result).toEqual([
-      hint(T, Types.int()),
-      hint(U, Types.string()),
-    ])
+    expect(result).toEqual([hint(T, Types.int()), hint(U, Types.string())])
   })
 
   test('NamedEnumInstanceType: generic in case args', () => {
@@ -216,7 +207,11 @@ describe('generateConstraints', () => {
     const T = new Types.GenericType('T')
     const generics = new Set([T])
     // Array vs Dict — structural mismatch, no recursion
-    const result = generateConstraints(new Types.ArrayType(Types.int()), new Types.DictType(T), generics)
+    const result = generateConstraints(
+      new Types.ArrayType(Types.int()),
+      new Types.DictType(T),
+      generics,
+    )
     expect(result).toEqual([])
   })
 })
@@ -249,10 +244,7 @@ describe('solveConstraints', () => {
 
   test('multiple same-family hints → widens to union', () => {
     const T = new Types.GenericType('T')
-    const constraints: Constraint[] = [
-      hint(T, Types.literal(1)),
-      hint(T, Types.literal(2)),
-    ]
+    const constraints: Constraint[] = [hint(T, Types.literal(1)), hint(T, Types.literal(2))]
     const result = solveConstraints(constraints, [T])
     expect(result.isOk()).toBe(true)
     const resolved = result.get().get(T)!
@@ -261,10 +253,7 @@ describe('solveConstraints', () => {
 
   test('multiple cross-family hints → error', () => {
     const T = new Types.GenericType('T')
-    const constraints: Constraint[] = [
-      hint(T, Types.int()),
-      hint(T, Types.string()),
-    ]
+    const constraints: Constraint[] = [hint(T, Types.int()), hint(T, Types.string())]
     const result = solveConstraints(constraints, [T])
     // Int and String are different families — unification rejects this
     expect(result.isErr()).toBe(true)
@@ -273,10 +262,7 @@ describe('solveConstraints', () => {
   test('multiple generics resolved independently', () => {
     const T = new Types.GenericType('T')
     const U = new Types.GenericType('U')
-    const constraints: Constraint[] = [
-      hint(T, Types.int()),
-      hint(U, Types.string()),
-    ]
+    const constraints: Constraint[] = [hint(T, Types.int()), hint(U, Types.string())]
     const result = solveConstraints(constraints, [T, U])
     expect(result.isOk()).toBe(true)
     expect(result.get().get(T)).toBe(Types.int())
@@ -302,10 +288,7 @@ describe('solveConstraints', () => {
   test('chain resolution: T → U → Int', () => {
     const T = new Types.GenericType('T')
     const U = new Types.GenericType('U')
-    const constraints: Constraint[] = [
-      hint(T, U),
-      hint(U, Types.int()),
-    ]
+    const constraints: Constraint[] = [hint(T, U), hint(U, Types.int())]
     const result = solveConstraints(constraints, [T, U])
     expect(result.isOk()).toBe(true)
     expect(result.get().get(U)).toBe(Types.int())
@@ -315,10 +298,7 @@ describe('solveConstraints', () => {
 
   test('hint and requirement: subtype widens to more general type', () => {
     const T = new Types.GenericType('T')
-    const constraints: Constraint[] = [
-      hint(T, Types.literal(1)),
-      requirement(T, Types.int()),
-    ]
+    const constraints: Constraint[] = [hint(T, Types.literal(1)), requirement(T, Types.int())]
     const result = solveConstraints(constraints, [T])
     expect(result.isOk()).toBe(true)
     // oneOf([1, Int]) should simplify (Int subsumes literal 1)

@@ -199,7 +199,10 @@ describe('applySubst', () => {
   test('ClassInstanceType without generics is returned as-is', () => {
     const cls = Types.classType({
       name: 'Point',
-      props: new Map([['x', Types.int() as Types.Type], ['y', Types.int() as Types.Type]]),
+      props: new Map([
+        ['x', Types.int() as Types.Type],
+        ['y', Types.int() as Types.Type],
+      ]),
     })
     const T = new Types.GenericType('T')
     const subst: Substitution = new Map([[T, Types.string()]])
@@ -219,10 +222,7 @@ describe('applySubst', () => {
       [T, Types.int()],
       [U, Types.string()],
     ])
-    const obj = Types.object([
-      Types.namedProp('first', T),
-      Types.namedProp('second', U),
-    ])
+    const obj = Types.object([Types.namedProp('first', T), Types.namedProp('second', U)])
     const result = applySubst(subst, obj) as Types.ObjectType
     expect(result.namedProp('first')).toEqual(Types.int())
     expect(result.namedProp('second')).toEqual(Types.string())
@@ -241,9 +241,7 @@ describe('applySubst', () => {
   test('deeply nested: Object with Array of Dict of T', () => {
     const T = new Types.GenericType('T')
     const subst: Substitution = new Map([[T, Types.float()]])
-    const deep = Types.object([
-      Types.namedProp('data', Types.array(Types.dict(T))),
-    ])
+    const deep = Types.object([Types.namedProp('data', Types.array(Types.dict(T)))])
     const result = applySubst(subst, deep) as Types.ObjectType
     const data = result.namedProp('data') as Types.ArrayType
     const inner = data.of as Types.DictType

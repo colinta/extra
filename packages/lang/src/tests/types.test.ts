@@ -409,7 +409,9 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
             for (let i = 0; i < mapFormula.args.length; i++) {
               const provided = argTypes[i]
               if (provided) {
-                constraints.push(...generateConstraints(provided, mapFormula.args[i].type, generics))
+                constraints.push(
+                  ...generateConstraints(provided, mapFormula.args[i].type, generics),
+                )
               }
             }
             const solved = solveConstraints(constraints, mapFormula.genericTypes)
@@ -481,7 +483,9 @@ describe('checkFormulaArguments (argument checking and generics resolution)', ()
         for (let i = 0; i < compactMapFormula.args.length; i++) {
           const provided = argTypes[i]
           if (provided) {
-            constraints.push(...generateConstraints(provided, compactMapFormula.args[i].type, generics))
+            constraints.push(
+              ...generateConstraints(provided, compactMapFormula.args[i].type, generics),
+            )
           }
         }
         const solved = solveConstraints(constraints, compactMapFormula.genericTypes)

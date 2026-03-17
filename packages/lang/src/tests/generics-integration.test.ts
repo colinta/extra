@@ -215,7 +215,10 @@ describe('generics integration', () => {
     })
 
     test('multiple generics with different bounds', () => {
-      addFormula('convert', `fn<T is Float, U is String>(num: T, fmt: U) => {value: num, label: fmt}`)
+      addFormula(
+        'convert',
+        `fn<T is Float, U is String>(num: T, fmt: U) => {value: num, label: fmt}`,
+      )
       runtimeTypes['n'] = [Types.int(), Values.nullValue()]
       runtimeTypes['s'] = [Types.string(), Values.nullValue()]
       const result = getType(`convert(num: n, fmt: s)`)
@@ -232,7 +235,10 @@ describe('generics integration', () => {
     })
 
     test('cross-bound violation: T is Float but U is String gets wrong arg', () => {
-      addFormula('convert', `fn<T is Float, U is String>(num: T, fmt: U) => {value: num, label: fmt}`)
+      addFormula(
+        'convert',
+        `fn<T is Float, U is String>(num: T, fmt: U) => {value: num, label: fmt}`,
+      )
       runtimeTypes['s'] = [Types.string(), Values.nullValue()]
       // Passing String for num (T is Float) should fail
       expect(() => getType(`convert(num: s, fmt: s)`)).toThrow(/does not satisfy bound/)
@@ -246,13 +252,16 @@ enum Box<T> {
   .empty
   .full(T)
 }`)
-      addFormula('unbox', `\
+      addFormula(
+        'unbox',
+        `\
 fn<T>(box: Box(T)): T? =>
   switch box
   case .full(value)
     value
   case .empty
-    null`)
+    null`,
+      )
       const result = getType(`unbox(box: .full(42))`)
       expect(Types.canBeAssignedTo(result, Types.optional(Types.int()))).toBe(true)
     })
@@ -263,9 +272,12 @@ enum Result<T> {
   .nil
   .val(T)
 }`)
-      addFormula('wrap', `\
+      addFormula(
+        'wrap',
+        `\
 fn<T>(value: T): Result(T) =>
-  Result.val(value)`)
+  Result.val(value)`,
+      )
       const result = getType(`wrap(value: 5)`)
       // Should contain the enum with T=5
       expect(result).toBeInstanceOf(Types.OneOfType)

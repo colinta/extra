@@ -475,18 +475,12 @@ describe('narrowed types', () => {
       Types.oneOf([Ints, Letter]),
       'foo is .one',
       IntsDefinition.lookupCase('one')!,
-      Types.oneOf([
-        ...IntsDefinition.instanceTypes.filter(t => t.member.name !== 'one'),
-        Letter,
-      ]),
+      Types.oneOf([...IntsDefinition.instanceTypes.filter(t => t.member.name !== 'one'), Letter]),
     ]),
     c(() => [
       Types.oneOf([Letter, Word]),
       'foo is .a',
-      Types.oneOf([
-        LetterDefinition.lookupCase('a')!,
-        WordDefinition.lookupCase('a')!,
-      ]),
+      Types.oneOf([LetterDefinition.lookupCase('a')!, WordDefinition.lookupCase('a')!]),
       Types.oneOf([
         ...LetterDefinition.instanceTypes.filter(t => t.member.name !== 'a'),
         ...WordDefinition.instanceTypes.filter(t => t.member.name !== 'a'),
@@ -499,10 +493,7 @@ describe('narrowed types', () => {
         LetterDefinition.lookupCase('other')!,
         Types.enumCase('other', [Types.positionalProp(Types.string({max: 1}))]),
       ),
-      Types.oneOf([
-        ...LetterDefinition.instanceTypes.filter(t => t.member.name !== 'other'),
-        Word,
-      ]),
+      Types.oneOf([...LetterDefinition.instanceTypes.filter(t => t.member.name !== 'other'), Word]),
     ]),
     c([
       Types.oneOf([Letter, Word]),
