@@ -1,17 +1,16 @@
-import { describe, expect, test } from 'bun:test'
 import * as Types from '../types'
-import { applySubst, instantiate, type Substitution } from '../types'
+import {applySubst, instantiate, type Substitution} from '../types'
 
 describe('applySubst', () => {
   test('base types are unchanged', () => {
     const subst: Substitution = new Map()
     expect(applySubst(subst, Types.int())).toEqual(Types.int())
-    expect(applySubst(subst, Types.int({ min: 1 }))).toEqual(Types.int({ min: 1 }))
+    expect(applySubst(subst, Types.int({min: 1}))).toEqual(Types.int({min: 1}))
     expect(applySubst(subst, Types.literal(1))).toEqual(Types.literal(1))
     expect(applySubst(subst, Types.float())).toEqual(Types.float())
-    expect(applySubst(subst, Types.float({ max: 10 }))).toEqual(Types.float({ max: 10 }))
+    expect(applySubst(subst, Types.float({max: 10}))).toEqual(Types.float({max: 10}))
     expect(applySubst(subst, Types.string())).toEqual(Types.string())
-    expect(applySubst(subst, Types.string({ min: 1 }))).toEqual(Types.string({ min: 1 }))
+    expect(applySubst(subst, Types.string({min: 1}))).toEqual(Types.string({min: 1}))
     expect(applySubst(subst, Types.booleanType())).toEqual(Types.booleanType())
     expect(applySubst(subst, Types.nullType())).toEqual(Types.nullType())
   })
@@ -161,7 +160,7 @@ describe('applySubst', () => {
     const T = new Types.GenericType('T')
     const subst: Substitution = new Map([[T, Types.int()]])
     const fn = Types.formula(
-      [Types.positionalArgument({ name: '# x', type: T, isRequired: true })],
+      [Types.positionalArgument({name: '# x', type: T, isRequired: true})],
       T,
       [T],
     )
@@ -176,7 +175,7 @@ describe('applySubst', () => {
     const T = new Types.GenericType('T')
     const subst: Substitution = new Map([[T, Types.int()]])
     const fn = Types.formula(
-      [Types.positionalArgument({ name: '# x', type: Types.string(), isRequired: true })],
+      [Types.positionalArgument({name: '# x', type: Types.string(), isRequired: true})],
       Types.float(),
     )
     expect(applySubst(subst, fn)).toEqual(fn)
@@ -252,7 +251,7 @@ describe('applySubst', () => {
 describe('instantiate', () => {
   test('instantiate with no type params returns body as-is', () => {
     const scheme = instantiate([], Types.int())
-    const { type, freshVars } = scheme
+    const {type, freshVars} = scheme
     expect(type).toEqual(Types.int())
     expect(freshVars.size).toEqual(0)
   })
@@ -262,7 +261,7 @@ describe('instantiate', () => {
     const body = new Types.ArrayType(T)
     const scheme = instantiate([T], body)
 
-    const { type, freshVars } = scheme
+    const {type, freshVars} = scheme
     expect(freshVars.size).toEqual(1)
 
     const freshT = freshVars.get(T)!
@@ -296,12 +295,12 @@ describe('instantiate', () => {
     const U = new Types.GenericType('U')
     const body = new Types.FormulaType(
       U,
-      [Types.positionalArgument({ name: 'a', type: T, isRequired: true })],
+      [Types.positionalArgument({name: 'a', type: T, isRequired: true})],
       [T, U],
     )
     const scheme = instantiate([T, U], body)
 
-    const { type, freshVars } = scheme
+    const {type, freshVars} = scheme
     expect(freshVars.size).toEqual(2)
 
     const formula = type as Types.FormulaType
@@ -313,7 +312,7 @@ describe('instantiate', () => {
     const T = new Types.GenericType('T', Types.int())
     const scheme = instantiate([T], T)
 
-    const { freshVars } = scheme
+    const {freshVars} = scheme
     const freshT = freshVars.get(T)!
     expect(freshT.resolvedType).toEqual(Types.int())
   })

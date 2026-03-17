@@ -34,7 +34,6 @@ function getType(code: string): Types.Type {
   return result.get()
 }
 
-
 describe('class generics', () => {
   describe('definition', () => {
     it('generic class compiles with generic property', () => {
@@ -164,7 +163,10 @@ class Box<T> {
       const classType = runtimeTypes['Box'][0] as Types.ClassDefinitionType
       const subst: Types.Substitution = new Map()
       subst.set(classType.genericTypes[0], Types.int())
-      const resolved = Types.applySubst(subst, classType.classInstanceType!) as Types.ClassInstanceType
+      const resolved = Types.applySubst(
+        subst,
+        classType.classInstanceType!,
+      ) as Types.ClassInstanceType
       runtimeTypes['b'] = [resolved, Values.nullValue()]
       const result = getType(`b.value`)
       expect(result).toBe(Types.int())
@@ -198,7 +200,10 @@ class Box<T> {
       const classType = runtimeTypes['Box'][0] as Types.ClassDefinitionType
       const subst: Types.Substitution = new Map()
       subst.set(classType.genericTypes[0], Types.int())
-      const resolved = Types.applySubst(subst, classType.classInstanceType!) as Types.ClassInstanceType
+      const resolved = Types.applySubst(
+        subst,
+        classType.classInstanceType!,
+      ) as Types.ClassInstanceType
       runtimeTypes['b'] = [resolved, Values.nullValue()]
       const getFormula = resolved.formulas.get('get')
       expect(getFormula).toBeInstanceOf(Types.FormulaType)

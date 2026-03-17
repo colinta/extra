@@ -1,16 +1,16 @@
-import { err, mapAll, ok, type Result } from '@extra-lang/result'
+import {err, mapAll, ok, type Result} from '@extra-lang/result'
 import * as Types from '@/types'
-import { generateConstraints, solveConstraints } from '@/constraints'
+import {generateConstraints, solveConstraints} from '@/constraints'
 import * as Nodes from '@/nodes'
 import * as Values from '@/values'
-import { Scope } from '@/scope'
+import {Scope} from '@/scope'
 import {
   MutableTypeRuntime,
   MutableValueRuntime,
   type TypeRuntime,
   type ValueRuntime,
 } from '@/runtime'
-import { combineConcatLengths, combineSetLengths } from '@/narrowed'
+import {combineConcatLengths, combineSetLengths} from '@/narrowed'
 import {
   findEventualRef,
   verifyRelationship,
@@ -19,7 +19,7 @@ import {
   type RelationshipFormula,
   combineEitherTypeRuntimes,
 } from '@/relationship'
-import { stringSort } from '@/stringSort'
+import {stringSort} from '@/stringSort'
 import {
   GetNodeResult,
   type AbstractOperator,
@@ -46,7 +46,7 @@ import {
   OR_OPERATOR,
 } from '@/formulaParser/grammars'
 import * as Expressions from './expressions'
-import { MatchExpression } from './match-expressions'
+import {MatchExpression} from './match-expressions'
 import {
   comparisonOperation,
   expectedNumberMessage,
@@ -161,7 +161,7 @@ export function binaryOperatorNamed(
   if (!op) {
     return op
   }
-  return { ...op, precedingComments, followingOperatorComments }
+  return {...op, precedingComments, followingOperatorComments}
 }
 
 export function unaryOperatorNamed(
@@ -170,7 +170,7 @@ export function unaryOperatorNamed(
   followingOperatorComments: Comment[] = [],
 ): Operator {
   const op = UNARY_OPERATORS.get(symbol)!
-  return { ...op, precedingComments, followingOperatorComments: followingOperatorComments }
+  return {...op, precedingComments, followingOperatorComments: followingOperatorComments}
 }
 
 export function isOperator(operator: AbstractOperator, symbol: string, arity: 1 | 2) {
@@ -560,7 +560,7 @@ abstract class BinaryOperator extends OperatorOperation {
 }
 
 type NodeConstructor = {
-  new(source: Nodes.Source, type: Types.Type, args: Nodes.Node[]): Nodes.Node
+  new (source: Nodes.Source, type: Types.Type, args: Nodes.Node[]): Nodes.Node
 }
 
 class PipeOperator extends BinaryOperator {
@@ -1217,7 +1217,7 @@ abstract class ComparisonOperator extends BinaryOperator {
       return ok([])
     }
 
-    return ok([{ formula: lhsFormula, comparison: { operator: this.symbol, rhs: rhsFormula } }])
+    return ok([{formula: lhsFormula, comparison: {operator: this.symbol, rhs: rhsFormula}}])
   }
 
   gimmeFalseStuff(runtime: TypeRuntime) {
@@ -1226,7 +1226,7 @@ abstract class ComparisonOperator extends BinaryOperator {
       return ok([])
     }
 
-    return ok([{ formula: lhsFormula, comparison: { operator: this.inverseSymbol, rhs: rhsFormula } }])
+    return ok([{formula: lhsFormula, comparison: {operator: this.inverseSymbol, rhs: rhsFormula}}])
   }
 }
 
@@ -2435,7 +2435,7 @@ class ArrayConstructorOperator extends BinaryOperator {
       return err(new RuntimeError(rhsExpr, expectedType('Array', rhsExpr, rhs)))
     }
 
-    const concatLength = combineConcatLengths({ min: 1, max: 1 }, rhs.narrowedLength)
+    const concatLength = combineConcatLengths({min: 1, max: 1}, rhs.narrowedLength)
     return ok(Types.array(Types.compatibleWithBothTypes(lhs, rhs.of), concatLength))
   }
 
@@ -2671,7 +2671,7 @@ class RangeOperator extends BinaryOperator {
         }
       }
 
-      return ok(Types.intRange({ min, max }))
+      return ok(Types.intRange({min, max}))
     } else if (lhs.isFloat() && rhs.isFloat()) {
       let min: number | [number] | undefined
       if (lhs.isLiteral('float')) {
@@ -2691,7 +2691,7 @@ class RangeOperator extends BinaryOperator {
         }
       }
 
-      return ok(Types.floatRange({ min, max }))
+      return ok(Types.floatRange({min, max}))
     }
 
     if (!lhs.isFloat()) {
@@ -4171,7 +4171,7 @@ class UnaryRangeOperator extends UnaryOperator {
         }
       }
 
-      return ok(Types.intRange({ min, max }))
+      return ok(Types.intRange({min, max}))
     } else if (type.isFloat()) {
       let min: number | [number] | undefined
       let max: number | [number] | undefined
@@ -4196,7 +4196,7 @@ class UnaryRangeOperator extends UnaryOperator {
         }
       }
 
-      return ok(Types.floatRange({ min, max }))
+      return ok(Types.floatRange({min, max}))
     }
 
     return err(new RuntimeError(expr, expectedType('Float or Int', expr, type)))
@@ -4488,7 +4488,7 @@ function addBinaryAssignmentOperator({
   })
 }
 
-for (const { name, symbol, binarySymbol } of BINARY_ASSIGN_OPERATORS) {
+for (const {name, symbol, binarySymbol} of BINARY_ASSIGN_OPERATORS) {
   const binaryOp = binaryOperatorNamed(binarySymbol)
   if (!binaryOp) {
     throw new Error(
@@ -4496,7 +4496,7 @@ for (const { name, symbol, binarySymbol } of BINARY_ASSIGN_OPERATORS) {
     )
   }
 
-  addBinaryAssignmentOperator({ name, symbol, binaryOp })
+  addBinaryAssignmentOperator({name, symbol, binaryOp})
 }
 
 type _IntermediateArgs =
@@ -4527,7 +4527,7 @@ function functionInvocationOperatorType(
 
   // check formulaType arguments for any enum shorthands and provide them in runtime
   let mutableRuntime: MutableTypeRuntime | undefined
-  const allTypes = formulaType.args
+  const allEnumShorthandTypes = formulaType.args
     .flatMap(arg => {
       if (arg.type instanceof Types.OneOfType) {
         return arg.type.of
@@ -4536,7 +4536,7 @@ function functionInvocationOperatorType(
       }
     })
     .filter(type => type instanceof Types.AnonymousEnumType)
-  for (const argType of allTypes) {
+  for (const argType of allEnumShorthandTypes) {
     if (!mutableRuntime) {
       mutableRuntime = new MutableTypeRuntime(runtime)
     }
@@ -4694,7 +4694,7 @@ function functionInvocationOperatorType(
       // Each invocation gets independent generics, preventing cross-invocation
       // interference in nested generic scopes.
       const scheme = Types.instantiate(formulaType.genericTypes, formulaType)
-      const { type: instantiatedType, freshVars } = scheme
+      const {type: instantiatedType, freshVars} = scheme
       const instantiatedFormula =
         instantiatedType instanceof Types.FormulaType ? instantiatedType : formulaType
 
