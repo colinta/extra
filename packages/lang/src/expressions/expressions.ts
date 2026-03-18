@@ -5381,34 +5381,6 @@ export function allProvides(expressions: Expression[]) {
   return expressions.reduce((set, expr) => union(set, expr.provides()), new Set<string>())
 }
 
-function findChain(
-  needles: string[],
-  haystack: string,
-  visited: Set<string>,
-  circular: Map<string, string[]>,
-): Set<string> | undefined {
-  if (!needles.length) {
-    return
-  }
-
-  for (const needle of needles) {
-    if (needle === haystack) {
-      return new Set(needle)
-    }
-
-    if (visited.has(needle)) {
-      continue
-    }
-
-    visited.add(needle)
-    const next = circular.get(needle) ?? []
-    const found = findChain(next, haystack, visited, circular)
-    if (found) {
-      return new Set([needle, ...found])
-    }
-  }
-}
-
 export function dependencySort<T extends Expression>(
   expressions: [string, T][],
   // returns 'true' if the dependency is available via the parent context
@@ -5483,7 +5455,7 @@ export function dependencySort<T extends Expression>(
       const firstName = expressionDeps[0].name
       const dependencies = expressionDeps[0].expr.dependencies(parentScopes)
       const chain = findChain(circular.get(firstName) ?? [], firstName, new Set(), circular)
-      if (chain && chain.size) {
+      if (chain && chain.length) {
         return err(
           new RuntimeError(
             expressionDeps[0].expr,
@@ -5510,6 +5482,34 @@ export function dependencySort<T extends Expression>(
   }
 
   return ok(orderedExpressions)
+}
+
+function findChain(
+  needles: string[],
+  haystack: string,
+  visited: Set<string>,
+  circular: Map<string, string[]>,
+): string[] | undefined {
+  if (!needles.length) {
+    return
+  }
+
+  for (const needle of needles) {
+    if (needle === haystack) {
+      return [needle]
+    }
+
+    if (visited.has(needle)) {
+      continue
+    }
+
+    visited.add(needle)
+    const next = circular.get(needle) ?? []
+    const found = findChain(next, haystack, visited, circular)
+    if (found) {
+      return [needle, ...found]
+    }
+  }
 }
 
 export function formatComments(comments: Comment[]) {
