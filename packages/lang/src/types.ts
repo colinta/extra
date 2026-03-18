@@ -3649,10 +3649,10 @@ export class NamedEnumDefinitionType extends Type {
   toCode() {
     let code = `enum ${this.name}`
     if (this.genericTypes.length) {
-      code += `(${this.genericTypes.map(generic => generic.toCode()).join(', ')})`
+      code += `<${this.genericTypes.map(generic => generic.toCode()).join(', ')}>`
     }
     code += ' {\n'
-    code += indent(this.instanceTypes.map(t => t.toCodeMember(t.member)).join('\n'))
+    code += indent(this.instanceTypes.map(t => t.toCodeMember(t.member) + '\n').join(''))
     // TODO: formulas, staticProps
     code += '}'
 
@@ -5065,11 +5065,14 @@ function compatibleWithBothFormulas(lhs: FormulaType, rhs: FormulaType) {
 
   const returnType = compatibleWithBothTypes(lhs.returnType, rhs.returnType)
 
-  if (lhs.generics().size || rhs.generics().size) {
-    throw 'TODO'
+  // Collect all generic types that appear in the merged args and return type
+  const resultFormula = formula(args, returnType, [])
+  const mergedGenerics = resultFormula.generics()
+  if (mergedGenerics.size) {
+    return formula(args, returnType, [...mergedGenerics])
   }
 
-  return formula(args, returnType, [])
+  return resultFormula
 }
 
 /**

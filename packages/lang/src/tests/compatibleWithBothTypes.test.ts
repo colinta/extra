@@ -2,6 +2,180 @@ import {c, cases} from '@extra-lang/cases'
 import * as Types from '../types'
 import {privateOneOf} from './privateOneOf'
 
+describe('compatibleWithBothFormulas', () => {
+  cases<[Types.Type, Types.Type, Types.Type]>(
+    // identical formulas, no generics
+    c([
+      Types.formula(
+        [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+        Types.string(),
+      ),
+      Types.formula(
+        [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+        Types.string(),
+      ),
+      Types.formula(
+        [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+        Types.string(),
+      ),
+    ]),
+    // compatible positional args, different return types
+    c([
+      Types.formula(
+        [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+        Types.int(),
+      ),
+      Types.formula(
+        [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+        Types.float(),
+      ),
+      Types.formula(
+        [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+        Types.float(),
+      ),
+    ]),
+    // different positional arg counts — extra arg becomes optional
+    c([
+      Types.formula(
+        [
+          Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true}),
+          Types.positionalArgument({name: 'b', type: Types.string(), isRequired: true}),
+        ],
+        Types.int(),
+      ),
+      Types.formula(
+        [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+        Types.int(),
+      ),
+      Types.formula(
+        [
+          Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true}),
+          Types.positionalArgument({name: 'b', type: Types.string(), isRequired: false}),
+        ],
+        Types.int(),
+      ),
+    ]),
+    // named args
+    c([
+      Types.formula(
+        [Types.namedArgument({name: 'x', type: Types.int(), isRequired: true})],
+        Types.int(),
+      ),
+      Types.formula(
+        [Types.namedArgument({name: 'x', type: Types.int(), isRequired: true})],
+        Types.int(),
+      ),
+      Types.formula(
+        [Types.namedArgument({name: 'x', type: Types.int(), isRequired: true})],
+        Types.int(),
+      ),
+    ]),
+    // one generic on lhs only
+    c(() =>
+      Types.withGenericT(T => [
+        Types.formula([Types.positionalArgument({name: 'a', type: T, isRequired: true})], T, [T]),
+        Types.formula(
+          [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+          Types.int(),
+        ),
+        Types.formula(
+          [
+            Types.positionalArgument({
+              name: 'a',
+              type: Types.compatibleWithBothTypes(T, Types.int()),
+              isRequired: true,
+            }),
+          ],
+          Types.compatibleWithBothTypes(T, Types.int()),
+          [T],
+        ),
+      ]),
+    ),
+    // one generic on rhs only
+    c(
+      Types.withGenericT(T => [
+        Types.formula(
+          [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+          Types.int(),
+        ),
+        Types.formula([Types.positionalArgument({name: 'a', type: T, isRequired: true})], T, [T]),
+        Types.formula(
+          [
+            Types.positionalArgument({
+              name: 'a',
+              type: Types.compatibleWithBothTypes(Types.int(), T),
+              isRequired: true,
+            }),
+          ],
+          Types.compatibleWithBothTypes(Types.int(), T),
+          [T],
+        ),
+      ]),
+    ),
+    // same generic on both sides
+    c(
+      Types.withGenericT(T => [
+        Types.formula([Types.positionalArgument({name: 'a', type: T, isRequired: true})], T, [T]),
+        Types.formula([Types.positionalArgument({name: 'a', type: T, isRequired: true})], T, [T]),
+        Types.formula([Types.positionalArgument({name: 'a', type: T, isRequired: true})], T, [T]),
+      ]),
+    ),
+    // different generics on each side
+    c(
+      Types.withGenericTU((T, U) => [
+        Types.formula([Types.positionalArgument({name: 'a', type: T, isRequired: true})], T, [T]),
+        Types.formula([Types.positionalArgument({name: 'a', type: U, isRequired: true})], U, [U]),
+        Types.formula(
+          [
+            Types.positionalArgument({
+              name: 'a',
+              type: Types.compatibleWithBothTypes(T, U),
+              isRequired: true,
+            }),
+          ],
+          Types.compatibleWithBothTypes(T, U),
+          [T, U],
+        ),
+      ]),
+    ),
+    // generic in return type only
+    c(
+      Types.withGenericT(T => [
+        Types.formula(
+          [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+          T,
+          [T],
+        ),
+        Types.formula(
+          [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+          Types.string(),
+        ),
+        Types.formula(
+          [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
+          Types.compatibleWithBothTypes(T, Types.string()),
+          [T],
+        ),
+      ]),
+    ),
+    // generic in named arg
+    c(
+      Types.withGenericT(T => [
+        Types.formula([Types.namedArgument({name: 'x', type: T, isRequired: true})], T, [T]),
+        Types.formula([Types.namedArgument({name: 'x', type: T, isRequired: true})], T, [T]),
+        Types.formula([Types.namedArgument({name: 'x', type: T, isRequired: true})], T, [T]),
+      ]),
+    ),
+  ).run(([lhs, rhs, expected], {only, skip}) =>
+    (only ? it.only : skip ? it.skip : it)(
+      `compatibleWithBothTypes(${lhs.toCode()}, ${rhs.toCode()}) should be ${expected.toCode()}`,
+      () => {
+        const type = Types.compatibleWithBothTypes(lhs, rhs)
+        expect(type).toEqual(expected)
+      },
+    ),
+  )
+})
+
 describe('compatibleWithBothTypes', () => {
   const human = Types.classType({name: 'Human', props: new Map([['foo', Types.string()]])})
   const animal = Types.classType({name: 'Animal', props: new Map([['legs', Types.int()]])})
