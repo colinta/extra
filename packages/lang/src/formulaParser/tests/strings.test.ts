@@ -10,7 +10,7 @@ describe('strings', () => {
     c(['tag``', 'tag``', 'tag``']),
     c(['tag```a```', 'tag`a`', 'tag`a`']),
     c(['tag`${a}!`', "(++ a '!')", 'tag`${a}!`']),
-    c(['tag```\n${a}!\n```', "(++ a '!\\n')", 'tag```\n${a}!\n\n```']),
+    c(['tag```\n${a}!\n```', "(++ a '!\\n')", 'tag```\n${a}!\n```']),
     c(["'testing'", "'testing'"]),
     c([`'unicode ♥'`, "'unicode ♥'"]),
     c(['"escape \\x412"', "'escape A2'", "'escape A2'"]),
@@ -47,11 +47,29 @@ world
     c([
       `\
   '''
-  \t5what a
-  world
+  5what a     \\
+  world\\
   '''`,
-      "'\\t5what a\\nworld\\n'",
-      "'''\n\t5what a\nworld\n'''",
+      "'5what a     world'",
+      "'''5what a     \\\nworld'''",
+    ]),
+    c([
+      `\
+  '''
+  test    \\
+  one\\
+  '''`,
+      "'test    one'",
+      "'''test    \\\none'''",
+    ]),
+    c([
+      `\
+  '''
+  \t5what a
+  world\\
+  '''`,
+      "'\\t5what a\\nworld'",
+      "'''\n\t5what a\nworld'''",
     ]),
     c([
       `\

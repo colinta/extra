@@ -476,7 +476,7 @@ export abstract class Expression {
 }
 
 /**
- * Mostly defined in operators.ts, but also StringTemplateOperation
+ * Mostly defined in operators.ts, but also StringTemplate
  */
 export abstract class Operation extends Expression {
   constructor(
@@ -513,7 +513,7 @@ export abstract class Operation extends Expression {
 /**
  * Literal of any kind: Boolean, Int, Float, Regex, null.
  *
- * StringTemplateOperation is composed of StringLiteral and expressions.
+ * StringTemplate is composed of StringLiteral and expressions.
  *
  * RegexLiteral is its own type because it stores capture group names (for use
  * in matching expressions).
@@ -830,19 +830,58 @@ export class LiteralStringAtom extends LiteralString {
   }
 }
 
-export class StringTemplateOperation extends Operation {
+export type StringTemplatePart =
+  | {type: 'literal'; expr: LiteralString; value: string}
+  | {type: 'newline'}
+  | {type: 'continuation'}
+  | {type: 'interpolate'; expr: Expression}
+
+export class StringTemplate extends Operation {
   constructor(
     range: Range,
     precedingComments: Comment[],
     operator: Operator,
     args: Expression[],
+    readonly parts: StringTemplatePart[],
     readonly quote: string,
     readonly tag?: string,
   ) {
     super(range, precedingComments, [], operator, args)
   }
 
+  /**
+   * Returns the resolved string value by joining parts:
+   * - continuation joins with '' (bash/python style line continuation)
+   * - newline joins with '\n'
+   */
+  private _resolvedValue(): string | undefined {
+    let result = ''
+    let pendingJoin: '' | '\n' | undefined
+    for (const part of this.parts) {
+      if (part.type === 'literal') {
+        result += (pendingJoin ?? '') + part.value
+        pendingJoin = undefined
+      } else if (part.type === 'continuation') {
+        pendingJoin = ''
+      } else if (part.type === 'newline') {
+        pendingJoin = '\n'
+      } else {
+        return undefined
+      }
+    }
+    // trailing newline is preserved, trailing continuation is dropped
+    if (pendingJoin === '\n') {
+      result += '\n'
+    }
+    return result
+  }
+
   toLisp(): string {
+    const resolved = this._resolvedValue()
+    if (resolved !== undefined) {
+      return Values.string(resolved).toLisp()
+    }
+
     const args = this.args
       .map(it => {
         if (it instanceof LiteralString) {
@@ -860,20 +899,35 @@ export class StringTemplateOperation extends Operation {
   }
 
   toCode() {
+    const isTripleQuote = this.quote.length > 1
     let output = ''
     let hasNewline = false
-    for (const arg of this.args) {
-      if (arg instanceof LiteralString) {
-        const code = arg.value.value.replaceAll(this.quote, '\\' + this.quote)
-        hasNewline = hasNewline || code.includes('\n')
-        output += code
+
+    for (let i = 0; i < this.parts.length; i++) {
+      const part = this.parts[i]
+      if (part.type === 'literal') {
+        const escaped = part.value.replaceAll(this.quote, '\\' + this.quote)
+        hasNewline = hasNewline || escaped.includes('\n')
+        output += escaped
+      } else if (part.type === 'newline') {
+        hasNewline = true
+        output += '\n'
+      } else if (part.type === 'continuation') {
+        // only emit continuation if followed by more content
+        const hasMore = this.parts.slice(i + 1).some(
+          p => p.type === 'literal' || p.type === 'interpolate',
+        )
+        if (hasMore) {
+          output += '\\\n'
+        }
       } else {
-        output += '${'.concat(arg.toCode(), '}')
+        // interpolate
+        output += '${'.concat(part.expr.toCode(), '}')
       }
     }
 
-    if (hasNewline && this.quote.length > 1) {
-      output = (this.tag ?? '').concat(this.quote, '\n', output, '\n')
+    if (hasNewline && isTripleQuote) {
+      output = (this.tag ?? '').concat(this.quote, '\n', output)
     } else {
       output = (this.tag ?? '').concat(this.quote, output)
     }

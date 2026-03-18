@@ -861,7 +861,7 @@ Backticks: Support _string interpolation_.
 
 String tags work similar to how they do in Javascript - the parts of the string are passed to the 'tag', which better be a function capable of handling all the parts.
 
-Unlike in JS, though, each "part" is passed as its own arg (the string literals are not gathered into one array).
+Unlike in JS, though, each "part" is passed as its own arg (the string literals are not gathered into one array). Anywhere you use interpolation, the type of the argument is preserved - for example, `Int`s below.
 
 ```extra
 let
@@ -885,9 +885,13 @@ in
   ---                   ^^^^ out
 ```
 
-Triple quoted strings ignore the first character if it is a newline, and remove the preceding indentation according to the _indentation of the closing quotes_.
+Triple quotes can be used to write multiline strings, which are, of course, very extra:
 
-If you want to remove the trailing newline, escape it with `\`.
+- If the first character is a newline, it is ignored.
+- The indentation of the _closing_ quotes determines the indentation of every line
+- The indentation is _required_ on every line (except blank lines)
+- Line continuation is supported with a `\` at the end of the line (the newline is ignored)
+- The trailing newline is _preserved_. Remove it with `\`
 
 ````extra
 let
@@ -895,6 +899,7 @@ let
             this is a String,
             right?
             ''' --> "this is a String,\nright?\n"
+--^^^^^^^^^^ this indicates the indentation, because of the closing quotes
 in …
 
 let
@@ -903,32 +908,45 @@ let
             ''' --> "remove-trailing-newline"
 in …
 
+str = '''
+    test1
+    test2
+    '''
+
 -- this can also be written:
 '''test1
 test2
-''' --> test1
-        test2
+''' --> test1\n
+        test2\n
 
 -- And because of the indent rule, this is also the same String:
 '''test1
    test2
-   ''' --> test1
-          test2
+   ''' --> test1\n
+           test2
+
+-- continuation in the middle joins lines (newline is removed)
+'''
+hello \
+world\
+''' --> "hello world"
 
 """
 multiline
 strings
 are
-neat
-"""
+neat.\
+""" -- no trailing newline
 
+-- and of course backticks, with interpolation
 ```
 use
-backticks
+${backticks}
 if
 you
 prefer
 ```
+
 ````
 
 All strings use backslash to escape special characters:
