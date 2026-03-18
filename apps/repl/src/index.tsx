@@ -1,8 +1,8 @@
-import React, {useEffect, useMemo, useReducer, useRef, useState} from 'react'
+import React, {useEffect, useMemo, useReducer, useState} from 'react'
 import {existsSync, readFileSync, writeFileSync} from 'node:fs'
-import {resolve, basename} from 'node:path'
+import {resolve} from 'node:path'
 
-import {interceptConsoleLog, red} from '@teaui/core'
+import {bold, interceptConsoleLog, red} from '@teaui/core'
 import {
   Box,
   Button,
@@ -34,25 +34,7 @@ import {Socky} from './socky'
 import {parseType} from '@extra-lang/lang/src/formulaParser'
 import {GetRuntimeResult} from '@extra-lang/lang/src/formulaParser/types'
 
-const STATE_FILE = (() => {
-  // start at process.cwd() and work up until repl exists, use that as "projectRoot"
-  let replRoot = process.cwd()
-  if (existsSync(resolve(replRoot, '.git'))) {
-    replRoot = resolve(replRoot, 'apps/repl')
-  }
-
-  while (basename(replRoot) !== 'repl') {
-    replRoot = resolve(replRoot, '..')
-    if (replRoot === '/') {
-      throw new Error("Could not find project root (no 'repl/' folder found)")
-    }
-  }
-
-  return resolve(replRoot, 'state.json')
-})()
-
-const REPL_TESTS_FILE = (() => {
-  // start at process.cwd() and work up until .git exists, use that as "projectRoot"
+function resolveWorkspacePath(filepath: string) {
   let projectRoot = process.cwd()
   while (!existsSync(resolve(projectRoot, '.git'))) {
     projectRoot = resolve(projectRoot, '..')
@@ -61,8 +43,11 @@ const REPL_TESTS_FILE = (() => {
     }
   }
 
-  return resolve(projectRoot, 'packages/lang/src/formulaParser/tests/repl.json')
-})()
+  return resolve(projectRoot, filepath)
+}
+
+const STATE_FILE = resolveWorkspacePath('apps/repl/.state.json')
+const REPL_TESTS_FILE = resolveWorkspacePath('packages/lang/src/formulaParser/tests/repl.json')
 
 const REPL_TESTS_JSON = (() => {
   if (existsSync(REPL_TESTS_FILE)) {
@@ -75,6 +60,7 @@ const REPL_TESTS_JSON = (() => {
 interface State {
   version: number
   desc: string
+  module: string
   formula: string
   vars: {name: string; type: string; value: string}[]
   only: boolean
@@ -116,10 +102,32 @@ function App() {
         const json = parseJSON(
           stateContents,
           decide(field('version', int.optional), version => {
+            if (version === 2) {
+              return object([
+                ['version', int],
+                ['desc', succeed('')],
+                ['module', string],
+                ['formula', string],
+                [
+                  'vars',
+                  array(
+                    object([
+                      ['name', string],
+                      ['type', string],
+                      ['value', string],
+                    ]),
+                  ),
+                ],
+                ['only', boolean],
+                ['skip', boolean],
+              ])
+            }
+
             if (version === 1) {
               return object([
                 ['version', int],
                 ['desc', succeed('')],
+                ['module', succeed('')],
                 ['formula', string],
                 [
                   'vars',
@@ -138,7 +146,8 @@ function App() {
 
             return object([
               ['version', succeed(() => 1)],
-              ['desc', string],
+              ['desc', succeed('')],
+              ['module', succeed('')],
               ['formula', string],
               [
                 'vars',
@@ -170,9 +179,10 @@ function App() {
 
         return json
       }).getOr() ?? {
-        version: 1,
+        version: 2,
         desc: '',
         formula: '',
+        module: '',
         vars: [],
         only: false,
         skip: false,
@@ -185,6 +195,7 @@ function App() {
 
 function Repl({state, warning: initialWarning}: {state: State; warning: string}) {
   const [warning, setWarning] = useState(initialWarning)
+  const [module_, setModule] = useState(state.module)
   const [formula, setFormula] = useState(state.formula)
   const [mainText, setMainText] = useState('')
   const [descError, setDescError] = useState('')
@@ -192,28 +203,25 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
   const [inputs, setInputs] = useState<ExtraInput[]>(state.vars)
   const [only, setOnly] = useToggle(false)
   const [skip, setSkip] = useToggle(false)
-  const timer = useRef<ReturnType<typeof setTimeout>>()
-  const timeout = useRef(0)
 
   useEffect(() => {
     setWarning('')
 
-    const prevId = timer.current
-    timer.current = setTimeout(() => {
-      const {text} = calc()
+    const {text} = calc()
+    console.log('=========== index.tsx at line 211 ===========')
+    console.log({text})
 
-      setMainText(text)
-    }, timeout.current)
-    timeout.current = 1500
+    setMainText(text)
 
     writeFileSync(
       STATE_FILE,
       JSON.stringify(
         {
-          version: 1,
+          version: 2,
           desc: saveDesc,
           only,
           skip,
+          module: module_,
           formula,
           vars: inputs.map(({name, type, value}) => ({
             name: name.trim(),
@@ -226,10 +234,6 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       ),
       {encoding: 'utf8'},
     )
-
-    return () => {
-      clearTimeout(prevId)
-    }
   }, [formula, inputs, saveDesc, only, skip])
 
   function updateInputName(inputIndex: number, name: string) {
@@ -273,6 +277,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
     const typeRuntime = new Runtime.MutableTypeRuntime()
     const valueRuntime = new Runtime.MutableValueRuntime()
 
+    let hadVariables = false
     let successText = ''
     const duplicateVars = new Set<string>()
     const varExpressions: [string, Expressions.Expression][] = []
@@ -326,6 +331,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
     }
 
     for (const [name, formulaExpr] of expressionsSorted.value) {
+      hadVariables = true
       const formulaType = formulaExpr.getType(typeRuntime)
       if (formulaType.isErr()) {
         successText += red(`Error resolving '${name}': ${formulaType.error.toString()}\n`)
@@ -354,38 +360,54 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       }
 
       valueRuntime.addLocalValue(name, formulaValue.value)
-      successText += `${name}: ${formulaType.value.toCode()} = ${formulaValue.value.toCode()} (${formulaValue.value
-        .getType()
-        .toCode()})\n`
+      successText += `${name}: ${formulaType.value.toCode()} = ${formulaValue.value.toCode()}\n`
     }
 
     if (!formula.trim()) {
       return {type: 'args-only', text: successText}
     }
 
-    if (expressionsSorted.value.length) {
+    parseModule(module_)
+      .map(parsedModule => {
+        parsedModule
+          .getType(typeRuntime)
+          .map(moduleType => {
+            for (const [name, type] of moduleType.definitions) {
+              hadVariables = true
+              successText += `${type.toCode()}\n`
+              typeRuntime.addLocalType(name, type)
+            }
+          })
+          .mapError(error => {
+            successText += red(error.toString())
+          })
+      })
+      .mapError(error => {
+        successText += red(error.toString())
+      })
+
+    if (hadVariables) {
       if (!successText.endsWith('\n')) {
         successText += '\n'
       }
       successText += '──╼━━━━╾──\n'
     }
 
-    // const parsed = parseModule(formula)
     const parsed = parse(formula)
     if (parsed.isErr()) {
       successText += red(parsed.error.toString())
       return {type: 'error', text: successText}
     }
+
     const variables = expressionsSorted.value.map(
       ([name, expr]) => [name, expr.toCode()] as [string, string],
     )
     const code = parsed.value.toCode()
-    const parsedText = parsed.value.toCode()
-    successText += parsedText
+    successText += code
 
     const type = parsed.value.getType(typeRuntime)
     if (type.isErr()) {
-      successText += '\n' + red(type.error.toString())
+      successText += '-\n' + red(type.error.toString())
       return {type: 'formula-error', text: successText, code, variables}
     }
     const typeText = type.value.toCode()
@@ -397,7 +419,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       return {type: 'formula-error', text: successText, code, variables}
     }
 
-    successText += ` = ${value.value.toCode()} (${value.value.getType().toCode()})`
+    successText += ` = ${value.value.toCode()}`
     return {
       type: 'success',
       text: successText,
@@ -468,12 +490,15 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
   return (
     <Stack.down>
       <Box>
+        <Input value={module_} wrap multiline placeholder="Module" onChange={setModule} />
+      </Box>
+      <Box>
         <Input value={formula} wrap multiline placeholder="Formula" onChange={setFormula} />
       </Box>
       <Stack.right flex={1}>
         <Box width="fill" flex={2}>
           <Scrollable>
-            <Text wrap>{mainText}</Text>
+            <Text wrap> {mainText} </Text>
           </Scrollable>
         </Box>
         <Box width="fill" flex={1}>

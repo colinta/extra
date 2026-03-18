@@ -4,7 +4,7 @@
   "main": ".dist/index.js",
   "scripts": {
     "listen": "bun src/listen.ts",
-    "start": "bun src/index.tsx",
+    "repl": "bun src/index.tsx",
     "debug": "bun --inspect-wait src/index.tsx"
   },
   "dependencies": {

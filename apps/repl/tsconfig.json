@@ -4,6 +4,9 @@
   "exclude": ["node_modules"],
   "compilerOptions": {
     "rootDir": "src/",
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../../packages/lang/src/*"]
+    }
   }
 }
