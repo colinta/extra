@@ -11,6 +11,7 @@
     }
   },
   "scripts": {
+    "fmt": "oxfmt",
     "repl": "bun apps/repl/src/index.tsx",
     "publish": "bun publish TODO"
   },
