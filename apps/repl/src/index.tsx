@@ -208,8 +208,6 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
     setWarning('')
 
     const {text} = calc()
-    console.log('=========== index.tsx at line 211 ===========')
-    console.log({text})
 
     setMainText(text)
 
