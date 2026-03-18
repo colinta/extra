@@ -1,7 +1,12 @@
 import {err, mapAll, ok, type Result} from '@extra-lang/result'
 
-import {indent} from '@/util'
-import {type TypeRuntime, MutableTypeRuntime, type ValueRuntime} from '@/runtime'
+import {difference, indent} from '@/util'
+import {
+  type TypeRuntime,
+  type EnumCaseArgsCriteria,
+  MutableTypeRuntime,
+  type ValueRuntime,
+} from '@/runtime'
 import * as Types from '@/types'
 import * as Nodes from '@/nodes'
 import * as Values from '@/values'
@@ -17,6 +22,7 @@ import {
   wrapValues,
   ReferenceRuntimeError,
   InstanceFormulaExpression,
+  allProvides,
 } from './expressions'
 import {type ClassStaticPropertyExpression, type StaticFormulaExpression} from './class-expressions'
 import {
@@ -73,6 +79,50 @@ export class EnumLookupExpression extends Expression {
     const type = runtime.getLocalType(this.enumName)
     if (type) {
       return ok(new Nodes.EnumLookup(toSource(this), this.name, type))
+    }
+
+    // Fallback: search all enum definitions in scope for a no-arg case
+    const enumCaseTypes = runtime.findEnumCaseTypes(this.name)
+    if (enumCaseTypes.length === 1) {
+      return ok(new Nodes.EnumLookup(toSource(this), this.name, enumCaseTypes[0]))
+    } else if (enumCaseTypes.length > 1) {
+      return err(
+        new EnumReferenceRuntimeError(
+          this,
+          `Ambiguous enum case '${ENUM_START}${this.name}' — matches cases in multiple enum types`,
+        ),
+      )
+    }
+
+    return err(
+      new EnumReferenceRuntimeError(
+        this,
+        `There is no enum in scope named '${ENUM_START}${this.name}'`,
+      ),
+    )
+  }
+
+  /**
+   * Like compile, but uses argument shape to disambiguate between enum cases
+   * from different enum types. Called by FunctionInvocationOperator when the
+   * LHS is an enum shorthand with arguments, e.g. `.success(1)`.
+   */
+  compileWithArgs(runtime: TypeRuntime, argsCriteria: EnumCaseArgsCriteria) {
+    const type = runtime.getLocalType(this.enumName)
+    if (type) {
+      return ok(new Nodes.EnumLookup(toSource(this), this.name, type))
+    }
+
+    const enumCaseTypes = runtime.findEnumCaseTypes(this.name, argsCriteria)
+    if (enumCaseTypes.length === 1) {
+      return ok(new Nodes.EnumLookup(toSource(this), this.name, enumCaseTypes[0]))
+    } else if (enumCaseTypes.length > 1) {
+      return err(
+        new EnumReferenceRuntimeError(
+          this,
+          `Ambiguous enum case '${ENUM_START}${this.name}' — matches cases in multiple enum types`,
+        ),
+      )
     }
 
     return err(
@@ -387,7 +437,8 @@ export class NamedEnumDefinition extends EnumTypeExpression {
 
   dependencies(parentScopes: Scope[]) {
     const myScopes = parentScopes.concat([new Scope(this.name)])
-    return super.dependencies(myScopes)
+    const generics = allProvides(this.generics)
+    return difference(super.dependencies(myScopes), generics)
   }
 
   toLisp() {

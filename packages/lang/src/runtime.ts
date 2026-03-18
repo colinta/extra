@@ -6,7 +6,17 @@ import {
   simplifyRelationships,
   isEqualRelationship,
 } from './relationship'
-import {type Type, ViewClassDefinitionType, ViewFormulaType, ViewType} from './types'
+import {
+  type Type,
+  type Argument,
+  NamedEnumDefinitionType,
+  NamedFormulaType,
+  ViewClassDefinitionType,
+  ViewFormulaType,
+  ViewType,
+  positionalArgument,
+  namedArgument,
+} from './types'
 import {
   type Value,
   ViewClassDefinitionValue,
@@ -49,6 +59,16 @@ export interface ViewRuntime {
   getViewType(name: string): ViewType | undefined
   getViewValue(name: string): NamedViewValue | undefined
   has(name: string): boolean
+}
+
+/**
+ * Criteria for matching enum cases by argument shape.
+ */
+export interface EnumCaseArgsCriteria {
+  /** Number of positional arguments */
+  positionalCount: number
+  /** Set of named argument names */
+  namedArgs: Set<string>
 }
 
 const THIS_PREFIX = '@'
@@ -170,6 +190,101 @@ export class MutableTypeRuntime {
   getLocalType(name: string): Type | undefined {
     const id = this.refId(name)
     return (id ? this.types.get(id) : undefined) ?? this.parent?.getLocalType(name)
+  }
+
+  /**
+   * Searches all types in scope for NamedEnumDefinitionType instances that have
+   * an enum case with the given name. Returns matching types (either
+   * NamedEnumInstanceType for no-arg cases or NamedFormulaType for cases with
+   * args). Used as a fallback by EnumLookupExpression when the enum case isn't
+   * directly registered in scope.
+   *
+   * When `argsCriteria` is provided, only cases whose argument shape matches
+   * are returned. When omitted, only no-arg cases match.
+   */
+  findEnumCaseTypes(caseName: string, argsCriteria?: EnumCaseArgsCriteria): Type[] {
+    const results: Type[] = []
+    const seen = new Set<string>()
+
+    this._collectEnumCaseTypes(caseName, argsCriteria, results, seen)
+
+    return results
+  }
+
+  private _collectEnumCaseTypes(
+    caseName: string,
+    argsCriteria: EnumCaseArgsCriteria | undefined,
+    results: Type[],
+    seen: Set<string>,
+  ) {
+    for (const [id, type] of this.types) {
+      if (seen.has(id)) continue
+      seen.add(id)
+
+      if (type instanceof NamedEnumDefinitionType) {
+        const caseType = type.lookupCase(caseName)
+        if (caseType) {
+          const member = caseType.member
+          const hasArgs = member.positionalTypes.length > 0 || member.namedTypes.size > 0
+
+          if (argsCriteria) {
+            // Match by argument shape: positional count and named arg names
+            if (!hasArgs) continue
+            if (
+              member.positionalTypes.length !== argsCriteria.positionalCount ||
+              member.namedTypes.size !== argsCriteria.namedArgs.size
+            ) {
+              continue
+            }
+
+            // Check that named arg names match
+            let namesMatch = true
+            for (const name of argsCriteria.namedArgs) {
+              if (!member.namedTypes.has(name)) {
+                namesMatch = false
+                break
+              }
+            }
+            if (!namesMatch) continue
+          }
+
+          if (hasArgs) {
+            // Build the formula type for the matching case
+            let argIndex = 0
+            const args: Argument[] = member.args.map(arg => {
+              if (arg.is === 'positional') {
+                return positionalArgument({
+                  name: arg.name ?? `_${argIndex++}`,
+                  type: arg.type,
+                  isRequired: true,
+                })
+              } else {
+                return namedArgument({
+                  name: arg.name,
+                  type: arg.type,
+                  isRequired: true,
+                })
+              }
+            })
+            results.push(new NamedFormulaType(caseName, caseType, args, type.genericTypes))
+          } else {
+            results.push(caseType)
+          }
+        }
+      }
+    }
+
+    if (this.parent instanceof MutableTypeRuntime) {
+      this.parent._collectEnumCaseTypes(caseName, argsCriteria, results, seen)
+    } else if (this.parent) {
+      // Parent is a TypeRuntime (the Omit type), but it's still a MutableTypeRuntime instance
+      ;(this.parent as MutableTypeRuntime)._collectEnumCaseTypes(
+        caseName,
+        argsCriteria,
+        results,
+        seen,
+      )
+    }
   }
 
   /**

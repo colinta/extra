@@ -1,5 +1,5 @@
-import {STATIC} from 'src/types'
-import * as Expressions from '../../expressions'
+import {STATIC} from '@/types'
+import * as Expressions from '@/expressions'
 import {
   ARGS_OPEN,
   BLOCK_CLOSE,

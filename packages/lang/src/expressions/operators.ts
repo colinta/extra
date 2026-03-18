@@ -46,6 +46,7 @@ import {
   OR_OPERATOR,
 } from '@/formulaParser/grammars'
 import * as Expressions from './expressions'
+import {EnumLookupExpression} from './enum-expressions'
 import {MatchExpression} from './match-expressions'
 import {
   comparisonOperation,
@@ -3722,6 +3723,25 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
       lhFormulaExpression,
       rhArgsExpression,
     )
+  }
+
+  lhsCompile(runtime: TypeRuntime, lhsExpr: Expression): GetNodeResult {
+    if (lhsExpr instanceof EnumLookupExpression) {
+      const [, rhsExpr] = this.args
+      if (rhsExpr instanceof Expressions.ArgumentsList) {
+        const positionalCount = rhsExpr.allPositionalArgs().length
+        const namedArgs = new Set(rhsExpr.allNamedArgs().keys())
+        return lhsExpr.compileWithArgs(runtime, {positionalCount, namedArgs}).map(actualNode => {
+          let lhsResult = ok(actualNode.type)
+          return lhsResult.map(
+            perceivedType =>
+              new Nodes.PropertyChainInfo(actualNode.source, actualNode, perceivedType),
+          )
+        })
+      }
+    }
+
+    return super.lhsCompile(runtime, lhsExpr)
   }
 
   compile(runtime: TypeRuntime) {

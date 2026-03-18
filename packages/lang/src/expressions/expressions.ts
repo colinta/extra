@@ -3906,6 +3906,10 @@ export class GenericExpression extends Expression {
     super(range, precedingComments)
   }
 
+  provides() {
+    return new Set([this.name])
+  }
+
   toCode() {
     if (this.boundExpression) {
       return `${this.name} is ${this.boundExpression.toCode()}`

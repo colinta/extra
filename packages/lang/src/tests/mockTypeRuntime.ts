@@ -1,6 +1,6 @@
 import * as Types from '../types'
 import * as Values from '../values'
-import {MutableTypeRuntime} from '../runtime'
+import {type EnumCaseArgsCriteria, MutableTypeRuntime} from '../runtime'
 
 class MockTypeRuntime extends MutableTypeRuntime {
   constructor(readonly runtimeTypes: {[K in string]: [Types.Type, Values.Value]}) {
@@ -38,6 +38,16 @@ class MockTypeRuntime extends MutableTypeRuntime {
     }
 
     return super.getLocalType(name)
+  }
+
+  findEnumCaseTypes(caseName: string, argsCriteria?: EnumCaseArgsCriteria): Types.Type[] {
+    // Ensure all runtimeTypes are registered before searching
+    for (const [name, [type]] of Object.entries(this.runtimeTypes)) {
+      if (!super.getLocalType(name)) {
+        this.addLocalType(name, type)
+      }
+    }
+    return super.findEnumCaseTypes(caseName, argsCriteria)
   }
 }
 

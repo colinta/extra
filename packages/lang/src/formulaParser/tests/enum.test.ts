@@ -405,6 +405,69 @@ enum Shape { -- all together
           [],
         ])
       })(),
+      // enum shorthand lookup: no-arg case
+      c([
+        `\
+enum Role { -- shorthand lookup no-arg
+  .stranger
+  .staff
+  .admin
+}`,
+        Types.namedEnumDefinition({
+          name: 'Role',
+          members: [Types.enumCase('stranger'), Types.enumCase('staff'), Types.enumCase('admin')],
+        }),
+        [
+          [
+            '.admin',
+            Types.namedEnumDefinition({
+              name: 'Role',
+              members: [
+                Types.enumCase('stranger'),
+                Types.enumCase('staff'),
+                Types.enumCase('admin'),
+              ],
+            }).lookupCase('admin')!,
+          ],
+        ],
+      ]),
+      // enum shorthand lookup: case with arguments
+      (() => {
+        const def = Types.namedEnumDefinition({
+          name: 'Operation',
+          members: [
+            Types.enumCase('add', [
+              Types.namedProp('a', Types.int()),
+              Types.namedProp('b', Types.int()),
+            ]),
+            Types.enumCase('negate', [Types.positionalProp(Types.int())]),
+            Types.enumCase('identity'),
+          ],
+        })
+        return c([
+          `\
+enum Operation { -- shorthand lookup with args
+  .add(a: Int, b: Int)
+  .negate(Int)
+  .identity
+}`,
+          def,
+          [
+            ['.identity', def.lookupCase('identity')!],
+            [
+              '.add',
+              Types.namedFormula(
+                'add',
+                [
+                  Types.namedArgument({name: 'a', type: Types.int(), isRequired: true}),
+                  Types.namedArgument({name: 'b', type: Types.int(), isRequired: true}),
+                ],
+                def.lookupCase('add')!,
+              ),
+            ],
+          ],
+        ])
+      })(),
     ).run(([enumDefinition, expectedClassType, moreTests], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
         `should getType enum '${desc(enumDefinition)}'` +
@@ -425,6 +488,107 @@ enum Shape { -- all together
         },
       ),
     )
+  })
+
+  describe('disambiguation', () => {
+    it('should disambiguate by positional argument count', () => {
+      // Register two enums with .success but different arg counts
+      const resultDef = parseModule(`\
+enum Result {
+  .success(Int)
+  .failure(String)
+}`).get()
+      const fooDef = parseModule(`\
+enum Foo {
+  .success(Int, Int)
+  .failure(String, String)
+}`).get()
+      const resultType = resultDef.expressions[0].getType(typeRuntime).get()
+      const fooType = fooDef.expressions[0].getType(typeRuntime).get()
+      runtimeTypes['Result'] = [resultType, Values.nullValue()]
+      runtimeTypes['Foo'] = [fooType, Values.nullValue()]
+
+      // .success(1) has 1 positional arg → should match Result.success
+      const expr1 = parse('.success(1)').get()
+      const type1 = expr1.getType(typeRuntime).get()
+      expect(type1).toEqual((resultType as Types.NamedEnumDefinitionType).lookupCase('success'))
+
+      // .success(1, 2) has 2 positional args → should match Foo.success
+      const expr2 = parse('.success(1, 2)').get()
+      const type2 = expr2.getType(typeRuntime).get()
+      expect(type2).toEqual((fooType as Types.NamedEnumDefinitionType).lookupCase('success'))
+    })
+
+    it('should disambiguate by named argument names', () => {
+      const resultDef = parseModule(`\
+enum Result {
+  .data(value: Int)
+  .none
+}`).get()
+      const fooDef = parseModule(`\
+enum Foo {
+  .data(items: Int)
+  .none
+}`).get()
+      const resultType = resultDef.expressions[0].getType(typeRuntime).get()
+      const fooType = fooDef.expressions[0].getType(typeRuntime).get()
+      runtimeTypes['Result'] = [resultType, Values.nullValue()]
+      runtimeTypes['Foo'] = [fooType, Values.nullValue()]
+
+      // .data(value: 1) → should match Result.data
+      const expr1 = parse('.data(value: 1)').get()
+      const type1 = expr1.getType(typeRuntime).get()
+      expect(type1).toEqual((resultType as Types.NamedEnumDefinitionType).lookupCase('data'))
+
+      // .data(items: 1) → should match Foo.data
+      const expr2 = parse('.data(items: 1)').get()
+      const type2 = expr2.getType(typeRuntime).get()
+      expect(type2).toEqual((fooType as Types.NamedEnumDefinitionType).lookupCase('data'))
+    })
+
+    it('should error when multiple enums match the same case with same arg shape', () => {
+      const resultDef = parseModule(`\
+enum Result {
+  .success(Int)
+  .failure(String)
+}`).get()
+      const fooDef = parseModule(`\
+enum Foo {
+  .success(String)
+  .failure(Int)
+}`).get()
+      const resultType = resultDef.expressions[0].getType(typeRuntime).get()
+      const fooType = fooDef.expressions[0].getType(typeRuntime).get()
+      runtimeTypes['Result'] = [resultType, Values.nullValue()]
+      runtimeTypes['Foo'] = [fooType, Values.nullValue()]
+
+      // .success(1) — both have .success with 1 positional arg → ambiguous
+      expect(() => {
+        parse('.success(1)').get().getType(typeRuntime).get()
+      }).toThrow('Ambiguous')
+    })
+
+    it('should error when multiple enums have the same no-arg case', () => {
+      const colorDef = parseModule(`\
+enum Color {
+  .red
+  .blue
+}`).get()
+      const lightDef = parseModule(`\
+enum Light {
+  .red
+  .green
+}`).get()
+      const colorType = colorDef.expressions[0].getType(typeRuntime).get()
+      const lightType = lightDef.expressions[0].getType(typeRuntime).get()
+      runtimeTypes['Color'] = [colorType, Values.nullValue()]
+      runtimeTypes['Light'] = [lightType, Values.nullValue()]
+
+      // .red — both have .red with no args → ambiguous
+      expect(() => {
+        parse('.red').get().getType(typeRuntime).get()
+      }).toThrow('Ambiguous')
+    })
   })
 
   describe('invalid', () => {
