@@ -890,7 +890,7 @@ Triple quotes can be used to write multiline strings, which are, of course, very
 - If the first character is a newline, it is ignored.
 - The indentation of the _closing_ quotes determines the indentation of every line
 - The indentation is _required_ on every line (except blank lines)
-- Line continuation is supported with a `\` at the end of the line (the newline is ignored)
+- Line continuation is supported with a `\` at the end of the line (meaning the newline is ignored)
 - The trailing newline is _preserved_. Remove it with `\`
 
 ````extra
@@ -904,8 +904,9 @@ in …
 
 let
   something-cool: '''
-            remove-trailing-newline\
-            ''' --> "remove-trailing-newline"
+      remove-trailing-newline-\
+      from-all-lines\
+      ''' --> "remove-trailing-newline-from-all-lines"
 in …
 
 str = '''

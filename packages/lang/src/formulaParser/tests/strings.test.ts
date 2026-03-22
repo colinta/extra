@@ -21,13 +21,13 @@ describe('strings', () => {
 1what a
 world'''`,
       "'1what a\\nworld'",
-      "'''\n1what a\nworld'''",
+      "'''\n1what a\nworld\\\n'''",
     ]),
     c([
       `'''2what a
 world'''`,
       "'2what a\\nworld'",
-      "'''\n2what a\nworld'''",
+      "'''\n2what a\nworld\\\n'''",
     ]),
     c([
       `'''3what a
@@ -51,7 +51,7 @@ world
   world\\
   '''`,
       "'5what a     world'",
-      "'''5what a     \\\nworld'''",
+      "'''\n5what a     \\\nworld\\\n'''",
     ]),
     c([
       `\
@@ -60,7 +60,7 @@ world
   one\\
   '''`,
       "'test    one'",
-      "'''test    \\\none'''",
+      "'''\ntest    \\\none\\\n'''",
     ]),
     c([
       `\
@@ -69,7 +69,7 @@ world
   world\\
   '''`,
       "'\\t5what a\\nworld'",
-      "'''\n\t5what a\nworld'''",
+      "'''\n\t5what a\nworld\\\n'''",
     ]),
     c([
       `\

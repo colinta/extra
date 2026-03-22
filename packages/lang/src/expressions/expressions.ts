@@ -913,10 +913,11 @@ export class StringTemplate extends Operation {
         hasNewline = true
         output += '\n'
       } else if (part.type === 'continuation') {
+        hasNewline = true
         // only emit continuation if followed by more content
-        const hasMore = this.parts.slice(i + 1).some(
-          p => p.type === 'literal' || p.type === 'interpolate',
-        )
+        const hasMore = this.parts
+          .slice(i + 1)
+          .some(p => p.type === 'literal' || p.type === 'interpolate')
         if (hasMore) {
           output += '\\\n'
         }
@@ -927,7 +928,8 @@ export class StringTemplate extends Operation {
     }
 
     if (hasNewline && isTripleQuote) {
-      output = (this.tag ?? '').concat(this.quote, '\n', output)
+      const trailing = output.endsWith('\n') ? '' : '\\\n'
+      output = (this.tag ?? '').concat(this.quote, '\n', output, trailing)
     } else {
       output = (this.tag ?? '').concat(this.quote, output)
     }
