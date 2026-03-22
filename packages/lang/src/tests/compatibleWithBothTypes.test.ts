@@ -19,7 +19,7 @@ describe('compatibleWithBothFormulas', () => {
         Types.string(),
       ),
     ]),
-    // compatible positional args, different return types
+    // compatible positional args, different return types that can be merged
     c([
       Types.formula(
         [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
@@ -82,11 +82,11 @@ describe('compatibleWithBothFormulas', () => {
           [
             Types.positionalArgument({
               name: 'a',
-              type: Types.compatibleWithBothTypes(T, Types.int()),
+              type: Types.oneOf([T, Types.int()]),
               isRequired: true,
             }),
           ],
-          Types.compatibleWithBothTypes(T, Types.int()),
+          Types.oneOf([T, Types.int()]),
           [T],
         ),
       ]),
@@ -103,11 +103,11 @@ describe('compatibleWithBothFormulas', () => {
           [
             Types.positionalArgument({
               name: 'a',
-              type: Types.compatibleWithBothTypes(Types.int(), T),
+              type: Types.oneOf([Types.int(), T]),
               isRequired: true,
             }),
           ],
-          Types.compatibleWithBothTypes(Types.int(), T),
+          Types.oneOf([Types.int(), T]),
           [T],
         ),
       ]),
@@ -129,11 +129,11 @@ describe('compatibleWithBothFormulas', () => {
           [
             Types.positionalArgument({
               name: 'a',
-              type: Types.compatibleWithBothTypes(T, U),
+              type: Types.oneOf([T, U]),
               isRequired: true,
             }),
           ],
-          Types.compatibleWithBothTypes(T, U),
+          Types.oneOf([T, U]),
           [T, U],
         ),
       ]),
@@ -152,7 +152,7 @@ describe('compatibleWithBothFormulas', () => {
         ),
         Types.formula(
           [Types.positionalArgument({name: 'a', type: Types.int(), isRequired: true})],
-          Types.compatibleWithBothTypes(T, Types.string()),
+          Types.oneOf([T, Types.string()]),
           [T],
         ),
       ]),

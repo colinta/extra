@@ -20,6 +20,7 @@ beforeEach(() => {
 function desc(def: string) {
   return def.split('\n')[0]
 }
+
 describe('class', () => {
   describe('parser', () => {
     cases<[string] | [string, string]>(

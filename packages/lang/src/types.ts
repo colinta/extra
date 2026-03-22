@@ -3584,9 +3584,9 @@ export class NamedEnumDefinitionType extends Type {
   }
 
   /**
-   * Returns the enum type as used in type annotations — either a single
-   * NamedEnumInstanceType (for single-case enums) or a OneOfType wrapping
-   * each case.
+   * When something is declared to be of type 'EnumType', internally this is a
+   * OneOf of all the possible cases, each 'instance type' references the
+   * original NamedEnumDefinitionType.
    */
   get instanceType(): Type {
     if (this.instanceTypes.length === 1) {
