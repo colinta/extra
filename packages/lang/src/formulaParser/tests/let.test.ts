@@ -96,11 +96,11 @@ let
 in
   a + b
 `,
-        '(let (a = 1) (b = a) (+ a b))',
+        '(let (b = a) (a = 1) (+ a b))',
         `\
 let
-  a = 1
   b = a
+  a = 1
 in
   a + b
 `,
@@ -228,6 +228,32 @@ in
 
         expect(type).toEqual(expectedType)
         expect(value).toEqual(expectedValue)
+      }),
+    )
+  })
+
+  describe('invalid', () => {
+    cases<[string, string, string]>(
+      c([
+        'should not allow referencing from scope and local vars',
+        `\
+  let
+    a = 1
+  in
+    let
+      b = a
+      a = 2
+    in
+      a + b
+  `,
+        'Ambiguous reference detected in let assignment',
+      ]),
+    ).run(([desc, code, message], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`${desc}`, () => {
+        expect(() => {
+          const expr = parse(code).get()
+          expr.getType(typeRuntime).get()
+        }).toThrow(message)
       }),
     )
   })

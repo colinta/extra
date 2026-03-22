@@ -3042,20 +3042,34 @@ export class LetExpression extends Expression {
     return new Set(this.bindings.map(([name, _]) => name))
   }
 
-  private sortedBindings(ignoreExternal: (name: string) => boolean, parentScopes: Scope[]) {
-    return dependencySort(this.bindings, ignoreExternal, parentScopes)
+  private sortedBindings(
+    fromRuntime: (name: string) => boolean,
+    parentScopes: Scope[],
+  ): GetRuntimeResult<[string, LetAssign | NamedFormulaExpression][]> {
+    // collect all deps of bindings that are referenced in another this.bindings
+    // AND provided from another binding
+    const allDeps = this.bindings.reduce(
+      (all, [_, bindingExpr]) => union(all, bindingExpr.dependencies(parentScopes)),
+      new Set<string>(),
+    )
+    for (const [name, _] of this.bindings) {
+      if (allDeps.has(name) && fromRuntime(name)) {
+        return err(
+          new RuntimeError(this, `Ambiguous reference detected in let assignment for '${name}'`),
+        )
+      }
+    }
+    return dependencySort(this.bindings, fromRuntime, parentScopes)
   }
 
   toLisp() {
-    const bindings = this.sortedBindings(() => true, []).getOr() ?? this.bindings
-    const code = bindings.map(([_, arg]) => arg.toLisp()).join(' ')
+    const code = this.bindings.map(([_, arg]) => arg.toLisp()).join(' ')
     return `(let ${code} ${this.body.toLisp()})`
   }
 
   toCode() {
     let code = 'let\n'
-    const bindings = this.sortedBindings(() => true, []).getOr() ?? this.bindings
-    for (const [alias, arg] of bindings) {
+    for (const [alias, arg] of this.bindings) {
       let line: string
       let exprCode: string
       if (arg instanceof NamedFormulaExpression) {
