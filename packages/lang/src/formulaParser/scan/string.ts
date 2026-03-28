@@ -1,11 +1,12 @@
 import * as Expressions from '@/expressions'
 import {type StringTemplatePart, binaryOperatorNamed, LiteralString} from '@/expressions'
 
-import {ATOM_START, isArgumentStartChar, isIdentifierStartChar, STATE_START} from '../grammars'
+import {ATOM_START, MACRO_START, isArgumentStartChar, isIdentifierStartChar, STATE_START} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
 import {scanValidName, scanAtom} from './identifier'
+import {scanMacro} from './macro'
 
 /**
  * Supports '', "", ``, triple quotes, and "no quotes" :word
@@ -193,7 +194,8 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
       // test for `...$foo...`
       scanner.test(
         () =>
-          scanner.scanIfString('$') && isIdentifierStartChar(scanner) && !scanner.is(STATE_START),
+          scanner.scanIfString('$') &&
+          ((isIdentifierStartChar(scanner) && !scanner.is(STATE_START)) || scanner.is(MACRO_START)),
       )
     ) {
       // string substitution for "$varname" shorthand
@@ -204,7 +206,9 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
       appendNextLiteral()
       scanner.expectString('$')
       scanner.whereAmI('scanString: `' + stringBuffer + '`')
-      const ref = scanValidName(scanner)
+      const ref = scanner.is(MACRO_START)
+        ? scanMacro(scanner)
+        : scanValidName(scanner)
       stringTemplateParts.push({type: 'interpolate', expr: ref})
       scanner.whereAmI('ref: `' + ref.toCode() + '`')
       bufferRange0 = scanner.charIndex

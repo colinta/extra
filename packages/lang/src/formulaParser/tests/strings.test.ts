@@ -109,6 +109,7 @@ world
       '\'this is $an alternative "test".\'',
     ]),
     c(['```this ${@is} a `good` "test".```', `(++ 'this ' @is ' a \`good\` "test".')`]),
+    c(['```this $#line```', "(++ 'this ' `#line`)", '```this ${#line}```']),
     c([
       '```this $@is a `good` "test".```',
       '\'this $@is a `good` "test".\'',
