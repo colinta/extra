@@ -62,6 +62,7 @@ import {
   NULL_COALESCE_ARRAY_ACCESS_OPERATOR,
   NULL_COALESCE_INVOCATION_OPERATOR,
   ENUM_START,
+  MACRO_START,
   PROPERTY_ACCESS_OPERATOR,
   IF_KEYWORD,
   GUARD_KEYWORD,
@@ -82,7 +83,7 @@ import {scanModule} from './scan/module'
 import {scanFormula} from './scan/formula'
 import {scanArray, scanDict, scanObject, scanSet} from './scan/container_type'
 import {scanJsx} from './scan/jsx'
-import {scanPipePlaceholder} from './scan/pipe'
+import {scanMacro} from './scan/macro'
 import {scanParensGroup} from './scan/parens'
 import {scanArrayAccess} from './scan/array_access'
 import {scanBlockArgs, scanInvocationArgs} from './scan/formula_invocation_arguments'
@@ -525,8 +526,6 @@ function parseInternal(
         processExpression(scanNumber(scanner, 'float'))
       } else if (scanner.isWord(FN_KEYWORD)) {
         processExpression(scanFormula(scanner, expressionType, parseNext))
-      } else if (scanner.is(Expressions.PipePlaceholderExpression.Symbol)) {
-        processExpression(scanPipePlaceholder(scanner))
       } else if (scanner.isWord(LET_KEYWORD)) {
         processExpression(scanLet(scanner, parseNext, expressionType))
       } else if (scanner.is(PARENS_OPEN)) {
@@ -547,6 +546,8 @@ function parseInternal(
         processExpression(scanDict(scanner, parseNext, 'dict-symbol'))
       } else if (scanner.isWord(DICT_WORD_START)) {
         processExpression(scanDict(scanner, parseNext, 'dict-word'))
+      } else if (scanner.is(MACRO_START)) {
+        processExpression(scanMacro(scanner))
       } else if (scanner.is(ENUM_START)) {
         processExpression(scanEnumLookup(scanner))
       } else if (isUnaryOperatorChar(scanner.char) || isUnaryOperatorName(scanner.remainingInput)) {

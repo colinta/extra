@@ -67,6 +67,7 @@ export const ENUM_START = '.'
 export const CLASS_KEYWORD = 'class'
 export const CLASS_EXTENDS = 'extends'
 
+export const MACRO_START = '#'
 export const MSG_TYPE = '&'
 
 export const KWARG_OPERATOR = '**'

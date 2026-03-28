@@ -1,4 +1,5 @@
 export * from './expressions'
+export * from './macros.expressions'
 export * from './match-expressions'
 export * from './class-expressions'
 export * from './enum-expressions'
