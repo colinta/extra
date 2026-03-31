@@ -72,6 +72,7 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
     scanner,
     parseNext,
     'class',
+    nameRef.name,
   )
 
   const lastComments = scanner.flushComments()
@@ -93,7 +94,7 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
   )
 }
 
-export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'class' | 'view') {
+export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'class' | 'view', macroOwnerName?: string) {
   scanner.expectString(BLOCK_OPEN)
   scanner.scanAllWhitespace()
 
@@ -108,7 +109,7 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
   const memberNames = new Set<string>()
   for (;;) {
     if (scanner.test(isFnStart)) {
-      const formula = scanInstanceFormula(scanner, parseNext, 'class')
+      const formula = scanInstanceFormula(scanner, parseNext, 'class', macroOwnerName)
       if (memberNames.has(formula.name)) {
         throw new ParseError(scanner, `Found duplicate property '${formula.name}'.`)
       }
@@ -151,7 +152,7 @@ export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'cla
         memberNames.add(property.name)
       }
     } else if (scanner.isWord(STATIC) && scanner.test(isStaticFunction)) {
-      const formula = scanStaticFormula(scanner, parseNext, 'class')
+      const formula = scanStaticFormula(scanner, parseNext, 'class', macroOwnerName)
       if (staticNames.has(formula.name)) {
         throw new ParseError(scanner, `Found duplicate function named '${formula.name}'.`)
       }

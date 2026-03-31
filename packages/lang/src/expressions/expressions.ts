@@ -4191,6 +4191,10 @@ export class FormulaExpression extends Expression {
     return code
   }
 
+  macroFunctionName() {
+    return this.nameRef?.name
+  }
+
   getType(
     runtime: TypeRuntime,
     formulaArgumentType?: Types.FormulaType | undefined,
@@ -4224,6 +4228,11 @@ export class FormulaExpression extends Expression {
       args.forEach(arg => {
         mutableRuntime.addLocalType(arg.name, arg.type)
       })
+
+      const functionName = this.macroFunctionName()
+      if (functionName) {
+        mutableRuntime.addLocalType('#fn', Types.literal(functionName))
+      }
 
       return this.body.compile(mutableRuntime).map(bodyNode => {
         const inferReturnType = this.returnType instanceof InferIdentifier
@@ -4289,15 +4298,15 @@ export class FormulaExpression extends Expression {
           boundThis: Values.ClassInstanceValue | undefined,
         ): Result<Values.Value, RuntimeError> =>
           argumentValues(runtime, argDefinitions, args, boundThis).map(argRuntime => {
-            let mutableRuntime: MutableValueRuntime | undefined
+            const mutableRuntime = new MutableValueRuntime(argRuntime)
             for (const [name, value] of localAssigns) {
-              if (!mutableRuntime) {
-                mutableRuntime = new MutableValueRuntime(argRuntime)
-              }
               mutableRuntime.addLocalValue(name, value)
             }
-            const nextRuntime = mutableRuntime ?? argRuntime
-            return this.body.eval(nextRuntime)
+            const functionName = this.macroFunctionName()
+            if (functionName) {
+              mutableRuntime.addLocalValue('#fn', Values.string(functionName))
+            }
+            return this.body.eval(mutableRuntime)
           })
 
         return this.getFormulaValueWith(runtime, fn, localAssigns)
@@ -4720,6 +4729,7 @@ export class InstanceFormulaExpression extends NamedFormulaExpression {
     body: Expression,
     generics: GenericExpression[],
     readonly isOverride: boolean,
+    readonly macroOwnerName?: string,
   ) {
     super(
       range,
@@ -4734,6 +4744,14 @@ export class InstanceFormulaExpression extends NamedFormulaExpression {
       body,
       generics,
     )
+  }
+
+  macroFunctionName() {
+    const ownerName = this.macroOwnerName
+    if (ownerName) {
+      return `${ownerName}().${this.name}`
+    }
+    return super.macroFunctionName()
   }
 }
 

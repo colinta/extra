@@ -85,7 +85,7 @@ export function scanNamedEnum(
 
       scanner.scanCommaOrNewline()
     } else if (scanner.isWord(FN_KEYWORD)) {
-      const formula = scanInstanceFormula(scanner, parseNext, 'enum')
+      const formula = scanInstanceFormula(scanner, parseNext, 'enum', nameRef.name)
 
       if (memberNames.has(formula.name)) {
         throw new ParseError(scanner, `Found duplicate property '${formula.name}'.`)
@@ -103,7 +103,7 @@ export function scanNamedEnum(
       staticNames.add(property.name)
       staticProperties.push(property)
     } else if (scanner.test(isStaticFunction)) {
-      const formula = scanStaticFormula(scanner, parseNext, 'enum')
+      const formula = scanStaticFormula(scanner, parseNext, 'enum', nameRef.name)
 
       if (staticNames.has(formula.name)) {
         throw new ParseError(scanner, `Found duplicate static property '${formula.name}'.`)

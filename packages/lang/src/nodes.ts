@@ -155,6 +155,33 @@ export class LiteralString extends Literal {
   }
 }
 
+export class LineMacro extends Literal {
+  constructor(
+    readonly source: Source,
+    readonly value: number,
+  ) {
+    super(source, Types.literal(value))
+  }
+}
+
+export class ColumnMacro extends Literal {
+  constructor(
+    readonly source: Source,
+    readonly value: number,
+  ) {
+    super(source, Types.literal(value))
+  }
+}
+
+export class FnNameMacro extends Literal {
+  constructor(
+    readonly source: Source,
+    readonly value: string,
+  ) {
+    super(source, Types.literal(value))
+  }
+}
+
 export class StringTemplate extends Node {
   constructor(
     readonly source: Source,

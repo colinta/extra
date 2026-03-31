@@ -48,6 +48,7 @@ export function scanView(scanner: Scanner, parseNext: ParseNext) {
       scanner,
       parseNext,
       'view',
+      nameRef.name,
     )
 
     const lastComments = scanner.flushComments()

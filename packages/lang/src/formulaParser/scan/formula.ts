@@ -33,11 +33,13 @@ export function scanStaticFormula(
   scanner: Scanner,
   parseNext: ParseNext,
   bodyExpressionType?: ExpressionType,
+  macroOwnerName?: string,
 ) {
   return _scanFormula(scanner, 'expression', parseNext, {
     type: 'static',
     isNamedFn: true,
     bodyExpressionType,
+    macroOwnerName,
   }) as Expressions.StaticFormulaExpression
 }
 
@@ -57,11 +59,13 @@ export function scanInstanceFormula(
   scanner: Scanner,
   parseNext: ParseNext,
   bodyExpressionType: 'class' | 'enum',
+  macroOwnerName?: string,
 ) {
   return _scanFormula(scanner, 'expression', parseNext, {
     type: 'fn',
     isNamedFn: true,
     bodyExpressionType,
+    macroOwnerName,
   }) as Expressions.InstanceFormulaExpression
 }
 
@@ -105,6 +109,7 @@ function _scanFormula(
     type: 'fn' | 'static' | 'view' | 'render'
     isNamedFn: boolean
     bodyExpressionType: ExpressionType | undefined
+    macroOwnerName?: string
   },
 ) {
   const {type} = options
@@ -233,6 +238,7 @@ function _scanFormula(
     type,
     bodyExpressionType,
     isInView,
+    options.macroOwnerName,
   )
 }
 
@@ -251,6 +257,7 @@ export function finishScanningFormula(
   type: 'fn' | 'static' | 'view' | 'render',
   bodyExpressionType: ExpressionType,
   isInView: boolean,
+  macroOwnerName?: string,
 ) {
   let returnType: Expression
   if (type === 'fn' && scanner.scanIfString(TYPE_START)) {
@@ -325,6 +332,7 @@ export function finishScanningFormula(
         returnType,
         body,
         generics,
+        macroOwnerName,
       )
     } else if (bodyExpressionType === 'class' || bodyExpressionType === 'enum') {
       return new Expressions.InstanceFormulaExpression(
@@ -340,6 +348,7 @@ export function finishScanningFormula(
         body,
         generics,
         isOverride,
+        macroOwnerName,
       )
     } else if (nameRef) {
       return new Expressions.NamedFormulaExpression(

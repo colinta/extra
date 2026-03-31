@@ -74,18 +74,14 @@ export class MacroExpression extends Expression {
 
   compile(runtime: TypeRuntime) {
     switch (this.macro) {
-      case '#line': {
-        const value = this.lineAndColumn().line
-        return ok(new Nodes.LiteralInt(toSource(this), value, 'decimal'))
-      }
-      case '#column': {
-        const value = this.lineAndColumn().column
-        return ok(new Nodes.LiteralInt(toSource(this), value, 'decimal'))
-      }
+      case '#line':
+        return ok(new Nodes.LineMacro(toSource(this), this.lineAndColumn().line))
+      case '#column':
+        return ok(new Nodes.ColumnMacro(toSource(this), this.lineAndColumn().column))
       case '#fn': {
         const fnType = runtime.getLocalType('#fn')
         if (fnType instanceof Types.LiteralStringType) {
-          return ok(new Nodes.LiteralString(toSource(this), fnType.value, Array.from(fnType.value)))
+          return ok(new Nodes.FnNameMacro(toSource(this), fnType.value))
         }
         return err(new RuntimeError(this, "'#fn' accessed outside of a named function"))
       }

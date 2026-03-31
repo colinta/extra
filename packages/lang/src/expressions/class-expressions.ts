@@ -267,6 +267,7 @@ export class StaticFormulaExpression extends NamedFormulaExpression {
     returnType: Expression,
     body: Expression,
     generics: GenericExpression[],
+    readonly macroOwnerName?: string,
   ) {
     super(
       range,
@@ -281,6 +282,13 @@ export class StaticFormulaExpression extends NamedFormulaExpression {
       body,
       generics,
     )
+  }
+
+  macroFunctionName() {
+    if (this.macroOwnerName) {
+      return `${this.macroOwnerName}.${super.macroFunctionName()}`
+    }
+    return super.macroFunctionName()
   }
 }
 
