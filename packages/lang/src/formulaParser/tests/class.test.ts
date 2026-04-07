@@ -357,7 +357,9 @@ class User(howdy: String) {
               ],
             ]),
           }),
-          defaults: ['name'],
+          constructorArgs: [
+            Types.namedArgument({name: 'howdy', type: Types.string(), isRequired: true}),
+          ],
           staticProps: new Map([
             ['default-name', Types.literal('')],
             ['secret-name', Types.literal('')],
@@ -376,8 +378,8 @@ class User(howdy: String) {
             ]),
         }),
         [
-          ['User().name', Types.string()],
-          ['User().rename("")', new Types.MessageType()],
+          ['User(howdy: "").name', Types.string()],
+          ['User(howdy: "").rename("")', new Types.MessageType()],
         ],
       ]),
     ).run(([classDefinition, expectedClassType, moreTests], {only, skip}) =>

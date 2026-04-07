@@ -22,9 +22,9 @@ import {EXPORT_KEYWORD, STATE_START} from '@/formulaParser/grammars'
 
 import {
   Expression,
-  type Reference,
+  Reference,
   type GenericExpression,
-  type FormulaArgumentDefinition,
+  FormulaArgumentDefinition,
   type Range,
   RuntimeError,
   InstanceFormulaExpression,
@@ -42,6 +42,62 @@ import {
   ReferenceRuntimeError,
 } from './expressions'
 import {RenderFormulaExpression} from './view-expressions'
+
+function formulaArgumentType(
+  arg: FormulaArgumentDefinition,
+  runtime: TypeRuntime,
+): GetRuntimeResult<Types.Argument> {
+  return getChildAsTypeExpression(arg, arg.argType, runtime).map(type => {
+    if (arg.spreadArg === 'kwargs') {
+      return Types.kwargListArgument({name: arg.nameRef.name, type: type as Types.DictType})
+    } else if (arg.spreadArg === 'spread' && arg.isPositional) {
+      return Types.spreadPositionalArgument({name: arg.nameRef.name, type: type as Types.ArrayType})
+    } else if (arg.spreadArg === 'spread') {
+      return Types.repeatedNamedArgument({
+        name: arg.nameRef.name,
+        alias: arg.aliasRef.name,
+        type: type as Types.ArrayType,
+      })
+    } else if (arg.isPositional) {
+      return Types.positionalArgument({
+        name: arg.nameRef.name,
+        type,
+        isRequired: !arg.defaultValue,
+      })
+    } else {
+      return Types.namedArgument({
+        name: arg.nameRef.name,
+        alias: arg.aliasRef.name,
+        type,
+        isRequired: !arg.defaultValue,
+      })
+    }
+  })
+}
+
+function constructorArgumentDefinitions(
+  argDefinitions: FormulaArgumentDefinition[] | undefined,
+  properties: ClassStatePropertyExpression[],
+) {
+  if (argDefinitions) {
+    return argDefinitions
+  }
+
+  return properties.map(
+    property =>
+      new FormulaArgumentDefinition(
+        property.range,
+        [],
+        new Reference(property.range, [], property.name),
+        new Reference(property.range, [], property.name),
+        // argumentValues only relies on names/defaults here, not the declared type node
+        property.argType ?? property.defaultValue!,
+        false,
+        false,
+        property.defaultValue,
+      ),
+  )
+}
 
 export abstract class ClassPropertyExpression extends Expression {
   constructor(
@@ -771,132 +827,156 @@ export class ClassDefinition extends Expression {
           const defaultPropertyNames = new Set<string>()
 
           return mapAll(
-            this.properties.map(propertyExpr => {
-              // TODO: I'm pretty sure that overriding properties from a parent class
-              // should not be allowed. At first glance, it seems like narrowing
-              // should be fine (overriding with a property that is a subtype of the
-              // parent property), but instance methods can return Messages that
-              // modify those properties, and so we cannot guarantee that those
-              // mutations will not assign an incompatible value to the child class'
-              // redefinition.
-              if (parentInstanceClass?.allProps.has(propertyExpr.name)) {
-                return err(
-                  new RuntimeError(
-                    propertyExpr,
-                    `Cannot redefine property '${propertyExpr.name}' in class '${this.name}', it is already defined in parent class '${parentInstanceClass.name}'`,
-                  ),
+            (this.argDefinitions ?? []).map(arg => formulaArgumentType(arg, moduleRuntime)),
+          ).map(constructorArgTypes => {
+            const constructorRuntime = new MutableTypeRuntime(moduleRuntime)
+            // these are only defined when a custom constructor is used - but a default
+            // constructor is tricky to support here, because the args are determined
+            // by the state props
+            //     class User {
+            //       @name: String  -- obviously belongs in default constructor
+            //       @fullname = name   -- this comes from the default constructor...
+            //                          -- so is fullname isn't a valid argument
+            //                          -- in the constructor?
+            //     }
+            for (const constructorArgType of constructorArgTypes) {
+              constructorRuntime.addLocalType(constructorArgType.name, constructorArgType.type)
+            }
+
+            return mapAll(
+              this.properties.map(propertyExpr => {
+                // TODO: I'm pretty sure that overriding properties from a parent class
+                // should not be allowed. At first glance, it seems like narrowing
+                // should be fine (overriding with a property that is a subtype of the
+                // parent property), but instance methods can return Messages that
+                // modify those properties, and so we cannot guarantee that those
+                // mutations will not assign an incompatible value to the child class'
+                // redefinition.
+                if (parentInstanceClass?.allProps.has(propertyExpr.name)) {
+                  return err(
+                    new RuntimeError(
+                      propertyExpr,
+                      `Cannot redefine property '${propertyExpr.name}' in class '${this.name}', it is already defined in parent class '${parentInstanceClass.name}'`,
+                    ),
+                  )
+                }
+
+                // instance properties can only rely on static properties that are
+                // already defined (those that don't rely on the constructor to exist)
+                const badDependency = remainingStatics.find(prop =>
+                  some(propertyExpr.dependencies(parentScopes), dep => prop.name === dep),
                 )
-              }
-
-              // instance properties can only rely on static properties that are
-              // already defined (those that don't rely on the constructor to exist)
-              const badDependency = remainingStatics.find(prop =>
-                some(propertyExpr.dependencies(parentScopes), dep => prop.name === dep),
-              )
-              if (badDependency) {
-                return err(
-                  new RuntimeError(
-                    propertyExpr,
-                    `Property '${propertyExpr.name}' in class '${this.name}' relies on static property '${badDependency.name}' which cannot be compiled until the '${this.name}()' constructor is defined, which depends on '${propertyExpr.name}' being defined.`,
-                  ),
-                )
-              }
-
-              const statePropResult = propertyExpr.compile(moduleRuntime)
-              if (statePropResult.isErr()) {
-                return err(statePropResult.error)
-              }
-
-              const stateProp = statePropResult.value
-              if (propertyExpr.defaultValue) {
-                defaultPropertyNames.add(propertyExpr.name)
-              }
-
-              stateProperties.set(propertyExpr.name, stateProp)
-              statePropsTypes.set(propertyExpr.name, stateProp.type)
-
-              return ok()
-            }),
-          ).map(() => {
-            // With the statePropsTypes resolved, we can construct the
-            // ClassInstanceType, and assign it to the ClassDefinitionType in
-            // order to define the constructor. The remaining properties (member
-            // formulas and static properties that depend on the constructor)
-            // can finally be resolved.
-            const instanceType = new Types.ClassInstanceType(
-              this.name,
-              parentInstanceClass,
-              statePropsTypes,
-              // will hold formulas, they get assigned as they are resolved
-              new Map(),
-            )
-            classType.resolveInstanceType(instanceType, defaultPropertyNames)
-            const thisRuntime = new MutableTypeRuntime(moduleRuntime, instanceType)
-
-            // The remaining items are remainingStatics and instance formulas.
-            // Just like resolving the original statics, we use
-            // stablePointAlgorithm to loop over all the remaining items,
-            // resolving as many as possible in each iteration.
-            // The remainingStatics all rely on the class constructor, but may
-            // be invoking a member formula (which may not be defined yet).
-            // Likewise, a member formula may refer to a static property. Rather
-            // than sort these by dependency, we just attempt and retry.
-
-            const formulaProperties = new Map<string, Nodes.Node>()
-            return stablePointAlgorithm(
-              [...remainingStatics, ...this.formulas],
-              expr => {
-                let remainingProp: GetNodeResult
-                const isMemberProp = expr instanceof InstanceFormulaExpression
-                if (isMemberProp) {
-                  remainingProp = expr.compile(thisRuntime)
-                } else {
-                  remainingProp = expr.compile(moduleRuntime)
+                if (badDependency) {
+                  return err(
+                    new RuntimeError(
+                      propertyExpr,
+                      `Property '${propertyExpr.name}' in class '${this.name}' relies on static property '${badDependency.name}' which cannot be compiled until the '${this.name}()' constructor is defined, which depends on '${propertyExpr.name}' being defined.`,
+                    ),
+                  )
                 }
 
-                if (remainingProp.isErr()) {
-                  return err(remainingProp.error)
+                const statePropResult = propertyExpr.compile(constructorRuntime)
+                if (statePropResult.isErr()) {
+                  return err(statePropResult.error)
                 }
 
-                // messy business, we mutate these *in-place* because I seem to think
-                // I know what I'm doing. It would be safer to *replace* the metaClass
-                // in nextRuntime, but YOLO.
-                //
-                // It would be pretty easy, actually - create a new
-                // Types.ClassInstanceType, create another runtime and assign it to
-                // the thisRuntime variable. The important thing is above where we
-                // search for references to the instanceClassType.
-                if (isMemberProp) {
-                  instanceType.addFormula(expr.name, remainingProp.value.type)
-                  formulaProperties.set(expr.name, remainingProp.value)
-                } else {
-                  // static properties can be treated as local variables
-                  moduleRuntime.addLocalType(expr.name, remainingProp.value.type)
-
-                  classType.addStaticProp(expr.name, remainingProp.value.type)
-                  staticPropertyNodes.set(expr.name, remainingProp.value)
+                const stateProp = statePropResult.value
+                if (propertyExpr.defaultValue) {
+                  defaultPropertyNames.add(propertyExpr.name)
                 }
+
+                stateProperties.set(propertyExpr.name, stateProp)
+                statePropsTypes.set(propertyExpr.name, stateProp.type)
 
                 return ok()
-              },
-              undefined,
-            )
-              .mapError(errors => new RuntimeError(this, 'TODO', errors))
-              .map(
-                () =>
-                  new Nodes.ClassDefinition(
-                    toSource(this),
-                    this.name,
-                    parentMetaClass,
-                    classType,
-                    staticPropertyNodes,
-                    stateProperties,
-                    formulaProperties,
-                    // generics
-                    genericNodes,
-                    this.isExport,
-                  ),
+              }),
+            ).map(() => {
+              // With the statePropsTypes resolved, we can construct the
+              // ClassInstanceType, and assign it to the ClassDefinitionType in
+              // order to define the constructor. The remaining properties (member
+              // formulas and static properties that depend on the constructor)
+              // can finally be resolved.
+              const instanceType = new Types.ClassInstanceType(
+                this.name,
+                parentInstanceClass,
+                statePropsTypes,
+                // will hold formulas, they get assigned as they are resolved
+                new Map(),
               )
+
+              classType.resolveInstanceType(
+                instanceType,
+                defaultPropertyNames,
+                this.argDefinitions ? constructorArgTypes : undefined,
+              )
+
+              const thisRuntime = new MutableTypeRuntime(moduleRuntime, instanceType)
+
+              // The remaining items are remainingStatics and instance formulas.
+              // Just like resolving the original statics, we use
+              // stablePointAlgorithm to loop over all the remaining items,
+              // resolving as many as possible in each iteration.
+              // The remainingStatics all rely on the class constructor, but may
+              // be invoking a member formula (which may not be defined yet).
+              // Likewise, a member formula may refer to a static property. Rather
+              // than sort these by dependency, we just attempt and retry.
+
+              const formulaProperties = new Map<string, Nodes.Node>()
+              return stablePointAlgorithm(
+                [...remainingStatics, ...this.formulas],
+                expr => {
+                  let remainingProp: GetNodeResult
+                  const isMemberProp = expr instanceof InstanceFormulaExpression
+                  if (isMemberProp) {
+                    remainingProp = expr.compile(thisRuntime)
+                  } else {
+                    remainingProp = expr.compile(moduleRuntime)
+                  }
+
+                  if (remainingProp.isErr()) {
+                    return err(remainingProp.error)
+                  }
+
+                  // messy business, we mutate these *in-place* because I seem to think
+                  // I know what I'm doing. It would be safer to *replace* the metaClass
+                  // in nextRuntime, but YOLO.
+                  //
+                  // It would be pretty easy, actually - create a new
+                  // Types.ClassInstanceType, create another runtime and assign it to
+                  // the thisRuntime variable. The important thing is above where we
+                  // search for references to the instanceClassType.
+                  if (isMemberProp) {
+                    instanceType.addFormula(expr.name, remainingProp.value.type)
+                    formulaProperties.set(expr.name, remainingProp.value)
+                  } else {
+                    // static properties can be treated as local variables
+                    moduleRuntime.addLocalType(expr.name, remainingProp.value.type)
+
+                    classType.addStaticProp(expr.name, remainingProp.value.type)
+                    staticPropertyNodes.set(expr.name, remainingProp.value)
+                  }
+
+                  return ok()
+                },
+                undefined,
+              )
+                .mapError(errors => new RuntimeError(this, 'TODO', errors))
+                .map(
+                  () =>
+                    new Nodes.ClassDefinition(
+                      toSource(this),
+                      this.name,
+                      parentMetaClass,
+                      classType,
+                      staticPropertyNodes,
+                      stateProperties,
+                      formulaProperties,
+                      // generics
+                      genericNodes,
+                      this.isExport,
+                    ),
+                )
+            })
           })
         })
     })
@@ -961,58 +1041,65 @@ export class ClassDefinition extends Expression {
             // yeeees the constructor is called in the context of the class
             // definition (ie static functions are treated as "in scope"), but
             // I'm not passing classDef as 'this'.
-            argumentValues(thisSharedRuntime, this.argDefinitions ?? [], args, undefined).map(
-              thisRuntime => {
-                const stateProps = this.properties.map(
-                  expr => [expr.stateName, expr] as [string, ClassStatePropertyExpression],
-                )
-                return dependencySort(
-                  stateProps,
-                  name => thisRuntime.has(name),
-                  thisRuntime.parentScopes(),
-                ).map(stateProps =>
-                  mapAll(
-                    stateProps.flatMap(([_stateName, expr]) => {
-                      if (!expr.defaultValue) {
-                        return []
-                      }
-                      return expr.defaultValue.eval(thisRuntime).map(value => {
-                        thisRuntime.addStateValue(expr.name, value)
-                        return [expr.name, value] as const
-                      })
-                    }),
-                  ).map(defaultState => {
-                    const props = new Map<string, Values.Value>()
-                    for (const [name, value] of defaultState) {
-                      props.set(name, value)
-                    }
+            argumentValues(
+              thisSharedRuntime,
+              constructorArgumentDefinitions(this.argDefinitions, this.properties),
+              args,
+              undefined,
+            ).map(thisRuntime => {
+              const stateProps = this.properties.map(
+                expr => [expr.stateName, expr] as [string, ClassStatePropertyExpression],
+              )
+              return dependencySort(
+                stateProps,
+                name => thisRuntime.has(name),
+                thisRuntime.parentScopes(),
+              ).map(stateProps => {
+                const props = new Map<string, Values.Value>()
 
-                    for (const [_stateName, stateProp] of stateProps) {
-                      const name = stateProp.name
-                      if (props.has(name)) {
-                        continue
-                      }
+                for (const [_stateName, expr] of stateProps) {
+                  const providedValue = thisRuntime.getLocalValue(expr.name)
+                  if (providedValue) {
+                    props.set(expr.name, providedValue)
+                    thisRuntime.addStateValue(expr.name, providedValue)
+                    continue
+                  }
 
-                      const value = thisRuntime.getLocalValue(name)
-                      if (!value) {
-                        return err(
-                          new RuntimeError(
-                            this,
-                            `Could not get value for property '${name}' in class constructor '${this.name}()'`,
-                          ),
-                        )
-                      }
-                      props.set(name, value)
-                      thisRuntime.addStateValue(name, value)
-                    }
+                  if (!expr.defaultValue) {
+                    continue
+                  }
 
-                    return ok(
-                      new Values.ClassInstanceValue(classDef, props, new Map(memberFormulas)),
+                  const valueResult = expr.defaultValue.eval(thisRuntime)
+                  if (valueResult.isErr()) {
+                    return err(valueResult.error)
+                  }
+                  const value = valueResult.value
+                  props.set(expr.name, value)
+                  thisRuntime.addStateValue(expr.name, value)
+                }
+
+                for (const [_stateName, stateProp] of stateProps) {
+                  const name = stateProp.name
+                  if (props.has(name)) {
+                    continue
+                  }
+
+                  const value = thisRuntime.getLocalValue(name)
+                  if (!value) {
+                    return err(
+                      new RuntimeError(
+                        this,
+                        `Could not get value for property '${name}' in class constructor '${this.name}()'`,
+                      ),
                     )
-                  }),
-                )
-              },
-            ),
+                  }
+                  props.set(name, value)
+                  thisRuntime.addStateValue(name, value)
+                }
+
+                return ok(new Values.ClassInstanceValue(classDef, props, new Map(memberFormulas)))
+              })
+            }),
           undefined,
           localAssigns,
         )
@@ -1120,7 +1207,7 @@ export class ViewClassDefinition extends ClassDefinition {
         metaClass.generics.map(node => node.type),
       )
       // TODO: calculate which arguments have default values
-      metaClassType.resolveInstanceType(returnClassType, new Set())
+      metaClassType.resolveInstanceType(returnClassType, new Set(), undefined)
 
       return ok(
         new Nodes.ViewClassDefinition(

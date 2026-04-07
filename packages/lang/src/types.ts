@@ -173,6 +173,7 @@ export function classDefinition({
   parent,
   class: classType,
   staticProps,
+  constructorArgs,
   defaults,
   generics,
   moreStatics,
@@ -181,12 +182,13 @@ export function classDefinition({
   parent?: ClassDefinitionType
   class: ClassInstanceType
   staticProps?: Map<string, Type>
+  constructorArgs?: Argument[]
   defaults?: string[]
   generics?: GenericType[]
   moreStatics?: (definition: ClassDefinitionType, classType: ClassInstanceType) => Map<string, Type>
 }) {
   const definition = new ClassDefinitionType(name, parent, staticProps ?? new Map(), generics ?? [])
-  definition.resolveInstanceType(classType, new Set(defaults))
+  definition.resolveInstanceType(classType, new Set(defaults), constructorArgs)
 
   if (moreStatics) {
     for (const [name, type] of moreStatics(definition, classType)) {
@@ -3756,22 +3758,36 @@ export class ClassDefinitionType extends Type {
     super()
   }
 
-  resolveInstanceType(classInstanceType: ClassInstanceType, defaultValueNames: Set<string>) {
+  resolveInstanceType(
+    classInstanceType: ClassInstanceType,
+    defaultValueNames: Set<string>,
+    constructorArgTypes: Argument[] | undefined,
+  ) {
     this.classInstanceType = classInstanceType
-    const formulaArgs = Array.from(classInstanceType.allProps).map(([name, type]) =>
-      namedArgument({
-        name,
-        type,
-        isRequired: !defaultValueNames.has(name),
-      }),
-    )
 
-    this.konstructor = new NamedFormulaType(
-      this.name,
-      classInstanceType,
-      formulaArgs,
-      this.genericTypes,
-    )
+    if (constructorArgTypes) {
+      this.konstructor = new NamedFormulaType(
+        this.name,
+        classInstanceType,
+        constructorArgTypes,
+        this.genericTypes,
+      )
+    } else {
+      const formulaArgs = Array.from(classInstanceType.allProps).map(([name, type]) =>
+        namedArgument({
+          name,
+          type,
+          isRequired: !defaultValueNames.has(name),
+        }),
+      )
+
+      this.konstructor = new NamedFormulaType(
+        this.name,
+        classInstanceType,
+        formulaArgs,
+        this.genericTypes,
+      )
+    }
   }
 
   addStaticProp(name: string, type: Type) {
