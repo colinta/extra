@@ -1,7 +1,13 @@
 import * as Expressions from '@/expressions'
 import {type StringTemplatePart, binaryOperatorNamed, LiteralString} from '@/expressions'
 
-import {ATOM_START, MACRO_START, isArgumentStartChar, isIdentifierStartChar, STATE_START} from '../grammars'
+import {
+  ATOM_START,
+  MACRO_START,
+  isArgumentStartChar,
+  isIdentifierStartChar,
+  STATE_START,
+} from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
@@ -206,9 +212,7 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
       appendNextLiteral()
       scanner.expectString('$')
       scanner.whereAmI('scanString: `' + stringBuffer + '`')
-      const ref = scanner.is(MACRO_START)
-        ? scanMacro(scanner)
-        : scanValidName(scanner)
+      const ref = scanner.is(MACRO_START) ? scanMacro(scanner) : scanValidName(scanner)
       stringTemplateParts.push({type: 'interpolate', expr: ref})
       scanner.whereAmI('ref: `' + ref.toCode() + '`')
       bufferRange0 = scanner.charIndex
@@ -373,9 +377,7 @@ export function scanString(scanner: Scanner, enableInterpolation: boolean, parse
   })
 
   // filter empty literals from parts (e.g. trailing indentation after removeIndent)
-  const parts = stringTemplateParts.filter(
-    p => p.type !== 'literal' || p.value !== '',
-  )
+  const parts = stringTemplateParts.filter(p => p.type !== 'literal' || p.value !== '')
 
   if (args.length === 1 && args[0] instanceof LiteralString && parts.length <= 1) {
     return args[0]

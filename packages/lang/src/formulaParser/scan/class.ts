@@ -94,7 +94,12 @@ export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.C
   )
 }
 
-export function scanClassBody(scanner: Scanner, parseNext: ParseNext, type: 'class' | 'view', macroOwnerName?: string) {
+export function scanClassBody(
+  scanner: Scanner,
+  parseNext: ParseNext,
+  type: 'class' | 'view',
+  macroOwnerName?: string,
+) {
   scanner.expectString(BLOCK_OPEN)
   scanner.scanAllWhitespace()
 
