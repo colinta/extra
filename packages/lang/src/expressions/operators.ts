@@ -60,6 +60,7 @@ import {
   type Expression,
   type Range,
 } from './expressions'
+import {difference} from '@/util'
 
 export const LOWEST_PRECEDENCE = -1
 export const HIGHEST_PRECEDENCE = 100
@@ -566,6 +567,10 @@ type NodeConstructor = {
 
 class PipeOperator extends BinaryOperator {
   symbol = '|>'
+
+  dependencies(parentScopes: Scope[]) {
+    return difference(super.dependencies(parentScopes), new Set(['#pipe']))
+  }
 
   rhsCompile(runtime: TypeRuntime, lhs: Types.Type, _lhsExpr: Expression, rhsExpr: Expression) {
     let nextRuntime = new MutableTypeRuntime(runtime)

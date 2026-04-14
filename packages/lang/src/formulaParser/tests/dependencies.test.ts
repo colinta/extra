@@ -13,6 +13,8 @@ describe('dependencies', () => {
       c(['#{ test: @user }', ['@user']]),
       c(['#[ @user ]', ['@user']]),
       c(['foo(user)', ['foo', 'user']]),
+      c(['a |> upper', ['a', 'upper']]),
+      c(['a |> upper(#pipe)', ['a', 'upper']]),
       c(['let foo = user in user', ['user']]),
       c(['fn foo(test: Int = a) => test', ['a']]),
     ).run(([formula, expectedDeps], {only, skip}) =>

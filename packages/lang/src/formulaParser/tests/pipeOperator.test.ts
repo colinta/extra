@@ -35,29 +35,76 @@ describe('|> / ?|>', () => {
   })
 
   describe('getType / eval', () => {
-    cases<[string, ['a', number | null], ['b', number], Types.Type, Values.Value]>(
-      c([`a |> #pipe`, ['a', null], ['b', 0], Types.optional(Types.int()), Values.nullValue()]),
-      c([`a |> #pipe`, ['a', 1], ['b', 0], Types.optional(Types.int()), Values.int(1)]),
-      c([`b |> #pipe`, ['a', null], ['b', 10], Types.int(), Values.int(10)]),
-      c([`b |> #pipe + 1`, ['a', null], ['b', 10], Types.int(), Values.int(11)]),
+    cases<[string, Types.Type, Values.Value]>(
       c([
-        `a ?|> #pipe + 1`,
-        ['a', null],
-        ['b', 0],
+        `\
+let
+  a: Int | null = null
+in
+  a |> #pipe`,
         Types.optional(Types.int()),
         Values.nullValue(),
       ]),
-      c([`a ?|> #pipe + 1`, ['a', 1], ['b', 0], Types.optional(Types.int()), Values.int(2)]),
-    ).run(([formula, [_a, valueA], [_b, valueB], expectedType, expectedValue], {only, skip}) =>
+      c([
+        `\
+let
+  a: null | 1 = 1
+in
+  a |> #pipe`,
+        Types.optional(Types.literal(1)),
+        Values.int(1),
+      ]),
+      c([
+        `\
+let
+  a: Int = 10
+in
+  a |> #pipe`,
+        Types.int(),
+        Values.int(10),
+      ]),
+      c([
+        `\
+let
+  a: Int = 10
+in
+  a |> #pipe + 1`,
+        Types.int(),
+        Values.int(11),
+      ]),
+      c([
+        `\
+let
+  a: null | Int = null
+in
+  a ?|> #pipe + 1`,
+        Types.optional(Types.int()),
+        Values.nullValue(),
+      ]),
+      c([
+        `\
+let
+  a: null | 1 = 1
+in
+  a ?|> #pipe + 1`,
+        Types.optional(Types.literal(2)),
+        Values.int(2),
+      ]),
+      c([
+        `\
+let
+  value = 'a'
+  fn upper(input: String) => input .. '!'
+in
+  value |> upper(input: #pipe)
+`,
+        Types.string({min: 1}),
+        Values.string('a!'),
+      ]),
+    ).run(([formula, expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
-        `'${formula}' should have type '${expectedType}' and value '${expectedValue}' (a = '${valueA}', b = ${valueB})`,
+        `'${formula}' should have type '${expectedType}' and value '${expectedValue}'`,
         () => {
-          runtimeTypes['a'] = [
-            Types.optional(Types.int()),
-            valueA !== null ? Values.int(valueA) : Values.nullValue(),
-          ]
-          runtimeTypes['b'] = [Types.int(), Values.int(valueB)]
-
           const expression = parse(formula).get()
           const type = expression.getType(typeRuntime).get()
           const value = expression.eval(valueRuntime).get()
