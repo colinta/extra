@@ -15,18 +15,27 @@ export abstract class Node {
     readonly source: Source,
     readonly type: Type,
   ) {}
-
-  propAccessNode(name: string): Node | undefined {
-    return undefined
-  }
-
-  arrayAccessNode(name: string): Node | undefined {
-    return undefined
-  }
 }
 
 /**
- * A node that represents a type expression.
+ * A node that represents a type expression. Type expressions have different
+ * behavior at compile-time and run-time. Here's an example with the 'Int' type:
+
+ *     let
+ *       a: Int = 0
+ *     in
+ *       ...
+ *
+ * At compile time, `Int` (IntType) tells the compiler how to declare (and
+ * verify) the reference `a`.
+ *
+ *     let
+ *       a = Int(...)
+ *     in
+ *       ...
+ *
+ * At runtime, `Int` is a function that accepts a number or string, and returns
+ * an optional `Int` (`Int("0") -> 0, Int("zero") -> null`).
  */
 abstract class TypeNode extends Node {}
 

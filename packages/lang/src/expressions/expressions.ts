@@ -3428,11 +3428,8 @@ export class BooleanTypeIdentifier extends TypeIdentifier {
   }
 
   getType() {
-    return err(new RuntimeError(this, 'BooleanTypeExpression does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'BooleanTypeExpression cannot be evaluated'))
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, 'BooleanTypeIdentifier does not have a type'))
   }
 
   compileAsTypeExpression() {
@@ -3440,8 +3437,13 @@ export class BooleanTypeIdentifier extends TypeIdentifier {
   }
 
   compile() {
-    // this should return the type constructor formula
+    // TODO: this should return a type constructor formula
     return ok(new Nodes.BooleanType(toSource(this)))
+  }
+
+  eval(): GetValueResult {
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, 'BooleanTypeIdentifier cannot be evaluated'))
   }
 }
 
@@ -3473,11 +3475,8 @@ export class FloatTypeIdentifier extends TypeIdentifier {
   }
 
   getType() {
-    return err(new RuntimeError(this, 'FloatTypeExpression does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'FloatTypeExpression cannot be evaluated'))
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, 'FloatTypeIdentifier does not have a type'))
   }
 
   compileAsTypeExpression() {
@@ -3485,8 +3484,13 @@ export class FloatTypeIdentifier extends TypeIdentifier {
   }
 
   compile() {
-    // this should return the type constructor formula
+    // TODO: this should return a type constructor formula
     return ok(new Nodes.FloatType(toSource(this), this.safeTypeAssertion()))
+  }
+
+  eval(): GetValueResult {
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, 'FloatTypeIdentifier cannot be evaluated'))
   }
 }
 
@@ -3518,11 +3522,8 @@ export class IntTypeIdentifier extends TypeIdentifier {
   }
 
   getType() {
-    return err(new RuntimeError(this, 'IntTypeExpression does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'IntTypeExpression cannot be evaluated'))
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, 'IntTypeIdentifier does not have a type'))
   }
 
   compileAsTypeExpression() {
@@ -3530,8 +3531,13 @@ export class IntTypeIdentifier extends TypeIdentifier {
   }
 
   compile() {
-    // this should return the type constructor formula
+    // TODO: this should return a type constructor formula
     return ok(new Nodes.IntType(toSource(this), this.safeTypeAssertion()))
+  }
+
+  eval(): GetValueResult {
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, 'IntTypeIdentifier cannot be evaluated'))
   }
 }
 
@@ -3563,11 +3569,8 @@ export class StringTypeIdentifier extends TypeIdentifier {
   }
 
   getType() {
-    return err(new RuntimeError(this, 'StringTypeExpression does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'StringTypeExpression cannot be evaluated'))
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, 'StringTypeIdentifier does not have a type'))
   }
 
   compileAsTypeExpression() {
@@ -3575,8 +3578,13 @@ export class StringTypeIdentifier extends TypeIdentifier {
   }
 
   compile() {
-    // this should return the type constructor formula
+    // TODO: this should return a type constructor formula
     return ok(new Nodes.StringType(toSource(this), this.safeTypeAssertion()))
+  }
+
+  eval(): GetValueResult {
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, 'StringTypeIdentifier cannot be evaluated'))
   }
 }
 
@@ -3609,6 +3617,10 @@ export class PipePlaceholderExpression extends Expression {
     )
   }
 
+  compile(runtime: TypeRuntime) {
+    return this.getType(runtime).map(type => new Nodes.Pipe(toSource(this), type))
+  }
+
   eval(runtime: ValueRuntime) {
     const pipeType = runtime.getPipeValue()
     if (pipeType) {
@@ -3621,10 +3633,6 @@ export class PipePlaceholderExpression extends Expression {
         `'${PipePlaceholderExpression.Symbol}' accessed outside of pipe ('|>') operation`,
       ),
     )
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.getType(runtime).map(type => new Nodes.Pipe(toSource(this), type))
   }
 }
 
