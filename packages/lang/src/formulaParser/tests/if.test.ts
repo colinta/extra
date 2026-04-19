@@ -31,6 +31,15 @@ else
   [3]`,
       ]),
       c([
+        "if a-letter == 'a' then {1} else {3}",
+        "(if (== a-letter 'a') (then: {1}) (else: {3}))",
+        `\
+if a-letter == 'a'
+  {1}
+else
+  {3}`,
+      ]),
+      c([
         'if not a or b then 1 else 3',
         '(if (or (not a) b) (then: 1) (else: 3))',
         `\
@@ -122,6 +131,15 @@ else if b
   3 + 4
 else
   '4' .. '5'`,
+      ]),
+      c([
+        "if a-letter == 'a' {1} else {3}",
+        "(if (== a-letter 'a') (then: {1}) (else: {3}))",
+        `\
+if a-letter == 'a'
+  {1}
+else
+  {3}`,
       ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse '${formula}'`, () => {

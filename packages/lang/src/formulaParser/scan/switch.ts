@@ -1,5 +1,12 @@
 import * as Expressions from '../../expressions'
-import {CASE_KEYWORD, ELSE_KEYWORD, SWITCH_KEYWORD} from '../grammars'
+import {
+  BLOCK_CLOSE,
+  BLOCK_OPEN,
+  CASE_KEYWORD,
+  DEFAULT_KEYWORD,
+  ELSE_KEYWORD,
+  SWITCH_KEYWORD,
+} from '../grammars'
 import {type Scanner} from '../scanner'
 import {type ParseNext} from '../types'
 import {scanCase} from './match'
@@ -27,6 +34,9 @@ export function scanSwitch(scanner: Scanner, parseNext: ParseNext): Expressions.
   scanner.expectWord(SWITCH_KEYWORD)
 
   const subjectExpr = scanSubject(scanner, parseNext)
+
+  const didUseBrackets = scanner.scanIfString(BLOCK_OPEN)
+
   const caseExprs: Expressions.CaseExpression[] = []
   for (;;) {
     if (!scanner.lookAhead(CASE_KEYWORD)) {
@@ -37,8 +47,13 @@ export function scanSwitch(scanner: Scanner, parseNext: ParseNext): Expressions.
   }
 
   let elseExpr: Expressions.Expression | undefined
-  if (scanner.scanAhead(ELSE_KEYWORD)) {
+  if (scanner.scanAhead(ELSE_KEYWORD) || scanner.scanAhead(DEFAULT_KEYWORD)) {
     elseExpr = scanElse(scanner, parseNext)
+  }
+
+  if (didUseBrackets) {
+    scanner.scanAllWhitespace()
+    scanner.expectString(BLOCK_CLOSE)
   }
 
   return new Expressions.SwitchExpression(

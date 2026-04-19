@@ -6,7 +6,9 @@ import * as Values from '@/values'
 import {type Comment, type GetTypeResult} from '@/formulaParser/types'
 import {type TypeRuntime, type ValueRuntime} from '@/runtime'
 
-import {Expression, RuntimeError, toSource, type Range} from './expressions'
+import {Expression, toSource} from './expressions'
+import {type Range} from './types'
+import {RuntimeError} from './errors'
 
 export class MacroExpression extends Expression {
   constructor(

@@ -18,55 +18,20 @@ import {
 } from '@/formulaParser/types'
 import {
   Expression,
-  type Range,
   type GenericExpression,
   type NamedFormulaExpression,
   type Reference,
-  RuntimeError,
   dependencySort,
   formatComments,
   wrapValues,
   getChildType,
 } from './expressions'
+import {type Range} from './types'
+import {RuntimeError} from './errors'
 import {type ViewFormulaDefinition} from './view-expressions'
 import {type ClassDefinition} from './class-expressions'
 import {type NamedEnumDefinition} from './enum-expressions'
 import {EXPORT_KEYWORD, VERSION_START} from '@/formulaParser/grammars'
-
-export class ImportSpecific extends Expression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly name: Reference,
-    readonly alias: Reference | undefined,
-  ) {
-    super(range, precedingComments)
-
-    if (this.alias && this.alias.name === this.name.name) {
-      this.alias = undefined
-    }
-  }
-
-  toLisp() {
-    return this.toCode()
-  }
-
-  toCode() {
-    if (this.alias) {
-      return `${this.name.name} as ${this.alias.name}`
-    }
-
-    return this.name.name
-  }
-
-  getType(): GetTypeResult {
-    return err(new RuntimeError(this, 'ImportSpecific does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(new RuntimeError(this, 'ImportSpecific cannot be evaluated'))
-  }
-}
 
 /**
  * Declares the default export type. The compiler can use this to ensure that
@@ -284,6 +249,41 @@ export class ImportStatement extends Expression {
   }
 }
 
+export class ImportSpecific extends Expression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly name: Reference,
+    readonly alias: Reference | undefined,
+  ) {
+    super(range, precedingComments)
+
+    if (this.alias && this.alias.name === this.name.name) {
+      this.alias = undefined
+    }
+  }
+
+  toLisp() {
+    return this.toCode()
+  }
+
+  toCode() {
+    if (this.alias) {
+      return `${this.name.name} as ${this.alias.name}`
+    }
+
+    return this.name.name
+  }
+
+  getType(): GetTypeResult {
+    return err(new RuntimeError(this, 'ImportSpecific does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(new RuntimeError(this, 'ImportSpecific cannot be evaluated'))
+  }
+}
+
 /**
  * In the 'types' section of a module:
  *     [public] typeName[<generics>] = type
@@ -352,6 +352,17 @@ export class TypeDefinition extends Expression {
     return code
   }
 
+  /**
+   * It might seem like a type definition has a type - either the type
+   * expression or maybe the type constructor - *something*. But consider:
+   *
+   *     let
+   *       a = (type Foo = Int)
+   *     in
+   *       a -- what is the type of 'a'?
+   *
+   * I can't think of a meaningful type here.
+   */
   getType(runtime: TypeRuntime): GetTypeResult {
     return err(new RuntimeError(this, 'TypeDefinition does not have a type'))
   }

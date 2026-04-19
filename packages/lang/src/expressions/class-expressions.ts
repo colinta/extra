@@ -25,8 +25,6 @@ import {
   Reference,
   type GenericExpression,
   FormulaArgumentDefinition,
-  type Range,
-  RuntimeError,
   InstanceFormulaExpression,
   NamedFormulaExpression,
   argumentValues,
@@ -38,9 +36,9 @@ import {
   getChildType,
   getChildAsTypeExpression,
   wrapValues,
-  FunctionInvocationRuntimeError,
-  ReferenceRuntimeError,
 } from './expressions'
+import {type Range} from './types'
+import {RuntimeError, ReferenceRuntimeError, FunctionInvocationRuntimeError} from './errors'
 import {RenderFormulaExpression} from './view-expressions'
 
 function formulaArgumentType(
@@ -222,7 +220,7 @@ export class ClassStatePropertyExpression extends ClassPropertyExpression {
 
   compile(runtime: TypeRuntime): GetRuntimeResult<Nodes.ClassStateProperty> {
     return mapOptional(this.defaultValue?.compile(runtime)).map(defaultNode =>
-      mapOptional(this.argType?.compile(runtime)).map(argNode => {
+      mapOptional(this.argType?.compileAsTypeExpression(runtime)).map(argNode => {
         const argType = argNode?.type ?? defaultNode!.type.defaultInferredClassProp()
         if (defaultNode && !Types.canBeAssignedTo(defaultNode.type, argType)) {
           return err(

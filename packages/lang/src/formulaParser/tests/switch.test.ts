@@ -76,6 +76,59 @@ else
     )
   })
 
+  describe('parse optional formats', () => {
+    cases<[string, string] | [string, string, string]>(
+      c([
+        `switch a-letter case _ then  ''`,
+        "(switch a-letter (case _ : ''))",
+        `\
+switch a-letter
+case _
+  ''`,
+      ]),
+      c([
+        `switch a-letter case _:  ''`,
+        "(switch a-letter (case _ : ''))",
+        `\
+switch a-letter
+case _
+  ''`,
+      ]),
+      c([
+        `switch (a-letter) case _  ''`,
+        "(switch a-letter (case _ : ''))",
+        `\
+switch a-letter
+case _
+  ''`,
+      ]),
+      c([
+        `switch a-letter { case _  '' }`,
+        "(switch a-letter (case _ : ''))",
+        `\
+switch a-letter
+case _
+  ''`,
+      ]),
+      c([
+        `switch (a-letter) { case _  '' }`,
+        "(switch a-letter (case _ : ''))",
+        `\
+switch a-letter
+case _
+  ''`,
+      ]),
+    ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`should parse '${formula}'`, () => {
+        expectedCode ??= formula
+        let expression: Expression = parse(formula).get()
+
+        expect(expression!.toCode()).toEqual(expectedCode)
+        expect(expression!.toLisp()).toEqual(expectedLisp)
+      }),
+    )
+  })
+
   describe('getType / eval', () => {
     cases<[string, [string, Types.Type, Values.Value][], Types.Type, Values.Value]>(
       c([

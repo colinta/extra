@@ -292,6 +292,10 @@ export function lazy(returnType: Type) {
   return new FormulaType(returnType, [], [])
 }
 
+export function combined(_types: Type[]): Type {
+  throw new Error('Not implemented yet')
+}
+
 export function namedFormula(
   name: string,
   args: Argument[],

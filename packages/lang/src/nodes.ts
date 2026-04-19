@@ -17,88 +17,9 @@ export abstract class Node {
   ) {}
 }
 
-/**
- * A node that represents a type expression. Type expressions have different
- * behavior at compile-time and run-time. Here's an example with the 'Int' type:
-
- *     let
- *       a: Int = 0
- *     in
- *       ...
- *
- * At compile time, `Int` (IntType) tells the compiler how to declare (and
- * verify) the reference `a`.
- *
- *     let
- *       a = Int(...)
- *     in
- *       ...
- *
- * At runtime, `Int` is a function that accepts a number or string, and returns
- * an optional `Int` (`Int("0") -> 0, Int("zero") -> null`).
- */
-abstract class TypeNode extends Node {}
-
-export class Namespace extends TypeNode {
-  constructor(
-    readonly source: Source,
-    readonly type: Types.Type,
-    readonly lhs: Namespace | string,
-    readonly rhs: string,
-  ) {
-    super(source, type)
-  }
-}
-
-export class BooleanType extends TypeNode {
-  constructor(readonly source: Source) {
-    super(source, Types.BooleanType)
-  }
-}
-
-export class FloatType extends TypeNode {
-  constructor(
-    readonly source: Source,
-    readonly type: Types.Type,
-  ) {
-    super(source, type)
-  }
-}
-
-export class IntType extends TypeNode {
-  constructor(
-    readonly source: Source,
-    readonly type: Types.Type,
-  ) {
-    super(source, type)
-  }
-}
-
-export class StringType extends TypeNode {
-  constructor(
-    readonly source: Source,
-    readonly type: Types.Type,
-  ) {
-    super(source, type)
-  }
-}
-
-export class OneOfType extends TypeNode {}
-export class CombineType extends TypeNode {}
-export class ObjectType extends TypeNode {}
-export class ArrayType extends TypeNode {}
-export class DictType extends TypeNode {}
-export class SetType extends TypeNode {}
-export class TypeConstructor extends TypeNode {}
-export class NamedType extends TypeNode {
-  constructor(
-    readonly source: Source,
-    readonly type: Types.Type,
-    readonly name: string,
-  ) {
-    super(source, type)
-  }
-}
+//|
+//|  Literal Nodes
+//|
 
 export class Literal extends Node {}
 
@@ -164,42 +85,78 @@ export class LiteralString extends Literal {
   }
 }
 
-export class LineMacro extends Literal {
-  constructor(
-    readonly source: Source,
-    readonly value: number,
-  ) {
-    super(source, Types.literal(value))
+export class LiteralAtom extends LiteralString {}
+
+//|
+//|  Type Identifier Nodes
+//|
+
+abstract class TypeNode extends Node {}
+
+export class NullType extends TypeNode {
+  constructor(readonly source: Source) {
+    super(source, Types.NullType)
   }
 }
 
-export class ColumnMacro extends Literal {
+// as long as TypeNode doesn't provide any value, it doesn't make sense to
+// re-define these to extend TypeNode. Literal nodes already hold the type
+// information we need.
+export class LiteralTrueType extends LiteralTrue {}
+export class LiteralFalseType extends LiteralFalse {}
+export class LiteralFloatType extends LiteralFloat {}
+export class LiteralIntType extends LiteralInt {}
+export class LiteralRegexType extends LiteralRegex {}
+export class LiteralStringType extends LiteralString {}
+export class LiteralAtomType extends LiteralAtom {}
+
+export class Namespace extends TypeNode {
   constructor(
     readonly source: Source,
-    readonly value: number,
+    readonly type: Types.Type,
+    readonly lhs: Namespace | string,
+    readonly rhs: string,
   ) {
-    super(source, Types.literal(value))
+    super(source, type)
   }
 }
 
-export class FnNameMacro extends Literal {
-  constructor(
-    readonly source: Source,
-    readonly value: string,
-  ) {
-    super(source, Types.literal(value))
+export class BooleanType extends TypeNode {
+  constructor(readonly source: Source) {
+    super(source, Types.BooleanType)
   }
 }
 
-export class StringTemplate extends Node {
+export class FloatType extends TypeNode {
   constructor(
     readonly source: Source,
-    readonly args: Node[],
     readonly type: Types.Type,
   ) {
     super(source, type)
   }
 }
+
+export class IntType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
+export class StringType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
+//|
+//|  Reference Nodes
+//|
 
 export class Reference extends Node {
   constructor(
@@ -222,6 +179,51 @@ export class StateReference extends Reference {
 
   get stateName() {
     return STATE_START + this.name
+  }
+}
+
+export class This extends Reference {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type, 'this')
+  }
+}
+
+export class Pipe extends Reference {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type, '#pipe')
+  }
+}
+
+export class OneOfType extends TypeNode {}
+export class CombinedType extends TypeNode {}
+export class ObjectType extends TypeNode {}
+export class ArrayType extends TypeNode {}
+export class DictType extends TypeNode {}
+export class SetType extends TypeNode {}
+export class TypeConstructor extends TypeNode {}
+export class NamedType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+    readonly name: string,
+  ) {
+    super(source, type)
+  }
+}
+
+export class StringTemplate extends Node {
+  constructor(
+    readonly source: Source,
+    readonly args: Node[],
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
   }
 }
 
@@ -259,24 +261,6 @@ export class PropertyAccessIndex extends Node {
 
   get stateName() {
     return STATE_START + this.name
-  }
-}
-
-export class This extends Reference {
-  constructor(
-    readonly source: Source,
-    readonly type: Types.Type,
-  ) {
-    super(source, type, 'this')
-  }
-}
-
-export class Pipe extends Reference {
-  constructor(
-    readonly source: Source,
-    readonly type: Types.Type,
-  ) {
-    super(source, type, '#pipe')
   }
 }
 
@@ -1160,3 +1144,40 @@ export class NullCoalescingPropertyAccessOperator extends Operator {}
 export class ArrayAccessOperator extends Operator {}
 export class NullCoalescingArrayAccessOperator extends Operator {}
 export class FunctionInvocationOperator extends Operator {}
+
+//|
+//|  Macros
+//|
+
+export class LineMacro extends Literal {
+  readonly name = '#line'
+
+  constructor(
+    readonly source: Source,
+    readonly value: number,
+  ) {
+    super(source, Types.literal(value))
+  }
+}
+
+export class ColumnMacro extends Literal {
+  readonly name = '#column'
+
+  constructor(
+    readonly source: Source,
+    readonly value: number,
+  ) {
+    super(source, Types.literal(value))
+  }
+}
+
+export class FnNameMacro extends Literal {
+  readonly name = '#fn'
+
+  constructor(
+    readonly source: Source,
+    readonly value: string,
+  ) {
+    super(source, Types.literal(value))
+  }
+}

@@ -10,6 +10,11 @@ import {type ParseNext} from '../types'
  *       val1
  *     else
  *       val2
+ * Optional syntax - { is ignored in this case
+ *     if cond
+ *       val1
+ *     else
+ *       val2
  */
 export function scanIf(scanner: Scanner, parseNext: ParseNext): Expressions.IfExpression {
   const range0 = scanner.charIndex
@@ -19,6 +24,7 @@ export function scanIf(scanner: Scanner, parseNext: ParseNext): Expressions.IfEx
   scanner.expectWord(IF_KEYWORD)
 
   const condExpr = scanCondition(scanner, parseNext)
+  scanner.whereAmI('did scan condition')
 
   // optional 'then', which indicates preference for keeping code on one line
   const preferCode = scanner.scanIfWord(THEN_KEYWORD) ? 'oneline' : 'multiline'

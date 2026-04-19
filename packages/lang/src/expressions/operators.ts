@@ -44,6 +44,8 @@ import {
   STRING_CONCAT_OPERATOR,
   UNARY_OP_NAMES,
   OR_OPERATOR,
+  LOWEST_PRECEDENCE,
+  HIGHEST_PRECEDENCE,
 } from '@/formulaParser/grammars'
 import * as Expressions from './expressions'
 import {EnumLookupExpression} from './enum-expressions'
@@ -56,14 +58,11 @@ import {
   getChildNode,
   toSource,
   Operation,
-  RuntimeError,
   type Expression,
-  type Range,
 } from './expressions'
+import {type Range} from './types'
+import {RuntimeError, PropertyAccessRuntimeError, FunctionInvocationRuntimeError} from './errors'
 import {difference} from '@/util'
-
-export const LOWEST_PRECEDENCE = -1
-export const HIGHEST_PRECEDENCE = 100
 
 const PRECEDENCE = {
   BINARY: {
@@ -3125,7 +3124,7 @@ class PropertyAccessOperator extends PropertyChainOperator {
       if (!rhType) {
         return decorateError(
           this,
-          new Expressions.PropertyAccessRuntimeError(
+          new PropertyAccessRuntimeError(
             lhsExpr,
             lhs,
             rhsExpr,
@@ -3704,7 +3703,7 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
 
     if (!(lhFormulaType instanceof Types.FormulaType)) {
       return err(
-        new Expressions.FunctionInvocationRuntimeError(
+        new FunctionInvocationRuntimeError(
           lhFormulaExpression,
           lhFormulaType,
           rhArgsExpression,

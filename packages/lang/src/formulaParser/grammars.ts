@@ -15,6 +15,7 @@ export const ELSE_KEYWORD = 'else'
 export const GUARD_KEYWORD = 'guard'
 export const SWITCH_KEYWORD = 'switch'
 export const CASE_KEYWORD = 'case'
+export const CASE_OPTIONAL_CLOSE = ':'
 export const LET_KEYWORD = 'let'
 export const LET_IN_KEYWORD = 'in'
 export const IGNORE_TOKEN = '_'
@@ -23,6 +24,7 @@ export const OVERRIDE_KEYWORD = 'override'
 export const VIEW_KEYWORD = 'view'
 export const RENDER_KEYWORD = 'render'
 export const STATIC_KEYWORD = 'static'
+export const DEFAULT_KEYWORD = 'default'
 export const TYPE_KEYWORD = 'type'
 export const TYPE_START = ':'
 export const DICT_SEPARATOR = ':'
@@ -83,6 +85,8 @@ export const NULL_COALESCE_ARRAY_ACCESS_OPERATOR = '?.[]'
 export const NULL_COALESCE_ARRAY_OPEN = `${NULL_COALESCING_PROPERTY_ACCESS_OPERATOR}[`
 export const OR_OPERATOR = 'or'
 
+export const LOWEST_PRECEDENCE = -1
+export const HIGHEST_PRECEDENCE = 100
 export const BINARY_OP_NAMES = ['and', OR_OPERATOR, 'has', '!has', 'is', '!is', 'matches'] as const
 export const BINARY_OP_ALIASES = {
   '&&': 'and',

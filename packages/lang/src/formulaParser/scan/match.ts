@@ -21,6 +21,7 @@ import {
   OBJECT_OPEN,
   OBJECT_CLOSE,
   SPREAD_OPERATOR,
+  CASE_OPTIONAL_CLOSE,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -616,7 +617,12 @@ export function scanCase(scanner: Scanner, parseNext: ParseNext): Expressions.Ca
       scanner.whereAmI('scanCase or')
       continue
     } else {
+      // optional closing expressions (removed by code formatter)
+      //     case a or b then
+      //     case a or b:
       if (scanner.scanIfWord(THEN_KEYWORD)) {
+        scanner.scanAllWhitespace()
+      } else if (scanner.scanIfString(CASE_OPTIONAL_CLOSE)) {
         scanner.scanAllWhitespace()
       }
       break

@@ -4,7 +4,7 @@ import * as Values from '@/values'
 import * as Expressions from '@/expressions'
 import {Expression} from '@/expressions'
 
-import {LOWEST_PRECEDENCE, binaryOperatorNamed, isOperator, NegateOperator} from '@/expressions'
+import {binaryOperatorNamed, isOperator, NegateOperator} from '@/expressions'
 import {
   ParseError,
   type ParseNext,
@@ -69,6 +69,7 @@ import {
   SWITCH_KEYWORD,
   THEN_KEYWORD,
   ELSE_KEYWORD,
+  LOWEST_PRECEDENCE,
   isBinaryOperator,
   scanBinaryOperatorSymbol,
 } from './grammars'
@@ -489,6 +490,7 @@ function parseInternal(
         break
       }
 
+      scanner.whereAmI(`scanning ${expressionType}`)
       if (
         (scanner.is(',') && terminatesWithComma(expressionType)) ||
         (scanner.is(')') && terminatesWithRoundBracket(expressionType)) ||
@@ -593,6 +595,14 @@ function parseInternal(
         // operator `if`
         processOperator(binaryOperatorNamed(INCLUSION_OPERATOR, scanner.flushComments()))
       } else if (isBlockStartOperator(scanner)) {
+        // these are supported but ignored and removed by formatter
+        //     switch foo {
+        //     if foo { <- replaces 'then'
+        //     else { <- supported and *required* if the preceding if used '{' instead of then
+        if (expressionType === 'switch' || expressionType === 'if') {
+          break
+        }
+
         // scans for `foo() { arg0, name: arg1, other: arg2, arg3 }`
         processBlockArguments()
       } else {

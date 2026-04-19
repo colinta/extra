@@ -15,15 +15,14 @@ import {
   type Reference,
   type GenericExpression,
   type NamedFormulaExpression,
-  type Range,
-  RuntimeError,
   toSource,
   allDependencies,
   wrapValues,
-  ReferenceRuntimeError,
   InstanceFormulaExpression,
   allProvides,
 } from './expressions'
+import {type Range} from './types'
+import {RuntimeError, ReferenceRuntimeError} from './errors'
 import {type ClassStaticPropertyExpression, type StaticFormulaExpression} from './class-expressions'
 import {
   type Comment,

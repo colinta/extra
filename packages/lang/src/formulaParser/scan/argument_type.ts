@@ -556,6 +556,13 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
     return childArgType
   }
 
+  // matching a 'bare' Array/Dict/Set/Type is only allowed when parsing a type in the context of a
+  // match expression
+  //     switch thing-or-things
+  //       case Array as things
+  //         -- matches any array, regardless of item type or length
+  //       case thing
+  //         -- matches any non-array
   if (typeName instanceof Expressions.ContainerTypeIdentifier) {
     if (moduleOrArgument === 'match_type') {
       if (typeName.name === ARRAY) {

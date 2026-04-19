@@ -32,8 +32,6 @@ import * as Values from '@/values'
 import {ok, reduceAll, err, mapAll, mapMany, mapOptional} from '@extra-lang/result'
 import {
   Expression,
-  Range,
-  RuntimeError,
   toSource,
   Reference,
   getChildAsTypeExpression,
@@ -46,6 +44,8 @@ import {
   allNamesFrom,
   includeMissingNames,
 } from './expressions'
+import {Range} from './types'
+import {RuntimeError} from './errors'
 
 interface SwitchCompileInfo {
   subjectNode: Nodes.Node

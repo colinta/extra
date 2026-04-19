@@ -43,99 +43,10 @@ import {
   SPREAD_OPERATOR,
   KWARG_OPERATOR,
   ATOM_START,
+  HIGHEST_PRECEDENCE,
 } from '@/formulaParser/grammars'
-
-export type Range = [number, number]
-const HIGHEST_PRECEDENCE = 100
-
-/**
- * Modules consist of Statements (ProvidesStatement, RequiresStatement,
- * ImportStatement) and Definitions (TypeDefinition, ViewDefinition,
- * EnumDefinition, ClassDefinition, HelperDefinition).
- *
- * Definitions have a 'name' and 'isExport' property
- */
-export interface Definition {
-  get isExport(): boolean
-  get name(): string
-}
-
-/**
- * Generic catch-all error type that I need to improve if I want better error
- * messages.
- */
-export class RuntimeError extends Error {
-  parents: Expression[] = []
-
-  constructor(
-    readonly reference: Expression,
-    public message: string,
-    readonly children: RuntimeError[] = [],
-  ) {
-    super()
-    this.parents.push(reference)
-    this.message += `\n${reference.constructor.name}: ` + reference.toCode()
-  }
-
-  pushParent(parent: Expression) {
-    this.parents.push(parent)
-    this.message += `\n${parent.constructor.name}: ` + parent.toCode()
-  }
-
-  toString() {
-    return this.message
-  }
-}
-
-/**
- * Raised from ReferenceExpression and others when a variable refers to
- * something in scope that isn't available.
- */
-export class ReferenceRuntimeError extends RuntimeError {
-  constructor(
-    readonly reference: Reference,
-    message: string,
-    children: RuntimeError[] = [],
-  ) {
-    super(reference, message, children)
-  }
-}
-
-/**
- * Raised from PropertyAccessOperator and others when the property doesn't exist
- * on the receiver.
- */
-export class PropertyAccessRuntimeError extends RuntimeError {
-  constructor(
-    readonly lhsExpression: Expression,
-    readonly lhsType: Types.Type,
-    readonly rhsExpression: Expression,
-    readonly rhsName: string | number,
-    message: string,
-    children: RuntimeError[] = [],
-  ) {
-    super(rhsExpression, message, children)
-  }
-}
-
-/**
- * Raised from FunctionInvocationOperator when the rhs is not invocable.
- */
-export class FunctionInvocationRuntimeError extends RuntimeError {
-  constructor(
-    readonly lhsExpression: Expression,
-    readonly lhsType: Types.Type,
-    readonly rhsExpression: Expression,
-    message: string,
-    children: RuntimeError[] = [],
-  ) {
-    super(rhsExpression, message, children)
-  }
-}
-
-export function isRuntimeError(error: any): error is RuntimeError {
-  return error instanceof RuntimeError
-}
+import {ReferenceRuntimeError, RuntimeError} from './errors'
+import {Range} from './types'
 
 /**
  * Each Expression represents a section of code, like a number, reference, or
@@ -345,7 +256,10 @@ export abstract class Expression {
    */
   compileAsTypeExpression(_runtime: TypeRuntime): GetNodeResult {
     return err(
-      new RuntimeError(this, `Invalid for compileAsType: ${this} (${this.constructor.name})`),
+      new RuntimeError(
+        this,
+        `Invalid for compileAsTypeExpression: ${this} (${this.constructor.name})`,
+      ),
     )
   }
 
@@ -590,24 +504,12 @@ export class LiteralNull extends Literal {
     super(range, precedingComments, Values.NullValue)
   }
 
-  toLisp() {
-    return '`null`'
-  }
-
-  toCode() {
-    return 'null'
-  }
-
   relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
     return relationshipFormula.null()
   }
 
-  getType(): GetTypeResult {
-    return ok(Types.NullType)
-  }
-
-  eval(): GetValueResult {
-    return ok(Values.NullValue)
+  compileAsTypeExpression() {
+    return ok(new Nodes.NullType(toSource(this)))
   }
 
   compile(): GetNodeResult {
@@ -617,35 +519,17 @@ export class LiteralNull extends Literal {
 
 export class LiteralTrue extends Literal {
   readonly name = 'true'
-  readonly value: Values.BooleanValue
 
   constructor(range: Range, precedingComments: Comment[]) {
     super(range, precedingComments, Values.TrueValue)
-    this.value = Values.TrueValue
   }
 
   relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
     return relationshipFormula.boolean(true)
   }
 
-  toLisp() {
-    return '`true`'
-  }
-
-  toCode() {
-    return 'true'
-  }
-
-  getType(): GetTypeResult {
-    return ok(Types.literal(true))
-  }
-
-  eval(): GetValueResult {
-    return okBoolean(true)
-  }
-
   compileAsTypeExpression() {
-    return ok(new Nodes.LiteralTrue(toSource(this)))
+    return ok(new Nodes.LiteralTrueType(toSource(this)))
   }
 
   compile() {
@@ -655,35 +539,17 @@ export class LiteralTrue extends Literal {
 
 export class LiteralFalse extends Literal {
   readonly name = 'false'
-  readonly value: Values.BooleanValue
 
   constructor(range: Range, precedingComments: Comment[]) {
     super(range, precedingComments, Values.FalseValue)
-    this.value = Values.FalseValue
   }
 
   relationshipFormula(_runtime: TypeRuntime): RelationshipFormula | undefined {
     return relationshipFormula.boolean(false)
   }
 
-  toLisp() {
-    return '`false`'
-  }
-
-  toCode() {
-    return 'false'
-  }
-
-  getType(): GetTypeResult {
-    return ok(Types.literal(false))
-  }
-
-  eval(): GetValueResult {
-    return okBoolean(false)
-  }
-
   compileAsTypeExpression() {
-    return ok(new Nodes.LiteralFalse(toSource(this)))
+    return ok(new Nodes.LiteralFalseType(toSource(this)))
   }
 
   compile() {
@@ -702,7 +568,7 @@ export class LiteralFloat extends Literal {
   }
 
   compileAsTypeExpression() {
-    return ok(new Nodes.LiteralFloat(toSource(this), this.value.value))
+    return ok(new Nodes.LiteralFloatType(toSource(this), this.value.value))
   }
 
   compile() {
@@ -721,7 +587,7 @@ export class LiteralInt extends Literal {
   }
 
   compileAsTypeExpression() {
-    return ok(new Nodes.LiteralInt(toSource(this), this.value.value, this.value.base))
+    return ok(new Nodes.LiteralIntType(toSource(this), this.value.value, this.value.base))
   }
 
   compile() {
@@ -745,7 +611,7 @@ export class LiteralRegex extends Literal {
   }
 
   compileAsTypeExpression() {
-    return ok(new Nodes.LiteralRegex(toSource(this), this.pattern, this.flags, this.groups))
+    return ok(new Nodes.LiteralRegexType(toSource(this), this.pattern, this.flags, this.groups))
   }
 
   compile() {
@@ -802,7 +668,7 @@ export class LiteralString extends Literal {
   compileAsTypeExpression() {
     const string = this.value.value
     const chars = this.value.chars
-    return ok(new Nodes.LiteralString(toSource(this), string, chars))
+    return ok(new Nodes.LiteralStringType(toSource(this), string, chars))
   }
 
   compile() {
@@ -827,6 +693,18 @@ export class LiteralStringAtom extends LiteralString {
 
   toCode() {
     return ATOM_START + this.stringValue
+  }
+
+  compileAsTypeExpression() {
+    const string = this.value.value
+    const chars = this.value.chars
+    return ok(new Nodes.LiteralAtomType(toSource(this), string, chars))
+  }
+
+  compile() {
+    const string = this.value.value
+    const chars = this.value.chars
+    return ok(new Nodes.LiteralAtom(toSource(this), string, chars))
   }
 }
 
@@ -978,6 +856,167 @@ export class StringTemplate extends Operation {
     return mapAll(this.args.map(arg => arg.compile(runtime))).map(args =>
       ok(new Nodes.StringTemplate(toSource(this), args, this.getSafeType())),
     )
+  }
+}
+
+//|
+//|  Type Identifier Expressions
+//|
+
+/**
+ * The name of a built-in type:
+ *     Boolean, Float, Int, String
+ *
+ * Type expressions have different behavior at compile-time and run-time. Here's
+ * an example with the `IntType` node.
+
+ * At compile time, `Int` declares the type of reference `a`.
+ *
+ *     let
+ *       a: Int = 0
+ *     in
+ *       ...
+ *
+ * At runtime, `Int` is a function that accepts a number or string, and returns
+ * an optional `Int` (`Int("0") -> 0, Int("zero") -> null`).
+ *
+ *     let
+ *       a = Int(...)
+ *     in
+ *       ...
+ *
+ * This difference is encoded in the functions `compile`, which returns a
+ * constructor function, and `compileAsTypeExpression`, which returns a type.
+ */
+abstract class TypeIdentifier extends Expression {
+  toLisp() {
+    return '`' + this.toCode() + '`'
+  }
+
+  abstract safeTypeAssertion(): Types.Type
+
+  toCode() {
+    return this.safeTypeAssertion().toCode()
+  }
+
+  getAsTypeExpression(): GetTypeResult {
+    return ok(this.safeTypeAssertion())
+  }
+
+  getType() {
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, `${this.constructor.name} does not have a type`))
+  }
+
+  compile() {
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, `${this.constructor.name} cannot be compiled`))
+  }
+
+  eval(): GetValueResult {
+    // TODO: this should return a type constructor formula
+    return err(new RuntimeError(this, `${this.constructor.name} cannot be evaluated`))
+  }
+}
+
+export class BooleanTypeIdentifier extends TypeIdentifier {
+  readonly name = 'Boolean'
+
+  safeTypeAssertion(): Types.Type {
+    return Types.BooleanType
+  }
+
+  compileAsTypeExpression() {
+    return ok(new Nodes.BooleanType(toSource(this)))
+  }
+}
+
+export class FloatTypeIdentifier extends TypeIdentifier {
+  readonly name = 'Float'
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly narrowed: Narrowed.NarrowedFloat | undefined = undefined,
+  ) {
+    super(range, precedingComments)
+  }
+
+  safeTypeAssertion(): Types.Type {
+    if (this.narrowed === undefined) {
+      return Types.FloatType
+    } else {
+      return Types.FloatType.narrow(this.narrowed.min, this.narrowed.max)
+    }
+  }
+
+  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
+    return ok(this.safeTypeAssertion())
+  }
+
+  compileAsTypeExpression() {
+    return ok(new Nodes.FloatType(toSource(this), this.safeTypeAssertion()))
+  }
+}
+
+export class IntTypeIdentifier extends TypeIdentifier {
+  readonly name = 'Int'
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly narrowed: Narrowed.NarrowedInt | undefined = undefined,
+  ) {
+    super(range, precedingComments)
+  }
+
+  safeTypeAssertion(): Types.Type {
+    if (this.narrowed === undefined) {
+      return Types.IntType
+    } else {
+      return Types.IntType.narrow(this.narrowed.min, this.narrowed.max)
+    }
+  }
+
+  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
+    return ok(this.safeTypeAssertion())
+  }
+
+  compile() {
+    debugger
+    return super.compile()
+  }
+
+  compileAsTypeExpression() {
+    return ok(new Nodes.IntType(toSource(this), this.safeTypeAssertion()))
+  }
+}
+
+export class StringTypeIdentifier extends TypeIdentifier {
+  readonly name = 'String'
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly narrowed: Narrowed.NarrowedString | undefined = undefined,
+  ) {
+    super(range, precedingComments)
+  }
+
+  safeTypeAssertion(): Types.Type {
+    if (this.narrowed === undefined) {
+      return Types.StringType
+    } else {
+      return Types.StringType.narrowString(this.narrowed)
+    }
+  }
+
+  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
+    return ok(this.safeTypeAssertion())
+  }
+
+  compileAsTypeExpression() {
+    return ok(new Nodes.StringType(toSource(this), this.safeTypeAssertion()))
   }
 }
 
@@ -1139,6 +1178,1030 @@ export class StateReference extends Reference {
     return this.getType(runtime).map(
       type => new Nodes.StateReference(toSource(this), type, this.name),
     )
+  }
+}
+//|
+//|  Type Expressions
+//|
+
+/**
+ * This class doesn't provide much convenience, mostly it groups together a
+ * bunch of related classes:
+ *   NamespaceAccessExpression
+ *   OneOfTypeExpression
+ *   ExtendsExpression
+ *   ObjectTypeExpression
+ *   ArrayTypeExpression
+ *   DictTypeExpression
+ *   SetTypeExpression
+ *   TypeConstructorExpression
+ */
+export abstract class TypeExpression extends Expression {
+  isUnknown() {
+    return false
+  }
+
+  getType() {
+    return err(new RuntimeError(this, `${this.constructor.name} does not have a type`))
+  }
+
+  compile() {
+    return err(new RuntimeError(this, `${this.constructor.name} cannot be compiled`))
+  }
+
+  eval(runtime: ValueRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Values.TypeValue(type))
+  }
+}
+
+/**
+ * While scanning a type, we might come across a module or namespace "type access"
+ * operation, ie
+ *
+ *     fn foo(bar: Namespace.TypeName) => …
+ */
+export class NamespaceAccessExpression extends TypeExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly lhs: Identifier | NamespaceAccessExpression,
+    readonly rhs: Identifier,
+  ) {
+    super(range, precedingComments)
+  }
+
+  toLisp(): string {
+    return `(. ${this.lhs.toLisp()} ${this.rhs.toLisp()})`
+  }
+
+  toCode(): string {
+    return `${this.lhs.toCode()}.${this.rhs.toCode()}`
+  }
+
+  /**
+   * The parser restricts namespace lookups. Examples:
+   *     x: module.TypeName
+   *     y: module.submodule.TypeName
+   */
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    if (this.lhs instanceof NamespaceAccessExpression) {
+      return getChildAsTypeExpression(this, this.lhs, runtime).map(type => {
+        if (!(type instanceof Types.ObjectType)) {
+          return err(
+            new RuntimeError(
+              this,
+              `Expected type namespace in '${this.lhs}.${this.rhs}', found '${type}'`,
+            ),
+          )
+        }
+        const rhsType = type.literalAccessType(this.rhs.name)
+        if (!rhsType) {
+          return err(new RuntimeError(this, `No type named '${this.lhs}.${this.rhs.name}'`))
+        }
+        return ok(rhsType)
+      })
+    } else {
+      const namespace = this.lhs.name
+      if (!runtime.hasNamespace(namespace)) {
+        return err(new RuntimeError(this, `No type named '${namespace}'`))
+      }
+
+      const typeName = this.rhs.name
+      const lhsType = runtime.getNamespaceType(namespace, typeName)
+      if (!lhsType) {
+        return err(new RuntimeError(this, `No type named '${namespace}.${typeName}'`))
+      }
+
+      return ok(lhsType)
+    }
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime): GetRuntimeResult<Nodes.Namespace> {
+    return this.getAsTypeExpression(runtime).map(type => {
+      if (this.lhs instanceof NamespaceAccessExpression) {
+        return this.lhs
+          .compileAsTypeExpression(runtime)
+          .map(node => new Nodes.Namespace(toSource(this), type, node, this.rhs.name))
+      }
+      return ok(new Nodes.Namespace(toSource(this), type, this.lhs.name, this.rhs.name))
+    })
+  }
+}
+
+/**
+ * A | B
+ * A | { a: … }
+ */
+export class OneOfTypeExpression extends TypeExpression {
+  precedence = 6
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly of: Expression[],
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.of, parentScopes)
+  }
+
+  childExpressions() {
+    return this.of
+  }
+
+  formulaLocalAssigns(runtime: ValueRuntime): GetRuntimeResult<[string, Values.Value][]> {
+    return mapAll(this.of.map(expr => expr.formulaLocalAssigns(runtime))).map(assigns =>
+      assigns.flat(),
+    )
+  }
+
+  toLisp() {
+    return `(${this.of.map(ref => ref.toLisp()).join(' | ')})`
+  }
+
+  toCode(precedence = 0): string {
+    if (precedence > this.precedence) {
+      return `(${this.toCode(0)})`
+    }
+
+    if (this.of.length === 2 && this.of.some(type => type instanceof LiteralNull)) {
+      if (this.of[0] instanceof LiteralNull) {
+        return `${this.of[1].toCode(this.precedence)}?`
+      } else {
+        return `${this.of[0].toCode(this.precedence)}?`
+      }
+    }
+
+    return `${this.of.map(ref => ref.toCode(this.precedence)).join(' | ')}`
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return mapAll(
+      this.of.map(type => {
+        return getChildAsTypeExpression(this, type, runtime)
+      }),
+    ).map(types => Types.oneOf(types))
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime): GetNodeResult {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.OneOfType(toSource(this), type))
+  }
+}
+
+/**
+ * A & B
+ * A & { a: … }
+ */
+export class CombineTypeExpression extends TypeExpression {
+  precedence = 7
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly of: Expression[],
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.of, parentScopes)
+  }
+
+  childExpressions() {
+    return this.of
+  }
+
+  toLisp() {
+    return `(${this.of.map(ref => ref.toLisp()).join(' & ')})`
+  }
+
+  toCode(precedence = 0): string {
+    if (precedence > this.precedence) {
+      return `(${this.toCode(0)})`
+    }
+
+    return `${this.of.map(ref => ref.toCode(this.precedence)).join(' & ')}`
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return mapAll(this.of.map(type => getChildAsTypeExpression(this, type, runtime))).map(types =>
+      Types.combined(types),
+    )
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime): GetNodeResult {
+    return this.getAsTypeExpression(runtime).map(
+      type => new Nodes.CombinedType(toSource(this), type),
+    )
+  }
+}
+
+export class ObjectTypeExpression extends TypeExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly values: [Reference | undefined, Expression][],
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.childExpressions(), parentScopes)
+  }
+
+  childExpressions() {
+    return this.values.map(([_, value]) => value)
+  }
+
+  toLisp() {
+    const code = this.values
+      .map(([nameRef, it]) => {
+        if (nameRef === undefined) {
+          return it.toLisp()
+        }
+
+        return `(${nameRef}: ${it.toLisp()})`
+      })
+      .join(' ')
+    return `{${code}}`
+  }
+
+  toCode() {
+    const code = this.values.map(([nameRef, it]) => {
+      // if we want to support `{ fn foo() => Value }`
+      // (currently this is `{ foo: fn() => Value }`)
+      // if (it instanceof NamedFormulaTypeExpression) {
+      //   return it.toCode()
+      // }
+
+      if (nameRef === undefined) {
+        return it.toCode()
+      }
+
+      return `${nameRef}: ${it.toCode()}`
+    })
+
+    return wrapStrings('{', code, '}')
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return mapAll(
+      this.values.map(([nameRef, expr]) =>
+        expr
+          .getAsTypeExpression(runtime)
+          .map(type => [nameRef, type] as [Reference | undefined, Types.Type]),
+      ),
+    ).map(
+      types =>
+        new Types.ObjectType(
+          types.map(([nameRef, type]) =>
+            nameRef ? Types.namedProp(nameRef.name, type) : Types.positionalProp(type),
+          ),
+        ),
+    )
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.ObjectType(toSource(this), type))
+  }
+}
+
+export class AlwaysTypePlaceholder extends Expression {
+  constructor() {
+    super([0, 0], [])
+  }
+
+  toCode() {
+    return 'always'
+  }
+
+  toLisp() {
+    return 'always'
+  }
+
+  getAsTypeExpression(): GetTypeResult {
+    return ok(Types.AlwaysType)
+  }
+
+  getType() {
+    return err(new RuntimeError(this, 'AlwaysTypePlaceholder does not have a type'))
+  }
+
+  compile(): GetNodeResult {
+    return err(new RuntimeError(this, 'AlwaysTypePlaceholder cannot be compiled'))
+  }
+
+  eval() {
+    return err(new RuntimeError(this, 'AlwaysTypePlaceholder cannot be evaluated'))
+  }
+}
+
+/**
+ * Array(Int)
+ * [Int]
+ * [Int, length: >=6]
+ */
+export class ArrayTypeExpression extends TypeExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly of: Expression,
+    /**
+     * Holds min-number / max-number of items that are known to be in the array
+     */
+    readonly narrowed: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return this.of.dependencies(parentScopes)
+  }
+
+  childExpressions() {
+    return [this.of]
+  }
+
+  toLisp() {
+    return Types.ArrayType.desc(this.of.toLisp(), this.narrowed, true)
+  }
+
+  toCode() {
+    return Types.ArrayType.desc(this.of.toCode(0), this.narrowed)
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return this.of
+      .getAsTypeExpression(runtime)
+      .map(type => new Types.ArrayType(type, this.narrowed))
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.ArrayType(toSource(this), type))
+  }
+}
+
+/**
+ * Dict(Users)
+ * Dict(Users, keys: [:name])
+ * Dict(Users, length: >=5)
+ */
+export class DictTypeExpression extends TypeExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly of: Expression,
+    readonly narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
+    readonly narrowedNames: Set<string> = new Set(),
+  ) {
+    super(range, precedingComments)
+    this.narrowedLength = {
+      min: Math.max(narrowedLength.min, this.narrowedNames.size),
+      max: narrowedLength.max,
+    }
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return this.of.dependencies(parentScopes)
+  }
+
+  childExpressions() {
+    return [this.of]
+  }
+
+  toLisp() {
+    return Types.DictType.desc(this.of.toLisp(), this.narrowedNames, this.narrowedLength)
+  }
+
+  toCode() {
+    return Types.DictType.desc(this.of.toCode(0), this.narrowedNames, this.narrowedLength)
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return getChildAsTypeExpression(this, this.of, runtime).map(type => {
+      return new Types.DictType(type, this.narrowedLength, this.narrowedNames)
+    })
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.DictType(toSource(this), type))
+  }
+}
+
+/**
+ * Set(Users)
+ * Set(Users, length: >=5)
+ */
+export class SetTypeExpression extends TypeExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly of: Expression,
+    readonly narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return this.of.dependencies(parentScopes)
+  }
+
+  childExpressions() {
+    return [this.of]
+  }
+
+  toLisp() {
+    return Types.SetType.desc(this.of.toLisp(), this.narrowedLength)
+  }
+
+  toCode() {
+    return Types.SetType.desc(this.of.toCode(0), this.narrowedLength)
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return getChildAsTypeExpression(this, this.of, runtime).map(type => {
+      return new Types.SetType(type, this.narrowedLength)
+    })
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.SetType(toSource(this), type))
+  }
+}
+
+/**
+ * An example will make the most sense:
+ *
+ *     type TupleType<T, U> = { T, U }
+ *
+ *     fn intStringTuple(): TupleType(Int, String) => …
+ *                          ^^^^^^^^^^^^^^^^^^^^^^
+ *     fn anotherExample(): TupleType([Int], String?) => …
+ *                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ * A TypeConstructor is a function, but used in the context of creating a Type.
+ */
+export class TypeConstructorExpression extends TypeExpression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly nameRef: Reference,
+    readonly types: Expression[],
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.types, parentScopes)
+  }
+
+  childExpressions() {
+    return this.types
+  }
+
+  toLisp() {
+    const types = this.types.map(type => type.toLisp()).join(' ')
+    return `(${this.nameRef.toLisp()} ${types})`
+  }
+
+  toCode() {
+    const types = this.types.map(type => type.toLisp()).join(', ')
+    return `${this.nameRef.toLisp()}(${types})`
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    // Resolve the name to get the definition type
+    return this.nameRef.compile(runtime).map(nameNode => {
+      const defType = nameNode.type
+
+      // Get the generic types from the definition
+      let genericTypes: Types.GenericType[]
+      if (defType instanceof Types.NamedEnumDefinitionType) {
+        genericTypes = defType.genericTypes
+      } else if (defType instanceof Types.ClassDefinitionType) {
+        genericTypes = defType.genericTypes
+      } else {
+        return err(
+          new RuntimeError(
+            this,
+            `Type '${this.nameRef.name}' does not support generic type arguments`,
+          ),
+        )
+      }
+
+      if (genericTypes.length !== this.types.length) {
+        return err(
+          new RuntimeError(
+            this,
+            `Type '${this.nameRef.name}' expects ${genericTypes.length} generic type argument(s), but got ${this.types.length}`,
+          ),
+        )
+      }
+
+      // Resolve each type argument
+      return mapAll(this.types.map(typeExpr => typeExpr.compileAsTypeExpression(runtime))).map(
+        typeNodes => {
+          // Use the definition's scheme to apply the provided type arguments.
+          // e.g. Result(Int) → scheme(T, Result.nil | Result.val(T)) with T → Int
+          const subst: Types.Substitution = new Map()
+          for (let i = 0; i < genericTypes.length; i++) {
+            subst.set(genericTypes[i], typeNodes[i].type)
+          }
+          return ok(Types.applySubst(subst, defType.fromTypeConstructor()))
+        },
+      )
+    })
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime): GetNodeResult {
+    return this.getAsTypeExpression(runtime).map(
+      type => new Nodes.NamedType(toSource(this), type, this.nameRef.name),
+    )
+  }
+}
+
+//|
+//|  Argument and Spread Expressions
+//|
+
+type SpreadArgumentInfo = [string | undefined, Values.Value, 'spread' | 'arg']
+
+/**
+ * Either the positional or named argument to a function.
+ */
+export abstract class Argument extends Expression {
+  abstract readonly alias: string | undefined
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly value: Expression,
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return this.value.dependencies(parentScopes)
+  }
+
+  childExpressions() {
+    return [this.value]
+  }
+
+  isPositional() {
+    return this.alias === undefined
+  }
+
+  innerLisp() {
+    if (this.alias !== undefined) {
+      return `${this.alias}: ${this.value.toLisp()}`
+    }
+
+    return this.value.toLisp()
+  }
+
+  toLisp() {
+    if (this.alias !== undefined) {
+      return `(${this.innerLisp()})`
+    }
+
+    return this.innerLisp()
+  }
+
+  toCode() {
+    if (this.alias === undefined) {
+      return this.value.toCode()
+    }
+
+    if (this.value instanceof Reference && this.value.name === this.alias) {
+      return this.alias + ARG_SEPARATOR
+    }
+
+    return `${this.alias}: ${this.value.toCode()}`
+  }
+
+  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
+    return this.value.relationshipFormula(runtime)
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    return getChildType(this, this.value, runtime)
+  }
+
+  eval(runtime: ValueRuntime) {
+    return this.value.eval(runtime)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.value.compile(runtime)
+  }
+
+  private evalToSpreadArguments(value: Values.Value) {
+    if (value instanceof Values.ObjectValue) {
+      return value.tupleValues
+        .map(value => [undefined, value, 'spread'] as SpreadArgumentInfo)
+        .concat(
+          Array.from(value.namedValues).map(
+            ([alias, value]) => [alias, value, 'spread'] as SpreadArgumentInfo,
+          ),
+        )
+    }
+
+    if (value instanceof Values.ArrayValue) {
+      return value.values.map(value => [this.alias, value, 'spread'] as SpreadArgumentInfo)
+    }
+
+    return err(
+      new RuntimeError(this, 'Expected an Object or Array, found ' + value.constructor.name),
+    )
+  }
+
+  private evalToKwargsArguments(value: Values.Value) {
+    return [[this.alias, value, 'spread'] as SpreadArgumentInfo]
+  }
+
+  /**
+   * Called from ArgumentsList to receive the *flattened* arguments for the function
+   * invocation. `...` and `**` are resolved into positional and named arguments.
+   */
+  evalToArguments(
+    runtime: ValueRuntime,
+    spreadArg: 'spread' | 'kwargs' | undefined = undefined,
+  ): GetRuntimeResult<SpreadArgumentInfo[]> {
+    return this.eval(runtime).map(value => {
+      if (spreadArg === 'spread') {
+        return this.evalToSpreadArguments(value)
+      } else if (spreadArg === 'kwargs') {
+        return this.evalToKwargsArguments(value)
+      } else {
+        return [[this.alias, value, 'arg'] as SpreadArgumentInfo]
+      }
+    })
+  }
+}
+
+/**
+ * A positional argument passed to a function.
+ *
+ *     foo('value')
+ *         ^^^^^^^
+ */
+export class PositionalArgument extends Argument {
+  readonly alias = undefined
+
+  constructor(range: Range, precedingComments: Comment[], value: Expression) {
+    super(range, precedingComments, value)
+  }
+}
+
+/**
+ * A named argument passed to a function, object, class, or view.
+ *
+ *     foo(name: 'value')
+ *         ^^^^^^^^^^^^^
+ *
+ * Also used to store 'let' declarations (via LetAssign)
+ *
+ *     let
+ *       name = value
+ *       ^^^^^^^^^^^^
+ *     in …
+ */
+export class NamedArgument extends Argument {
+  /**
+   * - precedingComments: before the alias
+   * - followingAliasComments: after the alias
+   * - followingComments: unused (they get attached to the value)
+   */
+  public followingAliasComments: Comment[] = []
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly alias: string,
+    value: Expression,
+  ) {
+    super(range, precedingComments, value)
+  }
+}
+
+/**
+ * A spread argument passed to an object, array, set, dict, or function
+ *
+ *     {...a} -- must be an object
+ *     [...a] -- must be an array (or set?)
+ *     set(...a) -- must a set (or array?)
+ *     dict(...a) -- must be a dict
+ *
+ *     foo(...a)
+ *     -- can be object (the values are "spread" as if they were passed to the function)
+ *     -- or array *if* the function accepts spread args `fn(...# args: [T])`
+ *     -- (or repeated-named args `fn(...args: [T])`, `foo(...args: args)`)
+ *     -- or dict *if* the function accepts keyword list `fn(**kwargs: Dict(T))`
+ */
+export abstract class SpreadArgument extends Argument {
+  readonly alias: string | undefined = undefined
+
+  toLisp() {
+    return `(${SPREAD_OPERATOR} ${this.value.toLisp()})`
+  }
+
+  toCode() {
+    if (this.value instanceof Operation && !this.value.isInclusionOp()) {
+      return `${SPREAD_OPERATOR}(${this.value})`
+    }
+
+    return `${SPREAD_OPERATOR}${this.value}`
+  }
+}
+
+/**
+ * A spread argument passed to an object
+ */
+export class SpreadObjectArgument extends SpreadArgument {
+  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ObjectType> {
+    return getChildType(this, this.value, runtime).map(type => {
+      if (!(type instanceof Types.ObjectType)) {
+        return err(new RuntimeError(this, 'Expected an Object, found ' + type.constructor.name))
+      }
+
+      return type
+    })
+  }
+
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ObjectValue> {
+    return this.value.eval(runtime).map(value => {
+      if (!(value instanceof Values.ObjectValue)) {
+        return err(new RuntimeError(this, 'Expected an Object, found ' + value.constructor.name))
+      }
+
+      return value
+    })
+  }
+}
+
+/**
+ * A spread argument passed to an array
+ *     [...arg]
+ */
+export class SpreadArrayArgument extends SpreadArgument {
+  readonly alias = undefined
+
+  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ArrayType> {
+    return getChildType(this, this.value, runtime).map(type => {
+      // TODO: could support Set here - better to show an error message about how to turn
+      // a Set into an Array. Similar for Dict - could show how to extract the values
+      // into an Array/Set.
+      if (!(type instanceof Types.ArrayType)) {
+        return err(new RuntimeError(this, 'Expected an Array, found ' + type.constructor.name))
+      }
+
+      return type
+    })
+  }
+
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ArrayValue> {
+    return this.value.eval(runtime).map(value => {
+      if (!(value instanceof Values.ArrayValue)) {
+        return err(new RuntimeError(this, 'Expected an Array, found ' + value.constructor.name))
+      }
+
+      return value
+    })
+  }
+}
+
+/**
+ * A spread argument passed to an dict
+ */
+export class SpreadDictArgument extends SpreadArgument {
+  readonly alias = undefined
+
+  getType(runtime: TypeRuntime): GetRuntimeResult<Types.DictType> {
+    return getChildType(this, this.value, runtime).map(type => {
+      if (!(type instanceof Types.DictType)) {
+        return err(new RuntimeError(this, 'Expected a Dict, found ' + type.constructor.name))
+      }
+
+      return type
+    })
+  }
+
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.DictValue> {
+    return this.value.eval(runtime).map(value => {
+      if (!(value instanceof Values.DictValue)) {
+        return err(new RuntimeError(this, 'Expected a Dict, found ' + value.constructor.name))
+      }
+
+      return value
+    })
+  }
+}
+
+/**
+ * A spread argument passed to an set
+ */
+export class SpreadSetArgument extends SpreadArgument {
+  readonly alias = undefined
+
+  getType(runtime: TypeRuntime): GetRuntimeResult<Types.SetType> {
+    return getChildType(this, this.value, runtime).map(type => {
+      // TODO: could support Array here - better to show an error message about how to turn
+      // an Array into an Set. Similar for Dict - could show how to extract the values
+      // into an Array/Set.
+      if (!(type instanceof Types.SetType)) {
+        return err(new RuntimeError(this, 'Expected a Set, found ' + type.toCode()))
+      }
+
+      return type
+    })
+  }
+
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.SetValue> {
+    return this.value.eval(runtime).map(value => {
+      if (!(value instanceof Values.SetValue)) {
+        return err(new RuntimeError(this, 'Expected a Set, found ' + value.toCode()))
+      }
+
+      return value
+    })
+  }
+}
+
+/**
+ * A spread argument passed to a function.
+ *     foo(...values) -- can be an object, or array if foo accepts spread args
+ *     foo(...name: values) -- must be an array, and foo must accept repeated-named-arg 'name'
+ *     foo(**kwargs) -- must be a Dict and foo must accept keyword-args-list
+ */
+export class SpreadFunctionArgument extends SpreadArgument {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly alias: string | undefined,
+    value: Expression,
+    readonly spread: 'spread' | 'kwargs',
+  ) {
+    super(range, precedingComments, value)
+  }
+
+  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ObjectType | Types.ArrayType> {
+    return getChildType(this, this.value, runtime).map(type => {
+      if (type instanceof Types.ObjectType) {
+        return type
+      }
+
+      if (type instanceof Types.ArrayType) {
+        return type
+      }
+
+      return err(
+        new RuntimeError(this, 'Expected an Object or Array, found ' + type.constructor.name),
+      )
+    })
+  }
+
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ObjectValue> {
+    return this.value.eval(runtime).map(value => {
+      if (value instanceof Values.ObjectValue) {
+        return value
+      }
+
+      if (value instanceof Values.ArrayValue) {
+        return value
+      }
+
+      return err(
+        new RuntimeError(this, 'Expected an Object or Array, found ' + value.constructor.name),
+      )
+    })
+  }
+
+  evalToArguments(runtime: ValueRuntime): GetRuntimeResult<SpreadArgumentInfo[]> {
+    return super.evalToArguments(runtime, this.spread)
+  }
+}
+
+/**
+ * The argument list passed to a function by the invocation operator `()`
+ */
+export class ArgumentsList extends Expression {
+  private positionalArgs: Expression[] = []
+  private repeatedNamedArgs: Map<string, Expression[]> = new Map()
+  lastBlockComments: Comment[] = []
+  betweenComments: Comment[] = []
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    public lastParensComments: Comment[],
+    readonly parenArgs: Argument[],
+    readonly blockArgs: Argument[],
+  ) {
+    super(range, precedingComments)
+
+    for (const arg of [...parenArgs, ...blockArgs]) {
+      if (arg instanceof PositionalArgument) {
+        this.positionalArgs.push(arg.value)
+      } else if (arg instanceof NamedArgument) {
+        const repeated = this.repeatedNamedArgs.get(arg.alias)
+        if (repeated) {
+          repeated.push(arg.value)
+        } else {
+          this.repeatedNamedArgs.set(arg.alias, [arg.value])
+        }
+      }
+    }
+  }
+
+  get allArgs() {
+    return [...this.parenArgs, ...this.blockArgs]
+  }
+
+  allPositionalArgs(from?: number): Expression[] {
+    return from ? this.positionalArgs.slice(from) : this.positionalArgs
+  }
+
+  allNamedArgs(): Map<string, Expression[]> {
+    return this.repeatedNamedArgs
+  }
+
+  positionalArg(at: number): Expression | undefined {
+    return this.positionalArgs[at]
+  }
+
+  namedArg(name: string): Expression | undefined {
+    return this.repeatedNamedArgs.get(name)?.[0]
+  }
+
+  repeatedArg(name: string): Expression[] {
+    return this.repeatedNamedArgs.get(name) ?? []
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies(this.allArgs, parentScopes)
+  }
+
+  childExpressions() {
+    return this.allArgs
+  }
+
+  isTruthy() {
+    return false
+  }
+
+  toLisp() {
+    const insideArgs = this.parenArgs.map(it => it.toLisp()).join(' ')
+    const blockArgs = this.blockArgs.map(it => it.toLisp()).join(' ')
+    let code = '('
+    if (insideArgs.length) {
+      code += insideArgs
+    }
+    code += ')'
+    if (insideArgs.length && blockArgs.length) {
+      code += ' '
+    }
+
+    if (blockArgs.length) {
+      code += '{ ' + blockArgs + ' }'
+    }
+    return code
+  }
+
+  toCode() {
+    const insideCode: string = wrapValues('(', this.parenArgs, ')')
+
+    if (this.blockArgs.length === 0) {
+      return insideCode
+    }
+
+    if (this.blockArgs.length === 1 && this.blockArgs[0] instanceof PositionalArgument) {
+      return insideCode + ': ' + this.blockArgs[0].value.toCode()
+    }
+
+    const blockCode = wrapValues('{ ', this.blockArgs, ' }')
+    return insideCode + ' ' + blockCode
+  }
+
+  getType(): GetTypeResult {
+    return err(new RuntimeError(this, 'ArgumentsList does not have a type'))
+  }
+
+  eval(): GetValueResult {
+    return err(
+      new RuntimeError(this, 'ArgumentsList cannot be evaluated (call formulaArgs(runtime))'),
+    )
+  }
+
+  compile() {
+    return err(new RuntimeError(this, 'ArgumentsList cannot be compiled'))
+  }
+
+  formulaArgs(runtime: ValueRuntime): GetRuntimeResult<Values.FormulaArgs> {
+    return mapAll(this.allArgs.map(arg => arg.evalToArguments(runtime)))
+      .map(arraysOfArgs => arraysOfArgs.flat())
+      .map(args => new Values.FormulaArgs(args))
   }
 }
 
@@ -1873,1067 +2936,188 @@ function combineAllTypesForDict(expr: DictExpression, runtime: TypeRuntime) {
 }
 
 //|
-//|  Type Expressions
+//|  Reserved Word Expressions
 //|
 
-/**
- * This class doesn't provide much convenience, mostly it groups together a
- * bunch of related classes:
- *   NamespaceAccessExpression
- *   OneOfTypeExpression
- *   ExtendsExpression
- *   ObjectTypeExpression
- *   ArrayTypeExpression
- *   DictTypeExpression
- *   SetTypeExpression
- *   TypeConstructorExpression
- */
-export abstract class TypeExpression extends Expression {
-  isUnknown() {
-    return false
-  }
-
-  eval(runtime: ValueRuntime) {
-    return this.getAsTypeExpression(runtime).map(type => new Values.TypeValue(type))
-  }
-}
-
-/**
- * While scanning a type, we might come across a module or namespace "type access"
- * operation, ie
- *
- *     fn foo(bar: Namespace.TypeName) => …
- */
-export class NamespaceAccessExpression extends TypeExpression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly lhs: Identifier | NamespaceAccessExpression,
-    readonly rhs: Identifier,
-  ) {
-    super(range, precedingComments)
-  }
-
-  toLisp(): string {
-    return `(. ${this.lhs.toLisp()} ${this.rhs.toLisp()})`
-  }
-
-  toCode(): string {
-    return `${this.lhs.toCode()}.${this.rhs.toCode()}`
-  }
-
-  getType() {
-    return err(new RuntimeError(this, 'NamespaceAccessExpression does not have a type'))
-  }
-
-  eval() {
-    return err(new RuntimeError(this, 'NamespaceAccessExpression cannot be evaluated'))
-  }
-
-  /**
-   * The parser restricts namespace lookups. Examples:
-   *     x: module.TypeName
-   *     y: module.submodule.TypeName
-   */
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    if (this.lhs instanceof NamespaceAccessExpression) {
-      return getChildAsTypeExpression(this, this.lhs, runtime).map(type => {
-        if (!(type instanceof Types.ObjectType)) {
-          return err(
-            new RuntimeError(
-              this,
-              `Expected type namespace in '${this.lhs}.${this.rhs}', found '${type}'`,
-            ),
-          )
-        }
-        const rhsType = type.literalAccessType(this.rhs.name)
-        if (!rhsType) {
-          return err(new RuntimeError(this, `No type named '${this.lhs}.${this.rhs.name}'`))
-        }
-        return ok(rhsType)
-      })
-    } else {
-      const namespace = this.lhs.name
-      if (!runtime.hasNamespace(namespace)) {
-        return err(new RuntimeError(this, `No type named '${namespace}'`))
-      }
-
-      const typeName = this.rhs.name
-      const lhsType = runtime.getNamespaceType(namespace, typeName)
-      if (!lhsType) {
-        return err(new RuntimeError(this, `No type named '${namespace}.${typeName}'`))
-      }
-
-      return ok(lhsType)
-    }
-  }
-
-  compile(runtime: TypeRuntime): GetRuntimeResult<Nodes.Namespace> {
-    return this.getAsTypeExpression(runtime).map(type => {
-      if (this.lhs instanceof NamespaceAccessExpression) {
-        return this.lhs
-          .compile(runtime)
-          .map(node => new Nodes.Namespace(toSource(this), type, node, this.rhs.name))
-      }
-      return ok(new Nodes.Namespace(toSource(this), type, this.lhs.name, this.rhs.name))
-    })
-  }
-}
-
-/**
- * A | B
- * A | { a: … }
- */
-export class OneOfTypeExpression extends TypeExpression {
-  precedence = 6
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly of: Expression[],
-  ) {
-    super(range, precedingComments)
-  }
-
-  dependencies(parentScopes: Scope[]) {
-    return allDependencies(this.of, parentScopes)
-  }
-
-  childExpressions() {
-    return this.of
-  }
-
-  formulaLocalAssigns(runtime: ValueRuntime): GetRuntimeResult<[string, Values.Value][]> {
-    return mapAll(this.of.map(expr => expr.formulaLocalAssigns(runtime))).map(assigns =>
-      assigns.flat(),
-    )
-  }
+export abstract class ReservedWord extends Identifier {
+  abstract name: string
 
   toLisp() {
-    return `(${this.of.map(ref => ref.toLisp()).join(' | ')})`
-  }
-
-  toCode(precedence = 0): string {
-    if (precedence > this.precedence) {
-      return `(${this.toCode(0)})`
-    }
-
-    if (this.of.length === 2 && this.of.some(type => type instanceof LiteralNull)) {
-      if (this.of[0] instanceof LiteralNull) {
-        return `${this.of[1].toCode(this.precedence)}?`
-      } else {
-        return `${this.of[0].toCode(this.precedence)}?`
-      }
-    }
-
-    return `${this.of.map(ref => ref.toCode(this.precedence)).join(' | ')}`
-  }
-
-  getType(runtime: TypeRuntime): GetTypeResult {
-    return err(new RuntimeError(this, 'OneOfTypeExpression does not have a type'))
-  }
-
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return mapAll(
-      this.of.map(type => {
-        return getChildAsTypeExpression(this, type, runtime)
-      }),
-    ).map(types => Types.oneOf(types))
-  }
-
-  compileAsTypeExpression(runtime: TypeRuntime): GetNodeResult {
-    return this.getAsTypeExpression(runtime).map(type => new Nodes.OneOfType(toSource(this), type))
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.getAsTypeExpression(runtime).map(type => new Nodes.OneOfType(toSource(this), type))
-  }
-}
-
-/**
- * A & B
- * A & { a: … }
- */
-export class CombineTypeExpression extends TypeExpression {
-  precedence = 7
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly of: Expression[],
-  ) {
-    super(range, precedingComments)
-  }
-
-  dependencies(parentScopes: Scope[]) {
-    return allDependencies(this.of, parentScopes)
-  }
-
-  childExpressions() {
-    return this.of
-  }
-
-  toLisp() {
-    return `(${this.of.map(ref => ref.toLisp()).join(' & ')})`
-  }
-
-  toCode(precedence = 0): string {
-    if (precedence > this.precedence) {
-      return `(${this.toCode(0)})`
-    }
-
-    return `${this.of.map(ref => ref.toCode(this.precedence)).join(' & ')}`
-  }
-
-  getType(runtime: TypeRuntime): GetTypeResult {
-    return err(new RuntimeError(this, 'CombineTypeExpression does not have a type'))
-  }
-
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    throw `TODO - (${this.of.map(t => t.toCode()).join(' & ')}).getAsTypeExpression()`
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.getAsTypeExpression(runtime).map(
-      type => new Nodes.CombineType(toSource(this), type),
-    )
-  }
-}
-
-export class ObjectTypeExpression extends TypeExpression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly values: [Reference | undefined, Expression][],
-  ) {
-    super(range, precedingComments)
-  }
-
-  dependencies(parentScopes: Scope[]) {
-    return allDependencies(this.childExpressions(), parentScopes)
-  }
-
-  childExpressions() {
-    return this.values.map(([_, value]) => value)
-  }
-
-  toLisp() {
-    const code = this.values
-      .map(([nameRef, it]) => {
-        if (nameRef === undefined) {
-          return it.toLisp()
-        }
-
-        return `(${nameRef}: ${it.toLisp()})`
-      })
-      .join(' ')
-    return `{${code}}`
+    return '`' + this.name + '`'
   }
 
   toCode() {
-    const code = this.values.map(([nameRef, it]) => {
-      // if we want to support `{ fn foo() => Value }`
-      // (currently this is `{ foo: fn() => Value }`)
-      // if (it instanceof NamedFormulaTypeExpression) {
-      //   return it.toCode()
-      // }
-
-      if (nameRef === undefined) {
-        return it.toCode()
-      }
-
-      return `${nameRef}: ${it.toCode()}`
-    })
-
-    return wrapStrings('{', code, '}')
+    return this.name
   }
 
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return mapAll(
-      this.values.map(([nameRef, expr]) =>
-        expr
-          .getAsTypeExpression(runtime)
-          .map(type => [nameRef, type] as [Reference | undefined, Types.Type]),
-      ),
-    ).map(
-      types =>
-        new Types.ObjectType(
-          types.map(([nameRef, type]) =>
-            nameRef ? Types.namedProp(nameRef.name, type) : Types.positionalProp(type),
-          ),
-        ),
-    )
+  getType(_runtime: TypeRuntime) {
+    return err(new RuntimeError(this, `${this.name} does not have a type`))
   }
 
-  compileAsTypeExpression(runtime: TypeRuntime) {
-    return this.getAsTypeExpression(runtime).map(type => new Nodes.ObjectType(toSource(this), type))
+  eval(_runtime: ValueRuntime) {
+    return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
   }
 
-  getType(_runtime: TypeRuntime): GetTypeResult {
-    return err(new RuntimeError(this, 'ObjectTypeExpression does not have a type'))
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.getType(runtime).map(type => new Nodes.ObjectType(toSource(this), type))
+  compile(_runtime: TypeRuntime) {
+    return err(new RuntimeError(this, `${this.name} cannot be compiled`))
   }
 }
 
-export class AlwaysTypePlaceholder extends Expression {
-  constructor() {
-    super([0, 0], [])
-  }
+export abstract class ContainerTypeIdentifier extends ReservedWord {}
 
-  toCode() {
-    return 'always'
-  }
-
-  toLisp() {
-    return 'always'
-  }
-
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return ok(Types.AlwaysType)
-  }
-
-  getType() {
-    return ok(Types.AlwaysType)
-  }
-
-  compile(runtime: TypeRuntime): GetNodeResult {
-    return err(new RuntimeError(this, 'AlwaysTypePlaceholder cannot be compiled'))
-  }
-
-  eval() {
-    return err(new RuntimeError(this, 'AlwaysTypePlaceholder cannot be evaluated'))
-  }
+export class ObjectTypeIdentifier extends ContainerTypeIdentifier {
+  readonly name = 'Object'
 }
 
-/**
- * Array(Int)
- * [Int]
- * [Int, length: >=6]
- */
-export class ArrayTypeExpression extends TypeExpression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly of: Expression,
-    /**
-     * Holds min-number / max-number of items that are known to be in the array
-     */
-    readonly narrowed: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
-  ) {
-    super(range, precedingComments)
-  }
-
-  dependencies(parentScopes: Scope[]) {
-    return this.of.dependencies(parentScopes)
-  }
-
-  childExpressions() {
-    return [this.of]
-  }
-
-  toLisp() {
-    return Types.ArrayType.desc(this.of.toLisp(), this.narrowed, true)
-  }
-
-  toCode() {
-    return Types.ArrayType.desc(this.of.toCode(0), this.narrowed)
-  }
-
-  getType(runtime: TypeRuntime) {
-    return err(new RuntimeError(this, 'ArrayTypeExpression does not have a type'))
-  }
-
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return this.of
-      .getAsTypeExpression(runtime)
-      .map(type => new Types.ArrayType(type, this.narrowed))
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.getAsTypeExpression(runtime).map(type => new Nodes.ArrayType(toSource(this), type))
-  }
+export class ArrayTypeIdentifier extends ContainerTypeIdentifier {
+  readonly name = 'Array'
 }
 
-/**
- * Dict(Users)
- * Dict(Users, keys: [:name])
- * Dict(Users, length: >=5)
- */
-export class DictTypeExpression extends TypeExpression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly of: Expression,
-    readonly narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
-    readonly narrowedNames: Set<string> = new Set(),
-  ) {
-    super(range, precedingComments)
-    this.narrowedLength = {
-      min: Math.max(narrowedLength.min, this.narrowedNames.size),
-      max: narrowedLength.max,
-    }
-  }
-
-  dependencies(parentScopes: Scope[]) {
-    return this.of.dependencies(parentScopes)
-  }
-
-  childExpressions() {
-    return [this.of]
-  }
-
-  toLisp() {
-    return Types.DictType.desc(this.of.toLisp(), this.narrowedNames, this.narrowedLength)
-  }
-
-  toCode() {
-    return Types.DictType.desc(this.of.toCode(0), this.narrowedNames, this.narrowedLength)
-  }
-
-  getType(runtime: TypeRuntime) {
-    return err(new RuntimeError(this, 'DictTypeExpression does not have a type'))
-  }
-
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return getChildAsTypeExpression(this, this.of, runtime).map(type => {
-      return new Types.DictType(type, this.narrowedLength, this.narrowedNames)
-    })
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.getAsTypeExpression(runtime).map(type => new Nodes.DictType(toSource(this), type))
-  }
+export class DictTypeIdentifier extends ContainerTypeIdentifier {
+  readonly name = 'Dict'
 }
 
-/**
- * Set(Users)
- * Set(Users, length: >=5)
- */
-export class SetTypeExpression extends TypeExpression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly of: Expression,
-    readonly narrowedLength: Narrowed.NarrowedLength = Narrowed.DEFAULT_NARROWED_LENGTH,
-  ) {
-    super(range, precedingComments)
-  }
-
-  dependencies(parentScopes: Scope[]) {
-    return this.of.dependencies(parentScopes)
-  }
-
-  childExpressions() {
-    return [this.of]
-  }
-
-  toLisp() {
-    return Types.SetType.desc(this.of.toLisp(), this.narrowedLength)
-  }
-
-  toCode() {
-    return Types.SetType.desc(this.of.toCode(0), this.narrowedLength)
-  }
-
-  getType(runtime: TypeRuntime) {
-    return err(new RuntimeError(this, 'SetTypeExpression does not have a type'))
-  }
-
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return getChildAsTypeExpression(this, this.of, runtime).map(type => {
-      return new Types.SetType(type, this.narrowedLength)
-    })
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.getAsTypeExpression(runtime).map(type => new Nodes.SetType(toSource(this), type))
-  }
+export class SetTypeIdentifier extends ContainerTypeIdentifier {
+  readonly name = 'Set'
 }
 
-/**
- * An example will make the most sense:
- *
- *     type TupleType<T, U> = { T, U }
- *
- *     fn intStringTuple(): TupleType(Int, String) => …
- *                          ^^^^^^^^^^^^^^^^^^^^^^
- *     fn anotherExample(): TupleType([Int], String?) => …
- *                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- * A TypeConstructor is a function, but used in the context of creating a Type.
- */
-export class TypeConstructorExpression extends TypeExpression {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly nameRef: Reference,
-    readonly types: Expression[],
-  ) {
-    super(range, precedingComments)
-  }
-
-  dependencies(parentScopes: Scope[]) {
-    return allDependencies(this.types, parentScopes)
-  }
-
-  childExpressions() {
-    return this.types
-  }
-
-  toLisp() {
-    const types = this.types.map(type => type.toLisp()).join(' ')
-    return `(${this.nameRef.toLisp()} ${types})`
-  }
-
-  toCode() {
-    const types = this.types.map(type => type.toLisp()).join(', ')
-    return `${this.nameRef.toLisp()}(${types})`
-  }
-
-  getType(runtime: TypeRuntime): GetTypeResult {
-    return this.compile(runtime).map(node => node.type)
-  }
-
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    // Resolve the name to get the definition type
-    return this.nameRef.compile(runtime).map(nameNode => {
-      const defType = nameNode.type
-
-      // Get the generic types from the definition
-      let genericTypes: Types.GenericType[]
-      if (defType instanceof Types.NamedEnumDefinitionType) {
-        genericTypes = defType.genericTypes
-      } else if (defType instanceof Types.ClassDefinitionType) {
-        genericTypes = defType.genericTypes
-      } else {
-        return err(
-          new RuntimeError(
-            this,
-            `Type '${this.nameRef.name}' does not support generic type arguments`,
-          ),
-        )
-      }
-
-      if (genericTypes.length !== this.types.length) {
-        return err(
-          new RuntimeError(
-            this,
-            `Type '${this.nameRef.name}' expects ${genericTypes.length} generic type argument(s), but got ${this.types.length}`,
-          ),
-        )
-      }
-
-      // Resolve each type argument
-      return mapAll(this.types.map(typeExpr => typeExpr.compileAsTypeExpression(runtime))).map(
-        typeNodes => {
-          // Use the definition's scheme to apply the provided type arguments.
-          // e.g. Result(Int) → scheme(T, Result.nil | Result.val(T)) with T → Int
-          const subst: Types.Substitution = new Map()
-          for (let i = 0; i < genericTypes.length; i++) {
-            subst.set(genericTypes[i], typeNodes[i].type)
-          }
-          return ok(Types.applySubst(subst, defType.fromTypeConstructor()))
-        },
-      )
-    })
-  }
-
-  compileAsTypeExpression(runtime: TypeRuntime): GetNodeResult {
-    return this.getAsTypeExpression(runtime).map(
-      type => new Nodes.NamedType(toSource(this), type, this.nameRef.name),
-    )
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.getAsTypeExpression(runtime).map(
-      type => new Nodes.TypeConstructor(toSource(this), type),
-    )
-  }
+export class IgnorePlaceholder extends ReservedWord {
+  readonly name = '_'
 }
 
-//|
-//|  Argument and Spread Expressions
-//|
-
-type SpreadArgumentInfo = [string | undefined, Values.Value, 'spread' | 'arg']
-
-/**
- * Either the positional or named argument to a function.
- */
-export abstract class Argument extends Expression {
-  abstract readonly alias: string | undefined
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly value: Expression,
-  ) {
-    super(range, precedingComments)
-  }
-
-  dependencies(parentScopes: Scope[]) {
-    return this.value.dependencies(parentScopes)
-  }
-
-  childExpressions() {
-    return [this.value]
-  }
-
-  isPositional() {
-    return this.alias === undefined
-  }
-
-  innerLisp() {
-    if (this.alias !== undefined) {
-      return `${this.alias}: ${this.value.toLisp()}`
-    }
-
-    return this.value.toLisp()
-  }
-
-  toLisp() {
-    if (this.alias !== undefined) {
-      return `(${this.innerLisp()})`
-    }
-
-    return this.innerLisp()
-  }
-
-  toCode() {
-    if (this.alias === undefined) {
-      return this.value.toCode()
-    }
-
-    if (this.value instanceof Reference && this.value.name === this.alias) {
-      return this.alias + ARG_SEPARATOR
-    }
-
-    return `${this.alias}: ${this.value.toCode()}`
-  }
-
-  relationshipFormula(runtime: TypeRuntime): RelationshipFormula | undefined {
-    return this.value.relationshipFormula(runtime)
-  }
-
-  getType(runtime: TypeRuntime): GetTypeResult {
-    return getChildType(this, this.value, runtime)
-  }
-
-  eval(runtime: ValueRuntime) {
-    return this.value.eval(runtime)
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.value.compile(runtime)
-  }
-
-  private evalToSpreadArguments(value: Values.Value) {
-    if (value instanceof Values.ObjectValue) {
-      return value.tupleValues
-        .map(value => [undefined, value, 'spread'] as SpreadArgumentInfo)
-        .concat(
-          Array.from(value.namedValues).map(
-            ([alias, value]) => [alias, value, 'spread'] as SpreadArgumentInfo,
-          ),
-        )
-    }
-
-    if (value instanceof Values.ArrayValue) {
-      return value.values.map(value => [this.alias, value, 'spread'] as SpreadArgumentInfo)
-    }
-
-    return err(
-      new RuntimeError(this, 'Expected an Object or Array, found ' + value.constructor.name),
-    )
-  }
-
-  private evalToKwargsArguments(value: Values.Value) {
-    return [[this.alias, value, 'spread'] as SpreadArgumentInfo]
-  }
-
-  /**
-   * Called from ArgumentsList to receive the *flattened* arguments for the function
-   * invocation. `...` and `**` are resolved into positional and named arguments.
-   */
-  evalToArguments(
-    runtime: ValueRuntime,
-    spreadArg: 'spread' | 'kwargs' | undefined = undefined,
-  ): GetRuntimeResult<SpreadArgumentInfo[]> {
-    return this.eval(runtime).map(value => {
-      if (spreadArg === 'spread') {
-        return this.evalToSpreadArguments(value)
-      } else if (spreadArg === 'kwargs') {
-        return this.evalToKwargsArguments(value)
-      } else {
-        return [[this.alias, value, 'arg'] as SpreadArgumentInfo]
-      }
-    })
-  }
+export class DefaultArgumentIdentifier extends ReservedWord {
+  readonly name = '#default'
 }
 
-/**
- * A positional argument passed to a function.
- *
- *     foo('value')
- *         ^^^^^^^
- */
-export class PositionalArgument extends Argument {
-  readonly alias = undefined
-
-  constructor(range: Range, precedingComments: Comment[], value: Expression) {
-    super(range, precedingComments, value)
-  }
+export class InferIdentifier extends ReservedWord {
+  readonly name = 'infer'
 }
 
-/**
- * A named argument passed to a function, object, class, or view.
- *
- *     foo(name: 'value')
- *         ^^^^^^^^^^^^^
- *
- * Also used to store 'let' declarations (via LetAssign)
- *
- *     let
- *       name = value
- *       ^^^^^^^^^^^^
- *     in …
- */
-export class NamedArgument extends Argument {
-  /**
-   * - precedingComments: before the alias
-   * - followingAliasComments: after the alias
-   * - followingComments: unused (they get attached to the value)
-   */
-  public followingAliasComments: Comment[] = []
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly alias: string,
-    value: Expression,
-  ) {
-    super(range, precedingComments, value)
-  }
-}
-
-/**
- * A spread argument passed to an object, array, set, dict, or function
- *
- *     {...a} -- must be an object
- *     [...a] -- must be an array (or set?)
- *     set(...a) -- must a set (or array?)
- *     dict(...a) -- must be a dict
- *
- *     foo(...a)
- *     -- can be object (the values are "spread" as if they were passed to the function)
- *     -- or array *if* the function accepts spread args `fn(...# args: [T])`
- *     -- (or repeated-named args `fn(...args: [T])`, `foo(...args: args)`)
- *     -- or dict *if* the function accepts keyword list `fn(**kwargs: Dict(T))`
- */
-export abstract class SpreadArgument extends Argument {
-  readonly alias: string | undefined = undefined
-
-  toLisp() {
-    return `(${SPREAD_OPERATOR} ${this.value.toLisp()})`
-  }
-
-  toCode() {
-    if (this.value instanceof Operation && !this.value.isInclusionOp()) {
-      return `${SPREAD_OPERATOR}(${this.value})`
-    }
-
-    return `${SPREAD_OPERATOR}${this.value}`
-  }
-}
-
-/**
- * A spread argument passed to an object
- */
-export class SpreadObjectArgument extends SpreadArgument {
-  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ObjectType> {
-    return getChildType(this, this.value, runtime).map(type => {
-      if (!(type instanceof Types.ObjectType)) {
-        return err(new RuntimeError(this, 'Expected an Object, found ' + type.constructor.name))
-      }
-
-      return type
-    })
-  }
-
-  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ObjectValue> {
-    return this.value.eval(runtime).map(value => {
-      if (!(value instanceof Values.ObjectValue)) {
-        return err(new RuntimeError(this, 'Expected an Object, found ' + value.constructor.name))
-      }
-
-      return value
-    })
-  }
-}
-
-/**
- * A spread argument passed to an array
- *     [...arg]
- */
-export class SpreadArrayArgument extends SpreadArgument {
-  readonly alias = undefined
-
-  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ArrayType> {
-    return getChildType(this, this.value, runtime).map(type => {
-      // TODO: could support Set here - better to show an error message about how to turn
-      // a Set into an Array. Similar for Dict - could show how to extract the values
-      // into an Array/Set.
-      if (!(type instanceof Types.ArrayType)) {
-        return err(new RuntimeError(this, 'Expected an Array, found ' + type.constructor.name))
-      }
-
-      return type
-    })
-  }
-
-  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ArrayValue> {
-    return this.value.eval(runtime).map(value => {
-      if (!(value instanceof Values.ArrayValue)) {
-        return err(new RuntimeError(this, 'Expected an Array, found ' + value.constructor.name))
-      }
-
-      return value
-    })
-  }
-}
-
-/**
- * A spread argument passed to an dict
- */
-export class SpreadDictArgument extends SpreadArgument {
-  readonly alias = undefined
-
-  getType(runtime: TypeRuntime): GetRuntimeResult<Types.DictType> {
-    return getChildType(this, this.value, runtime).map(type => {
-      if (!(type instanceof Types.DictType)) {
-        return err(new RuntimeError(this, 'Expected a Dict, found ' + type.constructor.name))
-      }
-
-      return type
-    })
-  }
-
-  eval(runtime: ValueRuntime): GetRuntimeResult<Values.DictValue> {
-    return this.value.eval(runtime).map(value => {
-      if (!(value instanceof Values.DictValue)) {
-        return err(new RuntimeError(this, 'Expected a Dict, found ' + value.constructor.name))
-      }
-
-      return value
-    })
-  }
-}
-
-/**
- * A spread argument passed to an set
- */
-export class SpreadSetArgument extends SpreadArgument {
-  readonly alias = undefined
-
-  getType(runtime: TypeRuntime): GetRuntimeResult<Types.SetType> {
-    return getChildType(this, this.value, runtime).map(type => {
-      // TODO: could support Array here - better to show an error message about how to turn
-      // an Array into an Set. Similar for Dict - could show how to extract the values
-      // into an Array/Set.
-      if (!(type instanceof Types.SetType)) {
-        return err(new RuntimeError(this, 'Expected a Set, found ' + type.toCode()))
-      }
-
-      return type
-    })
-  }
-
-  eval(runtime: ValueRuntime): GetRuntimeResult<Values.SetValue> {
-    return this.value.eval(runtime).map(value => {
-      if (!(value instanceof Values.SetValue)) {
-        return err(new RuntimeError(this, 'Expected a Set, found ' + value.toCode()))
-      }
-
-      return value
-    })
-  }
-}
-
-/**
- * A spread argument passed to a function.
- *     foo(...values) -- can be an object, or array if foo accepts spread args
- *     foo(...name: values) -- must be an array, and foo must accept repeated-named-arg 'name'
- *     foo(**kwargs) -- must be a Dict and foo must accept keyword-args-list
- */
-export class SpreadFunctionArgument extends SpreadArgument {
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly alias: string | undefined,
-    value: Expression,
-    readonly spread: 'spread' | 'kwargs',
-  ) {
-    super(range, precedingComments, value)
-  }
-
-  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ObjectType | Types.ArrayType> {
-    return getChildType(this, this.value, runtime).map(type => {
-      if (type instanceof Types.ObjectType) {
-        return type
-      }
-
-      if (type instanceof Types.ArrayType) {
-        return type
-      }
-
-      return err(
-        new RuntimeError(this, 'Expected an Object or Array, found ' + type.constructor.name),
-      )
-    })
-  }
-
-  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ObjectValue> {
-    return this.value.eval(runtime).map(value => {
-      if (value instanceof Values.ObjectValue) {
-        return value
-      }
-
-      if (value instanceof Values.ArrayValue) {
-        return value
-      }
-
-      return err(
-        new RuntimeError(this, 'Expected an Object or Array, found ' + value.constructor.name),
-      )
-    })
-  }
-
-  evalToArguments(runtime: ValueRuntime): GetRuntimeResult<SpreadArgumentInfo[]> {
-    return super.evalToArguments(runtime, this.spread)
-  }
-}
-
-/**
- * The argument list passed to a function by the invocation operator `()`
- */
-export class ArgumentsList extends Expression {
-  private positionalArgs: Expression[] = []
-  private repeatedNamedArgs: Map<string, Expression[]> = new Map()
-  lastBlockComments: Comment[] = []
-  betweenComments: Comment[] = []
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    public lastParensComments: Comment[],
-    readonly parenArgs: Argument[],
-    readonly blockArgs: Argument[],
-  ) {
-    super(range, precedingComments)
-
-    for (const arg of [...parenArgs, ...blockArgs]) {
-      if (arg instanceof PositionalArgument) {
-        this.positionalArgs.push(arg.value)
-      } else if (arg instanceof NamedArgument) {
-        const repeated = this.repeatedNamedArgs.get(arg.alias)
-        if (repeated) {
-          repeated.push(arg.value)
-        } else {
-          this.repeatedNamedArgs.set(arg.alias, [arg.value])
-        }
-      }
-    }
-  }
-
-  get allArgs() {
-    return [...this.parenArgs, ...this.blockArgs]
-  }
-
-  allPositionalArgs(from?: number): Expression[] {
-    return from ? this.positionalArgs.slice(from) : this.positionalArgs
-  }
-
-  allNamedArgs(): Map<string, Expression[]> {
-    return this.repeatedNamedArgs
-  }
-
-  positionalArg(at: number): Expression | undefined {
-    return this.positionalArgs[at]
-  }
-
-  namedArg(name: string): Expression | undefined {
-    return this.repeatedNamedArgs.get(name)?.[0]
-  }
-
-  repeatedArg(name: string): Expression[] {
-    return this.repeatedNamedArgs.get(name) ?? []
-  }
-
-  dependencies(parentScopes: Scope[]) {
-    return allDependencies(this.allArgs, parentScopes)
-  }
-
-  childExpressions() {
-    return this.allArgs
-  }
-
-  isTruthy() {
-    return false
-  }
-
-  toLisp() {
-    const insideArgs = this.parenArgs.map(it => it.toLisp()).join(' ')
-    const blockArgs = this.blockArgs.map(it => it.toLisp()).join(' ')
-    let code = '('
-    if (insideArgs.length) {
-      code += insideArgs
-    }
-    code += ')'
-    if (insideArgs.length && blockArgs.length) {
-      code += ' '
-    }
-
-    if (blockArgs.length) {
-      code += '{ ' + blockArgs + ' }'
-    }
-    return code
-  }
-
-  toCode() {
-    const insideCode: string = wrapValues('(', this.parenArgs, ')')
-
-    if (this.blockArgs.length === 0) {
-      return insideCode
-    }
-
-    if (this.blockArgs.length === 1 && this.blockArgs[0] instanceof PositionalArgument) {
-      return insideCode + ': ' + this.blockArgs[0].value.toCode()
-    }
-
-    const blockCode = wrapValues('{ ', this.blockArgs, ' }')
-    return insideCode + ' ' + blockCode
-  }
+export class IfIdentifier extends ReservedWord {
+  readonly name = 'if'
 
   getType(): GetTypeResult {
-    return err(new RuntimeError(this, 'ArgumentsList does not have a type'))
-  }
-
-  eval(): GetValueResult {
-    return err(
-      new RuntimeError(this, 'ArgumentsList cannot be evaluated (call formulaArgs(runtime))'),
+    return ok(
+      Types.withGenericT(T =>
+        Types.namedFormula(
+          'if',
+          [
+            Types.positionalArgument({name: 'cond', type: Types.ConditionType, isRequired: true}),
+            Types.spreadPositionalArgument({
+              name: 'elseif',
+              type: Types.array(Types.tuple([Types.lazy(Types.ConditionType), Types.lazy(T)])),
+            }),
+            Types.namedArgument({name: 'then', type: T, isRequired: true}),
+            Types.namedArgument({name: 'else', type: T, isRequired: false}),
+          ],
+          T,
+          [T],
+        ),
+      ),
     )
   }
+}
 
-  compile() {
-    return err(new RuntimeError(this, 'ArgumentsList cannot be compiled'))
+export class ElseIfIdentifier extends ReservedWord {
+  readonly name = 'elseif'
+
+  getType(): GetTypeResult {
+    return ok(
+      Types.withGenericT(T =>
+        Types.namedFormula(
+          'elseif',
+          // elseif<T>(# cond: Condition, # then: T)
+          [
+            Types.positionalArgument({name: 'cond', type: Types.ConditionType, isRequired: true}),
+            Types.positionalArgument({name: 'then', type: T, isRequired: true}),
+          ],
+          // => fn(): {true, T} | {false, null}
+          Types.lazy(
+            Types.oneOf([
+              Types.tuple([Types.LiteralTrueType, T]),
+              Types.tuple([Types.LiteralFalseType, Types.NullType]),
+            ]),
+          ),
+          [T],
+        ),
+      ),
+    )
+  }
+}
+
+export class GuardIdentifier extends ReservedWord {
+  readonly name = 'guard'
+
+  getType(): GetTypeResult {
+    return ok(
+      Types.withGenericT(T =>
+        Types.namedFormula(
+          'guard',
+          [
+            Types.positionalArgument({
+              name: 'condition',
+              type: Types.array(Types.ConditionType),
+              isRequired: true,
+            }),
+            Types.namedArgument({name: 'else', type: T, isRequired: true}),
+            Types.positionalArgument({name: 'body', type: T, isRequired: true}),
+          ],
+          T,
+          [T],
+        ),
+      ),
+    )
+  }
+}
+
+export class SwitchIdentifier extends ReservedWord {
+  readonly name = 'switch'
+
+  getType(): GetTypeResult {
+    return ok(
+      Types.withGenericT(T =>
+        Types.namedFormula(
+          'switch',
+          [
+            Types.spreadPositionalArgument({
+              name: 'cases',
+              type: Types.array(Types.ConditionType),
+            }),
+            Types.namedArgument({name: 'else', type: T, isRequired: false}),
+          ],
+          T,
+          [T],
+        ),
+      ),
+    )
+  }
+}
+
+export class CaseIdentifier extends ReservedWord {
+  readonly name = 'case'
+}
+
+export class ThisIdentifier extends ReservedWord {
+  readonly name = 'this'
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    const thisType = runtime.getThisType()
+    if (!thisType) {
+      return err(new RuntimeError(this, '`this` is not available in this context'))
+    }
+    return ok(thisType)
   }
 
-  formulaArgs(runtime: ValueRuntime): GetRuntimeResult<Values.FormulaArgs> {
-    return mapAll(this.allArgs.map(arg => arg.evalToArguments(runtime)))
-      .map(arraysOfArgs => arraysOfArgs.flat())
-      .map(args => new Values.FormulaArgs(args))
+  eval(runtime: ValueRuntime): GetValueResult {
+    const thisValue = runtime.getThisValue()
+    if (!thisValue) {
+      return err(new RuntimeError(this, '`this` is not available in this context'))
+    }
+    return ok(thisValue)
+  }
+
+  compile(runtime: TypeRuntime) {
+    return this.getType(runtime).map(type => new Nodes.This(toSource(this), type))
   }
 }
 
@@ -3146,7 +3330,7 @@ export class LetExpression extends Expression {
                 .map((assignmentNode): GetRuntimeResult<[Nodes.Node, Nodes.Node | undefined]> => {
                   if (assignment instanceof LetAssign && assignment.typeExpression) {
                     return assignment.typeExpression
-                      .compile(runtime)
+                      .compileAsTypeExpression(runtime)
                       .mapResult(decorateError(this))
                       .map(explicitType => [assignmentNode, explicitType])
                   } else {
@@ -3196,395 +3380,6 @@ export class LetExpression extends Expression {
         ),
       )
       .map(() => this.body.eval(nextRuntime))
-  }
-}
-
-//|
-//|  Reserved Word Expressions
-//|
-
-export abstract class ReservedWord extends Identifier {
-  abstract name: string
-
-  toLisp() {
-    return '`' + this.name + '`'
-  }
-
-  toCode() {
-    return this.name
-  }
-
-  getType(_runtime: TypeRuntime) {
-    return err(new RuntimeError(this, `${this.name} does not have a type`))
-  }
-
-  eval(_runtime: ValueRuntime) {
-    return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
-  }
-
-  compile(_runtime: TypeRuntime) {
-    return err(new RuntimeError(this, `${this.name} cannot be compiled`))
-  }
-}
-
-export abstract class ContainerTypeIdentifier extends ReservedWord {}
-
-export class ObjectTypeIdentifier extends ContainerTypeIdentifier {
-  readonly name = 'Object'
-}
-
-export class ArrayTypeIdentifier extends ContainerTypeIdentifier {
-  readonly name = 'Array'
-}
-
-export class DictTypeIdentifier extends ContainerTypeIdentifier {
-  readonly name = 'Dict'
-}
-
-export class SetTypeIdentifier extends ContainerTypeIdentifier {
-  readonly name = 'Set'
-}
-
-export class IgnorePlaceholder extends ReservedWord {
-  readonly name = '_'
-}
-
-export class DefaultArgumentIdentifier extends ReservedWord {
-  readonly name = '#default'
-}
-
-export class InferIdentifier extends ReservedWord {
-  readonly name = 'infer'
-}
-
-export class IfIdentifier extends ReservedWord {
-  readonly name = 'if'
-
-  getType(): GetTypeResult {
-    return ok(
-      Types.withGenericT(T =>
-        Types.namedFormula(
-          'if',
-          [
-            Types.positionalArgument({name: 'cond', type: Types.ConditionType, isRequired: true}),
-            Types.spreadPositionalArgument({
-              name: 'elseif',
-              type: Types.array(Types.tuple([Types.lazy(Types.ConditionType), Types.lazy(T)])),
-            }),
-            Types.namedArgument({name: 'then', type: T, isRequired: true}),
-            Types.namedArgument({name: 'else', type: T, isRequired: false}),
-          ],
-          T,
-          [T],
-        ),
-      ),
-    )
-  }
-}
-
-export class ElseIfIdentifier extends ReservedWord {
-  readonly name = 'elseif'
-
-  getType(): GetTypeResult {
-    return ok(
-      Types.withGenericT(T =>
-        Types.namedFormula(
-          'elseif',
-          // elseif<T>(# cond: Condition, # then: T)
-          [
-            Types.positionalArgument({name: 'cond', type: Types.ConditionType, isRequired: true}),
-            Types.positionalArgument({name: 'then', type: T, isRequired: true}),
-          ],
-          // => fn(): {true, T} | {false, null}
-          Types.lazy(
-            Types.oneOf([
-              Types.tuple([Types.LiteralTrueType, T]),
-              Types.tuple([Types.LiteralFalseType, Types.NullType]),
-            ]),
-          ),
-          [T],
-        ),
-      ),
-    )
-  }
-}
-
-export class GuardIdentifier extends ReservedWord {
-  readonly name = 'guard'
-
-  getType(): GetTypeResult {
-    return ok(
-      Types.withGenericT(T =>
-        Types.namedFormula(
-          'guard',
-          [
-            Types.positionalArgument({
-              name: 'condition',
-              type: Types.array(Types.ConditionType),
-              isRequired: true,
-            }),
-            Types.namedArgument({name: 'else', type: T, isRequired: true}),
-            Types.positionalArgument({name: 'body', type: T, isRequired: true}),
-          ],
-          T,
-          [T],
-        ),
-      ),
-    )
-  }
-}
-
-export class SwitchIdentifier extends ReservedWord {
-  readonly name = 'switch'
-
-  getType(): GetTypeResult {
-    return ok(
-      Types.withGenericT(T =>
-        Types.namedFormula(
-          'switch',
-          [
-            Types.spreadPositionalArgument({
-              name: 'cases',
-              type: Types.array(Types.ConditionType),
-            }),
-            Types.namedArgument({name: 'else', type: T, isRequired: false}),
-          ],
-          T,
-          [T],
-        ),
-      ),
-    )
-  }
-}
-
-export class CaseIdentifier extends ReservedWord {
-  readonly name = 'case'
-}
-
-export class ThisIdentifier extends ReservedWord {
-  readonly name = 'this'
-
-  getType(runtime: TypeRuntime): GetTypeResult {
-    const thisType = runtime.getThisType()
-    if (!thisType) {
-      return err(new RuntimeError(this, '`this` is not available in this context'))
-    }
-    return ok(thisType)
-  }
-
-  eval(runtime: ValueRuntime): GetValueResult {
-    const thisValue = runtime.getThisValue()
-    if (!thisValue) {
-      return err(new RuntimeError(this, '`this` is not available in this context'))
-    }
-    return ok(thisValue)
-  }
-
-  compile(runtime: TypeRuntime) {
-    return this.getType(runtime).map(type => new Nodes.This(toSource(this), type))
-  }
-}
-
-//|
-//|  Type Identifier Expressions
-//|
-
-/**
- * The name of a built-in type:
- * Int, Float, String, Boolean, View
- * null, true, false
- */
-abstract class TypeIdentifier extends Identifier {
-  toLisp() {
-    return '`' + this.toCode() + '`'
-  }
-
-  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return this.getType(runtime).map(type => {
-      if (type instanceof Types.TypeConstructor) {
-        return type.intendedType
-      }
-
-      return type
-    })
-  }
-
-  abstract safeTypeAssertion(): Types.Type
-}
-
-export class BooleanTypeIdentifier extends TypeIdentifier {
-  readonly name = 'Boolean'
-
-  toCode() {
-    return this.safeTypeAssertion().toCode()
-  }
-
-  safeTypeAssertion(): Types.Type {
-    return Types.BooleanType
-  }
-
-  getAsTypeExpression(): GetTypeResult {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getType() {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, 'BooleanTypeIdentifier does not have a type'))
-  }
-
-  compileAsTypeExpression() {
-    return ok(new Nodes.BooleanType(toSource(this)))
-  }
-
-  compile() {
-    // TODO: this should return a type constructor formula
-    return ok(new Nodes.BooleanType(toSource(this)))
-  }
-
-  eval(): GetValueResult {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, 'BooleanTypeIdentifier cannot be evaluated'))
-  }
-}
-
-export class FloatTypeIdentifier extends TypeIdentifier {
-  readonly name = 'Float'
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly narrowed: Narrowed.NarrowedFloat | undefined = undefined,
-  ) {
-    super(range, precedingComments)
-  }
-
-  toCode() {
-    return this.safeTypeAssertion().toCode()
-  }
-
-  safeTypeAssertion(): Types.Type {
-    if (this.narrowed === undefined) {
-      return Types.FloatType
-    } else {
-      return Types.FloatType.narrow(this.narrowed.min, this.narrowed.max)
-    }
-  }
-
-  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getType() {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, 'FloatTypeIdentifier does not have a type'))
-  }
-
-  compileAsTypeExpression() {
-    return ok(new Nodes.FloatType(toSource(this), this.safeTypeAssertion()))
-  }
-
-  compile() {
-    // TODO: this should return a type constructor formula
-    return ok(new Nodes.FloatType(toSource(this), this.safeTypeAssertion()))
-  }
-
-  eval(): GetValueResult {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, 'FloatTypeIdentifier cannot be evaluated'))
-  }
-}
-
-export class IntTypeIdentifier extends TypeIdentifier {
-  readonly name = 'Int'
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly narrowed: Narrowed.NarrowedInt | undefined = undefined,
-  ) {
-    super(range, precedingComments)
-  }
-
-  toCode() {
-    return this.safeTypeAssertion().toCode()
-  }
-
-  safeTypeAssertion(): Types.Type {
-    if (this.narrowed === undefined) {
-      return Types.IntType
-    } else {
-      return Types.IntType.narrow(this.narrowed.min, this.narrowed.max)
-    }
-  }
-
-  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getType() {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, 'IntTypeIdentifier does not have a type'))
-  }
-
-  compileAsTypeExpression() {
-    return ok(new Nodes.IntType(toSource(this), this.safeTypeAssertion()))
-  }
-
-  compile() {
-    // TODO: this should return a type constructor formula
-    return ok(new Nodes.IntType(toSource(this), this.safeTypeAssertion()))
-  }
-
-  eval(): GetValueResult {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, 'IntTypeIdentifier cannot be evaluated'))
-  }
-}
-
-export class StringTypeIdentifier extends TypeIdentifier {
-  readonly name = 'String'
-
-  constructor(
-    range: Range,
-    precedingComments: Comment[],
-    readonly narrowed: Narrowed.NarrowedString | undefined = undefined,
-  ) {
-    super(range, precedingComments)
-  }
-
-  toCode() {
-    return this.safeTypeAssertion().toCode()
-  }
-
-  safeTypeAssertion(): Types.Type {
-    if (this.narrowed === undefined) {
-      return Types.StringType
-    } else {
-      return Types.StringType.narrowString(this.narrowed)
-    }
-  }
-
-  getAsTypeExpression(): GetRuntimeResult<Types.Type> {
-    return ok(this.safeTypeAssertion())
-  }
-
-  getType() {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, 'StringTypeIdentifier does not have a type'))
-  }
-
-  compileAsTypeExpression() {
-    return ok(new Nodes.StringType(toSource(this), this.safeTypeAssertion()))
-  }
-
-  compile() {
-    // TODO: this should return a type constructor formula
-    return ok(new Nodes.StringType(toSource(this), this.safeTypeAssertion()))
-  }
-
-  eval(): GetValueResult {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, 'StringTypeIdentifier cannot be evaluated'))
   }
 }
 

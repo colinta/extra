@@ -7,15 +7,15 @@ import {EXPORT_KEYWORD} from '@/formulaParser/grammars'
 import * as Types from '@/types'
 import * as Values from '@/values'
 import {
-  type Range,
   type FormulaArgumentDefinition,
   type Reference,
   Expression,
   getChildType,
   InstanceFormulaExpression,
-  RuntimeError,
   argumentValues,
 } from './expressions'
+import {type Range} from './types'
+import {RuntimeError} from './errors'
 
 /**
  * A view formula on a view class, or a view formula on a pure-function view.
