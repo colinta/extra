@@ -101,6 +101,48 @@ in
         Types.string({min: 1}),
         Values.string('a!'),
       ]),
+      c.skip([
+        `\
+let
+  fn inc(# input: Int) => input + 1
+in
+  1 |> inc
+`,
+        Types.int(),
+        Values.int(2),
+      ]),
+      c.skip([
+        `\
+let
+  fn bangify(input: String) => input .. '!'
+in
+  'a' |> bangify
+`,
+        Types.string({min: 1}),
+        Values.string('a!'),
+      ]),
+      c.skip([
+        `\
+let
+  fn inc(# input: Int) => input + 1
+  value: Int? = 1
+in
+  value ?|> inc
+`,
+        Types.optional(Types.int()),
+        Values.int(2),
+      ]),
+      c.skip([
+        `\
+let
+  fn inc(# input: Int) => input + 1
+  value: Int? = null
+in
+  value ?|> inc
+`,
+        Types.optional(Types.int()),
+        Values.nullValue(),
+      ]),
     ).run(([formula, expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
         `'${formula}' should have type '${expectedType}' and value '${expectedValue}'`,
