@@ -50,8 +50,8 @@ describe('canBeAssignedTo', () => {
     c([Types.literal(1), Types.never(), false]),
     c([Types.never(), Types.literal(1), false]),
     c([Types.never(), Types.never(), false]),
-    c([Types.literal(1), Types.always(), true]),
-    c([Types.always(), Types.literal(1), true]),
+    c([Types.literal(1), Types.any(), true]),
+    c([Types.any(), Types.literal(1), true]),
     c([Types.literal(1), Types.literal(1), true]),
     c([Types.literal(1), Types.literal(2), false]),
     c([Types.literal(1), Types.int(), true]),
@@ -327,7 +327,7 @@ describe('canBeAssignedTo', () => {
       Types.formula(
         args(
           {name: '# age', type: Types.int()},
-          {name: '# name', type: Types.always()},
+          {name: '# name', type: Types.any()},
           {name: 'isFoo', type: Types.booleanType(), isRequired: false},
           {
             name: 'args',

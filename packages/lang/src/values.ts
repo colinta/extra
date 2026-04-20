@@ -1039,7 +1039,7 @@ export class ArrayValue extends Value {
     super()
 
     if (this.values.length === 0) {
-      this.runtimeType = new Types.ArrayType(Types.always(), {min: 0, max: 0})
+      this.runtimeType = new Types.ArrayType(Types.any(), {min: 0, max: 0})
     } else {
       const first = this.values[0].getType()
       const valueType: Types.Type = this.values.reduce((memo, rhValue, index) => {
@@ -1163,7 +1163,7 @@ export class DictValue extends Value {
     super()
 
     if (this.values.size === 0) {
-      this._runtimeType = Types.dict(Types.always())
+      this._runtimeType = Types.dict(Types.any())
     } else {
       const names = [...this.values.keys()]
       const values = [...this.values.values()]
@@ -1279,7 +1279,7 @@ export class SetValue extends Value {
     super()
 
     if (this.values.length === 0) {
-      this.runtimeType = new Types.SetType(Types.always(), {min: 0, max: 0})
+      this.runtimeType = new Types.SetType(Types.any(), {min: 0, max: 0})
     } else {
       const first = this.values[0].getType()
       const valueType: Types.Type = this.values.reduce((memo, rhValue, index) => {
@@ -2135,7 +2135,9 @@ export class MessageValue extends Value {
   OpaqueValue._props.set('value', (opaque: OpaqueValue) => opaque.value)
   OpaqueValue._props.set('map', (opaque: OpaqueValue) =>
     namedFormula('map', args =>
-      args.at(0, FormulaValue).map(apply => apply.call(new FormulaArgs([[undefined, opaque.value, 'arg']]))),
+      args
+        .at(0, FormulaValue)
+        .map(apply => apply.call(new FormulaArgs([[undefined, opaque.value, 'arg']]))),
     ),
   )
   OpaqueValue._props.set('rewrap', (opaque: OpaqueValue) =>

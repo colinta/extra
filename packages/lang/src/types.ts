@@ -23,8 +23,8 @@ export function never() {
   return NeverType
 }
 
-export function always() {
-  return AlwaysType
+export function any() {
+  return AnyType
 }
 
 export function nullType() {
@@ -1327,7 +1327,7 @@ export const NeverType = new (class NeverType extends Type {
 })()
 
 /**
- * 'never/NeverType' is the empty set, 'always/AlwaysType' is the set of all
+ * 'never/NeverType' is the empty set, 'Any/AnyType' is the set of all
  * types. It is meant to be narrowed into more useful types.
  *
  * What is the type of 'a' here?
@@ -1339,11 +1339,11 @@ export const NeverType = new (class NeverType extends Type {
  *       names = a.join('')  -- join typically expects [String]
  *     in …
  *
- * 'a' can be... anything! This is the role of the 'always/AlwaysType'. It usually
+ * 'a' can be... anything! This is the role of the 'Any/AnyType'. It usually
  * shows up when dealing with empty container types, like above.
  */
-export const AlwaysType = new (class AlwaysType extends Type {
-  readonly is = 'always'
+export const AnyType = new (class AnyType extends Type {
+  readonly is = 'any'
 
   propAccessType(name: string | number) {
     return undefined
@@ -4307,7 +4307,7 @@ function _applySubstToEnumCase<T extends Type>(
  * - Each value in the enum is narrowed (if the case matches)
  */
 export function narrowTypeIs(lhsType: Type, typeAssertion: Type): Type {
-  if (typeAssertion === AlwaysType) {
+  if (typeAssertion === AnyType) {
     return lhsType
   }
 
@@ -4801,7 +4801,7 @@ export function stringConcatenationType(
  * includes both types.
  *
  * - NeverType never merges - nothing is compatible with it.
- * - if either type is AlwaysType, return the other type
+ * - if either type is AnyType, return the other type
  * - Identical types are easy, return the type
  * - OneOf types will be merged item by item, merging when possible. At most you'll
  *   have all the elements from both types, or they may be combined into generic types.
@@ -4827,11 +4827,11 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     return NeverType
   }
 
-  if (lhs === AlwaysType) {
+  if (lhs === AnyType) {
     return rhs
   }
 
-  if (rhs === AlwaysType) {
+  if (rhs === AnyType) {
     return lhs
   }
 
@@ -5242,7 +5242,7 @@ export function canBeAssignedTo(
     return why(false, `Encountered unexpected type 'never'.`)
   }
 
-  if (testType === AlwaysType || assignTo === AlwaysType) {
+  if (testType === AnyType || assignTo === AnyType) {
     return true
   }
 
@@ -6065,7 +6065,7 @@ function spreadPositionalArgumentType(
   spreadPositionalArguments: Type[],
 ) {
   // all remaining positional args need to be of type formulaArgument.type
-  let type: Type = AlwaysType
+  let type: Type = AnyType
   let argumentIsRequired = true
   for (let positionIndex = position; positionIndex < positionsLength; ++positionIndex) {
     const argTypeAtIndex = argumentAt(positionIndex)
@@ -6089,7 +6089,7 @@ function repeatedNamedArgumentType(
 ) {
   remainingNames.delete(formulaArgument.alias)
   const argumentTypes = argumentsNamed(formulaArgument.alias)
-  let type: Type = AlwaysType
+  let type: Type = AnyType
   for (const argType of argumentTypes) {
     type = compatibleWithBothTypes(type, argType)
   }
@@ -6102,7 +6102,7 @@ function kwargListArgumentType(
   keywordListArguments: Type[],
   remainingNames: Set<string>,
 ) {
-  let type: Type = AlwaysType
+  let type: Type = AnyType
   for (const argName of remainingNames) {
     remainingNames.delete(argName)
     const argTypes = argumentsNamed(argName)
@@ -6731,7 +6731,7 @@ function scoreType(type: Type): number | undefined {
       return 20
     case NullType:
       return 21
-    case AlwaysType:
+    case AnyType:
       return 22
     case NeverType:
       return 23

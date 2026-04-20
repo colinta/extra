@@ -332,8 +332,8 @@ export const Ignored = new (class Ignored extends Node {
         precedingComments: [],
         followingComments: [],
       },
-      // AlwaysType is a good choice because when merged with other types, the
-      // AlwaysType will be ignored and the other type will be returned.
+      // AnyType is a good choice because when merged with other types, the
+      // AnyType will be ignored and the other type will be returned.
       Types.unique('Ignored'),
     )
   }

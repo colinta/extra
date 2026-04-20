@@ -939,9 +939,9 @@ export class BooleanTypeIdentifier extends TypeIdentifier {
               Types.IntType,
               Types.FloatType,
               Types.StringType,
-              Types.array(Types.AlwaysType),
-              Types.dict(Types.AlwaysType),
-              Types.set(Types.AlwaysType),
+              Types.array(Types.AnyType),
+              Types.dict(Types.AnyType),
+              Types.set(Types.AnyType),
             ]),
             isRequired: true,
           }),
@@ -1155,7 +1155,7 @@ export class StringTypeIdentifier extends TypeIdentifier {
         [
           Types.positionalArgument({
             name: 'input',
-            type: Types.AlwaysType,
+            type: Types.AnyType,
             isRequired: true,
           }),
         ],
@@ -1634,33 +1634,33 @@ export class ObjectTypeExpression extends TypeExpression {
   }
 }
 
-export class AlwaysTypePlaceholder extends Expression {
+export class AnyTypePlaceholder extends Expression {
   constructor() {
     super([0, 0], [])
   }
 
   toCode() {
-    return 'always'
+    return 'any'
   }
 
   toLisp() {
-    return 'always'
+    return 'any'
   }
 
   getAsTypeExpression(): GetTypeResult {
-    return ok(Types.AlwaysType)
+    return ok(Types.AnyType)
   }
 
   getType() {
-    return err(new RuntimeError(this, 'AlwaysTypePlaceholder does not have a type'))
+    return err(new RuntimeError(this, 'AnyTypePlaceholder does not have a type'))
   }
 
   compile(): GetNodeResult {
-    return err(new RuntimeError(this, 'AlwaysTypePlaceholder cannot be compiled'))
+    return err(new RuntimeError(this, 'AnyTypePlaceholder cannot be compiled'))
   }
 
   eval() {
-    return err(new RuntimeError(this, 'AlwaysTypePlaceholder cannot be evaluated'))
+    return err(new RuntimeError(this, 'AnyTypePlaceholder cannot be evaluated'))
   }
 }
 
@@ -2944,7 +2944,7 @@ function combineAllTypesForArray(expr: ArrayExpression, runtime: TypeRuntime) {
       return getChildType(expr, arg, runtime).map(type => [isSpread, isInclusionOp, type])
     }),
   ).map(typesInfo => {
-    let returnType: Types.Type = Types.AlwaysType
+    let returnType: Types.Type = Types.AnyType
     let min = 0,
       max: number | undefined = 0
     for (const [isSpread, isInclusionOp, type] of typesInfo) {
@@ -2997,7 +2997,7 @@ function combineAllTypesForSet(expr: SetExpression, runtime: TypeRuntime) {
     }),
   ).map(typesInfo => {
     let included = new Set<string | number | boolean>()
-    let returnType: Types.Type = Types.AlwaysType
+    let returnType: Types.Type = Types.AnyType
     let min = 0,
       max: number | undefined = 0
     for (const [isSpread, type] of typesInfo) {
@@ -3072,7 +3072,7 @@ function combineAllTypesForDict(expr: DictExpression, runtime: TypeRuntime) {
     ),
   ).map(typesInfo => {
     let keys = new Set<Types.Key>()
-    let returnType: Types.Type = Types.AlwaysType
+    let returnType: Types.Type = Types.AnyType
     let min = 0,
       max: number | undefined = 0
     for (const [isSpread, valueType, keyType] of typesInfo) {

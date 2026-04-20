@@ -569,19 +569,19 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
         return new Expressions.ArrayTypeExpression(
           [arg0, scanner.charIndex],
           scanner.flushComments(),
-          new Expressions.AlwaysTypePlaceholder(),
+          new Expressions.AnyTypePlaceholder(),
         )
       } else if (typeName.name === DICT) {
         return new Expressions.DictTypeExpression(
           [arg0, scanner.charIndex],
           scanner.flushComments(),
-          new Expressions.AlwaysTypePlaceholder(),
+          new Expressions.AnyTypePlaceholder(),
         )
       } else if (typeName.name === SET) {
         return new Expressions.SetTypeExpression(
           [arg0, scanner.charIndex],
           scanner.flushComments(),
-          new Expressions.AlwaysTypePlaceholder(),
+          new Expressions.AnyTypePlaceholder(),
         )
       } else if (typeName.name === OBJECT) {
         return new Expressions.ObjectTypeExpression(

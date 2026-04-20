@@ -97,7 +97,7 @@ export class SwitchExpression extends Expression {
 
   // rhsType(runtime: TypeRuntime, lhsType: Types.Type, lhsExpr: Expression, rhsExpr: Expression) {
   rhsType(): GetTypeResult {
-    return ok(Types.AlwaysType)
+    return ok(Types.AnyType)
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
@@ -2695,7 +2695,7 @@ export class MatchArrayExpression extends MatchExpression {
     // - if any matchers result in NeverType, the entire expression cannot match
     // - we can combine the types of all the matchers into one narrowed type
     // - the initialExprs and trailingExprs can narrow the length
-    return reduceAll(Types.AlwaysType as Types.Type, matchExprs, (combinedType, matchExpr) => {
+    return reduceAll(Types.AnyType as Types.Type, matchExprs, (combinedType, matchExpr) => {
       if (combinedType === Types.NeverType) {
         return ok(Types.NeverType)
       }
