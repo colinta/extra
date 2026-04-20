@@ -390,6 +390,10 @@ export function kwargListArgument(args: {name: string; type: DictType}): KwargLi
   }
 }
 
+export function unique(name?: string) {
+  return new UniqueType(name)
+}
+
 export type Key = string | number | boolean | null
 export type KeyType = 'string' | 'int' | 'float' | 'boolean' | 'null'
 type Literals = 'boolean' | 'float' | 'int' | 'string' | 'regex'
@@ -1337,6 +1341,22 @@ export const AlwaysType = new (class AlwaysType extends Type {
     return undefined
   }
 })()
+
+/**
+ * An instance of a type that is not a member of any other set of types (other
+ * than itself).
+ */
+export class UniqueType extends Type {
+  readonly is = 'unique'
+
+  constructor(readonly name?: string) {
+    super()
+  }
+
+  propAccessType(name: string | number) {
+    return undefined
+  }
+}
 
 class MetaNullType extends Type {
   readonly is = 'null'
@@ -4726,6 +4746,10 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     return lhs
   }
 
+  if (lhs instanceof UniqueType || rhs instanceof UniqueType) {
+    return _privateOneOf([lhs, rhs])
+  }
+
   if (lhs instanceof OneOfType && rhs instanceof OneOfType) {
     // merge every type in rhs with the list of types in lhs
     // this ends up calling the next conditional
@@ -5124,6 +5148,10 @@ export function canBeAssignedTo(
 
   if (testType === assignTo) {
     return true
+  }
+
+  if (testType instanceof UniqueType || assignTo instanceof UniqueType) {
+    return false
   }
 
   // this little helper accepts the canBeAssigned check, and if an error object

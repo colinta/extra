@@ -241,7 +241,7 @@ export class PropertyAccessName extends Reference {
     readonly source: Source,
     readonly name: string,
   ) {
-    super(source, Types.AlwaysType, name)
+    super(source, Types.unique('PropertyAccessName'), name)
   }
 }
 
@@ -256,7 +256,7 @@ export class PropertyAccessIndex extends Node {
     readonly source: Source,
     readonly name: number,
   ) {
-    super(source, Types.AlwaysType)
+    super(source, Types.unique('PropertyAccessIndex'))
   }
 
   get stateName() {
@@ -275,7 +275,7 @@ export const Ignored = new (class Ignored extends Node {
       },
       // AlwaysType is a good choice because when merged with other types, the
       // AlwaysType will be ignored and the other type will be returned.
-      Types.AlwaysType,
+      Types.unique('Ignored'),
     )
   }
 })()
@@ -676,7 +676,7 @@ export class MatchLiteral extends CaseMatch {
  */
 export class MatchIgnore extends CaseMatch {
   constructor(readonly source: Source) {
-    super(source, Types.AlwaysType)
+    super(source, Types.unique('MatchIgnore'))
   }
 }
 
@@ -688,7 +688,7 @@ export class MatchReference extends CaseMatch {
     readonly source: Source,
     readonly name: string,
   ) {
-    super(source, Types.AlwaysType)
+    super(source, Types.unique('MatchReference'))
   }
 }
 
@@ -697,7 +697,7 @@ export class MatchReference extends CaseMatch {
  */
 export class MatchIgnoreRemaining extends CaseMatch {
   constructor(readonly source: Source) {
-    super(source, Types.AlwaysType)
+    super(source, Types.unique('MatchIgnoreRemaining'))
   }
 }
 
@@ -709,7 +709,7 @@ export class MatchAssignRemaining extends CaseMatch {
     readonly source: Source,
     readonly name: string,
   ) {
-    super(source, Types.AlwaysType)
+    super(source, Types.unique('MatchAssignRemaining'))
   }
 }
 
@@ -763,7 +763,7 @@ export class MatchUnaryRange extends CaseMatch {
     readonly op: '>' | '>=' | '<' | '<=',
     readonly start: Node,
   ) {
-    super(source, Types.AlwaysType)
+    super(source, Types.unique('MatchUnaryRange'))
   }
 }
 
@@ -779,7 +779,7 @@ export class MatchBinaryRange extends CaseMatch {
     readonly start: Node,
     readonly stop: Node,
   ) {
-    super(source, Types.AlwaysType)
+    super(source, Types.unique('MatchBinaryRange'))
   }
 }
 
@@ -819,7 +819,7 @@ export class MatchEnum extends CaseMatch {
     readonly args: (MatchNamedArgument | MatchPositionalArgument)[] | undefined,
     readonly ignoreRemaining: boolean,
   ) {
-    super(source, Types.AlwaysType)
+    super(source, Types.unique('MatchEnum'))
   }
 }
 
