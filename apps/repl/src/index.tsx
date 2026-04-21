@@ -475,6 +475,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
         only,
         skip,
         expectedCode: result.code,
+        expectedType: '<unknown>',
         expectedValue: '<unknown>',
         variables: result.variables,
       })
@@ -509,7 +510,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       <Stack.right flex={1}>
         <Box width="fill" flex={2}>
           <Scrollable>
-            <Text wrap> {mainText} </Text>
+            <Text wrap>{mainText}</Text>
           </Scrollable>
         </Box>
         <Box width="fill" flex={1}>

@@ -410,6 +410,17 @@
       "expectedType": "UserId",
       "expectedValue": "UserId(5)",
       "variables": []
+    },
+    {
+      "desc": "Int constructor",
+      "preamble": "",
+      "formula": "let\n  five = Int(5)\nin\n  five",
+      "only": false,
+      "skip": false,
+      "expectedCode": "let\n  five = Int(5)\nin\n  five\n",
+      "expectedValue": "5",
+      "expectedType": "Int",
+      "variables": []
     }
   ]
 }
