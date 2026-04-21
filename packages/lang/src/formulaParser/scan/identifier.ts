@@ -60,6 +60,7 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case 'Float':
     case 'Int':
     case 'String':
+    case 'Any':
     case 'Object':
     case 'Array':
     case 'Dict':
@@ -241,6 +242,9 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
       break
     case 'String':
       identifier = new Expressions.StringTypeIdentifier(range, scanner.flushComments())
+      break
+    case 'Any':
+      identifier = new Expressions.AnyTypeIdentifier(range, scanner.flushComments())
       break
     case 'Object':
       identifier = new Expressions.ObjectTypeIdentifier(range, scanner.flushComments())

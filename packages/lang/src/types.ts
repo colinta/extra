@@ -1103,6 +1103,10 @@ export abstract class OneOfType extends Type {
       return NeverType
     }
 
+    if (types.includes(AnyType)) {
+      return AnyType
+    }
+
     if (types.length === 1) {
       return types[0]
     }
@@ -4827,12 +4831,8 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     return NeverType
   }
 
-  if (lhs === AnyType) {
-    return rhs
-  }
-
-  if (rhs === AnyType) {
-    return lhs
+  if (lhs === AnyType || rhs === AnyType) {
+    return AnyType
   }
 
   if (lhs instanceof UniqueType || rhs instanceof UniqueType) {
@@ -5242,8 +5242,12 @@ export function canBeAssignedTo(
     return why(false, `Encountered unexpected type 'never'.`)
   }
 
-  if (testType === AnyType || assignTo === AnyType) {
+  if (assignTo === AnyType) {
     return true
+  }
+
+  if (testType === AnyType) {
+    return why(false, `Type 'Any' must be narrowed before assigning to '${assignTo}'.`)
   }
 
   if (testType === assignTo) {
@@ -5364,6 +5368,10 @@ export function canBeAssignedTo(
       return why(false, `Incompatible array types '${testType}' and '${assignTo}'.`)
     }
 
+    if (isAnyContainer(testType.narrowedLength.max, testType.of)) {
+      return true
+    }
+
     return why(
       canBeAssignedTo(testType.of, assignTo.of, reason),
       `Incompatible array types '${testType}' and '${assignTo}'.`,
@@ -5373,6 +5381,10 @@ export function canBeAssignedTo(
       return why(false, `Incompatible dict types '${testType}' and '${assignTo}'.`)
     }
 
+    if (isAnyContainer(testType.narrowedLength.max, testType.of)) {
+      return true
+    }
+
     return why(
       canBeAssignedTo(testType.of, assignTo.of, reason),
       `Incompatible dict types '${testType}' and '${assignTo}'.`,
@@ -5380,6 +5392,10 @@ export function canBeAssignedTo(
   } else if (testType instanceof SetType && assignTo instanceof SetType) {
     if (!canBeAssignedToSet(testType, assignTo)) {
       return why(false, `Incompatible set types '${testType}' and '${assignTo}'.`)
+    }
+
+    if (isAnyContainer(testType.narrowedLength.max, testType.of)) {
+      return true
     }
 
     return why(
@@ -5657,6 +5673,10 @@ function canBeAssignedToSet(testType: SetType, assignTo: SetType) {
   return true
 }
 
+function isAnyContainer(narrowedMax: number | undefined, ofType: Type) {
+  return narrowedMax === 0 && ofType === AnyType
+}
+
 /**
  * "concrete" types (anything but a formula) can resolve a generic.
  * formula *return values* can resolve a generic, but arguments can only add
@@ -5898,7 +5918,11 @@ function _checkFormulaArguments(
   const errors: string[] = []
   const reason = {reason: ''}
   let positionIndex = 0
-  const remainingNames: Set<string> = new Set(namedArgs)
+  const remainingNames: Set<string> = new Set([...namedArgs, ...spreadDictArguments.keys()])
+
+  function allArgumentsNamed(name: string) {
+    return [...argumentsNamed(name), ...(spreadDictArguments.get(name) ?? [])]
+  }
 
   // sort formulaBeingCalled.args:
   // - all positional
@@ -5934,7 +5958,13 @@ function _checkFormulaArguments(
       positionIndex += 1
     } else if (formulaArgument.is === 'named-argument') {
       const {argumentType: argumentType_, argumentIsRequired: argumentIsRequired_} =
-        namedArgumentType(argumentsNamed, isRequired, formulaArgument.alias, errors, remainingNames)
+        namedArgumentType(
+          allArgumentsNamed,
+          isRequired,
+          formulaArgument.alias,
+          errors,
+          remainingNames,
+        )
 
       argumentType = argumentType_
       argumentIsRequired = argumentIsRequired_
@@ -5954,11 +5984,11 @@ function _checkFormulaArguments(
       argumentType = type
       argumentIsRequired = argumentIsRequired_
     } else if (formulaArgument.is === 'repeated-named-argument') {
-      argumentType = repeatedNamedArgumentType(argumentsNamed, formulaArgument, remainingNames)
+      argumentType = repeatedNamedArgumentType(allArgumentsNamed, formulaArgument, remainingNames)
       argumentIsRequired = isRequired(formulaArgument.alias)
     } else if (formulaArgument.is === 'kwarg-list-argument') {
       argumentType = kwargListArgumentType(
-        argumentsNamed,
+        allArgumentsNamed,
         errors,
         keywordListArguments,
         remainingNames,
@@ -6065,21 +6095,21 @@ function spreadPositionalArgumentType(
   spreadPositionalArguments: Type[],
 ) {
   // all remaining positional args need to be of type formulaArgument.type
-  let type: Type = AnyType
+  let type: Type | undefined
   let argumentIsRequired = true
   for (let positionIndex = position; positionIndex < positionsLength; ++positionIndex) {
     const argTypeAtIndex = argumentAt(positionIndex)
     if (!argTypeAtIndex) {
       throw `Weird, positionsLength is ${positionsLength}, but no argument at position ${positionIndex}`
     }
-    type = compatibleWithBothTypes(type, argTypeAtIndex)
+    type = type ? compatibleWithBothTypes(type, argTypeAtIndex) : argTypeAtIndex
     argumentIsRequired = argumentIsRequired && isRequired(positionIndex)
   }
 
   for (const spreadPositionalType of spreadPositionalArguments) {
-    type = compatibleWithBothTypes(type, spreadPositionalType)
+    type = type ? compatibleWithBothTypes(type, spreadPositionalType) : spreadPositionalType
   }
-  return {type: new ArrayType(type), argumentIsRequired}
+  return {type: new ArrayType(type ?? AnyType), argumentIsRequired}
 }
 
 function repeatedNamedArgumentType(
@@ -6089,11 +6119,11 @@ function repeatedNamedArgumentType(
 ) {
   remainingNames.delete(formulaArgument.alias)
   const argumentTypes = argumentsNamed(formulaArgument.alias)
-  let type: Type = AnyType
+  let type: Type | undefined
   for (const argType of argumentTypes) {
-    type = compatibleWithBothTypes(type, argType)
+    type = type ? compatibleWithBothTypes(type, argType) : argType
   }
-  return new ArrayType(type)
+  return new ArrayType(type ?? AnyType)
 }
 
 function kwargListArgumentType(
@@ -6102,7 +6132,11 @@ function kwargListArgumentType(
   keywordListArguments: Type[],
   remainingNames: Set<string>,
 ) {
-  let type: Type = AnyType
+  if (remainingNames.size === 0 && keywordListArguments.length === 0) {
+    return new DictType(AnyType, {min: 0, max: 0})
+  }
+
+  let type: Type | undefined
   for (const argName of remainingNames) {
     remainingNames.delete(argName)
     const argTypes = argumentsNamed(argName)
@@ -6114,14 +6148,14 @@ function kwargListArgumentType(
     } else if (argTypes.length === 0) {
       throw 'impossible - I got the list of arg names from remainingNames - but then none are returned by argumentsNamed!?'
     }
-    type = compatibleWithBothTypes(type, argTypes[0])
+    type = type ? compatibleWithBothTypes(type, argTypes[0]) : argTypes[0]
   }
 
   for (const keywordListType of keywordListArguments) {
-    type = compatibleWithBothTypes(type, keywordListType)
+    type = type ? compatibleWithBothTypes(type, keywordListType) : keywordListType
   }
 
-  return new DictType(type)
+  return new DictType(type ?? AnyType)
 }
 
 function combineErrorMessages(errorMessages: string[]) {

@@ -221,7 +221,7 @@
       "variables": [
         [
           "formula7",
-          "fn(#one: Int, **namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
+          "fn(# one: Int, **namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
         ]
       ]
     },
@@ -234,7 +234,7 @@
       "variables": [
         [
           "formula7",
-          "fn(#one: Int, **namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
+          "fn(# one: Int, **namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
         ]
       ]
     },
@@ -247,7 +247,7 @@
       "variables": [
         [
           "formula7",
-          "fn(#one: Int, **namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
+          "fn(# one: Int, **namedInts: Dict(Int)) => one + (namedInts['a'] ?? 0) + (namedInts['b'] ?? 0)"
         ]
       ]
     },
@@ -404,8 +404,6 @@
       "desc": "simple user id",
       "preamble": "opaque type UserId = Int\n",
       "formula": "let\n  id = UserId(5)\nin\n  id",
-      "only": false,
-      "skip": false,
       "expectedCode": "let\n  id = UserId(5)\nin\n  id\n",
       "expectedType": "UserId",
       "expectedValue": "UserId(5)",
@@ -415,11 +413,27 @@
       "desc": "Int constructor",
       "preamble": "",
       "formula": "let\n  five = Int(5)\nin\n  five",
-      "only": false,
-      "skip": false,
       "expectedCode": "let\n  five = Int(5)\nin\n  five\n",
       "expectedValue": "5",
       "expectedType": "Int",
+      "variables": []
+    },
+    {
+      "desc": "String constructor accepts Any",
+      "preamble": "",
+      "formula": "let\n  value: Any = [1, 2]\nin\n  String(value)",
+      "expectedCode": "let\n  value: Any = [1, 2]\nin\n  String(value)\n",
+      "expectedValue": "'[1, 2]'",
+      "expectedType": "String",
+      "variables": []
+    },
+    {
+      "desc": "Any narrows with is",
+      "preamble": "",
+      "formula": "let\n  value: Any = 'hello'\nin\n  if value is String\n    value.length\n  else\n    0",
+      "expectedCode": "let\n  value: Any = 'hello'\nin\n  if value is String\n    value.length\n  else\n    0",
+      "expectedValue": "5",
+      "expectedType": "Int(>=0)",
       "variables": []
     }
   ]

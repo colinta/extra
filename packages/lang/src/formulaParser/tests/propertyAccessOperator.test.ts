@@ -184,6 +184,7 @@ describe('Property Access Operator', () => {
         ],
         "Property 'c' does not exist on null",
       ]),
+      c([`a.b`, ['a', Types.AnyType], "Property 'b' does not exist on Any"]),
     ).run(([formula, [name, type], expectedMessage], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
         `'${formula}' should emit error '${expectedMessage}' (${name}: ${type})`,

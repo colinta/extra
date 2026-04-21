@@ -51,7 +51,7 @@ describe('canBeAssignedTo', () => {
     c([Types.never(), Types.literal(1), false]),
     c([Types.never(), Types.never(), false]),
     c([Types.literal(1), Types.any(), true]),
-    c([Types.any(), Types.literal(1), true]),
+    c([Types.any(), Types.literal(1), false]),
     c([Types.literal(1), Types.literal(1), true]),
     c([Types.literal(1), Types.literal(2), false]),
     c([Types.literal(1), Types.int(), true]),

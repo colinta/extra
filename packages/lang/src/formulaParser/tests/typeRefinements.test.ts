@@ -15,6 +15,31 @@ beforeEach(() => {
 })
 
 describe('type refinements', () => {
+  describe('any', () => {
+    cases<[string] | [string, string]>(
+      c(['Any']),
+      c(['[Any]']),
+      c(['Array(Any)', '[Any]']),
+      c(['Dict(Any)']),
+      c(['Set(Any)']),
+    ).run(([formula, expected], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
+        const expression = parseType(formula).get()
+
+        expect(expression!.toCode()).toEqual(expected ?? formula)
+        const type = expression!.getAsTypeExpression(typeRuntime).get()
+        expect(type.toString()).toEqual(expected ?? formula)
+      }),
+    )
+  })
+
+  it('simplifies Int | Any to Any', () => {
+    const expression = parseType('Int | Any').get()
+    const type = expression.getAsTypeExpression(typeRuntime).get()
+    expect(expression.toCode()).toEqual('Int | Any')
+    expect(type.toString()).toEqual('Any')
+  })
+
   describe('container types', () => {
     cases<[string] | [string, string]>(
       c(['Array(Int, length: =3)', '[Int, length: =3]']),

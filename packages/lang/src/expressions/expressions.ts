@@ -905,6 +905,8 @@ function parseBase10Number(value: Values.StringValue) {
 }
 
 abstract class TypeIdentifier extends Expression {
+  abstract readonly name: string
+
   toLisp() {
     return '`' + this.toCode() + '`'
   }
@@ -917,6 +919,34 @@ abstract class TypeIdentifier extends Expression {
 
   getAsTypeExpression(): GetTypeResult {
     return ok(this.safeTypeAssertion())
+  }
+}
+
+export class AnyTypeIdentifier extends TypeIdentifier {
+  readonly name = 'Any'
+
+  safeTypeAssertion(): Types.Type {
+    return Types.AnyType
+  }
+
+  getType() {
+    return err(
+      new RuntimeError(this, `${this.constructor.name} does not have a runtime constructor`),
+    )
+  }
+
+  compile() {
+    return err(
+      new RuntimeError(this, `${this.constructor.name} cannot be compiled as a runtime value`),
+    )
+  }
+
+  eval() {
+    return err(new RuntimeError(this, `${this.constructor.name} cannot be evaluated`))
+  }
+
+  compileAsTypeExpression() {
+    return ok(new Nodes.NamedType(toSource(this), Types.AnyType, this.name))
   }
 }
 
@@ -1640,11 +1670,11 @@ export class AnyTypePlaceholder extends Expression {
   }
 
   toCode() {
-    return 'any'
+    return 'Any'
   }
 
   toLisp() {
-    return 'any'
+    return 'Any'
   }
 
   getAsTypeExpression(): GetTypeResult {
@@ -2944,7 +2974,7 @@ function combineAllTypesForArray(expr: ArrayExpression, runtime: TypeRuntime) {
       return getChildType(expr, arg, runtime).map(type => [isSpread, isInclusionOp, type])
     }),
   ).map(typesInfo => {
-    let returnType: Types.Type = Types.AnyType
+    let returnType: Types.Type | undefined
     let min = 0,
       max: number | undefined = 0
     for (const [isSpread, isInclusionOp, type] of typesInfo) {
@@ -2956,18 +2986,18 @@ function combineAllTypesForArray(expr: ArrayExpression, runtime: TypeRuntime) {
           type.narrowedLength.max === undefined || max === undefined
             ? undefined
             : max + type.narrowedLength.max
-        returnType = Types.compatibleWithBothTypes(returnType, type.of)
+        returnType = returnType ? Types.compatibleWithBothTypes(returnType, type.of) : type.of
       } else if (isSpread) {
         // unreachable
       } else {
         // [..., x, ...] or [..., x if y, ...]
         min += isInclusionOp ? 0 : 1
         max = max === undefined ? undefined : max + 1
-        returnType = Types.compatibleWithBothTypes(returnType, type)
+        returnType = returnType ? Types.compatibleWithBothTypes(returnType, type) : type
       }
     }
 
-    return new Types.ArrayType(returnType, {min, max})
+    return new Types.ArrayType(returnType ?? Types.AnyType, {min, max})
   })
 }
 
@@ -2997,7 +3027,7 @@ function combineAllTypesForSet(expr: SetExpression, runtime: TypeRuntime) {
     }),
   ).map(typesInfo => {
     let included = new Set<string | number | boolean>()
-    let returnType: Types.Type = Types.AnyType
+    let returnType: Types.Type | undefined
     let min = 0,
       max: number | undefined = 0
     for (const [isSpread, type] of typesInfo) {
@@ -3022,7 +3052,7 @@ function combineAllTypesForSet(expr: SetExpression, runtime: TypeRuntime) {
           type.narrowedLength.max === undefined || max === undefined
             ? undefined
             : max + type.narrowedLength.max
-        returnType = Types.compatibleWithBothTypes(returnType, type.of)
+        returnType = returnType ? Types.compatibleWithBothTypes(returnType, type.of) : type.of
       } else if (isSpread) {
         // unreachable
       } else if (type instanceof Types.LiteralType && !(type.value instanceof RegExp)) {
@@ -3037,17 +3067,17 @@ function combineAllTypesForSet(expr: SetExpression, runtime: TypeRuntime) {
           // no affect to min *or* max, we already counted this value.
         }
 
-        returnType = Types.compatibleWithBothTypes(returnType, type)
+        returnType = returnType ? Types.compatibleWithBothTypes(returnType, type) : type
       } else {
         // cannot assume min += 1, because we don't know whether 'type' is being associated
         // with a unique entry or not.
         // but we can reason about max - there can't be more than the number of entries
         max = max === undefined ? undefined : max + 1
-        returnType = Types.compatibleWithBothTypes(returnType, type)
+        returnType = returnType ? Types.compatibleWithBothTypes(returnType, type) : type
       }
     }
 
-    return new Types.SetType(returnType, {min, max})
+    return new Types.SetType(returnType ?? Types.AnyType, {min, max})
   })
 }
 
@@ -3072,7 +3102,7 @@ function combineAllTypesForDict(expr: DictExpression, runtime: TypeRuntime) {
     ),
   ).map(typesInfo => {
     let keys = new Set<Types.Key>()
-    let returnType: Types.Type = Types.AnyType
+    let returnType: Types.Type | undefined
     let min = 0,
       max: number | undefined = 0
     for (const [isSpread, valueType, keyType] of typesInfo) {
@@ -3085,7 +3115,9 @@ function combineAllTypesForDict(expr: DictExpression, runtime: TypeRuntime) {
           valueType.narrowedLength.max === undefined || max === undefined
             ? undefined
             : max + valueType.narrowedLength.max
-        returnType = Types.compatibleWithBothTypes(returnType, valueType.of)
+        returnType = returnType
+          ? Types.compatibleWithBothTypes(returnType, valueType.of)
+          : valueType.of
       } else {
         if (keyType instanceof Types.LiteralType && !(keyType.value instanceof RegExp)) {
           if (!keys.has(keyType.value)) {
@@ -3093,11 +3125,11 @@ function combineAllTypesForDict(expr: DictExpression, runtime: TypeRuntime) {
           }
           keys.add(keyType.value)
         }
-        returnType = Types.compatibleWithBothTypes(returnType, valueType)
+        returnType = returnType ? Types.compatibleWithBothTypes(returnType, valueType) : valueType
       }
     }
 
-    return new Types.DictType(returnType, {min, max}, keys)
+    return new Types.DictType(returnType ?? Types.AnyType, {min, max}, keys)
   })
 }
 

@@ -2695,7 +2695,19 @@ export class MatchArrayExpression extends MatchExpression {
     // - if any matchers result in NeverType, the entire expression cannot match
     // - we can combine the types of all the matchers into one narrowed type
     // - the initialExprs and trailingExprs can narrow the length
-    return reduceAll(Types.AnyType as Types.Type, matchExprs, (combinedType, matchExpr) => {
+    const [firstExpr, ...restExprs] = matchExprs
+    const arrayOfFirstType = firstExpr === this.remainingExpr ? remainingArray : subjectType.of
+    const initialType = firstExpr.narrowUsingMatcherType(runtime, arrayOfFirstType)
+    if (initialType.isErr()) {
+      return initialType
+    }
+
+    const firstType =
+      firstExpr === this.remainingExpr && initialType.value instanceof Types.ArrayType
+        ? initialType.value.of
+        : initialType.value
+
+    return reduceAll(firstType, restExprs, (combinedType, matchExpr) => {
       if (combinedType === Types.NeverType) {
         return ok(Types.NeverType)
       }
