@@ -356,22 +356,24 @@ adder.dec(4) => 3
 I may have gone a bit overboard, just a heads up. 🤓
 
 Haskell & Elm & Ada inspired:
-`-- line comment`
-`{- block -}`
-`{- block {- with nesting -} -}`
 
-Let's get interesting:
-`--> arrow style line comment`
-`<-- alternate arrow style line comment`
-`← why stop there?` `→ pointing is rude though`
+```extra
+-- line comment
+{- block -}
+{- block {- with nesting -} -}
+```
 
 The usual comment characters `#` and `//` both have special meaning in Extra, and so I looked elsewhere for inspiration, and looked no further than Ada (and yes, Ada, Elm, Lua _all_ use `--` for line comments... but Ada has a certain caché so I wanted to mention it first).
 
-**More examples**
+Let's get interesting:
 
 ```extra
--- this is a line comment
+--> arrow style line comment
 "no longer a comment"  <-- this is code (and this is a comment!)
+<-- alternate arrow style line comment
+
+← why stop there? arrow characters are also comments
+→ pointing is rude, though
 
 {- comment block, line 1
  {- comment blocks _can_ be nested -}
@@ -382,9 +384,6 @@ comment, line 3 -}
 multiple |>
   lines
 --} <-- This brace is just part of a line comment until the '}' above is removed
-
---> arrows can be a comment! It's a small thing, but I find this so handy.
-<-- so much so that I made `<--` a comment marker, too, and ← and →
 ```
 
 ## Extra Comments, or _Let's Get Weird_

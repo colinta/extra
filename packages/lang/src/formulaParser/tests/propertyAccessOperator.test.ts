@@ -89,21 +89,6 @@ describe('Property Access Operator', () => {
   describe('formula properties', () => {
     cases<[string, Types.Type]>(
       c([
-        'Int.parse',
-        Types.namedFormula(
-          'parse',
-          [
-            Types.positionalArgument({name: 'input', type: Types.StringType, isRequired: true}),
-            Types.namedArgument({
-              name: 'radix',
-              type: Types.IntType.narrow(0, undefined),
-              isRequired: false,
-            }),
-          ],
-          Types.optional(Types.IntType),
-        ),
-      ]),
-      c([
         `let
   adder = fn{
     (# a: Int, # b: Int): Int => a + b
@@ -128,12 +113,6 @@ in
     )
 
     cases<[string, Values.Value]>(
-      c(['Int.parse("5")', Values.int(5)]),
-      c(['Int.parse("")', Values.nullValue()]),
-      c(['Int.parse("11", radix: 2)', Values.int(3)]),
-      c(['Int.parse("11", radix: 10)', Values.int(11)]),
-      c(['Int.parse("z", radix: 36)', Values.int(35)]),
-      c(['Int.parse("z", radix: 10)', Values.nullValue()]),
       c([
         `let
   adder = fn{

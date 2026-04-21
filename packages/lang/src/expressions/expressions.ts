@@ -1079,6 +1079,23 @@ export class FloatTypeIdentifier extends TypeIdentifier {
           }),
         ],
         Types.FloatType,
+        [],
+        new Map([
+          [
+            'parse',
+            Types.namedFormula(
+              'parse',
+              [
+                Types.positionalArgument({
+                  name: 'input',
+                  type: Types.StringType,
+                  isRequired: true,
+                }),
+              ],
+              Types.optional(Types.FloatType),
+            ),
+          ],
+        ]),
       ),
     )
   }
@@ -1089,23 +1106,40 @@ export class FloatTypeIdentifier extends TypeIdentifier {
 
   eval(_runtime: ValueRuntime): GetValueResult {
     return ok(
-      Values.namedFormula(this.name, args => {
-        const input = args.safeAt(0)
-        if (input === undefined) {
-          return err(new RuntimeError(this, `Expected an argument for '${this.name}'`))
-        }
+      Values.namedFormula(
+        this.name,
+        args => {
+          const input = args.safeAt(0)
+          if (input === undefined) {
+            return err(new RuntimeError(this, `Expected an argument for '${this.name}'`))
+          }
 
-        if (input.isInt() || input.isFloat()) {
-          return ok(Values.float(input.value))
-        }
+          if (input.isInt() || input.isFloat()) {
+            return ok(Values.float(input.value))
+          }
 
-        if (input.isString()) {
-          const parsed = parseBase10Number(input)
-          return ok(parsed === undefined ? Values.float(0) : Values.float(parsed))
-        }
+          if (input.isString()) {
+            const parsed = parseBase10Number(input)
+            return ok(parsed === undefined ? Values.float(0) : Values.float(parsed))
+          }
 
-        return err(new RuntimeError(this, `Cannot convert '${input.getType()}' to Float`))
-      }),
+          return err(new RuntimeError(this, `Cannot convert '${input.getType()}' to Float`))
+        },
+        new Map([
+          [
+            'parse',
+            Values.namedFormula('parse', args => {
+              const input = args.safeAt(0)
+              if (input === undefined || !input.isString()) {
+                return err(new RuntimeError(this, `Expected a String argument for 'Float.parse'`))
+              }
+
+              const parsed = parseBase10Number(input)
+              return ok(parsed === undefined ? Values.nullValue() : Values.float(parsed))
+            }),
+          ],
+        ]),
+      ),
     )
   }
 
