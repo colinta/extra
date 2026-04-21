@@ -548,8 +548,8 @@ export abstract class Type {
   /**
    * Certain types are always true – these should not be used in `if`/`and`/`or` expressions.
    *
-   * However, literals are kept off this list – so that you can do debugging with
-   * `if(true)…` without hitting a compiler error.
+   * However, literal `true|false` are kept off this list – so that you can do
+   * debugging with `if true… ` without hitting a compiler error.
    */
   isOnlyTruthyType(): boolean {
     return false
@@ -1348,6 +1348,10 @@ export const AlwaysType = new (class AlwaysType extends Type {
   propAccessType(name: string | number) {
     return undefined
   }
+
+  toCode() {
+    return 'Any'
+  }
 })()
 
 /**
@@ -1565,7 +1569,7 @@ export abstract class NumberType<
   }
 
   /**
-   * If the max-length is 0, it's always false
+   * If the min and max are 0 (this should've been resolved to literal 0)
    */
   isOnlyFalseyType() {
     return this.narrowed.min === 0 && this.narrowed.max === 0
@@ -2550,12 +2554,12 @@ export abstract class LiteralType extends Type {
   abstract readonly is: `literal-${Literals}`
   abstract value: boolean | number | string | RegExp
 
-  isOnlyTruthyType() {
-    return this.value !== 0 && this.value !== '' && this.value !== false
-  }
-
   isOnlyFalseyType() {
     return this.value === 0 || this.value === '' || this.value === false
+  }
+
+  isOnlyTruthyType() {
+    return !this.isOnlyFalseyType()
   }
 
   valueType(): Type {

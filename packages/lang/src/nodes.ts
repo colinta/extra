@@ -1206,6 +1206,46 @@ export class NullCoalescingArrayAccessOperator extends Operator {}
 export class FunctionInvocationOperator extends Operator {}
 
 //|
+//|  Built-ins
+//|
+
+export class BooleanConstructor extends Node {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.NamedFormulaType,
+  ) {
+    super(source, type)
+  }
+}
+
+export class FloatConstructor extends Node {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.NamedFormulaType,
+  ) {
+    super(source, type)
+  }
+}
+
+export class IntConstructor extends Node {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.NamedFormulaType,
+  ) {
+    super(source, type)
+  }
+}
+
+export class StringConstructor extends Node {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.NamedFormulaType,
+  ) {
+    super(source, type)
+  }
+}
+
+//|
 //|  Macros
 //|
 

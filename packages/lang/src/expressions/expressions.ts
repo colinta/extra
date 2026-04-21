@@ -888,6 +888,22 @@ export class StringTemplate extends Operation {
  * This difference is encoded in the functions `compile`, which returns a
  * constructor function, and `compileAsTypeExpression`, which returns a type.
  */
+const BASE_10_NUMBER = /^-?(?:\d+(?:\.\d*)?|\.\d+)$/
+
+function parseBase10Number(value: Values.StringValue) {
+  const trimmed = value.value.trim()
+  if (!BASE_10_NUMBER.test(trimmed)) {
+    return undefined
+  }
+
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed)) {
+    return undefined
+  }
+
+  return parsed
+}
+
 abstract class TypeIdentifier extends Expression {
   toLisp() {
     return '`' + this.toCode() + '`'
@@ -902,21 +918,6 @@ abstract class TypeIdentifier extends Expression {
   getAsTypeExpression(): GetTypeResult {
     return ok(this.safeTypeAssertion())
   }
-
-  getType() {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, `${this.constructor.name} does not have a type`))
-  }
-
-  compile() {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, `${this.constructor.name} cannot be compiled`))
-  }
-
-  eval(): GetValueResult {
-    // TODO: this should return a type constructor formula
-    return err(new RuntimeError(this, `${this.constructor.name} cannot be evaluated`))
-  }
 }
 
 export class BooleanTypeIdentifier extends TypeIdentifier {
@@ -924,6 +925,59 @@ export class BooleanTypeIdentifier extends TypeIdentifier {
 
   safeTypeAssertion(): Types.Type {
     return Types.BooleanType
+  }
+
+  getType(_runtime: TypeRuntime): GetRuntimeResult<Types.NamedFormulaType> {
+    return ok(
+      Types.namedFormula(
+        this.name,
+        [
+          Types.positionalArgument({
+            name: 'input',
+            type: Types.oneOf([
+              Types.BooleanType,
+              Types.IntType,
+              Types.FloatType,
+              Types.StringType,
+              Types.array(Types.AlwaysType),
+              Types.dict(Types.AlwaysType),
+              Types.set(Types.AlwaysType),
+            ]),
+            isRequired: true,
+          }),
+        ],
+        Types.BooleanType,
+      ),
+    )
+  }
+
+  compile(runtime: TypeRuntime): GetRuntimeResult<Nodes.BooleanConstructor> {
+    return this.getType(runtime).map(type => new Nodes.BooleanConstructor(toSource(this), type))
+  }
+
+  eval(_runtime: ValueRuntime): GetValueResult {
+    return ok(
+      Values.namedFormula(this.name, args => {
+        const input = args.safeAt(0)
+        if (input === undefined) {
+          return err(new RuntimeError(this, `Expected an argument for '${this.name}'`))
+        }
+
+        if (
+          input.isBoolean() ||
+          input.isInt() ||
+          input.isFloat() ||
+          input.isString() ||
+          input instanceof Values.ArrayValue ||
+          input instanceof Values.DictValue ||
+          input instanceof Values.SetValue
+        ) {
+          return ok(Values.booleanValue(input.isTruthy()))
+        }
+
+        return err(new RuntimeError(this, `Cannot convert '${input.getType()}' to Boolean`))
+      }),
+    )
   }
 
   compileAsTypeExpression() {
@@ -954,6 +1008,48 @@ export class FloatTypeIdentifier extends TypeIdentifier {
     return ok(this.safeTypeAssertion())
   }
 
+  getType(_runtime: TypeRuntime): GetRuntimeResult<Types.NamedFormulaType> {
+    return ok(
+      Types.namedFormula(
+        this.name,
+        [
+          Types.positionalArgument({
+            name: 'input',
+            type: Types.oneOf([Types.IntType, Types.FloatType, Types.StringType]),
+            isRequired: true,
+          }),
+        ],
+        Types.FloatType,
+      ),
+    )
+  }
+
+  compile(runtime: TypeRuntime): GetRuntimeResult<Nodes.FloatConstructor> {
+    return this.getType(runtime).map(type => new Nodes.FloatConstructor(toSource(this), type))
+  }
+
+  eval(_runtime: ValueRuntime): GetValueResult {
+    return ok(
+      Values.namedFormula(this.name, args => {
+        const input = args.safeAt(0)
+        if (input === undefined) {
+          return err(new RuntimeError(this, `Expected an argument for '${this.name}'`))
+        }
+
+        if (input.isInt() || input.isFloat()) {
+          return ok(Values.float(input.value))
+        }
+
+        if (input.isString()) {
+          const parsed = parseBase10Number(input)
+          return ok(parsed === undefined ? Values.float(0) : Values.float(parsed))
+        }
+
+        return err(new RuntimeError(this, `Cannot convert '${input.getType()}' to Float`))
+      }),
+    )
+  }
+
   compileAsTypeExpression() {
     return ok(new Nodes.FloatType(toSource(this), this.safeTypeAssertion()))
   }
@@ -982,9 +1078,46 @@ export class IntTypeIdentifier extends TypeIdentifier {
     return ok(this.safeTypeAssertion())
   }
 
-  compile() {
-    debugger
-    return super.compile()
+  getType(_runtime: TypeRuntime): GetRuntimeResult<Types.NamedFormulaType> {
+    return ok(
+      Types.namedFormula(
+        this.name,
+        [
+          Types.positionalArgument({
+            name: 'input',
+            type: Types.oneOf([Types.IntType, Types.FloatType, Types.StringType]),
+            isRequired: true,
+          }),
+        ],
+        Types.IntType,
+      ),
+    )
+  }
+
+  compile(runtime: TypeRuntime): GetRuntimeResult<Nodes.IntConstructor> {
+    return this.getType(runtime).map(type => new Nodes.IntConstructor(toSource(this), type))
+  }
+
+  eval(_runtime: ValueRuntime): GetValueResult {
+    return ok(
+      Values.namedFormula(this.name, args => {
+        const input = args.safeAt(0)
+        if (input === undefined) {
+          return err(new RuntimeError(this, `Expected an argument for '${this.name}'`))
+        }
+
+        if (input.isInt() || input.isFloat()) {
+          return ok(Values.int(Math.trunc(input.value)))
+        }
+
+        if (input.isString()) {
+          const parsed = parseBase10Number(input)
+          return ok(parsed === undefined ? Values.int(0) : Values.int(Math.trunc(parsed)))
+        }
+
+        return err(new RuntimeError(this, `Cannot convert '${input.getType()}' to Int`))
+      }),
+    )
   }
 
   compileAsTypeExpression() {
@@ -1013,6 +1146,39 @@ export class StringTypeIdentifier extends TypeIdentifier {
 
   getAsTypeExpression(): GetRuntimeResult<Types.Type> {
     return ok(this.safeTypeAssertion())
+  }
+
+  getType(_runtime: TypeRuntime): GetRuntimeResult<Types.NamedFormulaType> {
+    return ok(
+      Types.namedFormula(
+        this.name,
+        [
+          Types.positionalArgument({
+            name: 'input',
+            type: Types.AlwaysType,
+            isRequired: true,
+          }),
+        ],
+        Types.StringType,
+      ),
+    )
+  }
+
+  compile(runtime: TypeRuntime): GetRuntimeResult<Nodes.StringConstructor> {
+    return this.getType(runtime).map(type => new Nodes.StringConstructor(toSource(this), type))
+  }
+
+  eval(_runtime: ValueRuntime): GetValueResult {
+    return ok(
+      Values.namedFormula(this.name, args => {
+        const input = args.safeAt(0)
+        if (input === undefined) {
+          return err(new RuntimeError(this, `Expected an argument for '${this.name}'`))
+        }
+
+        return ok(Values.string(input.printable()))
+      }),
+    )
   }
 
   compileAsTypeExpression() {
