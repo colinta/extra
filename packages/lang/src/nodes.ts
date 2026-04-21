@@ -1173,6 +1173,7 @@ export class RangeOperator extends Operator {
   }
 }
 export class AssignmentOperator extends Operator {}
+
 /**
  * Internal use.
  *

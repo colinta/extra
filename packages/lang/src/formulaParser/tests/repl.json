@@ -408,7 +408,7 @@
       "skip": false,
       "expectedCode": "let\n  id = UserId(5)\nin\n  id\n",
       "expectedType": "UserId",
-      "expectedValue": "5",
+      "expectedValue": "UserId(5)",
       "variables": []
     }
   ]

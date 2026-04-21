@@ -2951,15 +2951,15 @@ export abstract class ReservedWord extends Identifier {
   }
 
   getType(_runtime: TypeRuntime) {
-    return err(new RuntimeError(this, `${this.name} does not have a type`))
+    return err(new RuntimeError(this, `${this.constructor.name} does not have a type`))
   }
 
   eval(_runtime: ValueRuntime) {
-    return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
+    return err(new RuntimeError(this, `${this.constructor.name} cannot be evaluated`))
   }
 
   compile(_runtime: TypeRuntime) {
-    return err(new RuntimeError(this, `${this.name} cannot be compiled`))
+    return err(new RuntimeError(this, `${this.constructor.name} cannot be compiled`))
   }
 }
 
