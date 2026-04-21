@@ -1,4 +1,4 @@
-import {err, mapAll} from '@extra-lang/result'
+import {err, mapAll, mapMany, ok} from '@extra-lang/result'
 
 import {difference, union} from '@/util'
 import {type Scope} from '@/scope'
@@ -12,10 +12,12 @@ import * as Types from '@/types'
 import * as Values from '@/values'
 import {
   type Comment,
+  type GetNodeResult,
   type GetTypeResult,
   type GetValueResult,
   type GetRuntimeResult,
 } from '@/formulaParser/types'
+import * as Nodes from '@/nodes'
 import {
   Expression,
   type GenericExpression,
@@ -25,6 +27,7 @@ import {
   formatComments,
   wrapValues,
   getChildType,
+  toSource,
 } from './expressions'
 import {type Range} from './types'
 import {RuntimeError} from './errors'
@@ -63,6 +66,10 @@ export class ProvidesStatement extends Expression {
     return err(new RuntimeError(this, 'ProvidesStatement does not have a type'))
   }
 
+  compile(_runtime: TypeRuntime): GetNodeResult {
+    return ok(new Nodes.ProvidesStatement(toSource(this), this.env))
+  }
+
   eval(): GetValueResult {
     return err(new RuntimeError(this, 'ProvidesStatement cannot be evaluated'))
   }
@@ -96,6 +103,10 @@ export class RequiresStatement extends Expression {
 
   getType(): GetTypeResult {
     return err(new RuntimeError(this, 'RequiresStatement does not have a type'))
+  }
+
+  compile(_runtime: TypeRuntime): GetNodeResult {
+    return ok(new Nodes.RequiresStatement(toSource(this), this.envs))
   }
 
   eval(): GetValueResult {
@@ -159,6 +170,18 @@ export class ImportSource extends Expression {
     return err(new RuntimeError(this, 'ImportStatement does not have a type'))
   }
 
+  compile(_runtime: TypeRuntime): GetNodeResult {
+    return ok(
+      new Nodes.ImportSource(
+        toSource(this),
+        this.location,
+        this.parts.map(part => part.name),
+        this.scheme,
+        this.version,
+      ),
+    )
+  }
+
   eval(): GetValueResult {
     return err(new RuntimeError(this, 'ImportStatement cannot be evaluated'))
   }
@@ -169,15 +192,18 @@ export class ImportSource extends Expression {
  * - package: installed from the packages folder (where is that? TBD...)
  *   Example:
  *         import File : { reader }
+
  * - project: imported from the project, relative to the root of the project
  *   folder
  *   Example:
  *         import /components/nav : { Header }
+
  * - relative: imported from a neighbour or a file in a subfolder. *cannot*
  *   import from a parent folder. If node taught us one thing, it's that relative
  *   imports that "reach out" pave the way to darkness and despair.
  *   Example:
  *         import ./helpers : { parse }
+
  * - scheme: All sorts of import methods supported here, like `github:` and
  *   that's all of them.
  *   Example:
@@ -244,6 +270,21 @@ export class ImportStatement extends Expression {
     return err(new RuntimeError(this, 'ImportStatement does not have a type'))
   }
 
+  compile(runtime: TypeRuntime): GetNodeResult {
+    return mapMany(
+      this.source.compile(runtime),
+      mapAll(this.importSpecifiers.map(specifier => specifier.compile(runtime))),
+    ).map(
+      ([sourceNode, importSpecifiers]) =>
+        new Nodes.ImportStatement(
+          toSource(this),
+          sourceNode as Nodes.ImportSource,
+          this.alias?.name,
+          importSpecifiers as Nodes.ImportSpecific[],
+        ),
+    )
+  }
+
   eval(): GetValueResult {
     return err(new RuntimeError(this, 'ImportStatement cannot be evaluated'))
   }
@@ -277,6 +318,10 @@ export class ImportSpecific extends Expression {
 
   getType(): GetTypeResult {
     return err(new RuntimeError(this, 'ImportSpecific does not have a type'))
+  }
+
+  compile(_runtime: TypeRuntime): GetNodeResult {
+    return ok(new Nodes.ImportSpecific(toSource(this), this.name.name, this.alias?.name))
   }
 
   eval(): GetValueResult {

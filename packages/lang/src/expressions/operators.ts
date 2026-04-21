@@ -1239,16 +1239,32 @@ abstract class EqualityOperator extends ComparisonOperator {
   abstract symbol: '==' | '!='
   abstract inverseSymbol: '==' | '!='
 
-  operatorType(_runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type): GetTypeResult {
+  operatorType(
+    _runtime: TypeRuntime,
+    lhs: Types.Type,
+    rhs: Types.Type,
+    _lhsExpr: Expression,
+    _rhsExpr: Expression,
+    originalLhs: Types.Type,
+    originalRhs: Types.Type,
+  ): GetTypeResult {
+    if (
+      !Types.canBeAssignedTo(originalLhs, originalRhs) &&
+      !Types.canBeAssignedTo(originalRhs, originalLhs)
+    ) {
+      return err(
+        new RuntimeError(
+          this,
+          `Cannot compare values of type '${originalLhs}' and '${originalRhs}'`,
+        ),
+      )
+    }
+
     if (lhs.isLiteral() && rhs.isLiteral()) {
       return ok(Types.literal(lhs.value === rhs.value))
     }
 
-    if (Types.canBeAssignedTo(lhs, rhs) || Types.canBeAssignedTo(rhs, lhs)) {
-      return ok(Types.BooleanType)
-    }
-
-    return ok(Types.literal(false))
+    return ok(Types.BooleanType)
   }
 
   compile(runtime: TypeRuntime) {
@@ -1289,14 +1305,24 @@ class NotEqualsOperator extends EqualityOperator {
   readonly symbol = '!='
   readonly inverseSymbol = '=='
 
-  operatorType(runtime: TypeRuntime, lhs: Types.Type, rhs: Types.Type) {
-    return super.operatorType(runtime, lhs, rhs).map(type => {
-      if (type.isLiteral()) {
-        return ok(Types.literal(!type.value))
-      }
+  operatorType(
+    runtime: TypeRuntime,
+    lhs: Types.Type,
+    rhs: Types.Type,
+    lhsExpr: Expression,
+    rhsExpr: Expression,
+    originalLhs: Types.Type,
+    originalRhs: Types.Type,
+  ) {
+    return super
+      .operatorType(runtime, lhs, rhs, lhsExpr, rhsExpr, originalLhs, originalRhs)
+      .map(type => {
+        if (type.isLiteral()) {
+          return ok(Types.literal(!type.value))
+        }
 
-      return type
-    })
+        return type
+      })
   }
 
   compile(runtime: TypeRuntime) {

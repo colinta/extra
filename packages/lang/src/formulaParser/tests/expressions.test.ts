@@ -176,8 +176,6 @@ describe('getType', () => {
         // literals
         c(['1 == 1', Types.literal(true)]),
         c(['1 != 1', Types.literal(false)]),
-        c(['1 == 0', Types.literal(false)]),
-        c(['1 != 0', Types.literal(true)]),
         c(['1 > 1', Types.literal(false)]),
         c(['1 > 0', Types.literal(true)]),
         c(['1 >= 1', Types.literal(true)]),
@@ -199,10 +197,6 @@ describe('getType', () => {
         c(['a >= b', Types.booleanType()]),
         c(['a <= b', Types.booleanType()]),
         c(['a < b', Types.booleanType()]),
-        // different types
-        c(['a == "dog"', Types.literal(false)]),
-        c(['1 == "dog"', Types.literal(false)]),
-        c(['1 != "dog"', Types.literal(true)]),
       ).run(([formula, expected], {only, skip}) =>
         (only ? it.only : skip ? it.skip : it)(
           `operation ${formula} should be type ${expected}`,
@@ -218,12 +212,17 @@ describe('getType', () => {
     })
 
     describe('invalid comparisons', () => {
-      cases<[string, boolean]>(
-        c(['1 > "dog"', false]),
-        c(['1 >= "dog"', true]),
-        c(['1 <= "dog"', true]),
-        c(['1 < "dog"', false]),
-      ).run(([formula, expected], {only, skip}) =>
+      cases<[string]>(
+        c(['1 > "dog"']),
+        c(['1 >= "dog"']),
+        c(['1 <= "dog"']),
+        c(['1 < "dog"']),
+        c(['1 == 0']),
+        c(['1 != 0']),
+        c(['a == "dog"']),
+        c(['1 == "dog"']),
+        c(['1 != "dog"']),
+      ).run(([formula], {only, skip}) =>
         (only ? it.only : skip ? it.skip : it)(`operation ${formula} should throw`, () => {
           const expression2 = parse(formula).get()
           expect(() => expression2.getType(typeRuntime).get()).toThrow()

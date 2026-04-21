@@ -183,6 +183,13 @@ export function scanImportStatement(scanner: Scanner) {
   scanner.expectWord(IMPORT_KEYWORD)
   const precedingSourceComments = scanner.flushComments()
 
+  if (scanner.is(/^['"`]/)) {
+    throw new ParseError(
+      scanner,
+      `Unnecessary quote character (${scanner.char}). Import statements do not use quotes.`,
+    )
+  }
+
   const range0 = scanner.charIndex
   let location: Expressions.ImportLocation
   if (scanner.scanIfString('/')) {
@@ -333,7 +340,7 @@ export function scanModuleTypeDefinition(scanner: Scanner, parseNext: ParseNext)
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
 
-  let isExport = scanner.scanIfWord(EXPORT_KEYWORD)
+  const isExport = scanner.scanIfWord(EXPORT_KEYWORD)
   if (isExport) {
     scanner.expectWhitespace()
   }

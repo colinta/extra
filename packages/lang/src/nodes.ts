@@ -264,6 +264,65 @@ export class PropertyAccessIndex extends Node {
   }
 }
 
+export class ProvidesStatement extends Node {
+  constructor(
+    readonly source: Source,
+    readonly env: string,
+  ) {
+    super(source, Types.unique('ProvidesStatement'))
+  }
+}
+
+export class RequiresStatement extends Node {
+  constructor(
+    readonly source: Source,
+    readonly envs: string[],
+  ) {
+    super(source, Types.unique('RequiresStatement'))
+  }
+}
+
+export type ImportLocation = 'package' | 'project' | 'relative' | 'scheme'
+
+export class ImportSource extends Node {
+  readonly name: string | undefined
+
+  constructor(
+    readonly source: Source,
+    readonly location: ImportLocation,
+    readonly parts: string[],
+    readonly scheme: string | undefined,
+    readonly version: string | undefined,
+  ) {
+    super(source, Types.unique('ImportSource'))
+    this.name = parts.at(-1)
+  }
+}
+
+export class ImportSpecific extends Node {
+  constructor(
+    readonly source: Source,
+    readonly name: string,
+    readonly alias: string | undefined,
+  ) {
+    super(source, Types.unique('ImportSpecific'))
+  }
+}
+
+export class ImportStatement extends Node {
+  readonly name: string | undefined
+
+  constructor(
+    readonly source: Source,
+    readonly importSource: ImportSource,
+    readonly alias: string | undefined,
+    readonly importSpecifiers: ImportSpecific[],
+  ) {
+    super(source, Types.unique('ImportStatement'))
+    this.name = importSource.name
+  }
+}
+
 export const Ignored = new (class Ignored extends Node {
   constructor() {
     super(
