@@ -41,6 +41,10 @@ export function typeConstructor(name: string, type: Type) {
   ])
 }
 
+export function opaque(name: string, type: Type, identity: UniqueType = unique(name)) {
+  return new OpaqueType(name, type, identity)
+}
+
 export function int(narrowed?: Partial<Narrowed.NarrowedInt>) {
   if (narrowed) {
     if (
@@ -499,6 +503,10 @@ export abstract class Type {
   }
 
   isObject(): this is ObjectType {
+    return false
+  }
+
+  isOpaque(): this is OpaqueType {
     return false
   }
 
@@ -1355,6 +1363,83 @@ export class UniqueType extends Type {
 
   propAccessType(name: string | number) {
     return undefined
+  }
+}
+
+export class OpaqueType extends Type {
+  readonly is = 'opaque'
+
+  declare static types: Record<string, ((opaque: OpaqueType) => Type) | undefined>
+
+  constructor(
+    readonly name: string,
+    readonly of: Type,
+    readonly identity: UniqueType,
+  ) {
+    super()
+  }
+
+  isOpaque(): this is OpaqueType {
+    return true
+  }
+
+  hasGeneric() {
+    return this.of.hasGeneric()
+  }
+
+  generics() {
+    return this.of.generics()
+  }
+
+  isOptional() {
+    return this.of.isOptional()
+  }
+
+  isOnlyTruthyType() {
+    return this.of.isOnlyTruthyType()
+  }
+
+  isOnlyFalseyType() {
+    return this.of.isOnlyFalseyType()
+  }
+
+  toTruthyType() {
+    const next = this.of.toTruthyType()
+    if (next === this.of) {
+      return this
+    }
+    return new OpaqueType(this.name, next, this.identity)
+  }
+
+  toFalseyType(): Type {
+    const next = this.of.toFalseyType()
+    if (next === this.of) {
+      return this
+    }
+    if (next === NeverType) {
+      return next
+    }
+    return new OpaqueType(this.name, next, this.identity)
+  }
+
+  toCode() {
+    return this.name
+  }
+
+  fromTypeConstructor(): Type {
+    const next = this.of.fromTypeConstructor()
+    if (next === this.of) {
+      return this
+    }
+    return new OpaqueType(this.name, next, this.identity)
+  }
+
+  propAccessType(name: string | number) {
+    if (typeof name === 'number') {
+      return undefined
+    }
+
+    return OpaqueType.types[name]?.(this)
   }
 }
 
@@ -4750,6 +4835,17 @@ export function compatibleWithBothTypes(lhs: Type, rhs: Type): Type {
     return _privateOneOf([lhs, rhs])
   }
 
+  if (lhs instanceof OpaqueType && rhs instanceof OpaqueType) {
+    if (lhs.identity !== rhs.identity) {
+      return _privateOneOf([lhs, rhs])
+    }
+
+    const compatible = compatibleWithBothTypes(lhs.of, rhs.of)
+    return new OpaqueType(lhs.name, compatible, lhs.identity)
+  } else if (lhs instanceof OpaqueType || rhs instanceof OpaqueType) {
+    return _privateOneOf([lhs, rhs])
+  }
+
   if (lhs instanceof OneOfType && rhs instanceof OneOfType) {
     // merge every type in rhs with the list of types in lhs
     // this ends up calling the next conditional
@@ -5173,6 +5269,16 @@ export function canBeAssignedTo(
     }
 
     return false
+  }
+
+  if (testType instanceof OpaqueType && assignTo instanceof OpaqueType) {
+    if (testType.identity !== assignTo.identity) {
+      return why(false, `'${testType}' is not assignable to '${assignTo}'.`)
+    }
+
+    return canBeAssignedTo(testType.of, assignTo.of, reason)
+  } else if (testType instanceof OpaqueType || assignTo instanceof OpaqueType) {
+    return why(false, `'${testType}' is not assignable to '${assignTo}'.`)
   }
 
   if (testType instanceof OneOfType) {
@@ -6090,6 +6196,46 @@ export function cannotAssignToError(testType: Type, assignTo: Type) {
   /* NullType */
   /*            */
   MetaNullType.types = {}
+
+  /*            */
+  /* OpaqueType */
+  /*            */
+  OpaqueType.types = {
+    value: (opaque: OpaqueType) => opaque.of,
+    map: (opaque: OpaqueType) =>
+      withGenericT(T =>
+        namedFormula(
+          'map',
+          [
+            positionalArgument({
+              name: 'apply',
+              type: formula(
+                [positionalArgument({name: 'input', type: opaque.of, isRequired: true})],
+                T,
+              ),
+              isRequired: true,
+            }),
+          ],
+          T,
+          [T],
+        ),
+      ),
+    rewrap: (opaque: OpaqueType) =>
+      namedFormula(
+        'rewrap',
+        [
+          positionalArgument({
+            name: 'apply',
+            type: formula(
+              [positionalArgument({name: 'input', type: opaque.of, isRequired: true})],
+              opaque.of,
+            ),
+            isRequired: true,
+          }),
+        ],
+        opaque,
+      ),
+  }
 
   /*           */
   /* ArrayType */

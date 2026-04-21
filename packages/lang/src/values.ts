@@ -87,6 +87,10 @@ export function namedFormula(
   return new NamedFormulaValue(name, fn, undefined, [])
 }
 
+export function opaque(value: Value, opaqueType?: Types.OpaqueType) {
+  return new OpaqueValue(value, opaqueType)
+}
+
 export function classDefinition({
   name,
   constructor,
@@ -1380,11 +1384,55 @@ export class SetValue extends Value {
   }
 }
 
+export class OpaqueValue extends Value {
+  static _props: Map<string, (value: OpaqueValue) => Value> = new Map([])
+
+  readonly opaqueType: Types.OpaqueType | undefined
+
+  constructor(
+    readonly value: Value,
+    opaqueType?: Types.OpaqueType,
+  ) {
+    super()
+    this.opaqueType = opaqueType
+    Object.defineProperty(this, 'opaqueType', {enumerable: false})
+  }
+
+  getType() {
+    return this.opaqueType ?? Types.unique('OpaqueValue')
+  }
+
+  isTruthy() {
+    return this.value.isTruthy()
+  }
+
+  isEqual(rhs: Value): boolean {
+    return rhs instanceof OpaqueValue && this.value.isEqual(rhs.value)
+  }
+
+  toCode() {
+    if (this.opaqueType) {
+      return `${this.opaqueType.name}(${this.value.toCode()})`
+    }
+    return this.value.toCode()
+  }
+
+  printable() {
+    return this.value.printable()
+  }
+
+  propValue(name: string | number) {
+    if (typeof name === 'number') {
+      return undefined
+    }
+
+    const prop = OpaqueValue._props.get(name)
+    return prop?.(this)
+  }
+}
+
 /**
- * I dunno, I've gone back and forth on 'Types in Runtime', including a long
- * stint with a 'TypeConstructor' value (abandoned). So for now this is just a
- * kind of placeholder. It's returned from `TypeDefinitionExpression`, but it's
- * not used or expected anywhere. 🤷‍♂️
+ * TypeValues show up as constructor functions.
  */
 export class TypeValue extends Value {
   constructor(readonly type: Types.Type) {
@@ -2084,6 +2132,33 @@ export class MessageValue extends Value {
 }
 
 ;(function init() {
+  OpaqueValue._props.set('value', (opaque: OpaqueValue) => opaque.value)
+  OpaqueValue._props.set('map', (opaque: OpaqueValue) =>
+    namedFormula('map', args =>
+      args.at(0, FormulaValue).map(apply => apply.call(new FormulaArgs([[undefined, opaque.value, 'arg']]))),
+    ),
+  )
+  OpaqueValue._props.set('rewrap', (opaque: OpaqueValue) =>
+    namedFormula('rewrap', args =>
+      args.at(0, FormulaValue).map(apply => {
+        const result = apply.call(new FormulaArgs([[undefined, opaque.value, 'arg']]))
+        if (result.isErr()) {
+          return result
+        }
+
+        const value = result.get()
+        const opaqueType = opaque.opaqueType
+        if (!opaqueType) {
+          return ok(new OpaqueValue(value))
+        }
+        if (!Types.canBeAssignedTo(value.getType(), opaqueType.of)) {
+          return err(`Value '${value.getType()}' cannot be rewrapped as '${opaqueType.name}'.`)
+        }
+        return ok(new OpaqueValue(value, opaqueType))
+      }),
+    ),
+  )
+
   ArrayValue._props.set('length', (value: ArrayValue) => int(value.values.length))
   ArrayValue._props.set('map', (array: ArrayValue) =>
     namedFormula('map', args =>

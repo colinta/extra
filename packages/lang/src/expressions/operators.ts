@@ -3701,6 +3701,21 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
       lhFormulaType = lhFormulaType.konstructor!
     }
 
+    if (lhFormulaType instanceof Types.OpaqueType) {
+      lhFormulaType = new Types.NamedFormulaType(
+        lhFormulaType.name,
+        lhFormulaType,
+        [
+          Types.positionalArgument({
+            name: 'input',
+            type: lhFormulaType.of,
+            isRequired: true,
+          }),
+        ],
+        [],
+      )
+    }
+
     if (lhFormulaType instanceof Types.EnumType && lhFormulaType.member.args.length > 0) {
       let argIndex = 0
       const args = lhFormulaType.member.args.map((arg): Types.Argument => {
@@ -3787,6 +3802,33 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
   ): GetValueResult {
     if (lhFormula instanceof Values.ClassDefinitionValue) {
       lhFormula = lhFormula.konstructor(lhFormula)
+    }
+
+    if (lhFormula instanceof Values.TypeValue && lhFormula.type instanceof Types.OpaqueType) {
+      const opaqueType = lhFormula.type
+
+      if (!(rhArgsExpression instanceof Expressions.ArgumentsList)) {
+        return err(
+          new RuntimeError(
+            rhArgsExpression,
+            `Expected function arguments, found '${rhArgsExpression}'`,
+          ),
+        )
+      }
+
+      return rhArgsExpression.formulaArgs(runtime).map(args => {
+        const value = args.safeAt(0)
+        if (value === undefined) {
+          return err(
+            new RuntimeError(
+              rhArgsExpression,
+              `Expected an argument for opaque constructor '${opaqueType.name}'`,
+            ),
+          )
+        }
+
+        return ok(Values.opaque(value, opaqueType))
+      })
     }
 
     if (!(lhFormula instanceof Values.FormulaValue)) {

@@ -189,6 +189,9 @@ describe('compatibleWithBothTypes', () => {
     props: new Map([['grade', Types.int()]]),
     parent: human,
   })
+  const userId = Types.opaque('UserId', Types.int())
+  const userIdMin2 = Types.opaque('UserId', Types.int({min: 2}), userId.identity)
+  const orderId = Types.opaque('OrderId', Types.int())
 
   cases<[Types.Type, Types.Type, Types.Type]>(
     // never
@@ -364,6 +367,12 @@ describe('compatibleWithBothTypes', () => {
     c([human, animal, privateOneOf(human, animal)]),
     c([student, human, human]),
     c([dog, human, privateOneOf(dog, human)]),
+    // opaque
+    c([userId, userId, userId]),
+    c([userId, userIdMin2, userId]),
+    c([userId, Types.int(), privateOneOf(userId, Types.int())]),
+    c([Types.int({min: 2}), userId, privateOneOf(Types.int({min: 2}), userId)]),
+    c([userId, orderId, privateOneOf(userId, orderId)]),
   ).run(([lhs, rhs, expected], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
       `compatibleWithBothTypes(${lhs.toCode()}, ${rhs.toCode()}) should be ${expected.toCode()}`,

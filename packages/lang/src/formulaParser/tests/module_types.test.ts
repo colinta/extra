@@ -5,6 +5,13 @@ import {scanTypeDefinition} from '../scan/module'
 describe('module types', () => {
   cases<[string, string] | [string, string, string]>(
     c(['type Age = Int', '(type Age `Int`)']),
+    c(['opaque type UserId = Int', '(opaque type UserId `Int`)']),
+    c(['export opaque type UserId = Int(>=0)', '(export opaque type UserId `Int(>=0)`)']),
+    c([
+      'opaque export type UserId = Int(>=0)',
+      '(export opaque type UserId `Int(>=0)`)',
+      'export opaque type UserId = Int(>=0)',
+    ]),
     c(['export type Age = Int(>=0)', '(export type Age `Int(>=0)`)']),
     c([
       'type Point = { x: Int, y: Int }',

@@ -17,6 +17,7 @@ import {
   PROVIDES_KEYWORD,
   REQUIRES_KEYWORD,
   TYPE_KEYWORD,
+  OPAQUE_KEYWORD,
   VERSION_START,
   VIEW_KEYWORD,
 } from '../grammars'
@@ -81,7 +82,7 @@ export function scanModule(scanner: Scanner, parseNext: ParseNext) {
       //  IMPORT
       //
       moduleTokens.imports.push(scanImportStatement(scanner))
-    } else if (scanner.test(isExport(TYPE_KEYWORD))) {
+    } else if (scanner.test(isTypeDefinition)) {
       const typeExpr = scanModuleTypeDefinition(scanner, parseNext)
       moduleTokens.expressions.push(typeExpr as Expressions.TypeDefinition)
     } else if (scanner.test(isExport(CLASS_KEYWORD))) {
@@ -340,10 +341,27 @@ export function scanModuleTypeDefinition(scanner: Scanner, parseNext: ParseNext)
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
 
-  const isExport = scanner.scanIfWord(EXPORT_KEYWORD)
-  if (isExport) {
-    scanner.expectWhitespace()
+  // scan optional 'export' and 'opaque' modifiers, in either order
+  let isExport: boolean = false
+  let isOpaque: boolean = false
+  while (scanner.lookAhead(EXPORT_KEYWORD) || scanner.lookAhead(OPAQUE_KEYWORD)) {
+    if (scanner.scanIfWord(EXPORT_KEYWORD)) {
+      if (isExport) {
+        throw new ParseError(scanner, `Duplicate '${EXPORT_KEYWORD}' modifier on type definition`)
+      }
+      isExport = true
+      scanner.expectWhitespace()
+    }
+
+    if (scanner.scanIfWord(OPAQUE_KEYWORD)) {
+      if (isOpaque) {
+        throw new ParseError(scanner, `Duplicate '${OPAQUE_KEYWORD}' modifier on type definition`)
+      }
+      isOpaque = true
+      scanner.expectWhitespace()
+    }
   }
+
   scanner.expectWord(TYPE_KEYWORD, 'Types must be preceded by the "type" keyword.')
 
   const nameRef = scanValidTypeName(scanner)
@@ -366,6 +384,7 @@ export function scanModuleTypeDefinition(scanner: Scanner, parseNext: ParseNext)
     type,
     generics,
     isExport,
+    isOpaque,
   )
 }
 
@@ -406,6 +425,15 @@ function isClass(scanner: Scanner) {
 function isEnum(scanner: Scanner) {
   skipPublic(scanner)
   return scanner.is(ENUM_KEYWORD)
+}
+
+function isTypeDefinition(scanner: Scanner) {
+  while (scanner.lookAhead(EXPORT_KEYWORD) || scanner.lookAhead(OPAQUE_KEYWORD)) {
+    scanner.scanIfWord(EXPORT_KEYWORD) && scanner.expectWhitespace()
+    scanner.scanIfWord(OPAQUE_KEYWORD) && scanner.expectWhitespace()
+  }
+
+  return scanner.isWord(TYPE_KEYWORD)
 }
 
 function isExport(keyword: string) {

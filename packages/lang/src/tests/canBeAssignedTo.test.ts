@@ -24,6 +24,9 @@ describe('canBeAssignedTo', () => {
     props: new Map([['name', Types.string()]]),
     parent: animal,
   })
+  const userId = Types.opaque('UserId', Types.int())
+  const userIdMin2 = Types.opaque('UserId', Types.int({min: 2}), userId.identity)
+  const orderId = Types.opaque('OrderId', Types.int())
 
   const simpleRequiredFormula = Types.formula(
     args({name: '# age', type: Types.int()}),
@@ -86,6 +89,13 @@ describe('canBeAssignedTo', () => {
     c([human, worker, false]),
     c([dog, human, false]),
     c([human, dog, false]),
+    // opaque
+    c([userId, userId, true]),
+    c([userIdMin2, userId, true]),
+    c([userId, userIdMin2, false]),
+    c([Types.int(), userId, false]),
+    c([userId, Types.int(), false]),
+    c([userId, orderId, false]),
     // formulas
     c([
       Types.formula(

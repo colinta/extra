@@ -1,11 +1,33 @@
 import {c, cases} from '@extra-lang/cases'
 import * as Types from '../types'
 import * as Values from '../values'
-import {parse} from '../formulaParser'
+import {parse, parseModule} from '../formulaParser'
 import {privateOneOf} from './privateOneOf'
 import {generateConstraints, solveConstraints, type Constraint} from '../constraints'
 import {type TypeRuntime} from '../runtime'
 import {mockTypeRuntime} from './mockTypeRuntime'
+
+describe('module type definitions', () => {
+  it('compiles opaque type aliases to OpaqueType definitions', () => {
+    const runtime = mockTypeRuntime({})
+    const moduleDef = parseModule('opaque type UserId = Int\n').get()
+    const moduleType = moduleDef.getType(runtime).get()
+    const userId = moduleType.definitions.get('UserId')
+
+    expect(userId).toBeInstanceOf(Types.OpaqueType)
+    expect((userId as Types.OpaqueType).name).toEqual('UserId')
+    expect((userId as Types.OpaqueType).of).toEqual(Types.int())
+    expect((userId as Types.OpaqueType).identity.name).toEqual('UserId')
+  })
+
+  it('leaves non-opaque type aliases as their underlying type', () => {
+    const runtime = mockTypeRuntime({})
+    const moduleDef = parseModule('type Age = Int\n').get()
+    const moduleType = moduleDef.getType(runtime).get()
+
+    expect(moduleType.definitions.get('Age')).toEqual(Types.int())
+  })
+})
 
 describe('toCode', () => {
   cases<[Types.Type, string]>(
@@ -88,6 +110,7 @@ describe('toCode', () => {
     c([Types.set(Types.oneOf([Types.int(), Types.string()])), 'Set(Int | String)']),
     c([Types.object([Types.namedProp('foo', Types.string())]), '{foo: String}']),
     c([Types.classType({name: 'Mario', props: new Map([['foo', Types.string()]])}), 'Mario']),
+    c([Types.opaque('UserId', Types.int()), 'UserId']),
     c([
       Types.classType({
         name: 'Mario',

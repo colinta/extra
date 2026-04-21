@@ -26,6 +26,7 @@ import {
   dependencySort,
   formatComments,
   wrapValues,
+  getChildAsTypeExpression,
   getChildType,
   toSource,
 } from './expressions'
@@ -330,8 +331,17 @@ export class ImportSpecific extends Expression {
 }
 
 /**
- * In the 'types' section of a module:
- *     [public] typeName[<generics>] = type
+ * Effectively a type alias, but Extra's type aliases can also be tagged
+ * 'opaque'. Opaque types are distinguished first by their type alias, and then
+ * compared as usual. They are effectively a Record/Struct type with only one
+ * data member.
+ *
+ *     [public] [opaque] typeName[<generics>] = type
+ *
+ *     public Age = Int  -- Age is just an alias for Int
+ *     public opaque UserId = Int  -- UserId and Int are considered non-overlapping
+ *     public opaque User = {...}
+ *
  */
 export class TypeDefinition extends Expression {
   constructor(
@@ -341,6 +351,7 @@ export class TypeDefinition extends Expression {
     readonly type: Expression,
     readonly generics: GenericExpression[],
     readonly isExport: boolean,
+    readonly isOpaque: boolean,
   ) {
     super(range, precedingComments)
   }
@@ -367,6 +378,9 @@ export class TypeDefinition extends Expression {
     if (this.isExport) {
       code += EXPORT_KEYWORD + ' '
     }
+    if (this.isOpaque) {
+      code += 'opaque '
+    }
 
     code += 'type '
     code += this.name
@@ -384,6 +398,9 @@ export class TypeDefinition extends Expression {
     code += formatComments(this.precedingComments)
     if (this.isExport) {
       code += EXPORT_KEYWORD + ' '
+    }
+    if (this.isOpaque) {
+      code += 'opaque '
     }
 
     code += 'type '
@@ -409,11 +426,17 @@ export class TypeDefinition extends Expression {
    * I can't think of a meaningful type here.
    */
   getType(runtime: TypeRuntime): GetTypeResult {
-    return err(new RuntimeError(this, 'TypeDefinition does not have a type'))
+    return getChildAsTypeExpression(this, this.type, runtime).map(type => {
+      if (this.isOpaque) {
+        return Types.opaque(this.name, type, Types.unique(this.name))
+      }
+
+      return type
+    })
   }
 
   eval(runtime: ValueRuntime) {
-    return err(new RuntimeError(this, 'TypeDefinition cannot be evaluated'))
+    return this.getType(runtime).map(type => new Values.TypeValue(type))
   }
 }
 
