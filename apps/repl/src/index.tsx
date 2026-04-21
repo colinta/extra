@@ -2,7 +2,7 @@ import React, {useEffect, useMemo, useReducer, useState} from 'react'
 import {existsSync, readFileSync, writeFileSync} from 'node:fs'
 import {resolve} from 'node:path'
 
-import {bold, interceptConsoleLog, red} from '@teaui/core'
+import {interceptConsoleLog, red} from '@teaui/core'
 import {
   Box,
   Button,
@@ -232,7 +232,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       ),
       {encoding: 'utf8'},
     )
-  }, [formula, inputs, saveDesc, only, skip])
+  }, [module_, formula, inputs, saveDesc, only, skip])
 
   function updateInputName(inputIndex: number, name: string) {
     setInputs(
@@ -379,6 +379,17 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
           .mapError(error => {
             successText += red(error.toString())
           })
+
+        parsedModule
+          .eval(valueRuntime)
+          .map(moduleValue => {
+            for (const [name, value] of moduleValue.definitions) {
+              valueRuntime.addLocalValue(name, value)
+            }
+          })
+          .mapError(error => {
+            successText += red(error.toString())
+          })
       })
       .mapError(error => {
         successText += red(error.toString())
@@ -459,6 +470,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
 
       REPL_TESTS_JSON.tests.push({
         desc: saveDesc,
+        preamble: module_,
         formula,
         only,
         skip,
@@ -474,6 +486,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
     setDescError(`Saved '${saveDesc}'`)
     REPL_TESTS_JSON.tests.push({
       desc: saveDesc,
+      preamble: module_,
       formula,
       only,
       skip,
