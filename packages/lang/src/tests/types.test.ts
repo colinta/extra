@@ -176,6 +176,18 @@ describe('toCode', () => {
       ),
       'fn(# name: String, age: Int?): {name: String, age: Int}',
     ]),
+    c([
+      Types.formula(
+        args({name: '# a', type: Types.int()}, {name: '# b', type: Types.int()}),
+        Types.int(),
+        [],
+        new Map([
+          ['inc', Types.formula(args({name: '# x', type: Types.int()}), Types.int())],
+          ['dec', Types.formula(args({name: '# x', type: Types.int()}), Types.int())],
+        ]),
+      ),
+      'fn{(# a: Int, # b: Int): Int, inc: fn(# x: Int): Int, dec: fn(# x: Int): Int}',
+    ]),
   ).run(([type, expected], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
       `toCode of ${type.toCode()} should be ${expected}`,

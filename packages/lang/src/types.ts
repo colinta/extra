@@ -288,8 +288,13 @@ export function oneOf(types: Type[], compare?: OneOfType) {
   return OneOfType.createOneOf(types, compare)
 }
 
-export function formula(args: Argument[], returnType: Type, genericTypes: GenericType[] = []) {
-  return new FormulaType(returnType, args, genericTypes)
+export function formula(
+  args: Argument[],
+  returnType: Type,
+  genericTypes: GenericType[] = [],
+  props: Map<string, Type> = new Map(),
+) {
+  return new FormulaType(returnType, args, genericTypes, props)
 }
 
 export function lazy(returnType: Type) {
@@ -305,8 +310,9 @@ export function namedFormula(
   args: Argument[],
   returnType: Type,
   genericTypes: GenericType[] = [],
+  props: Map<string, Type> = new Map(),
 ) {
-  return new NamedFormulaType(name, returnType, args, genericTypes)
+  return new NamedFormulaType(name, returnType, args, genericTypes, props)
 }
 
 export function generic(name: string, resolvedType?: Type) {
@@ -852,6 +858,7 @@ export class FormulaType extends Type {
     public returnType: Type,
     args: Argument[],
     readonly genericTypes: GenericType[],
+    readonly props: Map<string, Type> = new Map(),
   ) {
     super()
 
@@ -869,6 +876,7 @@ export class FormulaType extends Type {
     Object.defineProperty(this, '_named', {enumerable: false})
     Object.defineProperty(this, '_positional', {enumerable: false})
     Object.defineProperty(this, '_kwargs', {enumerable: false})
+    Object.defineProperty(this, 'props', {enumerable: false})
   }
 
   hasGeneric() {
@@ -945,17 +953,35 @@ export class FormulaType extends Type {
         return argDesc
       })
       .join(', ')
-    desc += `(${args}): ${this.returnType.toCode(false)}`
+
+    const signature = `(${args}): ${this.returnType.toCode(false)}`
+    if (this.props.size) {
+      const props = Array.from(this.props.entries())
+        .map(([name, type]) => `${name}: ${type.toCode(false)}`)
+        .join(', ')
+      desc += `{${signature}, ${props}}`
+    } else {
+      desc += signature
+    }
 
     return embedded ? `(${desc})` : desc
   }
 
   propAccessType(name: string | number) {
-    return undefined
+    if (typeof name === 'number') {
+      return undefined
+    }
+
+    return this.props.get(name)
   }
 
   defaultInferredClassProp() {
-    return new FormulaType(this.returnType.defaultInferredClassProp(), this.args, this.genericTypes)
+    return new FormulaType(
+      this.returnType.defaultInferredClassProp(),
+      this.args,
+      this.genericTypes,
+      this.props,
+    )
   }
 }
 
@@ -968,12 +994,16 @@ export class FormulaType extends Type {
 export class LazyFormulaType extends FormulaType {
   readonly is = 'lazy'
 
-  constructor(returnType: Type, genericTypes: GenericType[]) {
-    super(returnType, [], genericTypes)
+  constructor(returnType: Type, genericTypes: GenericType[], props: Map<string, Type> = new Map()) {
+    super(returnType, [], genericTypes, props)
   }
 
   defaultInferredClassProp() {
-    return new LazyFormulaType(this.returnType.defaultInferredClassProp(), this.genericTypes)
+    return new LazyFormulaType(
+      this.returnType.defaultInferredClassProp(),
+      this.genericTypes,
+      this.props,
+    )
   }
 }
 
@@ -985,8 +1015,9 @@ export class NamedFormulaType extends FormulaType {
     returnType: Type,
     args: Argument[] = [],
     genericTypes: GenericType[],
+    props: Map<string, Type> = new Map(),
   ) {
-    super(returnType, args, genericTypes)
+    super(returnType, args, genericTypes, props)
     this.name = name
   }
 
@@ -996,6 +1027,7 @@ export class NamedFormulaType extends FormulaType {
       this.returnType.defaultInferredClassProp(),
       this.args,
       this.genericTypes,
+      this.props,
     )
   }
 }
@@ -1013,8 +1045,9 @@ export class ViewFormulaType extends NamedFormulaType {
     returnType: Type,
     args: NamedArgument[] = [],
     genericTypes: GenericType[],
+    props: Map<string, Type> = new Map(),
   ) {
-    super(name, returnType, args, genericTypes)
+    super(name, returnType, args, genericTypes, props)
     this.args = args
   }
 
@@ -1049,6 +1082,7 @@ export class ViewFormulaType extends NamedFormulaType {
       this.returnType.defaultInferredClassProp(),
       this.args,
       this.genericTypes,
+      this.props,
     )
   }
 }
@@ -4263,13 +4297,26 @@ export function applySubst(subst: Substitution, type: Type): Type {
       return r === arg.type ? arg : {...arg, type: r}
     })
 
+    const props = new Map<string, Type>()
+    for (const [name, propType] of type.props) {
+      const resolved = applySubst(subst, propType)
+      if (resolved !== propType) changed = true
+      props.set(name, resolved)
+    }
+
     if (!changed) return type
 
     // Preserve the specific FormulaType subclass
-    if (type instanceof LazyFormulaType) {
-      return new LazyFormulaType(returnType, type.genericTypes)
+    if (type instanceof ViewFormulaType) {
+      return new ViewFormulaType(type.name, returnType, args as any, type.genericTypes, props)
     }
-    return new FormulaType(returnType, args as any, type.genericTypes)
+    if (type instanceof NamedFormulaType) {
+      return new NamedFormulaType(type.name, returnType, args as any, type.genericTypes, props)
+    }
+    if (type instanceof LazyFormulaType) {
+      return new LazyFormulaType(returnType, type.genericTypes, props)
+    }
+    return new FormulaType(returnType, args as any, type.genericTypes, props)
   }
 
   return type
@@ -5207,13 +5254,24 @@ function compatibleWithBothFormulas(lhs: FormulaType, rhs: FormulaType) {
     }
   }
 
+  const props = new Map<string, Type>()
+  for (const [name, lhType] of lhs.props) {
+    const rhType = rhs.props.get(name)
+    if (!rhType) {
+      continue
+    }
+
+    const propType = compatibleWithBothTypes(lhType, rhType)
+    props.set(name, propType)
+  }
+
   const returnType = compatibleWithBothTypes(lhs.returnType, rhs.returnType)
 
   // Collect all generic types that appear in the merged args and return type
-  const resultFormula = formula(args, returnType, [])
+  const resultFormula = formula(args, returnType, [], props)
   const mergedGenerics = resultFormula.generics()
   if (mergedGenerics.size) {
-    return formula(args, returnType, [...mergedGenerics])
+    return formula(args, returnType, [...mergedGenerics], props)
   }
 
   return resultFormula
@@ -5794,6 +5852,20 @@ function canBeAssignedToFormula(formulaArgument: FormulaType, formulaType: Formu
   if (!canBeAssignedTo(formulaArgument.returnType, formulaType.returnType)) {
     const returnTypeMessage = `Return type '${formulaArgument.returnType}' cannot be assigned to '${formulaType.returnType}'.`
     errorMessages.push(returnTypeMessage)
+  }
+
+  for (const [name, expectedType] of formulaType.props) {
+    const actualType = formulaArgument.props.get(name)
+    if (!actualType) {
+      errorMessages.push(`Missing property '${name}' on formula object.`)
+      continue
+    }
+
+    if (!canBeAssignedTo(actualType, expectedType)) {
+      errorMessages.push(
+        `Property '${name}' of type '${actualType}' cannot be assigned to '${expectedType}'.`,
+      )
+    }
   }
 
   const errorMessage = combineErrorMessages(errorMessages)

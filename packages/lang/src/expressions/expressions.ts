@@ -904,6 +904,35 @@ function parseBase10Number(value: Values.StringValue) {
   return parsed
 }
 
+function parseIntegerString(value: Values.StringValue, radix: number) {
+  const trimmed = value.value.trim()
+  if (trimmed.length === 0) {
+    return undefined
+  }
+
+  if (!Number.isInteger(radix) || radix < 2 || radix > 36) {
+    return undefined
+  }
+
+  const sign = trimmed.startsWith('-') ? -1 : 1
+  const digits = trimmed[0] === '-' || trimmed[0] === '+' ? trimmed.slice(1) : trimmed
+
+  if (digits.length === 0) {
+    return undefined
+  }
+
+  const parsed = Number.parseInt(digits, radix)
+  if (!Number.isFinite(parsed)) {
+    return undefined
+  }
+
+  if (parsed.toString(radix).toLowerCase() !== digits.toLowerCase()) {
+    return undefined
+  }
+
+  return sign * parsed
+}
+
 abstract class TypeIdentifier extends Expression {
   abstract readonly name: string
 
@@ -1120,6 +1149,28 @@ export class IntTypeIdentifier extends TypeIdentifier {
           }),
         ],
         Types.IntType,
+        [],
+        new Map([
+          [
+            'parse',
+            Types.namedFormula(
+              'parse',
+              [
+                Types.positionalArgument({
+                  name: 'input',
+                  type: Types.StringType,
+                  isRequired: true,
+                }),
+                Types.namedArgument({
+                  name: 'radix',
+                  type: Types.IntType.narrow(0, undefined),
+                  isRequired: false,
+                }),
+              ],
+              Types.optional(Types.IntType),
+            ),
+          ],
+        ]),
       ),
     )
   }
@@ -1130,23 +1181,42 @@ export class IntTypeIdentifier extends TypeIdentifier {
 
   eval(_runtime: ValueRuntime): GetValueResult {
     return ok(
-      Values.namedFormula(this.name, args => {
-        const input = args.safeAt(0)
-        if (input === undefined) {
-          return err(new RuntimeError(this, `Expected an argument for '${this.name}'`))
-        }
+      Values.namedFormula(
+        this.name,
+        args => {
+          const input = args.safeAt(0)
+          if (input === undefined) {
+            return err(new RuntimeError(this, `Expected an argument for '${this.name}'`))
+          }
 
-        if (input.isInt() || input.isFloat()) {
-          return ok(Values.int(Math.trunc(input.value)))
-        }
+          if (input.isInt() || input.isFloat()) {
+            return ok(Values.int(Math.trunc(input.value)))
+          }
 
-        if (input.isString()) {
-          const parsed = parseBase10Number(input)
-          return ok(parsed === undefined ? Values.int(0) : Values.int(Math.trunc(parsed)))
-        }
+          if (input.isString()) {
+            const parsed = parseBase10Number(input)
+            return ok(parsed === undefined ? Values.int(0) : Values.int(Math.trunc(parsed)))
+          }
 
-        return err(new RuntimeError(this, `Cannot convert '${input.getType()}' to Int`))
-      }),
+          return err(new RuntimeError(this, `Cannot convert '${input.getType()}' to Int`))
+        },
+        new Map([
+          [
+            'parse',
+            Values.namedFormula('parse', args => {
+              const input = args.safeAt(0)
+              if (input === undefined || !input.isString()) {
+                return err(new RuntimeError(this, `Expected a String argument for 'Int.parse'`))
+              }
+
+              const radixValue = args.safeNamed('radix')
+              const radix = radixValue?.isInt() ? radixValue.value : 10
+              const parsed = parseIntegerString(input, radix)
+              return ok(parsed === undefined ? Values.nullValue() : Values.int(parsed))
+            }),
+          ],
+        ]),
+      ),
     )
   }
 
@@ -3889,6 +3959,11 @@ export class FormulaTypeArgument extends ArgumentExpression {
   }
 }
 
+export interface FormulaPropertyDefinition {
+  nameRef: Reference
+  value: Expression
+}
+
 /**
  * Formula *values* are different from formula *types*. Formula types, for
  * instance, can declare an argument as optional (the function may be invoked
@@ -3906,6 +3981,7 @@ export class FormulaTypeExpression extends Expression {
     readonly argDefinitions: FormulaTypeArgument[],
     readonly returnType: Expression,
     readonly generics: GenericExpression[],
+    readonly props: FormulaPropertyDefinition[] = [],
   ) {
     super(range, precedingComments)
   }
@@ -3914,23 +3990,68 @@ export class FormulaTypeExpression extends Expression {
     const deps = union(
       allDependencies(this.argDefinitions, parentScopes),
       this.returnType.dependencies(parentScopes),
+      allDependencies(
+        this.props.map(prop => prop.value),
+        parentScopes,
+      ),
     )
     return difference(deps, allProvides(this.argDefinitions))
   }
 
   childExpressions() {
-    return (this.argDefinitions as Expression[]).concat([this.returnType])
+    return (this.argDefinitions as Expression[])
+      .concat([this.returnType])
+      .concat(this.props.map(prop => prop.value))
   }
 
   toLisp() {
-    const argsCode = this.argDefinitions.map(expr => expr.toLisp()).join(' ')
-    return `(fn (${argsCode}) : (${this.returnType.toLisp()}))`
+    let signature = ` (${this.argDefinitions.map(expr => expr.toLisp()).join(' ')})`
+    if (!(this.returnType instanceof InferIdentifier)) {
+      signature += ` : ${this.returnType.toLisp()}`
+    }
+    let genericsCode = ''
+    if (this.generics.length) {
+      genericsCode = ` <${this.generics.map(generic => generic.toCode()).join(' ')}>`
+    }
+    if (!this.props.length) {
+      return `(fn${genericsCode}${signature})`
+    }
+
+    const propsCode = this.props
+      .map(prop => ` (${prop.nameRef.name}: ${prop.value.toLisp()})`)
+      .join('')
+    return `(fn${genericsCode}{${signature}${propsCode} })`
   }
 
   toCode() {
-    const returnType = ': ' + this.returnType.toCode()
-    const argsCode = this.argDefinitions.map(expr => expr.toCode()).join(', ')
-    return `fn(${argsCode})${returnType}`
+    const returnTypeCode =
+      this.returnType instanceof InferIdentifier ? '' : ': ' + this.returnType.toCode()
+    const argsCode = this.argDefinitions.map(expr => expr.toCode())
+    const argsCodeCommas = argsCode.join(', ')
+    let signature: string
+    if (argsCodeCommas.includes('\n') || argsCodeCommas.length > MAX_LEN) {
+      signature = `(\n${argsCode.map(line => indent(line)).join('\n')}\n)${returnTypeCode}`
+    } else {
+      signature = `(${argsCodeCommas})${returnTypeCode}`
+    }
+
+    let genericsCode = ''
+    if (this.generics.length) {
+      genericsCode = `<${this.generics.map(generic => generic.toCode()).join(', ')}>`
+    }
+    if (!this.props.length) {
+      return `fn${genericsCode}${signature}`
+    }
+
+    const propsCode = this.props.map(prop => `${prop.nameRef.name}: ${prop.value.toCode()}`)
+    if (signature.includes('\n') || propsCode.join(', ').length > MAX_LEN) {
+      let code = `fn${genericsCode}{\n`
+      code += indent(signature) + '\n'
+      code += propsCode.map(line => indent(line)).join('\n') + '\n'
+      code += `}`
+      return code
+    }
+    return `fn{${signature}, ${propsCode.join(', ')}}`
   }
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
@@ -3948,12 +4069,25 @@ export class FormulaTypeExpression extends Expression {
       mutableRuntime.addLocalType(generic.name, genericType)
     }
 
-    return mapAll(this.argDefinitions.map(arg => arg.formulaArgumentType(mutableRuntime))).map(
-      args => {
-        return this.returnType
-          .getAsTypeExpression(mutableRuntime)
-          .map(returnType => Types.formula(args, returnType, genericTypes))
-      },
+    return mapMany(
+      // args
+      mapAll(this.argDefinitions.map(arg => arg.formulaArgumentType(mutableRuntime))),
+      // returnType
+      this.returnType.getAsTypeExpression(mutableRuntime),
+      // props
+      mapAll(
+        this.props.map(prop =>
+          prop.value
+            .getAsTypeExpression(mutableRuntime)
+            .map(type => [prop.nameRef.name, type] as [string, Types.Type]),
+        ),
+      ).map(props => new Map(props)),
+    ).map(([args, returnType, props]) => Types.formula(args, returnType, genericTypes, props))
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime): GetNodeResult {
+    return this.getAsTypeExpression(runtime).map(
+      type => new Nodes.FormulaTypeNode(toSource(this), type),
     )
   }
 
@@ -4056,6 +4190,7 @@ export class FormulaExpression extends Expression {
     readonly returnType: Expression,
     readonly body: Expression,
     readonly generics: GenericExpression[],
+    readonly props: FormulaPropertyDefinition[] = [],
   ) {
     super(range, precedingComments)
   }
@@ -4085,6 +4220,10 @@ export class FormulaExpression extends Expression {
       allDependencies(this.argDefinitions, filteredScopes),
       this.body.dependencies(filteredScopes),
       this.returnType.dependencies(filteredScopes),
+      allDependencies(
+        this.props.map(prop => prop.value),
+        filteredScopes,
+      ),
     )
     const generics = this.generics.map(g => g.name)
     const provides = union(allProvides(this.argDefinitions), new Set(generics))
@@ -4092,7 +4231,20 @@ export class FormulaExpression extends Expression {
   }
 
   childExpressions() {
-    return [this.body]
+    return [this.body, ...this.props.map(prop => prop.value)]
+  }
+
+  private signatureToLisp() {
+    let code = ''
+    if (this.generics.length) {
+      code += '<' + this.generics.map(g => g.toLisp()).join(' ') + '> '
+    }
+    code += `(${this.argDefinitions.map(expr => expr.toLisp()).join(' ')})`
+    if (!(this.returnType instanceof InferIdentifier)) {
+      code += ' : ' + this.returnType.toLisp()
+    }
+    code += ' => ' + this.body.toLisp()
+    return code
   }
 
   toLisp() {
@@ -4100,6 +4252,13 @@ export class FormulaExpression extends Expression {
   }
 
   toLispPrefixed(prefixed: boolean) {
+    if (this.props.length) {
+      const propsCode = this.props
+        .map(prop => `(${prop.nameRef.name}: ${prop.value.toLisp()})`)
+        .join(' ')
+      return `(fn{ ${this.signatureToLisp()} ${propsCode} })`
+    }
+
     let code = prefixed ? '(' + this.prefix : ''
     if (this.nameRef) {
       if (prefixed) {
@@ -4110,20 +4269,51 @@ export class FormulaExpression extends Expression {
       code += ' '
     }
 
-    if (this.generics.length) {
-      code += '<' + this.generics.map(g => g.toLisp()).join(' ') + '> '
-    }
-    code += `(${this.argDefinitions.map(expr => expr.toLisp()).join(' ')})`
-    if (!(this.returnType instanceof InferIdentifier)) {
-      code += ' : ' + this.returnType.toLisp()
-    }
-    code += ' => ' + this.body.toLisp()
+    code += this.signatureToLisp()
     code += prefixed ? ')' : ''
     return code
   }
 
   toCode() {
     return this.toCodePrefixed(true)
+  }
+
+  private signatureToCode(forceNewline = false) {
+    let code = ''
+    if (this.generics.length) {
+      code += wrapValues('<', this.generics, '>')
+    }
+
+    const argDefinitions = this.argDefinitions.map(expr => expr.toCode())
+    const argDefinitionsCommas = argDefinitions.join(', ')
+    let argDefinitionsHasNewline: boolean
+    if (!argDefinitions.length) {
+      code += '()'
+      argDefinitionsHasNewline = false
+    } else {
+      argDefinitionsHasNewline =
+        argDefinitionsCommas.includes('\n') || argDefinitionsCommas.length > MAX_INNER_LEN
+      if (argDefinitionsHasNewline) {
+        code += `(\n${argDefinitions.map(code => indent(code)).join('\n')}\n)`
+      } else {
+        code += `(${argDefinitionsCommas})`
+      }
+    }
+
+    const returnTypeCode = this.returnType.toCode()
+    let hasNewline: boolean = forceNewline || argDefinitionsHasNewline
+    if (!hasNewline) {
+      const bodyCode = this.body.toCode()
+      const testCode = code + argDefinitionsCommas + returnTypeCode + bodyCode
+      hasNewline = testCode.includes('\n') || testCode.length > MAX_LEN
+    }
+
+    if (!(this.returnType instanceof InferIdentifier)) {
+      code += ': ' + this.returnType.toCode()
+    }
+
+    code += ' ' + this.toBodyCode(hasNewline ? 0 : MAX_LEN - code.length)
+    return code
   }
 
   toViewPropCode() {
@@ -4133,6 +4323,14 @@ export class FormulaExpression extends Expression {
   toCodePrefixed(prefixed: boolean, forceNewline: boolean = false) {
     let code = ''
     code += formatComments(this.precedingComments)
+    if (this.props.length) {
+      const propsCode = this.props
+        .map(prop => `${prop.nameRef.name}: ${prop.value.toCode()}`)
+        .join(', ')
+      code += `fn{${this.signatureToCode(forceNewline)}, ${propsCode}}`
+      return code
+    }
+
     if (prefixed) {
       code += this.prefix
     }
@@ -4143,38 +4341,7 @@ export class FormulaExpression extends Expression {
       code += this.nameRef.name
     }
 
-    if (this.generics.length) {
-      code += wrapValues('<', this.generics, '>')
-    }
-
-    const argDefinitions = this.argDefinitions.map(expr => expr.toCode()).join(', ')
-    const returnTypeCode = this.returnType.toCode()
-    let hasNewline: boolean
-    if (forceNewline) {
-      hasNewline = true
-    } else {
-      const bodyCode = this.body.toCode()
-      const testCode = code + argDefinitions + returnTypeCode + bodyCode
-      hasNewline = testCode.includes('\n') || testCode.length > MAX_LEN
-    }
-
-    if (!argDefinitions.length) {
-      code += '()'
-    } else {
-      const argDefinitionsHasNewline =
-        argDefinitions.includes('\n') || argDefinitions.length > MAX_INNER_LEN
-      if (argDefinitionsHasNewline) {
-        code += `(\n${indent(argDefinitions)}\n)`
-      } else {
-        code += `(${argDefinitions})`
-      }
-    }
-
-    if (!(this.returnType instanceof InferIdentifier)) {
-      code += ': ' + this.returnType.toCode()
-    }
-
-    code += ' ' + this.toBodyCode(hasNewline ? 0 : MAX_LEN - code.length)
+    code += this.signatureToCode(forceNewline)
 
     return code
   }
@@ -4205,65 +4372,69 @@ export class FormulaExpression extends Expression {
 
   compile(
     runtime: TypeRuntime,
-    // in the context of passing an anonymous function as an argument to another
-    // function, the argument types of the receiver can be used to infer the
-    // argument types of the anonymous function.
     formulaArgumentType?: Types.FormulaType | undefined,
   ): GetRuntimeResult<Nodes.AnonymousFunction> {
-    // this runtime is constructed in order to evaluate the body of the
-    // function. It includes all generics and arguments.
     const mutableRuntime = new MutableTypeRuntime(runtime)
-
-    const generics = mapAll(
-      this.generics.map(generic =>
-        generic.compileWithBound(mutableRuntime).map(genericType => {
-          const node = new Nodes.Generic(toSource(generic), genericType)
-          mutableRuntime.addLocalType(generic.name, genericType)
-          return node
-        }),
+    return mapMany(
+      mapAll(
+        this.generics.map(generic =>
+          generic.compileWithBound(mutableRuntime).map(genericType => {
+            const node = new Nodes.Generic(toSource(generic), genericType)
+            mutableRuntime.addLocalType(generic.name, genericType)
+            return node
+          }),
+        ),
       ),
-    )
-    const argumentNodes = resolveArgumentNodes(this, mutableRuntime, formulaArgumentType)
-
-    return mapMany(generics, argumentNodes).map(([generics, args]) => {
-      args.forEach(arg => {
+      resolveArgumentNodes(this, mutableRuntime, formulaArgumentType),
+    ).map(([generics, argumentNodes]) => {
+      argumentNodes.forEach(arg => {
         mutableRuntime.addLocalType(arg.name, arg.type)
       })
 
-      const functionName = this.macroFunctionName()
-      if (functionName) {
-        mutableRuntime.addLocalType('#fn', Types.literal(functionName))
-      }
+      return mapAll(
+        this.props.map(prop =>
+          prop.value
+            .getType(mutableRuntime)
+            .map(type => [prop.nameRef.name, type] as [string, Types.Type]),
+        ),
+      )
+        .map(props => new Map(props))
+        .map(props => {
+          const functionName = this.macroFunctionName()
+          if (functionName) {
+            mutableRuntime.addLocalType('#fn', Types.literal(functionName))
+          }
 
-      return this.body.compile(mutableRuntime).map(bodyNode => {
-        const inferReturnType = this.returnType instanceof InferIdentifier
-        let returnTypeResult: GetRuntimeResult<Nodes.Node | undefined>
-        if (inferReturnType) {
-          returnTypeResult = ok(undefined)
-        } else {
-          returnTypeResult = this.returnType
-            .compileAsTypeExpression(mutableRuntime)
-            .mapResult(decorateError(this))
-            .map(returnTypeNode => {
-              const returnType = returnTypeNode.type.fromTypeConstructor()
+          return this.body.compile(mutableRuntime).map(bodyNode => {
+            const inferReturnType = this.returnType instanceof InferIdentifier
+            let returnTypeResult: GetRuntimeResult<Nodes.Node | undefined>
+            if (inferReturnType) {
+              returnTypeResult = ok(undefined)
+            } else {
+              returnTypeResult = this.returnType
+                .compileAsTypeExpression(mutableRuntime)
+                .mapResult(decorateError(this))
+                .map(returnTypeNode => {
+                  const returnType = returnTypeNode.type.fromTypeConstructor()
 
-              if (!Types.canBeAssignedTo(bodyNode.type, returnType)) {
-                return err(
-                  new RuntimeError(
-                    this,
-                    `Function body result type '${bodyNode.type.toCode()}' is not assignable to explicit return type '${returnType.toCode()}'`,
-                  ),
-                )
-              }
+                  if (!Types.canBeAssignedTo(bodyNode.type, returnType)) {
+                    return err(
+                      new RuntimeError(
+                        this,
+                        `Function body result type '${bodyNode.type.toCode()}' is not assignable to explicit return type '${returnType.toCode()}'`,
+                      ),
+                    )
+                  }
 
-              return returnTypeNode
-            })
-        }
+                  return returnTypeNode
+                })
+            }
 
-        return returnTypeResult.map(returnTypeNode =>
-          this.compileFormulaTypeWith(generics, args, returnTypeNode, bodyNode),
-        )
-      })
+            return returnTypeResult.map(returnTypeNode =>
+              this.compileFormulaTypeWith(generics, argumentNodes, returnTypeNode, bodyNode, props),
+            )
+          })
+        })
     })
   }
 
@@ -4272,11 +4443,12 @@ export class FormulaExpression extends Expression {
     args: Nodes.Argument[],
     returnTypeNode: Nodes.Node | undefined,
     bodyNode: Nodes.Node,
+    props: Map<string, Types.Type> = new Map(),
   ) {
     const argTypes = args.map(arg => arg.toArgumentType())
     const genericTypes = generics.map(g => g.type)
     const returnType = returnTypeNode?.type ?? bodyNode.type
-    const type = new Types.FormulaType(returnType, argTypes, genericTypes)
+    const type = new Types.FormulaType(returnType, argTypes, genericTypes, props)
     return new Nodes.AnonymousFunction(
       toSource(this),
       type,
@@ -4289,29 +4461,36 @@ export class FormulaExpression extends Expression {
 
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.FormulaValue> {
     const argDefinitions = this.argDefinitions
-    return mapAll(argDefinitions.map(definition => definition.argType.formulaLocalAssigns(runtime)))
-      .map(assigns => assigns.flat())
-      .map(localAssigns => {
-        // this is the function that is invoked by 'FunctionInvocationOperator', via
-        // FormulaValue.call(args)
-        const fn = (
-          args: Values.FormulaArgs,
-          boundThis: Values.ClassInstanceValue | undefined,
-        ): Result<Values.Value, RuntimeError> =>
-          argumentValues(runtime, argDefinitions, args, boundThis).map(argRuntime => {
-            const mutableRuntime = new MutableValueRuntime(argRuntime)
-            for (const [name, value] of localAssigns) {
-              mutableRuntime.addLocalValue(name, value)
-            }
-            const functionName = this.macroFunctionName()
-            if (functionName) {
-              mutableRuntime.addLocalValue('#fn', Values.string(functionName))
-            }
-            return this.body.eval(mutableRuntime)
-          })
+    return mapMany(
+      mapAll(argDefinitions.map(definition => definition.argType.formulaLocalAssigns(runtime))).map(
+        assigns => assigns.flat(),
+      ),
+      mapAll(
+        this.props.map(prop =>
+          prop.value
+            .eval(runtime)
+            .map(value => [prop.nameRef.name, value] as [string, Values.Value]),
+        ),
+      ).map(props => new Map(props)),
+    ).map(([localAssigns, props]) => {
+      const fn = (
+        args: Values.FormulaArgs,
+        boundThis: Values.ClassInstanceValue | undefined,
+      ): Result<Values.Value, RuntimeError> =>
+        argumentValues(runtime, argDefinitions, args, boundThis).map(argRuntime => {
+          const mutableRuntime = new MutableValueRuntime(argRuntime)
+          for (const [name, value] of localAssigns) {
+            mutableRuntime.addLocalValue(name, value)
+          }
+          const functionName = this.macroFunctionName()
+          if (functionName) {
+            mutableRuntime.addLocalValue('#fn', Values.string(functionName))
+          }
+          return this.body.eval(mutableRuntime)
+        })
 
-        return this.getFormulaValueWith(runtime, fn, localAssigns)
-      })
+      return this.getFormulaValueWith(runtime, fn, localAssigns, props)
+    })
   }
 
   getFormulaValueWith(
@@ -4321,8 +4500,9 @@ export class FormulaExpression extends Expression {
       boundThis: Values.ClassInstanceValue | undefined,
     ) => Result<Values.Value, RuntimeError>,
     localAssigns: [string, Values.Value][],
+    props: Map<string, Values.Value> = new Map(),
   ) {
-    return new Values.FormulaValue(fn, undefined, localAssigns)
+    return new Values.FormulaValue(fn, undefined, localAssigns, props)
   }
 }
 
@@ -4683,12 +4863,13 @@ export class NamedFormulaExpression extends FormulaExpression {
     args: Nodes.Argument[],
     returnTypeNode: Nodes.Node | undefined,
     bodyNode: Nodes.Node,
+    props: Map<string, Types.Type> = new Map(),
   ) {
     const name = this.nameRef.name
     const argTypes = args.map(arg => arg.toArgumentType())
     const genericTypes = generics.map(g => g.type)
     const returnType = returnTypeNode?.type ?? bodyNode.type
-    const type = new Types.NamedFormulaType(name, returnType, argTypes, genericTypes)
+    const type = new Types.NamedFormulaType(name, returnType, argTypes, genericTypes, props)
     return new Nodes.NamedFunction(
       toSource(this),
       type,
@@ -4711,8 +4892,9 @@ export class NamedFormulaExpression extends FormulaExpression {
       boundThis: Values.ClassInstanceValue | undefined,
     ) => Result<Values.Value, RuntimeError>,
     localAssigns: [string, Values.Value][],
+    props: Map<string, Values.Value> = new Map(),
   ) {
-    return new Values.NamedFormulaValue(this.nameRef.name, fn, undefined, localAssigns)
+    return new Values.NamedFormulaValue(this.nameRef.name, fn, undefined, localAssigns, props)
   }
 }
 

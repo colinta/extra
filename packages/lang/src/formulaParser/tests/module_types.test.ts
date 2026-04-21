@@ -55,9 +55,18 @@ type User = {
   last-name: String(length: >=1)
   fullname: fn(): String
 }`,
-      '(type User {(first-name: `String(length: >=1)`) (last-name: `String(length: >=1)`) (fullname: (fn () : (`String`)))})',
+      '(type User {(first-name: `String(length: >=1)`) (last-name: `String(length: >=1)`) (fullname: (fn () : `String`))})',
       `\
 type User = {first-name: String(length: >=1), last-name: String(length: >=1), fullname: fn(): String}`,
+    ]),
+    c([
+      `type Adder = fn{
+  (# a: Int, # b: Int): Int
+  inc: fn(# x: Int): Int
+  dec: fn(# x: Int): Int
+}`,
+      '(type Adder (fn{ ((# a: `Int`) (# b: `Int`)) : `Int` (inc: (fn ((# x: `Int`)) : `Int`)) (dec: (fn ((# x: `Int`)) : `Int`)) }))',
+      'type Adder = fn{(# a: Int, # b: Int): Int, inc: fn(# x: Int): Int, dec: fn(# x: Int): Int}',
     ]),
     c([
       `\

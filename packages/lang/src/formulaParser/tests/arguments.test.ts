@@ -100,10 +100,10 @@ describe('argument parser', () => {
           '(fn ' + // <reduce-type>
           '(' + // <args>
           '(# initial: `String`) ' + // arg0
-          '(# callback: (fn ((# memo: `String`) (# value: `Int`)) : (`String`))) ' + // arg1
+          '(# callback: (fn ((# memo: `String`) (# value: `Int`)) : `String`)) ' + // arg1
           '(values: Array(`Int`))' + // arg2
           ') ' + //</args>
-          ': (`String`)' + // </return-type>
+          ': `String`' + // </return-type>
           ')' + // </reduce-type>
           ')' + // </reduce>
           ')', // </arg-decl-list>

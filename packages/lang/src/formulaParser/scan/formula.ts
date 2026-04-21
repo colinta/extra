@@ -4,6 +4,8 @@ import {type Scanner} from '../scanner'
 import {type ExpressionType, type Comment, ParseError, type ParseNext} from '../types'
 import {
   ARGS_OPEN,
+  BLOCK_CLOSE,
+  BLOCK_OPEN,
   FUNCTION_BODY_START,
   GENERIC_CLOSE,
   GENERIC_OPEN,
@@ -204,6 +206,21 @@ function _scanFormula(
   }
   scanner.whereAmI(`scanFormula generics = [${generics.join(', ')}]`)
 
+  if (scanner.is(BLOCK_OPEN)) {
+    if (isNamedFn || nameRef) {
+      throw new ParseError(scanner, 'Formula objects cannot be named')
+    }
+    return scanFormulaObject(
+      scanner,
+      parseNext,
+      range0,
+      precedingComments,
+      generics,
+      bodyExpressionType,
+      isInView,
+    )
+  }
+
   let argDefinitions: Expressions.FormulaArgumentDefinition[]
   let precedingArgsComments: Comment[] = []
   let followingArgsComments: Comment[] = []
@@ -239,6 +256,83 @@ function _scanFormula(
     bodyExpressionType,
     isInView,
     options.macroOwnerName,
+  )
+}
+
+function scanFormulaObject(
+  scanner: Scanner,
+  parseNext: ParseNext,
+  range0: number,
+  precedingComments: Comment[],
+  generics: Expressions.GenericExpression[],
+  _bodyExpressionType: ExpressionType,
+  isInView: boolean,
+) {
+  scanner.expectString(BLOCK_OPEN)
+  scanner.scanAllWhitespace()
+
+  const argDefinitions = scanFormulaLiteralArguments(
+    scanner,
+    isInView ? 'view' : 'fn',
+    parseNext,
+    false,
+  )
+  scanner.scanAllWhitespace()
+
+  let returnType: Expression
+  if (scanner.scanIfString(TYPE_START)) {
+    scanner.scanAllWhitespace()
+    returnType = scanArgumentType(scanner, 'argument_type', parseNext)
+  } else {
+    returnType = new Expressions.InferIdentifier(
+      [scanner.charIndex, scanner.charIndex],
+      scanner.flushComments(),
+    )
+  }
+
+  scanner.scanAllWhitespace()
+  scanner.expectString(
+    FUNCTION_BODY_START,
+    `Expected '${FUNCTION_BODY_START}' followed by the function body`,
+  )
+  const body = parseNext('block_argument', {isInPipe: false, isInView})
+
+  const props: Expressions.FormulaPropertyDefinition[] = []
+  if (
+    !scanner.scanCommaOrBreak(BLOCK_CLOSE, `Expected ',' or '${BLOCK_CLOSE}' in formula object`)
+  ) {
+    scanner.scanAllWhitespace()
+    for (;;) {
+      const nameRef = scanValidLocalName(scanner)
+      scanner.scanAllWhitespace()
+      scanner.expectString(TYPE_START)
+      scanner.scanAllWhitespace()
+      const value = parseNext('block_argument', {isInPipe: false, isInView})
+      props.push({nameRef, value})
+
+      if (
+        scanner.scanCommaOrBreak(BLOCK_CLOSE, `Expected ',' or '${BLOCK_CLOSE}' in formula object`)
+      ) {
+        break
+      }
+
+      scanner.scanAllWhitespace()
+    }
+  }
+
+  return new Expressions.FormulaExpression(
+    [range0, scanner.charIndex],
+    precedingComments,
+    [],
+    [],
+    [],
+    [],
+    undefined,
+    argDefinitions,
+    returnType,
+    body,
+    generics,
+    props,
   )
 }
 

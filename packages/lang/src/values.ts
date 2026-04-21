@@ -74,17 +74,21 @@ export function set(values: Value[]) {
   return new SetValue(values)
 }
 
-export function formula(fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>) {
+export function formula(
+  fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>,
+  props: Map<string, Value> = new Map(),
+) {
   // localAssigns = []
-  return new FormulaValue(fn, undefined, [])
+  return new FormulaValue(fn, undefined, [], props)
 }
 
 export function namedFormula(
   name: string,
   fn: (_: FormulaArgs) => Result<Value, string | RuntimeError>,
+  props: Map<string, Value> = new Map(),
 ) {
   // localAssigns = []
-  return new NamedFormulaValue(name, fn, undefined, [])
+  return new NamedFormulaValue(name, fn, undefined, [], props)
 }
 
 export function opaque(value: Value, opaqueType?: Types.OpaqueType) {
@@ -1593,8 +1597,10 @@ export class FormulaValue extends Value {
     ) => Result<Value, string | RuntimeError>,
     readonly boundThis: ClassInstanceValue | undefined,
     readonly localAssigns: [string, Value][],
+    readonly props: Map<string, Value> = new Map(),
   ) {
     super()
+    Object.defineProperty(this, 'props', {enumerable: false})
   }
 
   isEqual(value: Value): boolean {
@@ -1624,8 +1630,13 @@ export class FormulaValue extends Value {
   static _props: Map<string, (value: FormulaValue) => Value> = new Map([])
 
   propValue(propName: string): Value | undefined {
-    const prop = FormulaValue._props.get(propName)
-    return prop?.(this)
+    const prop = this.props.get(propName)
+    if (prop) {
+      return prop
+    }
+
+    const intrinsic = FormulaValue._props.get(propName)
+    return intrinsic?.(this)
   }
 
   call(formulaArgs: FormulaArgs): Result<Value, string | RuntimeError> {
@@ -1638,7 +1649,7 @@ export class FormulaValue extends Value {
   }
 
   bound(boundThis: ClassInstanceValue) {
-    return new FormulaValue(this.fn, boundThis, this.localAssigns)
+    return new FormulaValue(this.fn, boundThis, this.localAssigns, this.props)
   }
 }
 
@@ -1653,12 +1664,13 @@ export class NamedFormulaValue extends FormulaValue {
     ) => Result<Value, string | RuntimeError>,
     boundThis: ClassInstanceValue | undefined,
     localAssigns: [string, Value][],
+    props: Map<string, Value> = new Map(),
   ) {
-    super(fn, boundThis, localAssigns)
+    super(fn, boundThis, localAssigns, props)
   }
 
   bound(boundThis: ClassInstanceValue) {
-    return new NamedFormulaValue(this.name, this.fn, boundThis, this.localAssigns)
+    return new NamedFormulaValue(this.name, this.fn, boundThis, this.localAssigns, this.props)
   }
 }
 

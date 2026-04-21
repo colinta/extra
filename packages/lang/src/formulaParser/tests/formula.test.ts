@@ -1,7 +1,7 @@
 import {c, cases} from '@extra-lang/cases'
 import * as Values from '../../values'
 import {type ValueRuntime} from '../../runtime'
-import {parse} from '../../formulaParser'
+import {parse, parseType} from '../../formulaParser'
 import {type Expression} from '../../expressions'
 import {mockValueRuntime} from '../../tests/mockValueRuntime'
 
@@ -58,28 +58,162 @@ fn(
         'fn(# a: Int, ...a as: [Int]): Int => 0',
         '(fn ((# a: `Int`) (...a as: Array(`Int`))) : `Int` => 0)',
       ]),
+      c([
+        'fn(# a: Int, # b: Int, # c: Int, # d: Int, # e: Int, # f: Int, # g: Int, # h: Int, # i: Int, # j: Int, # k: Int, # l: Int, # m: Int, # n: Int, # o: Int, # p: Int): Int => 0',
+        '(fn ((# a: `Int`) (# b: `Int`) (# c: `Int`) (# d: `Int`) (# e: `Int`) (# f: `Int`) (# g: `Int`) (# h: `Int`) (# i: `Int`) (# j: `Int`) (# k: `Int`) (# l: `Int`) (# m: `Int`) (# n: `Int`) (# o: `Int`) (# p: `Int`)) : `Int` => 0)',
+        `\
+fn(
+  # a: Int
+  # b: Int
+  # c: Int
+  # d: Int
+  # e: Int
+  # f: Int
+  # g: Int
+  # h: Int
+  # i: Int
+  # j: Int
+  # k: Int
+  # l: Int
+  # m: Int
+  # n: Int
+  # o: Int
+  # p: Int
+): Int =>
+  0`,
+      ]),
       c(['fn(...a: [Int]): Int => 0', '(fn ((...a: Array(`Int`))) : `Int` => 0)']),
       c(['fn(a: Int): Int => 0', '(fn ((a: `Int`)) : `Int` => 0)']),
       c(['fn(a: Int, # b: Int): Int => 0', '(fn ((a: `Int`) (# b: `Int`)) : `Int` => 0)']),
       c([
         'fn(a: fn(): Int, # b: fn(): Int): fn(): Int => fn() => a() + b()',
-        '(fn ((a: (fn () : (`Int`))) (# b: (fn () : (`Int`)))) : (fn () : (`Int`)) => (fn () => (+ (fn a ()) (fn b ()))))',
+        '(fn ((a: (fn () : `Int`)) (# b: (fn () : `Int`))) : (fn () : `Int`) => (fn () => (+ (fn a ()) (fn b ()))))',
       ]),
       c([
         'fn<T>(a: fn(): T, # b: fn(): T): T => b()',
-        '(fn <T> ((a: (fn () : (T))) (# b: (fn () : (T)))) : T => (fn b ()))',
+        '(fn <T> ((a: (fn () : T)) (# b: (fn () : T))) : T => (fn b ()))',
       ]),
       c([
         'fn<T, U>(a: fn(): T, # b: fn(): U): {T, U} => {a(), b()}',
-        '(fn <T U> ((a: (fn () : (T))) (# b: (fn () : (U)))) : {T U} => {(fn a ()) (fn b ())})',
+        '(fn <T U> ((a: (fn () : T)) (# b: (fn () : U))) : {T U} => {(fn a ()) (fn b ())})',
       ]),
       c(['fn(# arg: .a | .b): T => b()', '(fn ((# arg: (.a | .b))) : T => (fn b ()))']),
       c(['fn(# arg: {a: String}): T => b()', '(fn ((# arg: {(a: `String`)})) : T => (fn b ()))']),
+      c([
+        `fn{
+  (# a: Int, # b: Int): Int => a + b
+  inc: fn(# x: Int): Int => x + 1
+  dec: fn(# x: Int): Int => x - 1
+}`,
+        '(fn{ ((# a: `Int`) (# b: `Int`)) : `Int` => (+ a b) (inc: (fn ((# x: `Int`)) : `Int` => (+ x 1))) (dec: (fn ((# x: `Int`)) : `Int` => (- x 1))) })',
+        'fn{(# a: Int, # b: Int): Int => a + b, inc: fn(# x: Int): Int => x + 1, dec: fn(# x: Int): Int => x - 1}',
+      ]),
     ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         expectedCode ??= formula
 
         let expression: Expression = parse(formula).get()
+
+        expect(expression!.toCode()).toEqual(expectedCode)
+        expect(expression!.toLisp()).toEqual(expectedLisp)
+      }),
+    )
+  })
+
+  describe('parse formula type', () => {
+    cases<[string, string] | [string, string, string]>(
+      c(['fn(): Int', '(fn () : `Int`)']),
+      c(['fn(): {foo: Int}', '(fn () : {(foo: `Int`)})']),
+      c(['fn(# a: Int): Int', '(fn ((# a: `Int`)) : `Int`)']),
+      c(['fn(# a: Int): Int', '(fn ((# a: `Int`)) : `Int`)']),
+      c(['fn(# b: Int, a: Int): Int', '(fn ((# b: `Int`) (a: `Int`)) : `Int`)']),
+      c([
+        'fn(name: String?, age: Int?)',
+        '(fn ((name: (`String` | `null`)) (age: (`Int` | `null`))))',
+      ]),
+      c([
+        'fn(name: String | null, age: Int | null)',
+        '(fn ((name: (`String` | `null`)) (age: (`Int` | `null`))))',
+        'fn(name: String?, age: Int?)',
+      ]),
+      c([
+        "fn(name: 'alice' | 'bob', age: 1 | 2 | 42)",
+        "(fn ((name: ('alice' | 'bob')) (age: (1 | 2 | 42))))",
+      ]),
+      c([
+        `\
+fn(
+  name:
+    | 'alice'
+    | 'bob'
+  age:
+    1
+    | 2 |
+    42
+)`,
+        "(fn ((name: ('alice' | 'bob')) (age: (1 | 2 | 42))))",
+        "fn(name: 'alice' | 'bob', age: 1 | 2 | 42)",
+      ]),
+      c([
+        'fn(# a: Int, ...# as: [Int]): Int',
+        '(fn ((# a: `Int`) (...# as: Array(`Int`))) : `Int`)',
+      ]),
+      c(['fn(# a: Int, **as: Dict(Int)): Int', '(fn ((# a: `Int`) (**as: Dict(`Int`))) : `Int`)']),
+      c(['fn(# a: Int, ...as: [Int]): Int', '(fn ((# a: `Int`) (...as: Array(`Int`))) : `Int`)']),
+      c([
+        'fn(# a: Int, # b: Int, # c: Int, # d: Int, # e: Int, # f: Int, # g: Int, # h: Int, # i: Int, # j: Int, # k: Int, # l: Int, # m: Int, # n: Int, # o: Int, # p: Int): Int',
+        '(fn ((# a: `Int`) (# b: `Int`) (# c: `Int`) (# d: `Int`) (# e: `Int`) (# f: `Int`) (# g: `Int`) (# h: `Int`) (# i: `Int`) (# j: `Int`) (# k: `Int`) (# l: `Int`) (# m: `Int`) (# n: `Int`) (# o: `Int`) (# p: `Int`)) : `Int`)',
+        `\
+fn(
+  # a: Int
+  # b: Int
+  # c: Int
+  # d: Int
+  # e: Int
+  # f: Int
+  # g: Int
+  # h: Int
+  # i: Int
+  # j: Int
+  # k: Int
+  # l: Int
+  # m: Int
+  # n: Int
+  # o: Int
+  # p: Int
+): Int`,
+      ]),
+      c(['fn(...a: [Int]): Int', '(fn ((...a: Array(`Int`))) : `Int`)']),
+      c(['fn(a: Int): Int', '(fn ((a: `Int`)) : `Int`)']),
+      c(['fn(a: Int, # b: Int): Int', '(fn ((a: `Int`) (# b: `Int`)) : `Int`)']),
+      c([
+        'fn(a: fn(): Int, # b: fn(): Int): fn(): Int',
+        '(fn ((a: (fn () : `Int`)) (# b: (fn () : `Int`))) : (fn () : `Int`))',
+      ]),
+      c([
+        'fn<T>(a: fn(): T, # b: fn(): T): T',
+        '(fn <T> ((a: (fn () : T)) (# b: (fn () : T))) : T)',
+      ]),
+      c([
+        'fn<T, U>(a: fn(): T, # b: fn(): U): {T, U}',
+        '(fn <T U> ((a: (fn () : T)) (# b: (fn () : U))) : {T U})',
+      ]),
+      c(['fn(# arg: .a | .b): T', '(fn ((# arg: (.a | .b))) : T)']),
+      c(['fn(# arg: {a: String}): T', '(fn ((# arg: {(a: `String`)})) : T)']),
+      c([
+        `fn{
+  (# a: Int, # b: Int): Int
+  inc: fn(# x: Int): Int
+  dec: fn(# x: Int): Int
+}`,
+        '(fn{ ((# a: `Int`) (# b: `Int`)) : `Int` (inc: (fn ((# x: `Int`)) : `Int`)) (dec: (fn ((# x: `Int`)) : `Int`)) })',
+        'fn{(# a: Int, # b: Int): Int, inc: fn(# x: Int): Int, dec: fn(# x: Int): Int}',
+      ]),
+    ).run(([formula, expectedLisp, expectedCode], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
+        expectedCode ??= formula
+
+        let expression: Expression = parseType(formula).get()
 
         expect(expression!.toCode()).toEqual(expectedCode)
         expect(expression!.toLisp()).toEqual(expectedLisp)

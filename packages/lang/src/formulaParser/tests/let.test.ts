@@ -220,6 +220,34 @@ in
         Types.literal('test!'),
         Values.string('test!'),
       ]),
+      c([
+        `\
+let
+  adder: fn{(# a: Int, # b: Int): Int, inc: fn(# x: Int): Int, dec: fn(# x: Int): Int} = fn{
+    (# a: Int, # b: Int): Int => a + b
+    inc: fn(# x: Int): Int => x + 1
+    dec: fn(# x: Int): Int => x - 1
+  }
+in
+  adder(1, 2)
+`,
+        Types.int(),
+        Values.int(3),
+      ]),
+      c([
+        `\
+let
+  adder: fn{(# a: Int, # b: Int): Int, inc: fn(# x: Int): Int, dec: fn(# x: Int): Int} = fn{
+    (# a: Int, # b: Int): Int => a + b
+    inc: fn(# x: Int): Int => x + 1
+    dec: fn(# x: Int): Int => x - 1
+  }
+in
+  adder.inc(1)
+`,
+        Types.int(),
+        Values.int(2),
+      ]),
     ).run(([formula, expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should parse formula '${formula}'`, () => {
         const expression = parse(formula).get()

@@ -2,17 +2,20 @@ import {c, cases} from '@extra-lang/cases'
 import {parse} from '../../formulaParser'
 import {type Expression} from '../../expressions'
 import * as Types from '../../types'
-import {type TypeRuntime} from '../../runtime'
+import {type TypeRuntime, type ValueRuntime} from '../../runtime'
 import * as Values from '../../values'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
+import {mockValueRuntime} from '../../tests/mockValueRuntime'
 
 let runtimeTypes: {[K in string]: [Types.Type, Values.Value]}
 
 let typeRuntime: TypeRuntime
+let valueRuntime: ValueRuntime
 
 beforeEach(() => {
   runtimeTypes = {}
   typeRuntime = mockTypeRuntime(runtimeTypes)
+  valueRuntime = mockValueRuntime(runtimeTypes)
 })
 
 describe('Property Access Operator', () => {
@@ -78,6 +81,76 @@ describe('Property Access Operator', () => {
           const expression = parse(formula).get()
           const actualType = expression.getType(typeRuntime).get()
           expect(actualType).toEqual(expectedType)
+        },
+      ),
+    )
+  })
+
+  describe('formula properties', () => {
+    cases<[string, Types.Type]>(
+      c([
+        'Int.parse',
+        Types.namedFormula(
+          'parse',
+          [
+            Types.positionalArgument({name: 'input', type: Types.StringType, isRequired: true}),
+            Types.namedArgument({
+              name: 'radix',
+              type: Types.IntType.narrow(0, undefined),
+              isRequired: false,
+            }),
+          ],
+          Types.optional(Types.IntType),
+        ),
+      ]),
+      c([
+        `let
+  adder = fn{
+    (# a: Int, # b: Int): Int => a + b
+    inc: fn(# x: Int): Int => x + 1
+    dec: fn(# x: Int): Int => x - 1
+  }
+in
+  adder.inc`,
+        Types.formula(
+          [Types.positionalArgument({name: 'x', type: Types.IntType, isRequired: true})],
+          Types.IntType,
+        ),
+      ]),
+    ).run(([formula, expectedType], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(
+        `'${formula}' should have type '${expectedType}'`,
+        () => {
+          const expression = parse(formula).get()
+          expect(expression.getType(typeRuntime).get()).toEqual(expectedType)
+        },
+      ),
+    )
+
+    cases<[string, Values.Value]>(
+      c(['Int.parse("5")', Values.int(5)]),
+      c(['Int.parse("")', Values.nullValue()]),
+      c(['Int.parse("11", radix: 2)', Values.int(3)]),
+      c(['Int.parse("11", radix: 10)', Values.int(11)]),
+      c(['Int.parse("z", radix: 36)', Values.int(35)]),
+      c(['Int.parse("z", radix: 10)', Values.nullValue()]),
+      c([
+        `let
+  adder = fn{
+    (# a: Int, # b: Int): Int => a + b
+    inc: fn(# x: Int): Int => x + 1
+    dec: fn(# x: Int): Int => x - 1
+  }
+in
+  adder.dec(1)`,
+        Values.int(0),
+      ]),
+    ).run(([formula, expectedValue], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(
+        `'${formula}' should eval to '${expectedValue}'`,
+        () => {
+          const expression = parse(formula).get()
+          expect(expression.eval(valueRuntime).get()).toEqual(expectedValue)
         },
       ),
     )

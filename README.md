@@ -152,110 +152,7 @@ view Login {
 }
 ```
 
-# Now in no particular order, some language features of Extra
-
-## Commas are optional
-
-I've tried hard to make sure the language grammar can unambiguously determine whether you are still writing an expression, or starting a new one. This allows for arrays, function-arguments, and imports to have commas as optional.
-
-```extra
-[
-  1
-  2
-  3
-  -4
-
-  -- if you want to continue the line, you need to end in an operator
-  8 -
-  5 -- equivalent to `8 - 5`
-] --> [1, 2, 3, -4, 3]
---> [1, 2, 3, -4, 8 - 5]
-
-
-{
-  name: 'Extra'
-  is-awesome: true
-  awesome-level: 11
-}
--- > {name: 'Extra', is-awesome: true, awesome-level: 11}
-
-add-two-numbers(
-  1
-  2
-) --> 3
--- > add-two-numbers(1, 2)
-
--- import `sqrt` and `pow` functions from the Math package
-import Math only {
-  sqrt
-  pow
-}
--- import Math only { sqrt, pow }
-
-```
-
-## Unambiguous operators
-
-`+` is a mathematical operator that adds two numbers. Did you know that `a + b == b + a`? Except in Java and Javascript and Swift and many other languages. 🙄
-
-`++` is a computer science-y looking operator that concatenates two arrays. `..` does the same for strings. Having distinct concatenation operators is either really nice for indicating intentionality, or an unnecessary distinction. I hate to side w/ PHP on this one, but I treat 'em differently. Or hey maybe I'm hitching my ride to PHP's weird and shocking resurgence!? Who knows!?
-
-Words (`and` `or` `not` `is` `has` `else`) are used for logical operators, but not bitwise operators (`&` `|` `^` `~`). But I like to think I'm a reasonable person, so I also treat the traditional operators as aliases (`&& → and`, `|| → or`, `! → not`, etc).
-
-## Match operator
-
-You would be forgiven for thinking `is` is the _instanceof_ operator... and you'd be right, even though you're wrong: it's the "match" operator. ie `if x is .some(val)` will attempt to match the two sides. In this case, if the match succeeds, `val` will have the unwrapped value of `x`.
-
-```extra
-let
-  x = .some(42)
-in
-  if x is .some(val)
-    -- val == 42
-    val
-  else
-    0
-```
-
-## `let` expressions
-
-`let` assigns variables to local scope.
-
-```extra
-let
-  x = 1
-  y = 2
-in
-  x + y
-```
-
-Extra lives up to its namesake:
-
-```extra
-in
-  x + y
-let
-  x = 1
-  y = 2
-```
-
-## String coercion and interpolation
-
-Extra's "coerce to String" function is a unary operator `$`, and it's also the string interpolation delimiter.
-
-```extra
--- look at the beautiful similarity between String templates
--- and String coercion:
-
-`How many: $n`
-"How many: " .. $n
-
--- because it's an _operator_, you can do things like
-let
-  n = 1
-in
-  $(n + 1) --> "2"
-```
+# Now in no particular order, some language features of Extra, that make it “Extra”
 
 ## Type refinements
 
@@ -416,7 +313,43 @@ in
   remoteData.data() --> 'data loaded': String?
 ```
 
+There is also a shorthand syntax, only available when defining an enum as an
+argument type:
+
+```extra
+fn print(
+  # text: String
+  color:
+    -- initial '|' is optional, but looks nice in multilines
+    | .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
+    | .hex(String(length: =6))
+    | .name('red' | 'green' | 'blue')
+    | null
+) =>
+  if color then …
+```
+
 **Product Types** in Extra are the good ol' `Object` type – `Record` or `struct` in other languages. Extra Objects are also Tuples, because the property name is optional - you can have positional and named properties (which aligns them with how function arguments support positional and named arguments - function arguments are just Tuples (or Objects)!)
+
+## Functions with properties
+
+TypeScript has a syntax for this - do you remember it? Well you won't remember this any better, even though it's much better and more memorable. Start by writing a function, then change direction partway through into an object, then go ahead and write that function, then return to writing object properties.
+
+```extra
+-- 'fn' starts the function, then '{' indicates something else is going on
+adder = fn{
+  -- continue writing the function
+  (# lhs: Int, # rhs: Int) => lhs + rhs
+
+  -- then continue with the rest of the properties
+  inc: fn(# input: Int) => input + 1
+  dec: fn(# input: Int) => input - 1
+}
+
+adder(1, 2) => 3
+adder.inc(3) => 4
+adder.dec(4) => 3
+```
 
 ## Comments
 
@@ -659,53 +592,84 @@ else
   'not "foo…" or [a, …]'
 ```
 
-### Enums / Algebraic data types
+## Match operator
+
+You would be forgiven for thinking `is` is the _instanceof_ operator... and you'd be right, even though you're wrong: it's the "match" operator. ie `if x is .some(val)` will attempt to match the two sides. In this case, if the match succeeds, `val` will have the unwrapped value of `x`.
 
 ```extra
-enum Result<Ok, Err> {
-  .ok(Ok)
-  .err(Err)
-
-  fn to-maybe() =>
-    switch this
-    case .ok(value)
-      value
-    else
-      null
-
-  static from-maybe<T>(# value: T?): Result<T, null> =>
-    if value then .ok(value) else .err(null)
-}
-
-enum Colour {
-  .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
-  .hex(# code: String(length: =6))
-  .name(# name: 'red' | 'green' | 'blue')
-}
-
-switch colour
-case .rgb(r, g, b)
-  `rgb($r, $g, $b)`
-case .hex(hex)
-  `hex(#$hex)`
-case .name
-  `Colour named '$(colour.name)'`
+let
+  x = .some(42)
+in
+  if x is .some(val)
+    -- val == 42
+    val
+  else
+    0
 ```
 
-There is also a shorthand syntax, only available when defining an enum as an
-argument type:
+## String coercion and interpolation
+
+Extra's "coerce to String" function is a unary operator `$`, and it's also the string interpolation delimiter.
 
 ```extra
-fn print(
-  # text: String
-  color:
-    -- initial '|' is optional, but looks nice in multilines
-    | .rgb(r: Int(0..<256), g: Int(0..<256), b: Int(0..<256))
-    | .hex(String(length: =6))
-    | .name('red' | 'green' | 'blue')
-    | null
-) =>
-  if color then …
+-- look at the beautiful similarity between String templates
+-- and String coercion:
+
+`How many: $n`
+"How many: " .. $n
+
+-- because it's an _operator_, you can do things like
+let
+  n = 1
+in
+  $(n + 1) --> "2"
+```
+
+## Unambiguous operators
+
+`+` is a mathematical operator that adds two numbers. Did you know that `a + b == b + a`? Except in Java and Javascript and Swift and many other languages. 🙄
+
+`++` is a computer science-y looking operator that concatenates two arrays. `..` does the same for strings. Having distinct concatenation operators is either really nice for indicating intentionality, or an unnecessary distinction. I hate to side w/ PHP on this one, but I treat 'em differently. Or hey maybe I'm hitching my ride to PHP's weird and shocking resurgence!? Who knows!?
+
+Words (`and` `or` `not` `is` `has` `else`) are used for logical operators, but not bitwise operators (`&` `|` `^` `~`). But I like to think I'm a reasonable person, so I also treat the traditional operators as aliases (`&& → and`, `|| → or`, `! → not`, etc).
+
+## Commas are optional
+
+I've tried hard to make sure the language grammar can unambiguously determine whether you are still writing an expression, or starting a new one. This allows for arrays, function-arguments, and imports to have commas as optional.
+
+```extra
+[
+  1
+  2
+  3
+  -4
+
+  -- if you want to continue the line, you need to end in an operator
+  8 -
+  5 -- equivalent to `8 - 5`
+] --> [1, 2, 3, -4, 3]
+--> [1, 2, 3, -4, 8 - 5]
+
+
+{
+  name: 'Extra'
+  is-awesome: true
+  awesome-level: 11
+}
+-- > {name: 'Extra', is-awesome: true, awesome-level: 11}
+
+add-two-numbers(
+  1
+  2
+) --> 3
+-- > add-two-numbers(1, 2)
+
+-- import `sqrt` and `pow` functions from the Math package
+import Math only {
+  sqrt
+  pow
+}
+-- import Math only { sqrt, pow }
 ```
 
 ### Classes
@@ -1134,10 +1098,30 @@ We've seen many definitions already.
 
 ```extra
 let
+  x = 1
+  y = 2
+in
+  x + y
+
+let
   the-answer = 42
   fn propose-answer(answer: Int): String => `The answer is $answer`
 in
   propose-answer(answer: the-answer)
+```
+
+Why not be a little _Extra_!? Useful when the return value is more interesting than the values.
+
+```extra
+in
+  {
+    x:
+    y:
+    sum: x + y
+  }
+let
+  x = 1
+  y = 2
 ```
 
 ## Variable names

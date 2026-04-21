@@ -22,6 +22,8 @@ import {
   CLASS_KEYWORD,
   MSG_TYPE,
   TYPE_START,
+  BLOCK_OPEN,
+  BLOCK_CLOSE,
   DICT_SEPARATOR,
   PROPERTY_ACCESS_OPERATOR,
 } from '../grammars'
@@ -31,7 +33,7 @@ import {ParseError, type ParseNext} from '../types'
 import {unexpectedToken} from './basics'
 import {scanGenerics} from './formula'
 import {scanFormulaTypeArguments} from './formula_arguments'
-import {scanAnyReference, scanEnumName, scanIdentifier} from './identifier'
+import {scanAnyReference, scanEnumName, scanIdentifier, scanValidLocalName} from './identifier'
 import {
   scanNarrowedDict,
   scanNarrowedFloat,
@@ -268,6 +270,57 @@ function scanFormulaType(
   } else {
     generics = []
   }
+
+  if (scanner.is(BLOCK_OPEN)) {
+    scanner.expectString(BLOCK_OPEN)
+    scanner.scanAllWhitespace()
+
+    const argDefinitions = scanFormulaTypeArguments(scanner, parseNext)
+
+    let returnType: Expression
+    if (scanner.scanAhead(TYPE_START)) {
+      scanner.scanAllWhitespace()
+      returnType = scanArgumentType(scanner, moduleOrArgument, parseNext)
+    } else {
+      returnType = new Expressions.InferIdentifier(
+        [scanner.charIndex, scanner.charIndex],
+        scanner.flushComments(),
+      )
+    }
+
+    const props: Expressions.FormulaPropertyDefinition[] = []
+    if (
+      !scanner.scanCommaOrBreak(BLOCK_CLOSE, `Expected ',' or '${BLOCK_CLOSE}' in formula type`)
+    ) {
+      scanner.scanAllWhitespace()
+      for (;;) {
+        const nameRef = scanValidLocalName(scanner)
+        scanner.scanAllWhitespace()
+        scanner.expectString(TYPE_START)
+        scanner.scanAllWhitespace()
+        const value = scanArgumentType(scanner, moduleOrArgument, parseNext)
+        props.push({nameRef, value})
+
+        if (
+          scanner.scanCommaOrBreak(BLOCK_CLOSE, `Expected ',' or '${BLOCK_CLOSE}' in formula type`)
+        ) {
+          break
+        }
+
+        scanner.scanAllWhitespace()
+      }
+    }
+
+    return new Expressions.FormulaTypeExpression(
+      [arg0, scanner.charIndex],
+      scanner.flushComments(),
+      argDefinitions,
+      returnType,
+      generics,
+      props,
+    )
+  }
+
   const argDefinitions = scanFormulaTypeArguments(scanner, parseNext)
 
   let returnType: Expression

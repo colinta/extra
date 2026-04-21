@@ -1204,6 +1204,7 @@ export class NullCoalescingPropertyAccessOperator extends Operator {}
 export class ArrayAccessOperator extends Operator {}
 export class NullCoalescingArrayAccessOperator extends Operator {}
 export class FunctionInvocationOperator extends Operator {}
+export class FormulaTypeNode extends Node {}
 
 //|
 //|  Built-ins
