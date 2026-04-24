@@ -35,7 +35,7 @@ import {RuntimeError} from './errors'
 import {type ViewFormulaDefinition} from './view-expressions'
 import {type ClassDefinition} from './class-expressions'
 import {type NamedEnumDefinition} from './enum-expressions'
-import {EXPORT_KEYWORD, VERSION_START} from '@/formulaParser/grammars'
+import {ALIAS_KEYWORD, EXPORT_KEYWORD, TYPE_KEYWORD, VERSION_START} from '@/formulaParser/grammars'
 
 /**
  * Declares the default export type. The compiler can use this to ensure that
@@ -378,11 +378,12 @@ export class TypeDefinition extends Expression {
     if (this.isExport) {
       code += EXPORT_KEYWORD + ' '
     }
-    if (this.isOpaque) {
-      code += 'opaque '
-    }
 
-    code += 'type '
+    if (this.isOpaque) {
+      code += TYPE_KEYWORD + ' '
+    } else {
+      code += ALIAS_KEYWORD + ' '
+    }
     code += this.name
     if (this.generics.length) {
       code += ' <' + this.generics.map(g => g.toLisp()).join(' ') + '>'
@@ -399,11 +400,12 @@ export class TypeDefinition extends Expression {
     if (this.isExport) {
       code += EXPORT_KEYWORD + ' '
     }
-    if (this.isOpaque) {
-      code += 'opaque '
-    }
 
-    code += 'type '
+    if (this.isOpaque) {
+      code += TYPE_KEYWORD + ' '
+    } else {
+      code += ALIAS_KEYWORD + ' '
+    }
     code += this.name
     if (this.generics.length) {
       code += wrapValues('<', this.generics, '>')

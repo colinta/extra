@@ -402,7 +402,7 @@
     },
     {
       "desc": "simple user id",
-      "preamble": "opaque type UserId = Int\n",
+      "preamble": "type UserId = Int\n",
       "formula": "let\n  id = UserId(5)\nin\n  id",
       "expectedCode": "let\n  id = UserId(5)\nin\n  id\n",
       "expectedType": "UserId",

@@ -963,14 +963,16 @@ Keys in Objects and Dicts can be strings, numbers, `null`, `true`, or `false` (i
 Objects play double duty as the Tuple type, because they can have positional properties as well as named.
 
 ```extra
-type User = {
+alias User = {
   String -- positional
   age: Int(>=0) -- named
 }
 
-a: User = {'Chuck', age: 50}
 -- nice and terse, but there is nothing to indicate that User[0] refers to a 'name'
-a: Point = {0, 0}  -- on the other handm, it is pretty obvious that this is {x,y}
+a: User = {'Chuck', age: 50}
+
+-- on the other hand, it is pretty obvious that this is {x,y}
+a: Point = {0, 0}
 ```
 
 The container types can be split into two families:

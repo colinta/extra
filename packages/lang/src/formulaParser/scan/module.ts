@@ -17,7 +17,7 @@ import {
   PROVIDES_KEYWORD,
   REQUIRES_KEYWORD,
   TYPE_KEYWORD,
-  OPAQUE_KEYWORD,
+  ALIAS_KEYWORD,
   VERSION_START,
   VIEW_KEYWORD,
 } from '../grammars'
@@ -342,27 +342,17 @@ export function scanModuleTypeDefinition(scanner: Scanner, parseNext: ParseNext)
   const range0 = scanner.charIndex
 
   // scan optional 'export' and 'opaque' modifiers, in either order
-  let isExport: boolean = false
-  let isOpaque: boolean = false
-  while (scanner.lookAhead(EXPORT_KEYWORD) || scanner.lookAhead(OPAQUE_KEYWORD)) {
-    if (scanner.scanIfWord(EXPORT_KEYWORD)) {
-      if (isExport) {
-        throw new ParseError(scanner, `Duplicate '${EXPORT_KEYWORD}' modifier on type definition`)
-      }
-      isExport = true
-      scanner.expectWhitespace()
-    }
+  let isExport = scanner.scanIfWord(EXPORT_KEYWORD)
+  scanner.scanAllWhitespace()
 
-    if (scanner.scanIfWord(OPAQUE_KEYWORD)) {
-      if (isOpaque) {
-        throw new ParseError(scanner, `Duplicate '${OPAQUE_KEYWORD}' modifier on type definition`)
-      }
-      isOpaque = true
-      scanner.expectWhitespace()
-    }
+  let isOpaque: boolean
+  if (scanner.scanIfWord(ALIAS_KEYWORD)) {
+    scanner.scanAllWhitespace()
+    isOpaque = false
+  } else {
+    scanner.expectWord(TYPE_KEYWORD, 'Types must be preceded by the "type" or "alias" keyword.')
+    isOpaque = true
   }
-
-  scanner.expectWord(TYPE_KEYWORD, 'Types must be preceded by the "type" keyword.')
 
   const nameRef = scanValidTypeName(scanner)
   scanner.scanAllWhitespace()
@@ -428,12 +418,9 @@ function isEnum(scanner: Scanner) {
 }
 
 function isTypeDefinition(scanner: Scanner) {
-  while (scanner.lookAhead(EXPORT_KEYWORD) || scanner.lookAhead(OPAQUE_KEYWORD)) {
-    scanner.scanIfWord(EXPORT_KEYWORD) && scanner.expectWhitespace()
-    scanner.scanIfWord(OPAQUE_KEYWORD) && scanner.expectWhitespace()
-  }
+  scanner.scanIfWord(EXPORT_KEYWORD)
 
-  return scanner.isWord(TYPE_KEYWORD)
+  return scanner.isWord(TYPE_KEYWORD) || scanner.isWord(ALIAS_KEYWORD)
 }
 
 function isExport(keyword: string) {

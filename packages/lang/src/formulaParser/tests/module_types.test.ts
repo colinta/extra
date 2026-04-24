@@ -4,49 +4,49 @@ import {scanTypeDefinition} from '../scan/module'
 
 describe('module types', () => {
   cases<[string, string] | [string, string, string]>(
-    c(['type Age = Int', '(type Age `Int`)']),
-    c(['opaque type UserId = Int', '(opaque type UserId `Int`)']),
-    c(['export opaque type UserId = Int(>=0)', '(export opaque type UserId `Int(>=0)`)']),
+    c(['alias Age = Int', '(alias Age `Int`)']),
+    c(['type UserId = Int', '(type UserId `Int`)']),
+    c(['export type UserId = Int(>=0)', '(export type UserId `Int(>=0)`)']),
     c([
-      'opaque export type UserId = Int(>=0)',
-      '(export opaque type UserId `Int(>=0)`)',
-      'export opaque type UserId = Int(>=0)',
+      'export type UserId = Int(>=0)',
+      '(export type UserId `Int(>=0)`)',
+      'export type UserId = Int(>=0)',
     ]),
-    c(['export type Age = Int(>=0)', '(export type Age `Int(>=0)`)']),
+    c(['export alias Age = Int(>=0)', '(export alias Age `Int(>=0)`)']),
     c([
-      'type Point = { x: Int, y: Int }',
-      '(type Point {(x: `Int`) (y: `Int`)})',
-      'type Point = {x: Int, y: Int}',
+      'alias Point = { x: Int, y: Int }',
+      '(alias Point {(x: `Int`) (y: `Int`)})',
+      'alias Point = {x: Int, y: Int}',
     ]),
     c([
-      `type Point = {
+      `alias Point = {
   x: Int
   y: Int
 }`,
-      '(type Point {(x: `Int`) (y: `Int`)})',
-      'type Point = {x: Int, y: Int}',
+      '(alias Point {(x: `Int`) (y: `Int`)})',
+      'alias Point = {x: Int, y: Int}',
     ]),
     c([
-      `type Point = {
+      `alias Point = {
   x: Int?
   y: Int?
 }`,
-      '(type Point {(x: (`Int` | `null`)) (y: (`Int` | `null`))})',
-      'type Point = {x: Int?, y: Int?}',
+      '(alias Point {(x: (`Int` | `null`)) (y: (`Int` | `null`))})',
+      'alias Point = {x: Int?, y: Int?}',
     ]),
     c([
-      `type Point = {
+      `alias Point = {
   x: {a: Int} & {b: Int}
   y: Int
 }`,
-      '(type Point {(x: ({(a: `Int`)} & {(b: `Int`)})) (y: `Int`)})',
-      'type Point = {x: {a: Int} & {b: Int}, y: Int}',
+      '(alias Point {(x: ({(a: `Int`)} & {(b: `Int`)})) (y: `Int`)})',
+      'alias Point = {x: {a: Int} & {b: Int}, y: Int}',
     ]),
-    c(['type Box<T> = {value: T}', '(type Box <T> {(value: T)})']),
+    c(['alias Box<T> = {value: T}', '(alias Box <T> {(value: T)})']),
     c([
-      'export type Student = User & { grade: Int(>=0) }',
-      '(export type Student (User & {(grade: `Int(>=0)`)}))',
-      'export type Student = User & {grade: Int(>=0)}',
+      'export alias Student = User & { grade: Int(>=0) }',
+      '(export alias Student (User & {(grade: `Int(>=0)`)}))',
+      'export alias Student = User & {grade: Int(>=0)}',
     ]),
     c([
       `\
@@ -60,13 +60,13 @@ type User = {
 type User = {first-name: String(length: >=1), last-name: String(length: >=1), fullname: fn(): String}`,
     ]),
     c([
-      `type Adder = fn{
+      `alias Adder = fn{
   (# a: Int, # b: Int): Int
   inc: fn(# x: Int): Int
   dec: fn(# x: Int): Int
 }`,
-      '(type Adder (fn{ ((# a: `Int`) (# b: `Int`)) : `Int` (inc: (fn ((# x: `Int`)) : `Int`)) (dec: (fn ((# x: `Int`)) : `Int`)) }))',
-      'type Adder = fn{(# a: Int, # b: Int): Int, inc: fn(# x: Int): Int, dec: fn(# x: Int): Int}',
+      '(alias Adder (fn{ ((# a: `Int`) (# b: `Int`)) : `Int` (inc: (fn ((# x: `Int`)) : `Int`)) (dec: (fn ((# x: `Int`)) : `Int`)) }))',
+      'alias Adder = fn{(# a: Int, # b: Int): Int, inc: fn(# x: Int): Int, dec: fn(# x: Int): Int}',
     ]),
     c([
       `\

@@ -10,7 +10,7 @@ import {mockTypeRuntime} from './mockTypeRuntime'
 describe('module type definitions', () => {
   it('compiles opaque type aliases to OpaqueType definitions', () => {
     const runtime = mockTypeRuntime({})
-    const moduleDef = parseModule('opaque type UserId = Int\n').get()
+    const moduleDef = parseModule('type UserId = Int\n').get()
     const moduleType = moduleDef.getType(runtime).get()
     const userId = moduleType.definitions.get('UserId')
 
@@ -22,7 +22,7 @@ describe('module type definitions', () => {
 
   it('leaves non-opaque type aliases as their underlying type', () => {
     const runtime = mockTypeRuntime({})
-    const moduleDef = parseModule('type Age = Int\n').get()
+    const moduleDef = parseModule('alias Age = Int\n').get()
     const moduleType = moduleDef.getType(runtime).get()
 
     expect(moduleType.definitions.get('Age')).toEqual(Types.int())
