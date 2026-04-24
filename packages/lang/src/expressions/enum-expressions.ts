@@ -343,7 +343,7 @@ export class EnumShorthandExpression extends EnumTypeExpression {
 
   formulaLocalAssigns(_runtime: ValueRuntime): GetRuntimeResult<[string, Values.Value][]> {
     if (this.member.args.length === 0) {
-      const value = new Values.EnumShorthandValue(this.member.enumName, new Map(), this.id)
+      const value = new Values.EnumShorthandValue(this.member.name, new Map(), this.id)
       return ok([[this.member.enumName, value]])
     } else {
       return ok([])

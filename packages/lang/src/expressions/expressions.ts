@@ -933,6 +933,46 @@ function parseIntegerString(value: Values.StringValue, radix: number) {
   return sign * parsed
 }
 
+function parseIntegerStringAuto(value: Values.StringValue) {
+  const trimmed = value.value.trim()
+  if (trimmed.length === 0) {
+    return undefined
+  }
+
+  const sign = trimmed.startsWith('-') ? '-' : trimmed.startsWith('+') ? '+' : ''
+  const unsigned = sign ? trimmed.slice(1) : trimmed
+  const lower = unsigned.toLowerCase()
+
+  if (lower.startsWith('0x')) {
+    const digits = unsigned.slice(2)
+    if (digits.length === 0) {
+      return undefined
+    }
+
+    return parseIntegerString(Values.string(`${sign}${digits}`), 16)
+  }
+
+  if (lower.startsWith('0b')) {
+    const digits = unsigned.slice(2)
+    if (digits.length === 0) {
+      return undefined
+    }
+
+    return parseIntegerString(Values.string(`${sign}${digits}`), 2)
+  }
+
+  if (lower.startsWith('0o')) {
+    const digits = unsigned.slice(2)
+    if (digits.length === 0) {
+      return undefined
+    }
+
+    return parseIntegerString(Values.string(`${sign}${digits}`), 8)
+  }
+
+  return parseIntegerString(value, 10)
+}
+
 abstract class TypeIdentifier extends Expression {
   abstract readonly name: string
 
@@ -1197,7 +1237,7 @@ export class IntTypeIdentifier extends TypeIdentifier {
                 }),
                 Types.namedArgument({
                   name: 'radix',
-                  type: Types.IntType.narrow(0, undefined),
+                  type: Types.oneOf([Types.int({min: 2}), Types.enumShorthand('auto')]),
                   isRequired: false,
                 }),
               ],
@@ -1237,17 +1277,24 @@ export class IntTypeIdentifier extends TypeIdentifier {
         new Map([
           [
             'parse',
-            Values.namedFormula('parse', args => {
-              const input = args.safeAt(0)
-              if (input === undefined || !input.isString()) {
-                return err(new RuntimeError(this, `Expected a String argument for 'Int.parse'`))
-              }
+            new Values.NamedFormulaValue(
+              'parse',
+              args => {
+                const input = args.safeAt(0)
+                if (input === undefined || !input.isString()) {
+                  return err(new RuntimeError(this, `Expected a String argument for 'Int.parse'`))
+                }
 
-              const radixValue = args.safeNamed('radix')
-              const radix = radixValue?.isInt() ? radixValue.value : 10
-              const parsed = parseIntegerString(input, radix)
-              return ok(parsed === undefined ? Values.nullValue() : Values.int(parsed))
-            }),
+                const radixValue = args.safeNamed('radix')
+                const parsed =
+                  radixValue instanceof Values.EnumShorthandValue && radixValue.name === 'auto'
+                    ? parseIntegerStringAuto(input)
+                    : parseIntegerString(input, radixValue?.isInt() ? radixValue.value : 10)
+                return ok(parsed === undefined ? Values.nullValue() : Values.int(parsed))
+              },
+              undefined,
+              [['.auto', new Values.EnumShorthandValue('auto', new Map(), 'int-parse-radix-auto')]],
+            ),
           ],
         ]),
       ),
