@@ -960,19 +960,21 @@ Arrays and Objects are created using the common `[]` and `{}` symbols. Dicts (ak
 
 Keys in Objects and Dicts can be strings, numbers, `null`, `true`, or `false` (i.e. any primitive value).
 
-Objects play double duty as the Tuple type, because they can have positional properties as well as named.
+Objects play double duty as the Tuple type, because they can have positional properties as well as named. Up to you what you do with this ability to mix and match.
 
 ```extra
 alias User = {
   String -- positional
   age: Int(>=0) -- named
 }
+alias Point = {Float, Float}
 
--- nice and terse, but there is nothing to indicate that User[0] refers to a 'name'
-a: User = {'Chuck', age: 50}
+-- positional arguments work well when the order is obvious. there is nothing here
+-- to indicate that user.0 refers to a 'name'.
+user: User = {'Chuck', age: 50}
 
--- on the other hand, it is pretty obvious that this is {x,y}
-a: Point = {0, 0}
+-- Point, on the other hand, is pretty obvious that this is {x,y}
+pt: Point = {0, 0}
 ```
 
 The container types can be split into two families:
@@ -1045,22 +1047,30 @@ Objects and Tuples can contain values with different types (this is called a **P
 
 ```extra
 [1, 2, "3"] -- Invalid!? Nope! This has the type `[Int | String]`
--- (**ahem**, actually it has the type `[1 | 2 | "3"]`)
+-- (**ahem**, actually it has the type `[1 | 2 | "3"]`, because Extra assigns
+-- the literal type to the corresponding literal value)
 ```
 
 Enter the **OneOf** type.
 
 ### OneOf
 
-OneOf types represent a value that could be one type or another (or three or four types).
+OneOf types represent a value that could be one type or another (or three or however-many types).
 
-The most common is called the _optional_ type, which is any type `T` or the `null` value. But you may also need to store a value that is _either_ of type `Int` _or_ a `String` (input that is either "raw" (`String`) or already processed into an `Int`, for example).
+The most common is called the _optional_ type, which is any type `T` or the `null` value. But you may also need to store a value that is _either_ of type `Int` _or_ a `String`.
 
 OneOf types can be expressed in general as `type1 | type2 | ...`, e.g. `Int | String` or `[String] | null`. The optional type has a shorthand `Int? --> Int | null`.
 
 ```extra
-[ 1, 2, null]  --> [Int | null] aka [Int?]
-[ 1, 2, "age"]  --> [Int | String]
+-- literal values narrow down to the corresponding literal type
+[ 1, 2, null]  --> [1 | 2 | null] aka [(1 | 2)?]
+
+let
+  a: Int = 1
+  b: Int? = ...
+  c: String = ...
+in
+  [ a, b, c]  --> [Int | String | null]
 ```
 
 The only problem with _oneOf_ types is that you cannot call methods or properties on them, unless the method is shared between both types. You can get around this limitation using _type guards_ (or other type assertions).
