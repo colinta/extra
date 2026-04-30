@@ -30,7 +30,7 @@ import {ParseError, type ParseNext} from '../types'
 import {scanIdentifier, scanAnyReference} from './identifier'
 import {scanNumber} from './number'
 import {scanParensGroup} from './parens'
-import {scanArgumentType} from './argument_type'
+import {scanType} from './type'
 import {scanString} from './string'
 
 export function scanObject(
@@ -163,7 +163,7 @@ export function scanObject(
 function scanOptionalGeneric(scanner: Scanner, parseNext: ParseNext) {
   let generic: Expression
   if (scanner.scanIfString(GENERIC_OPEN)) {
-    generic = scanArgumentType(scanner, 'argument_type', parseNext)
+    generic = scanType(scanner, 'type', parseNext)
     scanner.scanAllWhitespace()
     scanner.expectString(GENERIC_CLOSE, `Expected '${GENERIC_CLOSE}'`)
   } else {

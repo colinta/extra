@@ -120,7 +120,7 @@ export type ExpressionType =
   | 'single_expression' // default argument value (and class/state properties)
   | 'jsx_embed' // inside {} while parsing a <View/>
   | 'view_property' // view property
-  | 'argument_type' // argument types, like Int, Array<Int>, String[:], (Int | String)
+  | 'type' // types, like Int, Array<Int>, String[:], (Int | String)
 
 export type Options = {
   debug?: number

@@ -207,6 +207,7 @@ export class ArrayType extends TypeNode {}
 export class DictType extends TypeNode {}
 export class SetType extends TypeNode {}
 export class TypeConstructor extends TypeNode {}
+
 export class NamedType extends TypeNode {
   constructor(
     readonly source: Source,

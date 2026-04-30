@@ -3,7 +3,7 @@ import * as Types from '../../types'
 import * as Values from '../../values'
 import {type TypeRuntime, type ValueRuntime} from '../../runtime'
 import {parse, testScan} from '../../formulaParser'
-import {scanArgumentType} from '../scan/argument_type'
+import {scanType} from '../scan/type'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
 import {mockValueRuntime} from '../../tests/mockValueRuntime'
 
@@ -18,9 +18,7 @@ beforeEach(() => {
 })
 
 function parseType(input: string) {
-  return testScan(input, (scanner, parseNext) =>
-    scanArgumentType(scanner, 'argument_type', parseNext),
-  )
+  return testScan(input, (scanner, parseNext) => scanType(scanner, 'type', parseNext))
 }
 
 describe('getType', () => {

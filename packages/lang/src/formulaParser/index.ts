@@ -92,7 +92,7 @@ import {scanBinaryOperator} from './scan/binary_operator'
 import {scanUnaryOperator} from './scan/unary_operator'
 import {scanLet} from './scan/let'
 import {scanMatch} from './scan/match'
-import {scanArgumentType} from './scan/argument_type'
+import {scanType} from './scan/type'
 import {scanEnumLookup} from './scan/enum'
 import {scanIf} from './scan/if'
 import {scanGuard} from './scan/guard'
@@ -119,9 +119,7 @@ export function parse(input: string, debug = 0): GetParserResult<Expression> {
 
 export function parseType(input: string, debug = 0) {
   const scanner = new Scanner(input, {debug})
-  return scan(scanner, (scanner, parseNext) =>
-    scanArgumentType(scanner, 'argument_type', parseNext),
-  )
+  return scan(scanner, (scanner, parseNext) => scanType(scanner, 'type', parseNext))
 }
 
 export function parseJsx(input: string, debug = 0) {
@@ -325,7 +323,7 @@ function parseInternal(
   function returnSingleExpression() {
     return (
       !isMatchingExpression &&
-      (expressionType === 'argument_type' ||
+      (expressionType === 'type' ||
         expressionType === 'single_expression' ||
         expressionType === 'view_property')
     )

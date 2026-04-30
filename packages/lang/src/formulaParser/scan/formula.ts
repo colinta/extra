@@ -14,7 +14,7 @@ import {
   TYPE_START,
 } from '../grammars'
 
-import {scanArgumentType} from './argument_type'
+import {scanType} from './type'
 import {scanFormulaLiteralArguments} from './formula_arguments'
 import {scanValidLocalName, scanValidTypeName, scanValidViewName} from './identifier'
 
@@ -282,7 +282,7 @@ function scanFormulaObject(
   let returnType: Expression
   if (scanner.scanIfString(TYPE_START)) {
     scanner.scanAllWhitespace()
-    returnType = scanArgumentType(scanner, 'argument_type', parseNext)
+    returnType = scanType(scanner, 'type', parseNext)
   } else {
     returnType = new Expressions.InferIdentifier(
       [scanner.charIndex, scanner.charIndex],
@@ -356,7 +356,7 @@ export function finishScanningFormula(
   let returnType: Expression
   if (type === 'fn' && scanner.scanIfString(TYPE_START)) {
     scanner.scanAllWhitespace()
-    returnType = scanArgumentType(scanner, 'argument_type', parseNext)
+    returnType = scanType(scanner, 'type', parseNext)
   } else if (scanner.scanIfString(TYPE_START)) {
     throw new ParseError(
       scanner,
@@ -497,7 +497,7 @@ export function scanGenerics(scanner: Scanner, parseNext: ParseNext) {
     let boundExpression: Expression | undefined
     if (scanner.scanAhead('is')) {
       scanner.scanAllWhitespace()
-      boundExpression = scanArgumentType(scanner, 'argument_type', parseNext)
+      boundExpression = scanType(scanner, 'type', parseNext)
     }
 
     generics.push(

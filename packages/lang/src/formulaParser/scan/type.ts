@@ -71,14 +71,14 @@ import {scanString} from './string'
  *     ❌ enum RemoteData<Tsuccess, Tfailure> { .notLoaded, .loading, .success(Tsuccess), .failure(Tfailure) }
  *   &: message type
  */
-export function scanArgumentType(
+export function scanType(
   scanner: Scanner,
-  // argument_type | module_type_definition | match_type
-  // only argument_type supports anonymous/shorthand enum definitions
+  // type | module_type_definition | match_type
+  // only type supports anonymous/shorthand enum definitions
   moduleOrArgument: ArgumentType,
   parseNext: ParseNext,
 ): Expression {
-  scanner.whereAmI('scanArgumentType')
+  scanner.whereAmI('scanType')
   let argType: Expression | undefined
   const range0 = scanner.charIndex
   const oneOfExpressions: Expression[] = []
@@ -112,13 +112,13 @@ export function scanArgumentType(
     } else if (scanner.isWord(FN_KEYWORD)) {
       argType = scanFormulaType(scanner, arg0, parseNext, moduleOrArgument)
     } else if (scanner.scanIfString(PARENS_OPEN)) {
-      argType = scanArgumentType(scanner, moduleOrArgument, parseNext)
+      argType = scanType(scanner, moduleOrArgument, parseNext)
       scanner.scanAllWhitespace()
       scanner.expectString(
         PARENS_CLOSE,
         `Expected '${PARENS_CLOSE}' closing the argument type group`,
       )
-      scanner.whereAmI(`scanArgumentType: () ${argType.toCode()}`)
+      scanner.whereAmI(`scanType: () ${argType.toCode()}`)
       supportsExtends = true
     } else if (scanner.scanIfString(MSG_TYPE)) {
       argType = new Expressions.BuiltinCommandIdentifier(
@@ -169,7 +169,7 @@ export function scanArgumentType(
         )
       }
 
-      scanner.whereAmI(`scanArgumentType: & ${argType.toCode()}`)
+      scanner.whereAmI(`scanType: & ${argType.toCode()}`)
       extendsExpressions.push(argType)
       continue
     }
@@ -198,7 +198,7 @@ export function scanArgumentType(
     oneOfExpressions.push(argType)
 
     if (scanner.scanAhead('|')) {
-      scanner.whereAmI(`scanArgumentType: | ${argType.toCode()}`)
+      scanner.whereAmI(`scanType: | ${argType.toCode()}`)
       continue
     }
 
@@ -245,7 +245,7 @@ export function scanArgumentType(
     )
   }
 
-  scanner.whereAmI(`scanArgumentType: ${argType!.toCode()}`)
+  scanner.whereAmI(`scanType: ${argType!.toCode()}`)
   return argType!
 }
 
@@ -280,7 +280,7 @@ function scanFormulaType(
     let returnType: Expression
     if (scanner.scanAhead(TYPE_START)) {
       scanner.scanAllWhitespace()
-      returnType = scanArgumentType(scanner, moduleOrArgument, parseNext)
+      returnType = scanType(scanner, moduleOrArgument, parseNext)
     } else {
       returnType = new Expressions.InferIdentifier(
         [scanner.charIndex, scanner.charIndex],
@@ -298,7 +298,7 @@ function scanFormulaType(
         scanner.scanAllWhitespace()
         scanner.expectString(TYPE_START)
         scanner.scanAllWhitespace()
-        const value = scanArgumentType(scanner, moduleOrArgument, parseNext)
+        const value = scanType(scanner, moduleOrArgument, parseNext)
         props.push({nameRef, value})
 
         if (
@@ -326,7 +326,7 @@ function scanFormulaType(
   let returnType: Expression
   if (scanner.scanAhead(TYPE_START)) {
     scanner.scanAllWhitespace()
-    returnType = scanArgumentType(scanner, moduleOrArgument, parseNext)
+    returnType = scanType(scanner, moduleOrArgument, parseNext)
   } else {
     returnType = new Expressions.InferIdentifier(
       [scanner.charIndex, scanner.charIndex],
@@ -418,7 +418,7 @@ export function scanInsideObjectType(
     //   scanner.scanAllWhitespace()
 
     //   const arg0 = scanner.charIndex
-    //   const formula = scanFormulaType(scanner, arg0, 'object', parseNext, 'argument_type')
+    //   const formula = scanFormulaType(scanner, arg0, 'object', parseNext, 'type')
     //   objectArgType = new Expressions.NamedFormulaTypeExpression(
     //     formula.range,
     //     name,
@@ -434,7 +434,7 @@ export function scanInsideObjectType(
       scanner.scanAllWhitespace()
     }
 
-    const objectArgType = scanArgumentType(scanner, moduleOrArgument, parseNext)
+    const objectArgType = scanType(scanner, moduleOrArgument, parseNext)
 
     scanner.whereAmI(`objectArgType: ${objectArgType.toCode()}`)
     values.push([nameRef, objectArgType])
@@ -464,7 +464,7 @@ function scanEnumShorthand(scanner: Scanner, moduleOrArgument: ArgumentType, par
   scanner.whereAmI(`scanEnum: ${enumCaseName}`)
   let args: [Expressions.Reference | undefined, Expressions.Expression][]
   if (scanner.scanIfString(ARGS_OPEN)) {
-    args = scanInsideObjectType(scanner, 'argument_type', ARGS_CLOSE, parseNext)
+    args = scanInsideObjectType(scanner, 'type', ARGS_CLOSE, parseNext)
   } else {
     args = []
   }
@@ -564,7 +564,7 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
     } else if (typeName instanceof Expressions.Reference) {
       const typeArgs: Expressions.Expression[] = []
       for (;;) {
-        const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
+        const ofType = scanType(scanner, moduleOrArgument, parseNext)
         typeArgs.push(ofType)
 
         if (
@@ -663,7 +663,7 @@ function scanDictOfAndLength(
   parseNext: ParseNext,
 ) {
   scanner.whereAmI(`scanDictType`)
-  const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
+  const ofType = scanType(scanner, moduleOrArgument, parseNext)
   scanner.scanAllWhitespace()
 
   const {narrowedLength, narrowedNames} = scanNarrowedDict(scanner)
@@ -684,7 +684,7 @@ function scanOfAndLength(
   parseNext: ParseNext,
   closer: string = PARENS_CLOSE,
 ) {
-  const ofType = scanArgumentType(scanner, moduleOrArgument, parseNext)
+  const ofType = scanType(scanner, moduleOrArgument, parseNext)
   scanner.scanAllWhitespace()
 
   let narrowedLength: NarrowedLength = DEFAULT_NARROWED_LENGTH
@@ -707,4 +707,4 @@ function scanOfAndLength(
   return {ofType, narrowedLength}
 }
 
-export type ArgumentType = 'module_type_definition' | 'argument_type' | 'match_type'
+export type ArgumentType = 'module_type_definition' | 'type' | 'match_type'

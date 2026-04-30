@@ -16,7 +16,7 @@ import {unexpectedToken} from './basics'
 import {scanGenerics, scanInstanceFormula, scanStaticFormula} from './formula'
 import {scanValidTypeName, scanEnumName} from './identifier'
 import {isStaticFunction, isStaticProperty, scanClassProperty} from './class'
-import {scanInsideObjectType} from './argument_type'
+import {scanInsideObjectType} from './type'
 
 export function scanNamedEnum(
   scanner: Scanner,
@@ -68,7 +68,7 @@ export function scanNamedEnum(
       let args: [Expressions.Reference | undefined, Expressions.Expression][]
       if (scanner.scanIfString(ARGS_OPEN)) {
         // scans `Type` and `named: Type` until it reaches ')'
-        args = scanInsideObjectType(scanner, 'argument_type', ARGS_CLOSE, parseNext)
+        args = scanInsideObjectType(scanner, 'type', ARGS_CLOSE, parseNext)
       } else {
         args = []
       }

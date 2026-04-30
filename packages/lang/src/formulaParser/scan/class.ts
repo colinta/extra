@@ -29,7 +29,7 @@ import {
 } from './formula'
 import {scanValidClassPropertyName, scanValidTypeName} from './identifier'
 import {scanFormulaLiteralArguments} from './formula_arguments'
-import {scanArgumentType} from './argument_type'
+import {scanType} from './type'
 import {unexpectedToken} from './basics'
 
 export function scanClass(scanner: Scanner, parseNext: ParseNext): Expressions.ClassDefinition {
@@ -247,7 +247,7 @@ export function scanClassProperty(scanner: Scanner, parseNext: ParseNext, isStat
   let argType: Expressions.Expression | undefined
   let defaultValue: Expressions.Expression | undefined
   if (scanner.scanIfString(TYPE_START)) {
-    argType = scanArgumentType(scanner, 'argument_type', parseNext)
+    argType = scanType(scanner, 'type', parseNext)
   }
 
   if (scanner.is(ARGS_OPEN)) {

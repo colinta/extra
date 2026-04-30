@@ -23,7 +23,7 @@ import {
 } from '../grammars'
 import {scanClass} from './class'
 import {scanNamedEnum} from './enum'
-import {scanArgumentType} from './argument_type'
+import {scanType} from './type'
 import {scanView} from './view'
 import {unexpectedToken} from './basics'
 
@@ -365,7 +365,7 @@ export function scanModuleTypeDefinition(scanner: Scanner, parseNext: ParseNext)
 
   scanner.expectString('=')
   scanner.scanAllWhitespace()
-  const type = scanArgumentType(scanner, 'module_type_definition', parseNext)
+  const type = scanType(scanner, 'module_type_definition', parseNext)
 
   return new Expressions.TypeDefinition(
     [range0, scanner.charIndex],

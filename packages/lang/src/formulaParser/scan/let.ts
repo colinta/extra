@@ -2,7 +2,7 @@ import * as Expressions from '../../expressions'
 import {FN_KEYWORD, LET_IN_KEYWORD, LET_KEYWORD, TYPE_START} from '../grammars'
 import {type Scanner} from '../scanner'
 import {type ExpressionType, type ParseNext} from '../types'
-import {scanArgumentType} from './argument_type'
+import {scanType} from './type'
 import {scanNamedFormula} from './formula'
 import {scanValidLocalName} from './identifier'
 
@@ -40,7 +40,7 @@ export function scanLet(
       let type: Expressions.Expression | undefined
       if (scanner.scanIfString(TYPE_START)) {
         scanner.scanAllWhitespace()
-        type = scanArgumentType(scanner, 'argument_type', parseNext)
+        type = scanType(scanner, 'type', parseNext)
         scanner.scanAllWhitespace()
       }
 

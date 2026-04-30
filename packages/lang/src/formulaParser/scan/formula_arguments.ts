@@ -11,7 +11,7 @@ import {
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 
-import {scanArgumentType} from './argument_type'
+import {scanType} from './type'
 import {scanValidLocalName} from './identifier'
 
 // "Formula" (declared, actual formula) vs "Formula Type" (type signature of a
@@ -241,7 +241,7 @@ function _scanArguments<T extends 'formula' | 'formula_type'>(
           `Expected '${ARG_SEPARATOR}' followed by the argument type`,
         )
         scanner.scanAllWhitespace()
-        argType = scanArgumentType(scanner, 'argument_type', parseNext)
+        argType = scanType(scanner, 'type', parseNext)
         scanner.scanSpaces()
         argType.followingComments.push(...scanner.flushComments())
 

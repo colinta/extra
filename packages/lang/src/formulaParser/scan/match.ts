@@ -25,7 +25,7 @@ import {
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
-import {scanArgumentType} from './argument_type'
+import {scanType} from './type'
 
 import {unexpectedToken} from './basics'
 import {
@@ -48,7 +48,7 @@ import {scanStringLiteral} from './string'
  *     .some -- enum case (enum type is inferred)
  *     .some(value) -- assigned enum value
  *     Maybe.some -- qualified enum case
- *   Types, via scanArgumentType:
+ *   Types, via scanType:
  *     Int as var -- checks for 'Int' and assigns to 'var'
  *     Int, String, String(length: =8)
  *     Array(Int), Array(String, length: >5), Set(String), Dict(String, Int)
@@ -147,7 +147,7 @@ function _scanMatch(scanner: Scanner, parseNext: ParseNext): MatchExpression {
 }
 
 function scanMatchType(scanner: Scanner, parseNext: ParseNext) {
-  const argType = scanArgumentType(scanner, 'match_type', parseNext)
+  const argType = scanType(scanner, 'match_type', parseNext)
   let assignRef: Expressions.Reference | undefined
   if (scanner.test(isAsKeyword)) {
     scanner.scanSpaces()
