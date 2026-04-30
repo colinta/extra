@@ -6,6 +6,8 @@ import {
   isRef,
   refCharLen,
   STATE_START,
+  OMIT_KEYWORD,
+  PICK_KEYWORD,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
@@ -66,6 +68,8 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case 'Dict':
     case 'Set':
     case 'view':
+    case OMIT_KEYWORD:
+    case PICK_KEYWORD:
       throw new ParseError(scanner, `Invalid use of reserved word '${currentToken}'`)
   }
 
@@ -257,6 +261,12 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
       break
     case 'Set':
       identifier = new Expressions.SetTypeIdentifier(range, scanner.flushComments())
+      break
+    case OMIT_KEYWORD:
+      identifier = new Expressions.OmitTypeIdentifier(range, scanner.flushComments())
+      break
+    case PICK_KEYWORD:
+      identifier = new Expressions.PickTypeIdentifier(range, scanner.flushComments())
       break
   }
 

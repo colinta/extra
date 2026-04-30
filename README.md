@@ -351,6 +351,27 @@ adder.inc(3) => 4
 adder.dec(4) => 3
 ```
 
+## Type modifications
+
+This is one of the killer features from TypeScript, and I am stealing it with no regret or embarrasment. "Stealing" is too strong a word, because I'm only supporting some parts.
+
+```extra
+type User = {name: String, age: Int(>=0)}
+
+type Ageless = Omit(User, 'age')
+type Ageless = Pick(User, 'name')
+
+-- it also works with enums!
+enum Request {
+  .notAsked
+  .loading
+  .error
+  .data(String)
+}
+
+type Success = Pick(Request, .data)
+```
+
 ## Comments
 
 I may have gone a bit overboard, just a heads up. 🤓

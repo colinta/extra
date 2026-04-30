@@ -1019,6 +1019,63 @@ export class AnyTypeIdentifier extends TypeIdentifier {
   }
 }
 
+abstract class InvalidTypeIdentifier extends Expression {
+  abstract name: string
+
+  toLisp() {
+    return this.name
+  }
+
+  toCode() {
+    return this.name
+  }
+
+  getType() {
+    return err(new RuntimeError(this, `${this.name} does not have a runtime constructor`))
+  }
+
+  compile() {
+    return err(new RuntimeError(this, `${this.name} cannot be compiled as a runtime value`))
+  }
+
+  eval() {
+    return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
+  }
+}
+
+export class OmitTypeIdentifier extends InvalidTypeIdentifier {
+  readonly name = 'Omit'
+}
+
+export class PickTypeIdentifier extends InvalidTypeIdentifier {
+  readonly name = 'Pick'
+}
+
+type PropertySelection =
+  | {kind: 'position'; value: number}
+  | {kind: 'property'; value: string}
+  | {kind: 'enum'; name: string}
+
+function propertySelectionKey(selection: PropertySelection) {
+  if (selection.kind === 'position') {
+    return `#${selection.value}`
+  }
+  if (selection.kind === 'property') {
+    return `s:${selection.value}`
+  }
+  return `e:${selection.name}`
+}
+
+function propertySelectionToCode(selection: PropertySelection) {
+  if (selection.kind === 'position') {
+    return `${selection.value}`
+  }
+  if (selection.kind === 'property') {
+    return `'${selection.value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
+  }
+  return `.${selection.name}`
+}
+
 export class BooleanTypeIdentifier extends TypeIdentifier {
   readonly name = 'Boolean'
 
@@ -1527,6 +1584,7 @@ export class StateReference extends Reference {
     )
   }
 }
+
 //|
 //|  Type Expressions
 //|
@@ -1558,6 +1616,117 @@ export abstract class TypeExpression extends Expression {
 
   eval(runtime: ValueRuntime) {
     return this.getAsTypeExpression(runtime).map(type => new Values.TypeValue(type))
+  }
+}
+
+abstract class PropertySelectionFunctionExpression extends TypeExpression {
+  abstract name: string
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly of: Expression,
+    readonly properties: PropertySelection[],
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return this.of.dependencies(parentScopes)
+  }
+
+  childExpressions() {
+    return [this.of]
+  }
+
+  protected abstract transform(type: Types.Type): Types.Type
+
+  toLisp() {
+    return `(${this.name} ${this.of.toLisp()} ${this.properties.map(propertySelectionToCode).join(' ')})`
+  }
+
+  toCode() {
+    const properties = [this.of.toCode()].concat(this.properties.map(propertySelectionToCode))
+    return `${this.name}(${properties.join(', ')})`
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return this.of.getAsTypeExpression(runtime).map(type => this.transform(type))
+  }
+
+  selectTypeProps(type: Types.Type, properties: Set<string>, keep = false): Types.Type {
+    if (type instanceof Types.OneOfType) {
+      return Types.oneOf(type.of.map(ofType => this.selectTypeProps(ofType, properties, keep)))
+    }
+
+    if (type instanceof Types.NamedEnumDefinitionType) {
+      return this.selectTypeProps(type.instanceType, properties, keep)
+    }
+
+    if (type instanceof Types.EnumType) {
+      const selected = properties.has(propertySelectionKey({kind: 'enum', name: type.member.name}))
+      return keep ? (selected ? type : Types.NeverType) : selected ? Types.NeverType : type
+    }
+
+    if (type instanceof Types.ObjectType) {
+      let propIndex = 0
+      return new Types.ObjectType(
+        type.props.filter(prop => {
+          if (prop.is === 'positional') {
+            const shouldKeep = keep
+              ? properties.has(propertySelectionKey({kind: 'position', value: propIndex}))
+              : !properties.has(propertySelectionKey({kind: 'position', value: propIndex}))
+            propIndex++
+            return shouldKeep
+          }
+
+          return keep
+            ? properties.has(propertySelectionKey({kind: 'property', value: prop.name}))
+            : !properties.has(propertySelectionKey({kind: 'property', value: prop.name}))
+        }),
+      )
+    }
+
+    if (type instanceof Types.FormulaType) {
+      return new Types.FormulaType(
+        type.returnType,
+        type.args,
+        type.genericTypes,
+        new Map(
+          Array.from(type.props.entries()).filter(([name]) =>
+            keep
+              ? properties.has(propertySelectionKey({kind: 'property', value: name}))
+              : !properties.has(propertySelectionKey({kind: 'property', value: name})),
+          ),
+        ),
+      )
+    }
+
+    return type
+  }
+}
+
+export class OmitTypeExpression extends PropertySelectionFunctionExpression {
+  name = 'Omit'
+
+  transform(type: Types.Type): Types.Type {
+    return this.selectTypeProps(type, new Set(this.properties.map(propertySelectionKey)), false)
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.OmitType(toSource(this), type))
+  }
+}
+
+export class PickTypeExpression extends PropertySelectionFunctionExpression {
+  name = 'Pick'
+
+  transform(type: Types.Type): Types.Type {
+    return this.selectTypeProps(type, new Set(this.properties.map(propertySelectionKey)), true)
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.PickType(toSource(this), type))
   }
 }
 
@@ -3959,8 +4128,8 @@ export class FormulaTypeArgument extends ArgumentExpression {
 
   formulaArgumentType(runtime: TypeRuntime): GetRuntimeResult<Types.Argument> {
     return getChildAsTypeExpression(this, this.argType, runtime).map(type => {
-      // scanArgumentType already verifies that 'type' is correct (Array/Dict)
-      // for the spread/kwargs-argument types.
+      // scanType already verifies that 'type' is correct (Array/Dict) for the
+      // spread/kwargs-argument types.
       if (this.spreadArg === 'kwargs') {
         return Types.kwargListArgument({name: this.nameRef.name, type: type as Types.DictType})
       } else if (this.spreadArg === 'spread' && this.isPositional) {

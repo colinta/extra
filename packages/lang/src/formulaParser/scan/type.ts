@@ -21,6 +21,8 @@ import {
   ENUM_KEYWORD,
   CLASS_KEYWORD,
   MSG_TYPE,
+  OMIT_KEYWORD,
+  PICK_KEYWORD,
   TYPE_START,
   BLOCK_OPEN,
   BLOCK_CLOSE,
@@ -42,7 +44,7 @@ import {
   scanNarrowedString,
 } from './narrowed'
 import {scanNumber} from './number'
-import {scanString} from './string'
+import {scanString, scanStringLiteral} from './string'
 
 /**
  * scans for:
@@ -487,7 +489,28 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
   if (scanner.scanAhead(ARGS_OPEN)) {
     scanner.scanAllWhitespace()
 
-    if (typeName.name === STRING) {
+    if (typeName.name === OMIT_KEYWORD || typeName.name === PICK_KEYWORD) {
+      const ofType = scanType(scanner, moduleOrArgument, parseNext)
+      scanner.scanAllWhitespace()
+      scanner.expectString(',')
+      scanner.scanAllWhitespace()
+
+      const properties = scanPropertyNames(scanner)
+
+      return typeName.name === OMIT_KEYWORD
+        ? new Expressions.OmitTypeExpression(
+            [arg0, scanner.charIndex],
+            scanner.flushComments(),
+            ofType,
+            properties,
+          )
+        : new Expressions.PickTypeExpression(
+            [arg0, scanner.charIndex],
+            scanner.flushComments(),
+            ofType,
+            properties,
+          )
+    } else if (typeName.name === STRING) {
       const narrowed = scanNarrowedString(scanner)
       const argType = new Expressions.StringTypeIdentifier(
         [arg0, scanner.charIndex],
@@ -616,6 +639,16 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
   //         -- matches any array, regardless of item type or length
   //       case thing
   //         -- matches any non-array
+  if (
+    typeName instanceof Expressions.OmitTypeIdentifier ||
+    typeName instanceof Expressions.PickTypeIdentifier
+  ) {
+    throw new ParseError(
+      scanner,
+      `${typeName.name} requires a type and property list (${typeName.name}(Type, 'property'))`,
+    )
+  }
+
   if (typeName instanceof Expressions.ContainerTypeIdentifier) {
     if (moduleOrArgument === 'match_type') {
       if (typeName.name === ARRAY) {
@@ -705,6 +738,45 @@ function scanOfAndLength(
   scanner.expectString(closer)
 
   return {ofType, narrowedLength}
+}
+
+function scanPropertyNames(scanner: Scanner) {
+  const properties: Array<
+    | {kind: 'position'; value: number}
+    | {kind: 'property'; value: string}
+    | {kind: 'enum'; name: string}
+  > = []
+  for (;;) {
+    scanner.scanAllWhitespace()
+    if (scanner.scanIfString('.')) {
+      properties.push({kind: 'enum', name: scanEnumName(scanner).name})
+    } else if (isStringStartChar(scanner)) {
+      properties.push({kind: 'property', value: scanStringLiteral(scanner).stringValue})
+    } else {
+      properties.push({kind: 'position', value: scanNumber(scanner, 'int').value.value})
+    }
+    scanner.scanAllWhitespace()
+
+    if (scanner.scanIfString(',') || scanner.scanIfString('|')) {
+      scanner.scanAllWhitespace()
+      if (
+        scanner.test(sc => {
+          sc.scanAllWhitespace()
+          return sc.is(ARGS_CLOSE)
+        })
+      ) {
+        scanner.scanAllWhitespace()
+        scanner.expectString(ARGS_CLOSE)
+        break
+      }
+      continue
+    }
+
+    scanner.expectString(ARGS_CLOSE, `Expected ',' or '${ARGS_CLOSE}' in property list`)
+    break
+  }
+
+  return properties
 }
 
 export type ArgumentType = 'module_type_definition' | 'type' | 'match_type'

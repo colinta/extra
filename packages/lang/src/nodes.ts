@@ -218,6 +218,24 @@ export class NamedType extends TypeNode {
   }
 }
 
+export class OmitType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
+export class PickType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
 export class StringTemplate extends Node {
   constructor(
     readonly source: Source,
