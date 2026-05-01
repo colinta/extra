@@ -1836,6 +1836,164 @@ export class RequiredTypeExpression extends RequirementTypeFunctionExpression {
   }
 }
 
+function normalizeExcludeType(baseType: Types.Type, excludedType: Types.Type): Types.Type {
+  if (excludedType instanceof Types.AnonymousEnumType) {
+    if (baseType instanceof Types.NamedEnumDefinitionType) {
+      return baseType.lookupCase(excludedType.member.name) ?? excludedType
+    }
+
+    if (baseType instanceof Types.NamedEnumInstanceType) {
+      return baseType.member.name === excludedType.member.name ? baseType : excludedType
+    }
+
+    if (baseType instanceof Types.OneOfType) {
+      const matches = baseType.of.filter(
+        type => type instanceof Types.NamedEnumInstanceType && type.member.name === excludedType.member.name,
+      )
+      if (matches.length) {
+        return Types.oneOf(matches)
+      }
+    }
+  }
+
+  return excludedType
+}
+
+function excludeType(baseType: Types.Type, excludedType: Types.Type): Types.Type {
+  excludedType = normalizeExcludeType(baseType, excludedType)
+
+  if (baseType instanceof Types.NamedEnumDefinitionType) {
+    return excludeType(baseType.instanceType, excludedType)
+  }
+
+  if (baseType instanceof Types.OneOfType) {
+    return Types.oneOf(baseType.of.map(ofType => excludeType(ofType, excludedType)))
+  }
+
+  if (baseType.isLiteral() && excludedType.isLiteral()) {
+    return baseType.value === excludedType.value ? Types.NeverType : baseType
+  }
+
+  if (Types.canBeAssignedTo(baseType, excludedType)) {
+    return Types.NeverType
+  }
+
+  return Types.narrowTypeIsNot(baseType, excludedType)
+}
+
+function includeSingleType(baseType: Types.Type, includedType: Types.Type): Types.Type {
+  includedType = normalizeExcludeType(baseType, includedType)
+
+  if (baseType.isLiteral() && includedType.isLiteral()) {
+    return baseType.value === includedType.value ? baseType : Types.NeverType
+  }
+
+  if (Types.canBeAssignedTo(baseType, includedType)) {
+    return baseType
+  }
+
+  return Types.narrowTypeIs(baseType, includedType)
+}
+
+function includeType(baseType: Types.Type, includedTypes: Types.Type[]): Types.Type {
+  if (baseType instanceof Types.NamedEnumDefinitionType) {
+    return includeType(baseType.instanceType, includedTypes)
+  }
+
+  if (baseType instanceof Types.OneOfType) {
+    const included = Types.oneOf(baseType.of.map(ofType => includeType(ofType, includedTypes)))
+    if (included === Types.NeverType && includedTypes.some(type => type instanceof Types.ObjectType)) {
+      return baseType
+    }
+    return included
+  }
+
+  return Types.oneOf(includedTypes.map(includedType => includeSingleType(baseType, includedType)))
+}
+
+export class ExcludeTypeExpression extends TypeExpression {
+  name = 'Exclude'
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly of: Expression,
+    readonly excluded: Expression[],
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies([this.of, ...this.excluded], parentScopes)
+  }
+
+  childExpressions() {
+    return [this.of, ...this.excluded]
+  }
+
+  toLisp() {
+    return `(${this.name} ${[this.of, ...this.excluded].map(expr => expr.toLisp()).join(' ')})`
+  }
+
+  toCode() {
+    return `${this.name}(${[this.of, ...this.excluded].map(expr => expr.toCode()).join(', ')})`
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return mapAll([this.of, ...this.excluded].map(expr => expr.getAsTypeExpression(runtime))).map(
+      ([baseType, ...excluded]) =>
+        excluded.reduce((type, excludedType) => excludeType(type, excludedType), baseType),
+    )
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(
+      type => new Nodes.ExcludeType(toSource(this), type),
+    )
+  }
+}
+
+export class IncludeTypeExpression extends TypeExpression {
+  name = 'Include'
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly of: Expression,
+    readonly included: Expression[],
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return allDependencies([this.of, ...this.included], parentScopes)
+  }
+
+  childExpressions() {
+    return [this.of, ...this.included]
+  }
+
+  toLisp() {
+    return `(${this.name} ${[this.of, ...this.included].map(expr => expr.toLisp()).join(' ')})`
+  }
+
+  toCode() {
+    return `${this.name}(${[this.of, ...this.included].map(expr => expr.toCode()).join(', ')})`
+  }
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return mapAll([this.of, ...this.included].map(expr => expr.getAsTypeExpression(runtime))).map(
+      ([baseType, ...included]) => includeType(baseType, included),
+    )
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(
+      type => new Nodes.IncludeType(toSource(this), type),
+    )
+  }
+}
+
 /**
  * While scanning a type, we might come across a module or namespace "type access"
  * operation, ie

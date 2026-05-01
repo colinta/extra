@@ -254,6 +254,24 @@ export class RequiredType extends TypeNode {
   }
 }
 
+export class ExcludeType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
+export class IncludeType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
 export class StringTemplate extends Node {
   constructor(
     readonly source: Source,

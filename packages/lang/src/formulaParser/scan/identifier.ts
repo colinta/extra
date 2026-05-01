@@ -10,6 +10,9 @@ import {
   PICK_KEYWORD,
   PARTIAL_KEYWORD,
   REQUIRED_KEYWORD,
+  EXCLUDE_KEYWORD,
+  INCLUDE_KEYWORD,
+  EXTRACT_KEYWORD,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
@@ -74,6 +77,9 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case PICK_KEYWORD:
     case PARTIAL_KEYWORD:
     case REQUIRED_KEYWORD:
+    case EXCLUDE_KEYWORD:
+    case INCLUDE_KEYWORD:
+    case EXTRACT_KEYWORD:
       throw new ParseError(scanner, `Invalid use of reserved word '${currentToken}'`)
   }
 
@@ -282,6 +288,23 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
         scanner.flushComments(),
         currentToken,
         `${currentToken} requires a type (${currentToken}(Type))`,
+      )
+      break
+    case EXCLUDE_KEYWORD:
+      identifier = new Expressions.InvalidTypeIdentifier(
+        range,
+        scanner.flushComments(),
+        currentToken,
+        `${currentToken} requires a type and excluded members (${currentToken}(Type, ExcludedType))`,
+      )
+      break
+    case INCLUDE_KEYWORD:
+    case EXTRACT_KEYWORD:
+      identifier = new Expressions.InvalidTypeIdentifier(
+        range,
+        scanner.flushComments(),
+        currentToken,
+        `${currentToken} requires a type and included members (${currentToken}(Type, IncludedType))`,
       )
       break
   }

@@ -25,6 +25,9 @@ import {
   PICK_KEYWORD,
   PARTIAL_KEYWORD,
   REQUIRED_KEYWORD,
+  EXCLUDE_KEYWORD,
+  INCLUDE_KEYWORD,
+  EXTRACT_KEYWORD,
   TYPE_START,
   BLOCK_OPEN,
   BLOCK_CLOSE,
@@ -533,6 +536,52 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
             scanner.flushComments(),
             ofType,
           )
+    } else if (typeName.name === EXCLUDE_KEYWORD) {
+      const ofType = scanType(scanner, moduleOrArgument, parseNext)
+      scanner.scanAllWhitespace()
+      scanner.expectString(',')
+      scanner.scanAllWhitespace()
+
+      const excluded: Expressions.Expression[] = []
+      for (;;) {
+        excluded.push(scanType(scanner, moduleOrArgument, parseNext))
+        if (
+          scanner.scanCommaOrBreak(PARENS_CLOSE, `Expected ',' or '${PARENS_CLOSE}' in excluded type list`)
+        ) {
+          break
+        }
+        scanner.scanAllWhitespace()
+      }
+
+      return new Expressions.ExcludeTypeExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        ofType,
+        excluded,
+      )
+    } else if (typeName.name === INCLUDE_KEYWORD || typeName.name === EXTRACT_KEYWORD) {
+      const ofType = scanType(scanner, moduleOrArgument, parseNext)
+      scanner.scanAllWhitespace()
+      scanner.expectString(',')
+      scanner.scanAllWhitespace()
+
+      const included: Expressions.Expression[] = []
+      for (;;) {
+        included.push(scanType(scanner, moduleOrArgument, parseNext))
+        if (
+          scanner.scanCommaOrBreak(PARENS_CLOSE, `Expected ',' or '${PARENS_CLOSE}' in included type list`)
+        ) {
+          break
+        }
+        scanner.scanAllWhitespace()
+      }
+
+      return new Expressions.IncludeTypeExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        ofType,
+        included,
+      )
     } else if (typeName.name === STRING) {
       const narrowed = scanNarrowedString(scanner)
       const argType = new Expressions.StringTypeIdentifier(

@@ -361,18 +361,36 @@ This is one of the killer features from TypeScript, and I am stealing it with no
 type User = {name: String, age: Int(>=0)}
 
 type Ageless = Omit(User, 'age')  -- User, but remove 'age'
-type Ageless = Pick(User, 'name') -- User, but only 'name'
+type Named = Pick(User, 'name')   -- User, but only 'name'
 type StillUser = Pick(User, 'name', 'age')
+```
 
--- it also works with enums!
-enum Request {
+### Include/Exclude
+
+```extra
+type A = 'a' | 'b' | Int | {name: String}
+
+type OnlyBAndPositiveInts = Include(A, 'b', Int(>=0))
+--> 'b' | Int(>=0)
+
+type SameAsInclude = Extract(A, 'b', Int(>=0))
+--> 'b' | Int(>=0)
+
+type NoBOrNegativeInts = Exclude(A, 'b', Int(<0))
+--> 'a' | {name: String} | Int(>=0)
+
+enum Status {
   .notAsked
   .loading
   .error
-  .data(String)
+  .done
 }
 
-type Success = Pick(Request, .data)
+type Pending = Include(Status, .notAsked, .loading)
+--> Status.notAsked | Status.loading
+
+type NotLoading = Exclude(Status, .loading)
+--> Status.notAsked | Status.error | Status.done
 ```
 
 ### Partial/Required
