@@ -1162,11 +1162,8 @@ describe('match operator', () => {
           [],
           'foo is {}',
           {
-            truthy: Types.never(),
-            falsey: Types.oneOf([
-              Types.object([Types.namedProp('bar', Types.string())]),
-              Types.int(),
-            ]),
+            truthy: Types.object([Types.namedProp('bar', Types.string())]),
+            falsey: Types.int(),
           },
         ]),
         c([

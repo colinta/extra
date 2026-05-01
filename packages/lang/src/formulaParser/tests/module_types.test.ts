@@ -6,6 +6,7 @@ describe('module types', () => {
   cases<[string, string] | [string, string, string]>(
     c(['alias Age = Int', '(alias Age `Int`)']),
     c(['type UserId = Int', '(type UserId `Int`)']),
+    c(['type Foo = {}', '(type Foo {})']),
     c(['export type UserId = Int(>=0)', '(export type UserId `Int(>=0)`)']),
     c([
       'export type UserId = Int(>=0)',

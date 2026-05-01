@@ -2156,6 +2156,10 @@ export class MatchObjectExpression extends MatchExpression {
       return false
     }
 
+    if (!this.exprs.length) {
+      return true
+    }
+
     const names = new Set(lhs.namedTypes.keys())
     let positions = lhs.positionalTypes.size
 
@@ -2232,6 +2236,10 @@ export class MatchObjectExpression extends MatchExpression {
     const typeAssert = typeResult.value
     if (typeAssert && !Types.canBeAssignedTo(subjectType, typeAssert)) {
       return ok(Types.NeverType)
+    }
+
+    if (!this.exprs.length) {
+      return ok(typeAssert ?? subjectType)
     }
 
     // do an exhaustive check first

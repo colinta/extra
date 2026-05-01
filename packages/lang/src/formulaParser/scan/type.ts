@@ -399,6 +399,11 @@ export function scanInsideObjectType(
   parseNext: ParseNext,
 ) {
   const values: [Expressions.Reference | undefined, Expression][] = []
+  scanner.scanAllWhitespace()
+  if (scanner.scanIfString(closer)) {
+    return values
+  }
+
   for (;;) {
     scanner.whereAmI(`objectArgType: start of loop`)
     let nameRef: Expressions.Reference | undefined
