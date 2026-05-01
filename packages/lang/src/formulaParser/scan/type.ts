@@ -507,6 +507,24 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
 
       const properties = scanPropertyNames(scanner)
 
+      if (properties.some(property => property.kind === 'enum')) {
+        const enumProp = properties.find(property => property.kind === 'enum')
+        const enumName = enumProp?.name ?? 'case'
+        if (typeName.name === OMIT_KEYWORD) {
+          throw new ParseError(
+            scanner,
+            `${OMIT_KEYWORD} does not support enum case selectors. Use ${EXCLUDE_KEYWORD}(Type, .${enumName}) instead.`,
+          )
+        }
+
+        if (typeName.name === PICK_KEYWORD) {
+          throw new ParseError(
+            scanner,
+            `${PICK_KEYWORD} does not support enum case selectors. Use ${INCLUDE_KEYWORD}(Type, .${enumName}) instead.`,
+          )
+        }
+      }
+
       return typeName.name === OMIT_KEYWORD
         ? new Expressions.OmitTypeExpression(
             [arg0, scanner.charIndex],
@@ -546,7 +564,10 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
       for (;;) {
         excluded.push(scanType(scanner, moduleOrArgument, parseNext))
         if (
-          scanner.scanCommaOrBreak(PARENS_CLOSE, `Expected ',' or '${PARENS_CLOSE}' in excluded type list`)
+          scanner.scanCommaOrBreak(
+            PARENS_CLOSE,
+            `Expected ',' or '${PARENS_CLOSE}' in excluded type list`,
+          )
         ) {
           break
         }
@@ -569,7 +590,10 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
       for (;;) {
         included.push(scanType(scanner, moduleOrArgument, parseNext))
         if (
-          scanner.scanCommaOrBreak(PARENS_CLOSE, `Expected ',' or '${PARENS_CLOSE}' in included type list`)
+          scanner.scanCommaOrBreak(
+            PARENS_CLOSE,
+            `Expected ',' or '${PARENS_CLOSE}' in included type list`,
+          )
         ) {
           break
         }

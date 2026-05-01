@@ -105,30 +105,6 @@ describe('omit/pick type functions', () => {
     ]),
     c([
       //
-      'Omit(Status, .loading)',
-      'Omit(Status, .loading)',
-      'Status.done | Status.error | Status.notAsked',
-    ]),
-    c([
-      //
-      'Pick(Status, .done)',
-      'Pick(Status, .done)',
-      'Status.done',
-    ]),
-    c([
-      //
-      'Pick(Status, .done, .error)',
-      'Pick(Status, .done, .error)',
-      'Status.done | Status.error',
-    ]),
-    c([
-      //
-      'Pick(Status, .done | .error)',
-      'Pick(Status, .done, .error)',
-      'Status.done | Status.error',
-    ]),
-    c([
-      //
       "Omit(Foo, 'a')",
       "Omit(Foo, 'a')",
       'fn{(# input: Int): String, b: String}',
@@ -144,18 +120,6 @@ describe('omit/pick type functions', () => {
       "Omit(Thing | Other, 'name')",
       '{age: Int} | {role: String}',
     ]),
-    c([
-      //
-      "Omit(Mixed, 'age', 0, .loading)",
-      "Omit(Mixed, 'age', 0, .loading)",
-      '{name: String} | Status.done | Status.error | Status.notAsked',
-    ]),
-    c([
-      //
-      "Omit(Mixed, 'age' | 0 | .loading)",
-      "Omit(Mixed, 'age', 0, .loading)",
-      '{name: String} | Status.done | Status.error | Status.notAsked',
-    ]),
   ).run(([formula, expectedCode, expectedType], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
       const expression = parseType(formula).get()
@@ -164,4 +128,16 @@ describe('omit/pick type functions', () => {
       expect(type.toString()).toEqual(expectedType)
     }),
   )
+
+  it('rejects enum selectors in Omit', () => {
+    expect(() => parseType('Omit(Status, .loading)').get()).toThrow(
+      'Omit does not support enum case selectors. Use Exclude(Type, .loading) instead.',
+    )
+  })
+
+  it('rejects enum selectors in Pick', () => {
+    expect(() => parseType('Pick(Status, .done)').get()).toThrow(
+      'Pick does not support enum case selectors. Use Include(Type, .done) instead.',
+    )
+  })
 })
