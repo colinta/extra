@@ -1019,8 +1019,15 @@ export class AnyTypeIdentifier extends TypeIdentifier {
   }
 }
 
-abstract class InvalidTypeIdentifier extends Expression {
-  abstract name: string
+export class InvalidTypeIdentifier extends Expression {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly name: string,
+    readonly usageMessage: string,
+  ) {
+    super(range, precedingComments)
+  }
 
   toLisp() {
     return this.name
@@ -1041,39 +1048,6 @@ abstract class InvalidTypeIdentifier extends Expression {
   eval() {
     return err(new RuntimeError(this, `${this.name} cannot be evaluated`))
   }
-}
-
-export class OmitTypeIdentifier extends InvalidTypeIdentifier {
-  readonly name = 'Omit'
-}
-
-export class PickTypeIdentifier extends InvalidTypeIdentifier {
-  readonly name = 'Pick'
-}
-
-type PropertySelection =
-  | {kind: 'position'; value: number}
-  | {kind: 'property'; value: string}
-  | {kind: 'enum'; name: string}
-
-function propertySelectionKey(selection: PropertySelection) {
-  if (selection.kind === 'position') {
-    return `#${selection.value}`
-  }
-  if (selection.kind === 'property') {
-    return `s:${selection.value}`
-  }
-  return `e:${selection.name}`
-}
-
-function propertySelectionToCode(selection: PropertySelection) {
-  if (selection.kind === 'position') {
-    return `${selection.value}`
-  }
-  if (selection.kind === 'property') {
-    return `'${selection.value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
-  }
-  return `.${selection.name}`
 }
 
 export class BooleanTypeIdentifier extends TypeIdentifier {
@@ -1619,6 +1593,31 @@ export abstract class TypeExpression extends Expression {
   }
 }
 
+type PropertySelection =
+  | {kind: 'position'; value: number}
+  | {kind: 'property'; value: string}
+  | {kind: 'enum'; name: string}
+
+function propertySelectionKey(selection: PropertySelection) {
+  if (selection.kind === 'position') {
+    return `#${selection.value}`
+  }
+  if (selection.kind === 'property') {
+    return `s:${selection.value}`
+  }
+  return `e:${selection.name}`
+}
+
+function propertySelectionToCode(selection: PropertySelection) {
+  if (selection.kind === 'position') {
+    return `${selection.value}`
+  }
+  if (selection.kind === 'property') {
+    return `'${selection.value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
+  }
+  return `.${selection.name}`
+}
+
 abstract class PropertySelectionFunctionExpression extends TypeExpression {
   abstract name: string
 
@@ -1727,6 +1726,113 @@ export class PickTypeExpression extends PropertySelectionFunctionExpression {
 
   compileAsTypeExpression(runtime: TypeRuntime) {
     return this.getAsTypeExpression(runtime).map(type => new Nodes.PickType(toSource(this), type))
+  }
+}
+
+abstract class RequirementTypeFunctionExpression extends TypeExpression {
+  abstract name: string
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly of: Expression,
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return this.of.dependencies(parentScopes)
+  }
+
+  childExpressions() {
+    return [this.of]
+  }
+
+  toLisp() {
+    return `(${this.name} ${this.of.toLisp()})`
+  }
+
+  toCode() {
+    return `${this.name}(${this.of.toCode()})`
+  }
+}
+
+function partialType(type: Types.Type): Types.Type {
+  if (type instanceof Types.OneOfType) {
+    return Types.oneOf(type.of.map(partialType))
+  }
+
+  if (type instanceof Types.ObjectType) {
+    return new Types.ObjectType(
+      type.props.map(prop => ({...prop, type: Types.optional(prop.type)})),
+    )
+  }
+
+  if (type instanceof Types.FormulaType) {
+    return new Types.FormulaType(
+      type.returnType,
+      type.args,
+      type.genericTypes,
+      new Map(
+        Array.from(type.props.entries()).map(([name, propType]) => [
+          name,
+          Types.optional(propType),
+        ]),
+      ),
+    )
+  }
+
+  return type
+}
+
+function requiredType(type: Types.Type): Types.Type {
+  if (type instanceof Types.OneOfType) {
+    return Types.oneOf(type.of.filter(ofType => ofType !== Types.NullType).map(requiredType))
+  }
+
+  if (type instanceof Types.ObjectType) {
+    return new Types.ObjectType(type.props.map(prop => ({...prop, type: requiredType(prop.type)})))
+  }
+
+  if (type instanceof Types.FormulaType) {
+    return new Types.FormulaType(
+      type.returnType,
+      type.args,
+      type.genericTypes,
+      new Map(
+        Array.from(type.props.entries()).map(([name, propType]) => [name, requiredType(propType)]),
+      ),
+    )
+  }
+
+  return type
+}
+
+export class PartialTypeExpression extends RequirementTypeFunctionExpression {
+  name = 'Partial'
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return this.of.getAsTypeExpression(runtime).map(partialType)
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(
+      type => new Nodes.PartialType(toSource(this), type),
+    )
+  }
+}
+
+export class RequiredTypeExpression extends RequirementTypeFunctionExpression {
+  name = 'Required'
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return this.of.getAsTypeExpression(runtime).map(requiredType)
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(
+      type => new Nodes.RequiredType(toSource(this), type),
+    )
   }
 }
 

@@ -71,6 +71,8 @@ export const CLASS_KEYWORD = 'class'
 export const CLASS_EXTENDS = 'extends'
 export const OMIT_KEYWORD = 'Omit'
 export const PICK_KEYWORD = 'Pick'
+export const PARTIAL_KEYWORD = 'Partial'
+export const REQUIRED_KEYWORD = 'Required'
 
 export const MACRO_START = '#'
 export const MSG_TYPE = '&'

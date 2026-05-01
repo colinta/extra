@@ -353,13 +353,16 @@ adder.dec(4) => 3
 
 ## Type modifications
 
-This is one of the killer features from TypeScript, and I am stealing it with no regret or embarrasment. "Stealing" is too strong a word, because I'm only supporting some parts.
+This is one of the killer features from TypeScript, and I am stealing it with no shame or embarrasment. "Stealing" is too strong a word, because I'm only supporting some parts.
+
+### Omit/Pick
 
 ```extra
 type User = {name: String, age: Int(>=0)}
 
-type Ageless = Omit(User, 'age')
-type Ageless = Pick(User, 'name')
+type Ageless = Omit(User, 'age')  -- User, but remove 'age'
+type Ageless = Pick(User, 'name') -- User, but only 'name'
+type StillUser = Pick(User, 'name', 'age')
 
 -- it also works with enums!
 enum Request {
@@ -370,6 +373,14 @@ enum Request {
 }
 
 type Success = Pick(Request, .data)
+```
+
+### Partial/Required
+
+```extra
+type Post = {title: String, created-at: Temporal.Instant, content?: String}
+type DraftPost = Partial(Post) -- all fields are optional
+type FinishedPost = Required(Post) -- 'content' becomes non-null
 ```
 
 ## Comments

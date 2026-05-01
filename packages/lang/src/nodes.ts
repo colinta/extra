@@ -236,6 +236,24 @@ export class PickType extends TypeNode {
   }
 }
 
+export class PartialType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
+export class RequiredType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
 export class StringTemplate extends Node {
   constructor(
     readonly source: Source,

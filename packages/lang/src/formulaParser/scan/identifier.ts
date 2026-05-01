@@ -8,6 +8,8 @@ import {
   STATE_START,
   OMIT_KEYWORD,
   PICK_KEYWORD,
+  PARTIAL_KEYWORD,
+  REQUIRED_KEYWORD,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
@@ -70,6 +72,8 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case 'view':
     case OMIT_KEYWORD:
     case PICK_KEYWORD:
+    case PARTIAL_KEYWORD:
+    case REQUIRED_KEYWORD:
       throw new ParseError(scanner, `Invalid use of reserved word '${currentToken}'`)
   }
 
@@ -263,10 +267,22 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
       identifier = new Expressions.SetTypeIdentifier(range, scanner.flushComments())
       break
     case OMIT_KEYWORD:
-      identifier = new Expressions.OmitTypeIdentifier(range, scanner.flushComments())
-      break
     case PICK_KEYWORD:
-      identifier = new Expressions.PickTypeIdentifier(range, scanner.flushComments())
+      identifier = new Expressions.InvalidTypeIdentifier(
+        range,
+        scanner.flushComments(),
+        currentToken,
+        `${currentToken} requires a type and property list (${currentToken}(Type, 'property'))`,
+      )
+      break
+    case PARTIAL_KEYWORD:
+    case REQUIRED_KEYWORD:
+      identifier = new Expressions.InvalidTypeIdentifier(
+        range,
+        scanner.flushComments(),
+        currentToken,
+        `${currentToken} requires a type (${currentToken}(Type))`,
+      )
       break
   }
 

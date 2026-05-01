@@ -23,6 +23,8 @@ import {
   MSG_TYPE,
   OMIT_KEYWORD,
   PICK_KEYWORD,
+  PARTIAL_KEYWORD,
+  REQUIRED_KEYWORD,
   TYPE_START,
   BLOCK_OPEN,
   BLOCK_CLOSE,
@@ -515,6 +517,22 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
             ofType,
             properties,
           )
+    } else if (typeName.name === PARTIAL_KEYWORD || typeName.name === REQUIRED_KEYWORD) {
+      const ofType = scanType(scanner, moduleOrArgument, parseNext)
+      scanner.scanAllWhitespace()
+      scanner.expectString(ARGS_CLOSE)
+
+      return typeName.name === PARTIAL_KEYWORD
+        ? new Expressions.PartialTypeExpression(
+            [arg0, scanner.charIndex],
+            scanner.flushComments(),
+            ofType,
+          )
+        : new Expressions.RequiredTypeExpression(
+            [arg0, scanner.charIndex],
+            scanner.flushComments(),
+            ofType,
+          )
     } else if (typeName.name === STRING) {
       const narrowed = scanNarrowedString(scanner)
       const argType = new Expressions.StringTypeIdentifier(
@@ -637,6 +655,10 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
     return childArgType
   }
 
+  if (typeName instanceof Expressions.InvalidTypeIdentifier) {
+    throw new ParseError(scanner, typeName.usageMessage)
+  }
+
   // matching a 'bare' Array/Dict/Set/Type is only allowed when parsing a type in the context of a
   // match expression
   //     switch thing-or-things
@@ -644,16 +666,6 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
   //         -- matches any array, regardless of item type or length
   //       case thing
   //         -- matches any non-array
-  if (
-    typeName instanceof Expressions.OmitTypeIdentifier ||
-    typeName instanceof Expressions.PickTypeIdentifier
-  ) {
-    throw new ParseError(
-      scanner,
-      `${typeName.name} requires a type and property list (${typeName.name}(Type, 'property'))`,
-    )
-  }
-
   if (typeName instanceof Expressions.ContainerTypeIdentifier) {
     if (moduleOrArgument === 'match_type') {
       if (typeName.name === ARRAY) {
