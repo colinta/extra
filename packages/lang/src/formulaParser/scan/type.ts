@@ -555,7 +555,7 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
             ofType,
           )
     } else if (typeName.name === RETURN_KEYWORD || typeName.name === RETURN_KEYWORD_ALIAS) {
-      const ofType = scanType(scanner, moduleOrArgument, parseNext)
+      const ofType = scanTypeOrReference(scanner, moduleOrArgument, parseNext)
       scanner.scanAllWhitespace()
       scanner.expectString(ARGS_CLOSE)
 
@@ -565,7 +565,7 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
         ofType,
       )
     } else if (typeName.name === PARAMS_KEYWORD || PARAMS_KEYWORD_ALIASES.includes(typeName.name)) {
-      const ofType = scanType(scanner, moduleOrArgument, parseNext)
+      const ofType = scanTypeOrReference(scanner, moduleOrArgument, parseNext)
       scanner.scanAllWhitespace()
       scanner.expectString(ARGS_CLOSE)
 
@@ -808,6 +808,31 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
   }
 
   throw new ParseError(scanner, `Expected a type name, found '${typeName.name}'`)
+}
+
+function scanTypeOrReference(
+  scanner: Scanner,
+  moduleOrArgument: ArgumentType,
+  parseNext: ParseNext,
+) {
+  scanner.scanAllWhitespace()
+
+  if (
+    isArgumentStartChar(scanner) &&
+    scanner.test(sc => {
+      const identifier = scanIdentifier(sc)
+      if (!(identifier instanceof Expressions.Reference) || identifier.name.match(/^[A-Z]/)) {
+        return false
+      }
+
+      sc.scanAllWhitespace()
+      return sc.is(ARGS_CLOSE)
+    })
+  ) {
+    return scanIdentifier(scanner)
+  }
+
+  return scanType(scanner, moduleOrArgument, parseNext)
 }
 
 function scanDictOfAndLength(

@@ -41,6 +41,7 @@ beforeEach(() => {
       Values.booleanValue(true),
     ],
     ToInt: [Types.namedFormula('ToInt', [], Types.IntType), Values.booleanValue(true)],
+    foo: [Types.namedFormula('foo', [], Types.StringType), Values.booleanValue(true)],
     NotCallable: [Types.IntType, Values.booleanValue(true)],
     Mixed: [Types.oneOf([createUser, Types.IntType]), Values.booleanValue(true)],
     FnUnion: [
@@ -59,6 +60,7 @@ describe('return/params type functions', () => {
     c(['Return(CreateUser)', 'Return(CreateUser)', '{name: String, age: Int}']),
     c(['Return(OpaqueCreateUser)', 'Return(OpaqueCreateUser)', '{name: String, age: Int}']),
     c(['ReturnType(CreateUser)', 'Return(CreateUser)', '{name: String, age: Int}']),
+    c(['Return(foo)', 'Return(foo)', 'String']),
     c([
       'Params(CreateUser)',
       'Params(CreateUser)',
