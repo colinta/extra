@@ -53,6 +53,7 @@ import {
   EXCLUDE_KEYWORD,
   INCLUDE_KEYWORD,
   ELEMENT_KEYWORD,
+  FORMULA_SHORTHAND_DELIMITER,
 } from '@/formulaParser/grammars'
 import {ReferenceRuntimeError, RuntimeError} from './errors'
 import {Range} from './types'
@@ -5023,6 +5024,30 @@ export class FormulaExpression extends Expression {
     props: Map<string, Values.Value> = new Map(),
   ) {
     return new Values.FormulaValue(fn, undefined, localAssigns, props)
+  }
+}
+
+/**
+ * Anonymous formula shorthand for use only in invocation argument lists:
+ *
+ *     array.map(|val| val + 1)
+ *
+ * Its argument and return types are inferred from the receiving formula's
+ * expected argument type.
+ */
+export class FormulaShorthand extends FormulaExpression {
+  toLisp() {
+    const args = this.argDefinitions.map(arg => arg.nameRef.name).join(' ')
+    return `(${FORMULA_SHORTHAND_DELIMITER} (${args}) => ${this.body.toLisp()})`
+  }
+
+  toCode() {
+    const args = this.argDefinitions.map(arg => arg.nameRef.name).join(', ')
+    return `${FORMULA_SHORTHAND_DELIMITER}${args}${FORMULA_SHORTHAND_DELIMITER} ${this.body.toCode()}`
+  }
+
+  toViewPropCode() {
+    return `(${this.toCode()})`
   }
 }
 

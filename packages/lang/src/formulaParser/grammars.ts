@@ -63,6 +63,7 @@ export const ATOM_START = ':'
 export const STATE_START = '@'
 export const VERSION_START = '@'
 export const FUNCTION_BODY_START = '=>'
+export const FORMULA_SHORTHAND_DELIMITER = '|'
 
 export const ENUM_KEYWORD = 'enum'
 export const ENUM_START = '.'

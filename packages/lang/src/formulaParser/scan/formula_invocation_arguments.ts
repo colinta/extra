@@ -12,6 +12,7 @@ import {
 import {Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
 import {scanValidLocalName} from './identifier'
+import {scanFormulaShorthand} from './formula_shorthand'
 
 /**
  * Args passed to a function.
@@ -115,6 +116,8 @@ function _scanArguments(scanner: Scanner, parseNext: ParseNext, what: 'invocatio
           scanner.flushComments(),
           argName.name,
         )
+      } else if (scanner.is('|')) {
+        expression = scanFormulaShorthand(scanner, parseNext)
       } else {
         expression = parseNext(what === 'invocation' ? 'argument' : 'block_argument')
       }

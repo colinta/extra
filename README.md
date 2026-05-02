@@ -92,13 +92,13 @@ let
 in
   [...evens, ...odds]
     .filter(is-divisible-by-3)
-    .sort(by: fn(a, b) =>
+    .sort(by: |a, b|
       -- a <=> b will sort in ascending order, here we sort in descending order:
       b <=> a
     ) --> [9, 6, 3]
   -- the pipe operator assigns the left-hand-side to the `#pipe` symbol
   |> inspect('filter', #pipe)  --> prints "filter = [9, 6, 3]: [Int]" and returns that value
-  |> #pipe.map(fn(num) => $num).join(',')
+  |> #pipe.map(|num| $num).join(',')
 
 -- there's a JSX-like syntax built in.
 <div>
@@ -461,8 +461,8 @@ let
   user-id = UserId(1)
   -- calculating next-user-id three ways:
   next-user-id = UserId(user-id.value + 1)
-  next-user-id = user-id.rewrap(fn(id) => id + 1)
-  next-user-id = user-id.map(fn(id) => UserId(id + 1))
+  next-user-id = user-id.rewrap(|id| id + 1)
+  next-user-id = user-id.map(|id| UserId(id + 1))
   -- functions that expect a
   fn select(id: UserId) =>
     -- only instances of UserId will be accepted,
@@ -1371,12 +1371,12 @@ Confusing! Sorry, it is, but I also think it is useful.
 
 ### Inferred types
 
-The return type of a function can always be inferred (even recursive functions). Argument types are required when you are defining a function, but if you are calling a function that expects a function, like `map`, `reduce`, `sort`, you can omit the types. The trick here is that the receiving function already defined the types, so in this case you don't have to.
+The return type of a function can always be inferred (even recursive functions). Argument types are required when you are defining a function, but if you are calling a function that expects a function, like `map`, `reduce`, `sort`, you can use formula shorthand. The receiving function already defined the callback type, so the shorthand can infer its argument and return types.
 
 ```extra
 -- map already defined its callback, so the argument types can be inferred (even
 -- if 'map' is generic)
-[1, 2, 3].map(fn(num) => num + 1) --> [2, 3, 4]
+[1, 2, 3].map(|num| num + 1) --> [2, 3, 4]
 ```
 
 In the example above, `num` is a named argument, but `map` expects a function that accepts two positional arguments `# value: T, index: Int`. Since the first named argument is compatible with `# value: Int`, and the second argument is ignored, the compiler figures out what to do.
@@ -1395,7 +1395,7 @@ You can accept any number of positional arguments using an argument defined as `
 
 ```extra
 fn add(...# numbers: [Int]) =>
-  numbers.reduce(0, fn(memo, num) => memo + num)
+  numbers.reduce(0, |memo, num| memo + num)
 
 add() --> 0
 add(1) --> 1
@@ -1414,7 +1414,7 @@ Any named arguments that are not otherwise declared can be put into a "keyword a
 
 ```extra
 fn list-people(greeting: String = 'Hi,', **people: Dict(String)) =>
-  people.map((name, honorific) =>
+  people.map(|name, honorific|
     `$greeting $honorific: $name`).join(' - ')
 
 
@@ -1839,7 +1839,7 @@ person?.address.street then 'default address'
 Everyone's favourite! Well it's _my_ favourite, and if you haven't used it today's your day. It's more likely that you've used chained methods – the pipe operator is a natural companion, but in cases where a chained method isn't an option. Here's an example that surrounds a stringified array with `"[]"` characters, _and_ adds a trailing comma if the array wasn't empty.
 
 ```extra
-[1,2,3].filter(fn(i) => i < 3).join(',')
+[1,2,3].filter(|i| i < 3).join(',')
   |>
     if #pipe.length
       -- recall that $ is the 'to string' operator
