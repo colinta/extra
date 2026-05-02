@@ -367,13 +367,13 @@ type StillUser = Pick(User, 'name', 'age')
 
 ### Include/Exclude
 
+`Include(T, ...Types)` returns types of `T` that match `Types`
+`Exclude(T, ...Types)` removes `Types` from `T`
+
 ```extra
 type A = 'a' | 'b' | Int | {name: String}
 
 type OnlyBAndPositiveInts = Include(A, 'b', Int(>=0))
---> 'b' | Int(>=0)
-
-type SameAsInclude = Extract(A, 'b', Int(>=0))
 --> 'b' | Int(>=0)
 
 type NoBOrNegativeInts = Exclude(A, 'b', Int(<0))
@@ -395,10 +395,35 @@ type NotLoading = Exclude(Status, .loading)
 
 ### Partial/Required
 
+`Partial(T)` makes all the properties of an object optional.
+`Required(T)` removes `null` from the type of all the properties.
+
 ```extra
 type Post = {title: String, created-at: Temporal.Instant, content?: String}
 type DraftPost = Partial(Post) -- all fields are optional
 type FinishedPost = Required(Post) -- 'content' becomes non-null
+```
+
+### Return/Params
+
+`Params(T)` extracts the arguments of a function as a tuple type.
+`Return(T)` extracts the return type.
+
+```extra
+type CreateUser = fn(name: String, age: Int): {User, Boolean}
+
+type CreateUserArgs = Params(CreateUser) -- {name: String, age: Int}
+type CreateUserReturn = Return(CreateUser) -- {User, Boolean}
+```
+
+### Element
+
+`Element(T)` accepts an Array, Set, or Dict, and returns the type that it contains.
+
+```extra
+type User = {...}
+type Users = [User]
+type UserAgain = Element(Users)
 ```
 
 ## Comments
