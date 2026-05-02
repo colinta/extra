@@ -426,6 +426,117 @@ type Users = [User]
 type UserAgain = Element(Users)
 ```
 
+## From Types to Views
+
+Extra has built-in types, which you can build up into custom types. You can then `box` those types, which creates a simple wrapper around them. Then you can add functions to those via a `struct`. If you need mutability or inheritance, upgrade to `class`. If it's being rendered, it's a `view`.
+
+`type → box → struct → class → view`
+
+### Type
+
+This is just an alias, it acts just like the type it aliases. You can also create type constructors.
+
+```extra
+type User = {name: String, age: Int(>=0)}
+type Draftable(T extends {}) => { draft: Partial(T), complete: T? }
+
+let
+  bob: User = {name: 'bob', age: 0}
+  bob-form: Draftable(User) = {
+    draft: {}
+    complete: bob
+  }
+```
+
+### Box
+
+For cases where you want to make an opaque wrapper around a simple type. The canonical example is an `Id` type, like a `String` or `Int`, but you don't want to allow _all_ `Int` values, you want them to be explicitly marked as `Id`.
+
+Boxed types have a `value` property to extract the wrapped value. They also implement functions `map` and `rewrap` to modify the value. `map` unboxes the value (you can return anything), `rewrap` requires the same type to be returned, and returns the same boxed type.
+
+```extra
+box UserId = Int(>0)
+
+let
+  user-id = UserId(1)
+  -- calculating next-user-id three ways:
+  next-user-id = UserId(user-id.value + 1)
+  next-user-id = user-id.rewrap(fn(id) => id + 1)
+  next-user-id = user-id.map(fn(id) => UserId(id + 1))
+  -- functions that expect a
+  fn select(id: UserId) =>
+    -- only instances of UserId will be accepted,
+    -- not any ol' Int
+    ...
+in
+  ❌ user-id + 1 -- won't work, because `user-id` is a boxed Int
+  ❌ select(1) -- won't work, because `select` requires a boxed Int
+```
+
+### Struct
+
+Think of `box` as a very simple `struct`. In a struct you can define all the properties and functions that you want on that type. Structs do not take part in Extra's state/mutation, do not support inheritance, and do not support custom constructors.
+
+```extra
+struct User {
+  name: String
+  age: Int(>=0)
+
+  next-age() =>
+    User(name: this.name, age: this.age + 1)
+}
+```
+
+### Class
+
+Lots to say about classes, because this is where we introduce Extra's flavour of "mutability" (spoiler: Extra is immutable - mutations are implemented via messages that describe changes, and the runtime takes care of implementing changes and updating views).
+
+Classes have single inheritance, custom constructors, and like I said, they maintain mutable state.
+
+```extra
+class User(name: String, age: Int(>=0) = 0) {
+  @name = name
+  @age = age
+
+  -- this looks like a mutation, but it's actually a "Message", which has the
+  -- special symbol `&`. This has the message type `&Increment(@age, 1)`.
+  birthday() => @age += 1
+}
+
+class Student(name: String, age: Int(>=0)? = null, grade: Int(>0) = 1) extends User(name:, age: age ?? #default) {
+  @grade = grade
+
+  -- @{} is a message tuple.
+  -- This one is @{ @Increment(@age, 1), @Increment(@grade, 1) }
+  birthday() => @{
+    super()
+    @grade += 1
+  }
+}
+```
+
+### View
+
+And finally, the `view` type, which requires a `render` function. The constructor defines the props. Props are allowed (expected) to change, but state initialization only happens when the component is created. Stateless view functions are supported, as well as stateful components.
+
+```extra
+view Foo(message: String) => <p>{message}</p>
+
+view Foo(message: String) {
+  @bangs = ''
+
+  tick() => @bangs ..= '!'
+
+  render =>
+    <>
+      <p>{message}{@bangs}</p>
+      <Timer every={1000} do=tick/>
+    </>
+}
+```
+
+There's a ton more to say about Views.
+
 ## Comments
 
 I may have gone a bit overboard, just a heads up. 🤓
@@ -1038,11 +1149,11 @@ Keys in Objects and Dicts can be strings, numbers, `null`, `true`, or `false` (i
 Objects play double duty as the Tuple type, because they can have positional properties as well as named. Up to you what you do with this ability to mix and match.
 
 ```extra
-alias User = {
+type User = {
   String -- positional
   age: Int(>=0) -- named
 }
-alias Point = {Float, Float}
+type Point = {Float, Float}
 
 -- positional arguments work well when the order is obvious. there is nothing here
 -- to indicate that user.0 refers to a 'name'.
