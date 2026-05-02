@@ -27,10 +27,11 @@ import {
   REQUIRED_KEYWORD,
   EXCLUDE_KEYWORD,
   INCLUDE_KEYWORD,
-  EXTRACT_KEYWORD,
+  INCLUDE_KEYWORD_ALIAS,
   RETURN_KEYWORD,
-  RETURN_TYPE_KEYWORD,
+  RETURN_KEYWORD_ALIAS,
   PARAMS_KEYWORD,
+  PARAMS_KEYWORD_ALIASES,
   ELEMENT_KEYWORD,
   TYPE_START,
   BLOCK_OPEN,
@@ -553,7 +554,7 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
             scanner.flushComments(),
             ofType,
           )
-    } else if (typeName.name === RETURN_KEYWORD || typeName.name === RETURN_TYPE_KEYWORD) {
+    } else if (typeName.name === RETURN_KEYWORD || typeName.name === RETURN_KEYWORD_ALIAS) {
       const ofType = scanType(scanner, moduleOrArgument, parseNext)
       scanner.scanAllWhitespace()
       scanner.expectString(ARGS_CLOSE)
@@ -563,7 +564,7 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
         scanner.flushComments(),
         ofType,
       )
-    } else if (typeName.name === PARAMS_KEYWORD) {
+    } else if (typeName.name === PARAMS_KEYWORD || PARAMS_KEYWORD_ALIASES.includes(typeName.name)) {
       const ofType = scanType(scanner, moduleOrArgument, parseNext)
       scanner.scanAllWhitespace()
       scanner.expectString(ARGS_CLOSE)
@@ -609,7 +610,7 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
         ofType,
         excluded,
       )
-    } else if (typeName.name === INCLUDE_KEYWORD || typeName.name === EXTRACT_KEYWORD) {
+    } else if (typeName.name === INCLUDE_KEYWORD || typeName.name === INCLUDE_KEYWORD_ALIAS) {
       const ofType = scanType(scanner, moduleOrArgument, parseNext)
       scanner.scanAllWhitespace()
       scanner.expectString(',')

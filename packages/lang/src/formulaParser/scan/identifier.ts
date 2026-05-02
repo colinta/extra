@@ -12,7 +12,12 @@ import {
   REQUIRED_KEYWORD,
   EXCLUDE_KEYWORD,
   INCLUDE_KEYWORD,
-  EXTRACT_KEYWORD,
+  INCLUDE_KEYWORD_ALIAS,
+  RETURN_KEYWORD,
+  RETURN_KEYWORD_ALIAS,
+  PARAMS_KEYWORD,
+  PARAMS_KEYWORD_ALIASES,
+  ELEMENT_KEYWORD,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError} from '../types'
@@ -63,6 +68,7 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case 'true':
     case 'false':
     case 'this':
+    case 'Bool':
     case 'Boolean':
     case 'Float':
     case 'Int':
@@ -79,7 +85,13 @@ export function scanValidName(scanner: Scanner): Expressions.Reference {
     case REQUIRED_KEYWORD:
     case EXCLUDE_KEYWORD:
     case INCLUDE_KEYWORD:
-    case EXTRACT_KEYWORD:
+    case INCLUDE_KEYWORD_ALIAS:
+    case RETURN_KEYWORD:
+    case RETURN_KEYWORD_ALIAS:
+    case PARAMS_KEYWORD:
+    case PARAMS_KEYWORD_ALIASES[0]:
+    case PARAMS_KEYWORD_ALIASES[1]:
+    case ELEMENT_KEYWORD:
       throw new ParseError(scanner, `Invalid use of reserved word '${currentToken}'`)
   }
 
@@ -245,6 +257,7 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
     case 'this':
       identifier = new Expressions.ThisIdentifier(range, scanner.flushComments())
       break
+    case 'Bool':
     case 'Boolean':
       identifier = new Expressions.BooleanTypeIdentifier(range, scanner.flushComments())
       break
@@ -299,7 +312,7 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
       )
       break
     case INCLUDE_KEYWORD:
-    case EXTRACT_KEYWORD:
+    case INCLUDE_KEYWORD_ALIAS:
       identifier = new Expressions.InvalidTypeIdentifier(
         range,
         scanner.flushComments(),

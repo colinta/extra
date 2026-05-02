@@ -44,6 +44,15 @@ import {
   KWARG_OPERATOR,
   ATOM_START,
   HIGHEST_PRECEDENCE,
+  PARAMS_KEYWORD,
+  RETURN_KEYWORD,
+  OMIT_KEYWORD,
+  PICK_KEYWORD,
+  REQUIRED_KEYWORD,
+  PARTIAL_KEYWORD,
+  EXCLUDE_KEYWORD,
+  INCLUDE_KEYWORD,
+  ELEMENT_KEYWORD,
 } from '@/formulaParser/grammars'
 import {ReferenceRuntimeError, RuntimeError} from './errors'
 import {Range} from './types'
@@ -1761,7 +1770,7 @@ abstract class PropertySelectionFunctionExpression extends TypeExpression {
 }
 
 export class OmitTypeExpression extends PropertySelectionFunctionExpression {
-  name = 'Omit'
+  name = OMIT_KEYWORD
 
   transform(type: Types.Type): Types.Type {
     return this.selectTypeProps(type, this.properties, false)
@@ -1773,7 +1782,7 @@ export class OmitTypeExpression extends PropertySelectionFunctionExpression {
 }
 
 export class PickTypeExpression extends PropertySelectionFunctionExpression {
-  name = 'Pick'
+  name = PICK_KEYWORD
 
   transform(type: Types.Type): Types.Type {
     return this.selectTypeProps(type, this.properties, true)
@@ -1901,7 +1910,7 @@ function requiredType(type: Types.Type, recurse = true): Types.Type {
 }
 
 export class PartialTypeExpression extends RequirementTypeFunctionExpression {
-  name = 'Partial'
+  name = PARTIAL_KEYWORD
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.of.getAsTypeExpression(runtime).map(partialType)
@@ -1915,7 +1924,7 @@ export class PartialTypeExpression extends RequirementTypeFunctionExpression {
 }
 
 export class RequiredTypeExpression extends RequirementTypeFunctionExpression {
-  name = 'Required'
+  name = REQUIRED_KEYWORD
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.of.getAsTypeExpression(runtime).map(requiredType)
@@ -1965,7 +1974,7 @@ function findEnumTypes(baseType: Types.Type, excludedType: Types.Type): Types.Ty
 }
 
 export class ExcludeTypeExpression extends TypeExpression {
-  name = 'Exclude'
+  name = EXCLUDE_KEYWORD
 
   constructor(
     range: Range,
@@ -2035,7 +2044,7 @@ export class ExcludeTypeExpression extends TypeExpression {
 }
 
 export class IncludeTypeExpression extends TypeExpression {
-  name = 'Include'
+  name = INCLUDE_KEYWORD
 
   constructor(
     range: Range,
@@ -2142,7 +2151,7 @@ abstract class FormulaExtractionTypeExpression extends TypeExpression {
 }
 
 export class ReturnTypeExpression extends FormulaExtractionTypeExpression {
-  name = 'Return'
+  name = RETURN_KEYWORD
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     const result = this.of.getAsTypeExpression(runtime)
@@ -2174,7 +2183,7 @@ export class ReturnTypeExpression extends FormulaExtractionTypeExpression {
 }
 
 export class ParamsTypeExpression extends FormulaExtractionTypeExpression {
-  name = 'Params'
+  name = PARAMS_KEYWORD
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     const result = this.of.getAsTypeExpression(runtime)
@@ -2224,7 +2233,7 @@ export class ParamsTypeExpression extends FormulaExtractionTypeExpression {
 }
 
 export class ElementTypeExpression extends FormulaExtractionTypeExpression {
-  name = 'Element'
+  name = ELEMENT_KEYWORD
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     const result = this.of.getAsTypeExpression(runtime)

@@ -75,10 +75,11 @@ export const PARTIAL_KEYWORD = 'Partial'
 export const REQUIRED_KEYWORD = 'Required'
 export const EXCLUDE_KEYWORD = 'Exclude'
 export const INCLUDE_KEYWORD = 'Include'
-export const EXTRACT_KEYWORD = 'Extract'
+export const INCLUDE_KEYWORD_ALIAS = 'Extract'
 export const RETURN_KEYWORD = 'Return'
-export const RETURN_TYPE_KEYWORD = 'ReturnType'
+export const RETURN_KEYWORD_ALIAS = 'ReturnType'
 export const PARAMS_KEYWORD = 'Params'
+export const PARAMS_KEYWORD_ALIASES = ['Parameters', 'Arguments']
 export const ELEMENT_KEYWORD = 'Element'
 
 export const MACRO_START = '#'
