@@ -22,8 +22,14 @@ beforeEach(() => {
   const user = Types.object([Types.namedProp('name', Types.StringType)])
 
   runtimeTypes = {
-    A: [Types.oneOf([Types.object([Types.namedProp('user', user)]), Types.IntType]), Values.booleanValue(true)],
-    B: [Types.oneOf([Types.literal('a'), Types.literal('b'), Types.IntType]), Values.booleanValue(true)],
+    A: [
+      Types.oneOf([Types.object([Types.namedProp('user', user)]), Types.IntType]),
+      Values.booleanValue(true),
+    ],
+    B: [
+      Types.oneOf([Types.literal('a'), Types.literal('b'), Types.IntType]),
+      Values.booleanValue(true),
+    ],
     Status: [status, Values.booleanValue(true)],
   }
   typeRuntime = mockTypeRuntime(runtimeTypes)

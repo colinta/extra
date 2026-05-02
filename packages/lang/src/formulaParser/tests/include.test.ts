@@ -23,7 +23,10 @@ beforeEach(() => {
 
   runtimeTypes = {
     User: [user, Values.booleanValue(true)],
-    A: [Types.oneOf([Types.object([Types.namedProp('user', user)]), Types.IntType]), Values.booleanValue(true)],
+    A: [
+      Types.oneOf([Types.object([Types.namedProp('user', user)]), Types.IntType]),
+      Values.booleanValue(true),
+    ],
     C: [
       Types.oneOf([
         Types.literal('a'),
@@ -41,16 +44,8 @@ beforeEach(() => {
 
 describe('include/extract type function', () => {
   cases<[string, string, string]>(
-    c([
-      "Include(C, 'b', Int(>=0))",
-      "Include(C, 'b', Int(>=0))",
-      '"b" | Int(>=0)',
-    ]),
-    c([
-      "Include(B, 'b', Int(>=0))",
-      "Include(B, 'b', Int(>=0))",
-      'Int(>=1)',
-    ]),
+    c(["Include(C, 'b', Int(>=0))", "Include(C, 'b', Int(>=0))", '"b" | Int(>=0)']),
+    c(["Include(B, 'b', Int(>=0))", "Include(B, 'b', Int(>=0))", 'Int(>=1)']),
     c([
       'Include(Status, .loading, .notAsked)',
       'Include(Status, .loading, .notAsked)',
@@ -58,11 +53,7 @@ describe('include/extract type function', () => {
     ]),
     c(['Include(A, {})', 'Include(A, {})', '{user: {name: String}}']),
     c(['Include(A, {foo: Int})', 'Include(A, {foo: Int})', '{user: {name: String}} | Int']),
-    c([
-      "Extract(C, 'b', Int(>=0))",
-      "Include(C, 'b', Int(>=0))",
-      '"b" | Int(>=0)',
-    ]),
+    c(["Extract(C, 'b', Int(>=0))", "Include(C, 'b', Int(>=0))", '"b" | Int(>=0)']),
   ).run(([formula, expectedCode, expectedType], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
       const expression = parseType(formula).get()

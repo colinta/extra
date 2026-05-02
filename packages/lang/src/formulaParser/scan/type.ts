@@ -518,25 +518,7 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
       scanner.expectString(',')
       scanner.scanAllWhitespace()
 
-      const properties = scanPropertyNames(scanner)
-
-      if (properties.some(property => property.kind === 'enum')) {
-        const enumProp = properties.find(property => property.kind === 'enum')
-        const enumName = enumProp?.name ?? 'case'
-        if (typeName.name === OMIT_KEYWORD) {
-          throw new ParseError(
-            scanner,
-            `${OMIT_KEYWORD} does not support enum case selectors. Use ${EXCLUDE_KEYWORD}(Type, .${enumName}) instead.`,
-          )
-        }
-
-        if (typeName.name === PICK_KEYWORD) {
-          throw new ParseError(
-            scanner,
-            `${PICK_KEYWORD} does not support enum case selectors. Use ${INCLUDE_KEYWORD}(Type, .${enumName}) instead.`,
-          )
-        }
-      }
+      const properties = scanPropertyNames(scanner, typeName.name)
 
       return typeName.name === OMIT_KEYWORD
         ? new Expressions.OmitTypeExpression(
@@ -843,20 +825,44 @@ function scanOfAndLength(
   return {ofType, narrowedLength}
 }
 
-function scanPropertyNames(scanner: Scanner) {
-  const properties: Array<
-    | {kind: 'position'; value: number}
-    | {kind: 'property'; value: string}
-    | {kind: 'enum'; name: string}
-  > = []
+function scanPropertyNames(scanner: Scanner, operation: string) {
+  const properties: Array<{kind: 'position'; value: number} | {kind: 'property'; value: string}> =
+    []
+  const propertyNames = new Set<string>()
+  const positionValues = new Set<number>()
+
   for (;;) {
     scanner.scanAllWhitespace()
+
     if (scanner.scanIfString('.')) {
-      properties.push({kind: 'enum', name: scanEnumName(scanner).name})
+      const enumName = scanEnumName(scanner)
+      if (operation === OMIT_KEYWORD) {
+        throw new ParseError(
+          scanner,
+          `${OMIT_KEYWORD} does not support enum case selectors. Use ${EXCLUDE_KEYWORD}(Type, .${enumName}) instead.`,
+        )
+      }
+
+      if (operation === PICK_KEYWORD) {
+        throw new ParseError(
+          scanner,
+          `${PICK_KEYWORD} does not support enum case selectors. Use ${INCLUDE_KEYWORD}(Type, .${enumName}) instead.`,
+        )
+      }
+
+      throw new ParseError(scanner, `${operation} does not support enum case selectors.`)
     } else if (isStringStartChar(scanner)) {
-      properties.push({kind: 'property', value: scanStringLiteral(scanner).stringValue})
+      const string = scanStringLiteral(scanner)
+      if (!propertyNames.has(string.stringValue)) {
+        propertyNames.add(string.stringValue)
+        properties.push({kind: 'property', value: string.stringValue})
+      }
     } else {
-      properties.push({kind: 'position', value: scanNumber(scanner, 'int').value.value})
+      const number = scanNumber(scanner, 'int')
+      if (!positionValues.has(number.value.value)) {
+        positionValues.add(number.value.value)
+        properties.push({kind: 'position', value: number.value.value})
+      }
     }
     scanner.scanAllWhitespace()
 
@@ -879,7 +885,17 @@ function scanPropertyNames(scanner: Scanner) {
     break
   }
 
-  return properties
+  const sortedPositions = [...positionValues]
+    .sort((a, b) => a - b)
+    .map(value => ({kind: 'position' as const, value}))
+  let positionIndex = 0
+
+  return properties.map(property => {
+    if (property.kind === 'position') {
+      return sortedPositions[positionIndex++]
+    }
+    return property
+  })
 }
 
 export type ArgumentType = 'module_type_definition' | 'type' | 'match_type'

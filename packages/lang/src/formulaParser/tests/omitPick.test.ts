@@ -67,6 +67,22 @@ beforeEach(() => {
       ]),
       Values.booleanValue(true),
     ],
+    A: [
+      Types.object([
+        Types.positionalProp(Types.IntType),
+        Types.spreadPositionalProp(Types.array(Types.StringType, {min: 1})),
+      ]),
+      Values.booleanValue(true),
+    ],
+    B: [
+      Types.object([
+        Types.positionalProp(Types.IntType),
+        Types.positionalProp(Types.BooleanType),
+        Types.namedProp('c', Types.FloatType),
+        Types.spreadPositionalProp(Types.array(Types.StringType, {min: 2, max: 10})),
+      ]),
+      Values.booleanValue(true),
+    ],
   }
   typeRuntime = mockTypeRuntime(runtimeTypes)
 })
@@ -119,6 +135,26 @@ describe('omit/pick type functions', () => {
       "Omit(Thing | Other, 'name')",
       "Omit(Thing | Other, 'name')",
       '{age: Int} | {role: String}',
+    ]),
+    c([
+      'Pick(A, 0, 1, 2)',
+      'Pick(A, 0, 1, 2)',
+      '{Int, String, String?}',
+    ]),
+    c([
+      'Omit(B, 0, 2, 4, 20)',
+      'Omit(B, 0, 2, 4, 20)',
+      '{Boolean, c: Float, ...[String, length: 1...8]}',
+    ]),
+    c([
+      'Omit(B, 4, 2, 4, 20, 0)',
+      'Omit(B, 0, 2, 4, 20)',
+      '{Boolean, c: Float, ...[String, length: 1...8]}',
+    ]),
+    c([
+      "Omit(User, 'age', 'age', 0, 0)",
+      "Omit(User, 'age', 0)",
+      '{name: String}',
     ]),
   ).run(([formula, expectedCode, expectedType], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
