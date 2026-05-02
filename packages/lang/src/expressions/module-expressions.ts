@@ -676,7 +676,12 @@ export class Module extends Expression {
     return mapAll(
       sorted.get().map(([name, expr]) =>
         expr.eval(moduleRuntime).map(value => {
-          moduleRuntime.addLocalValue(name, value)
+          if (value instanceof Values.TypeValue) {
+            const id = moduleRuntime.addLocalType(name, value.type)
+            moduleRuntime.values.set(id, value)
+          } else {
+            moduleRuntime.addLocalValue(name, value)
+          }
           return [name, value] as [string, Values.Value]
         }),
       ),
