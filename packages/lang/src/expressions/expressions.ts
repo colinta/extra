@@ -1602,9 +1602,7 @@ export abstract class TypeExpression extends Expression {
   }
 }
 
-type PropertySelection = {kind: 'position'; value: number} | {kind: 'property'; value: string}
-
-function propertySelectionToCode(selection: PropertySelection) {
+function propertySelectionToCode(selection: Types.PropertySelection) {
   if (selection.kind === 'position') {
     return `${selection.value}`
   }
@@ -1618,7 +1616,7 @@ abstract class PropertySelectionFunctionExpression extends TypeExpression {
     range: Range,
     precedingComments: Comment[],
     readonly of: Expression,
-    readonly properties: PropertySelection[],
+    readonly properties: Types.PropertySelection[],
   ) {
     super(range, precedingComments)
   }
@@ -1645,135 +1643,13 @@ abstract class PropertySelectionFunctionExpression extends TypeExpression {
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return this.of.getAsTypeExpression(runtime).map(type => this.transform(type))
   }
-
-  selectTypeProps(type: Types.Type, properties: PropertySelection[], pick: boolean): Types.Type {
-    if (type instanceof Types.OpaqueType) {
-      return this.selectTypeProps(type.of, properties, pick)
-    }
-
-    if (type instanceof Types.OneOfType) {
-      return Types.oneOf(type.of.map(ofType => this.selectTypeProps(ofType, properties, pick)))
-    }
-
-    if (type instanceof Types.NamedEnumDefinitionType) {
-      return this.selectTypeProps(type.instanceType, properties, pick)
-    }
-
-    if (type instanceof Types.ObjectType) {
-      let propIndex = 0
-      // gather all the positional omit/picks
-      //     Omit(T, 0, 'prop', 2) --> [0, 2]
-      // Note: order is preserved according to the original type
-      //     T = {Int, String, Float}
-      //     Pick(T, 2, 0) --> {Int, Float}
-      // Order is not determined by the Pick expression
-      const selectedPositions = properties
-        .filter(property => property.kind === 'position')
-        .map(property => property.value)
-        .sort((a, b) => a - b)
-
-      // iterate over the props, "keeping" the ones that match according to `pick`
-      //     T = {Int, Float, address: String, year: Int}
-      //     Pick(T, 0, 'address')
-      //
-      // 1. Int @ propIndex == 0
-      //    properties[0] = {kind: 'position', value: 0} -> keep = true
-      // 2. Float @ propIndex == 1
-      //    nope, no match -> keep = false
-      // 3. 'address': String
-      //    properties[1] = {kind: 'property', value: 'address'} -> keep = true
-      // 4. 'year': Int
-      //    no match -> keep = false
-      //
-      // props = {Int, address: String}
-      // (for the Omit case, all those 'keep' match pick = false, and so the
-      // result is inverted, `{Float, year: Int}`)
-      const props: Types.ObjectProp[] = []
-      for (const prop of type.props) {
-        if (prop.is === 'positional') {
-          const selected = properties.some(
-            property => property.kind === 'position' && property.value === propIndex,
-          )
-          if (pick === selected) {
-            props.push(prop)
-          }
-          propIndex++
-        } else if (prop.is === 'named') {
-          const selected = properties.some(
-            property => property.kind === 'property' && property.value === prop.name,
-          )
-          if (pick === selected) {
-            props.push(prop)
-          }
-        } else if (prop.is === 'spread-positional') {
-          // T = { A, B, c: C, ...[D, >=2] }
-          if (pick) {
-            // Pick(T, 0, 2, 4) -> {A, D, D?}
-            // keep the selectedPositions that are greater than the last
-            // propIndex (spread-positional is always the last prop in the
-            // array). Using propAtPosition lets us take advantage of the
-            // existing array narrowing logic
-            for (const position of selectedPositions) {
-              if (position >= propIndex) {
-                const picked = type.propAtPosition(position)
-                if (picked) {
-                  props.push(Types.positionalProp(picked))
-                }
-              }
-            }
-          } else {
-            // Omit(T, 0, 2, 4, 20) -> {B, c: C, ...[D, length: 1...8]}
-            // Each selected position >= propIndex omits the corresponding array
-            // offset from the spread-positional prop. For a spread array with
-            // length L, only offsets < L can be removed, so the resulting length
-            // is L minus the number of selected offsets before L.
-            const spreadPositionIndexes = selectedPositions
-              .filter(position => position >= propIndex)
-              .map(position => position - propIndex)
-
-            const omittedBeforeLength = (length: number) =>
-              spreadPositionIndexes.filter(spreadPositionIndex => spreadPositionIndex < length)
-                .length
-
-            const {min, max} = prop.type.narrowedLength
-            const narrowedLength: Narrowed.NarrowedLength = {
-              min: min - omittedBeforeLength(min),
-              max: max === undefined ? undefined : max - omittedBeforeLength(max),
-            }
-            props.push(Types.spreadPositionalProp(Types.array(prop.type.of, narrowedLength)))
-          }
-        }
-      }
-
-      return new Types.ObjectType(props)
-    }
-
-    if (type instanceof Types.FormulaType) {
-      return new Types.FormulaType(
-        type.returnType,
-        type.args,
-        type.genericTypes,
-        new Map(
-          Array.from(type.props.entries()).filter(([name]) =>
-            pick
-              ? properties.some(property => property.kind === 'property' && property.value === name)
-              : !properties.some(
-                  property => property.kind === 'property' && property.value === name,
-                ),
-          ),
-        ),
-      )
-    }
-
-    return type
-  }
 }
 
 export class OmitTypeExpression extends PropertySelectionFunctionExpression {
   name = OMIT_KEYWORD
 
   transform(type: Types.Type): Types.Type {
-    return this.selectTypeProps(type, this.properties, false)
+    return Types.selectTypeProps(type, this.properties, false)
   }
 
   compileAsTypeExpression(runtime: TypeRuntime) {
@@ -1785,7 +1661,7 @@ export class PickTypeExpression extends PropertySelectionFunctionExpression {
   name = PICK_KEYWORD
 
   transform(type: Types.Type): Types.Type {
-    return this.selectTypeProps(type, this.properties, true)
+    return Types.selectTypeProps(type, this.properties, true)
   }
 
   compileAsTypeExpression(runtime: TypeRuntime) {
@@ -1829,91 +1705,11 @@ abstract class RequirementTypeFunctionExpression extends TypeExpression {
   }
 }
 
-function partialType(type: Types.Type): Types.Type {
-  type = unwrapOpaqueType(type)
-
-  if (type instanceof Types.OneOfType) {
-    return Types.oneOf(type.of.map(partialType))
-  }
-
-  if (type instanceof Types.ObjectType) {
-    return new Types.ObjectType(
-      type.props.map(prop => {
-        if (prop.is === 'spread-positional') {
-          return Types.spreadPositionalProp(
-            new Types.ArrayType(Types.optional(prop.type.of), prop.type.narrowedLength),
-          )
-        }
-        return {...prop, type: Types.optional(prop.type)}
-      }),
-    )
-  }
-
-  if (type instanceof Types.FormulaType) {
-    return new Types.FormulaType(
-      type.returnType,
-      type.args,
-      type.genericTypes,
-      new Map(
-        Array.from(type.props.entries()).map(([name, propType]) => [
-          name,
-          Types.optional(propType),
-        ]),
-      ),
-    )
-  }
-
-  return type
-}
-
-function requiredType(type: Types.Type, recurse = true): Types.Type {
-  type = unwrapOpaqueType(type)
-
-  if (type instanceof Types.OneOfType) {
-    return Types.oneOf(
-      type.of.filter(ofType => ofType !== Types.NullType).map(type => requiredType(type, false)),
-    )
-  }
-
-  if (!recurse) {
-    return type
-  }
-
-  if (type instanceof Types.ObjectType) {
-    return new Types.ObjectType(
-      type.props.map(prop => {
-        if (prop.is === 'spread-positional') {
-          return Types.spreadPositionalProp(
-            new Types.ArrayType(requiredType(prop.type.of, false), prop.type.narrowedLength),
-          )
-        }
-        return {...prop, type: requiredType(prop.type, false)}
-      }),
-    )
-  }
-
-  if (type instanceof Types.FormulaType) {
-    return new Types.FormulaType(
-      type.returnType,
-      type.args,
-      type.genericTypes,
-      new Map(
-        Array.from(type.props.entries()).map(([name, propType]) => [
-          name,
-          requiredType(propType, false),
-        ]),
-      ),
-    )
-  }
-
-  return type
-}
-
 export class PartialTypeExpression extends RequirementTypeFunctionExpression {
   name = PARTIAL_KEYWORD
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return this.of.getAsTypeExpression(runtime).map(partialType)
+    return this.of.getAsTypeExpression(runtime).map(Types.partialType)
   }
 
   compileAsTypeExpression(runtime: TypeRuntime) {
@@ -1927,7 +1723,7 @@ export class RequiredTypeExpression extends RequirementTypeFunctionExpression {
   name = REQUIRED_KEYWORD
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    return this.of.getAsTypeExpression(runtime).map(requiredType)
+    return this.of.getAsTypeExpression(runtime).map(Types.requiredType)
   }
 
   compileAsTypeExpression(runtime: TypeRuntime) {
@@ -1935,42 +1731,6 @@ export class RequiredTypeExpression extends RequirementTypeFunctionExpression {
       type => new Nodes.RequiredType(toSource(this), type),
     )
   }
-}
-
-/**
- * If `excludedType` refers to an enum name (`.some-name`), we need to pull
- * those out of the baseType, because they won't match against excludedType
- * as-is. This function maps from the excludedType to the matching named enum
- * type, if it/they exist(s). Otherwise, returns the original excludedType.
- */
-function findEnumTypes(baseType: Types.Type, excludedType: Types.Type): Types.Type {
-  if (!(excludedType instanceof Types.AnonymousEnumType)) {
-    return excludedType
-  }
-
-  if (baseType instanceof Types.NamedEnumDefinitionType) {
-    return baseType.lookupCase(excludedType.member.name) ?? excludedType
-  }
-
-  if (baseType instanceof Types.NamedEnumInstanceType) {
-    return baseType.member.name === excludedType.member.name ? baseType : excludedType
-  }
-
-  if (baseType instanceof Types.OneOfType) {
-    const matches = baseType.of.flatMap(type => {
-      const normalized = findEnumTypes(type, excludedType)
-      if (excludedType === normalized) {
-        return []
-      }
-      return [normalized]
-    })
-
-    if (matches.length) {
-      return Types.oneOf(matches)
-    }
-  }
-
-  return excludedType
 }
 
 export class ExcludeTypeExpression extends TypeExpression {
@@ -2004,10 +1764,7 @@ export class ExcludeTypeExpression extends TypeExpression {
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return mapAll([this.of, ...this.excluded].map(expr => expr.getAsTypeExpression(runtime))).map(
       ([baseType, ...excluded]) =>
-        excluded.reduce(
-          (type, excludedType) => ExcludeTypeExpression.excludeType(type, excludedType),
-          baseType,
-        ),
+        excluded.reduce((type, excludedType) => Types.excludeType(type, excludedType), baseType),
     )
   }
 
@@ -2015,31 +1772,6 @@ export class ExcludeTypeExpression extends TypeExpression {
     return this.getAsTypeExpression(runtime).map(
       type => new Nodes.ExcludeType(toSource(this), type),
     )
-  }
-
-  static excludeType(baseType: Types.Type, excludedType: Types.Type): Types.Type {
-    baseType = unwrapOpaqueType(baseType)
-    excludedType = unwrapOpaqueType(findEnumTypes(baseType, excludedType))
-
-    if (baseType instanceof Types.NamedEnumDefinitionType) {
-      return ExcludeTypeExpression.excludeType(baseType.instanceType, excludedType)
-    }
-
-    if (baseType instanceof Types.OneOfType) {
-      return Types.oneOf(
-        baseType.of.map(ofType => ExcludeTypeExpression.excludeType(ofType, excludedType)),
-      )
-    }
-
-    if (baseType.isLiteral() && excludedType.isLiteral()) {
-      return baseType.value === excludedType.value ? Types.NeverType : baseType
-    }
-
-    if (Types.canBeAssignedTo(baseType, excludedType)) {
-      return Types.NeverType
-    }
-
-    return Types.narrowTypeIsNot(baseType, excludedType)
   }
 }
 
@@ -2073,7 +1805,7 @@ export class IncludeTypeExpression extends TypeExpression {
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return mapAll([this.of, ...this.included].map(expr => expr.getAsTypeExpression(runtime))).map(
-      ([baseType, ...included]) => IncludeTypeExpression.includeType(baseType, included),
+      ([baseType, ...included]) => Types.includeType(baseType, included),
     )
   }
 
@@ -2081,44 +1813,6 @@ export class IncludeTypeExpression extends TypeExpression {
     return this.getAsTypeExpression(runtime).map(
       type => new Nodes.IncludeType(toSource(this), type),
     )
-  }
-
-  static includeType(baseType: Types.Type, includedTypes: Types.Type[]): Types.Type {
-    baseType = unwrapOpaqueType(baseType)
-    includedTypes = includedTypes.map(unwrapOpaqueType)
-
-    if (baseType instanceof Types.NamedEnumDefinitionType) {
-      return IncludeTypeExpression.includeType(baseType.instanceType, includedTypes)
-    }
-
-    if (baseType instanceof Types.OneOfType) {
-      const included = Types.oneOf(
-        baseType.of.map(ofType => IncludeTypeExpression.includeType(ofType, includedTypes)),
-      )
-      if (
-        included === Types.NeverType &&
-        includedTypes.some(type => type instanceof Types.ObjectType)
-      ) {
-        return baseType
-      }
-      return included
-    }
-
-    return Types.oneOf(
-      includedTypes.map(includedType =>
-        IncludeTypeExpression.includeSingleType(baseType, includedType),
-      ),
-    )
-  }
-
-  static includeSingleType(baseType: Types.Type, includedType: Types.Type): Types.Type {
-    includedType = unwrapOpaqueType(findEnumTypes(baseType, includedType))
-
-    if (baseType.isLiteral() && includedType.isLiteral()) {
-      return baseType.value === includedType.value ? baseType : Types.NeverType
-    }
-
-    return Types.narrowTypeIs(baseType, includedType)
   }
 }
 

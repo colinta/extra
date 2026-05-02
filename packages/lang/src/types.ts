@@ -6158,6 +6158,301 @@ function canBeAssignedToFormula(formulaArgument: FormulaType, formulaType: Formu
   }
 }
 
+export type PropertySelection =
+  | {kind: 'position'; value: number}
+  | {kind: 'property'; value: string}
+
+export function selectTypeProps(type: Type, properties: PropertySelection[], pick: boolean): Type {
+  if (type instanceof OpaqueType) {
+    return selectTypeProps(type.of, properties, pick)
+  }
+
+  if (type instanceof OneOfType) {
+    return oneOf(type.of.map(ofType => selectTypeProps(ofType, properties, pick)))
+  }
+
+  if (type instanceof NamedEnumDefinitionType) {
+    return selectTypeProps(type.instanceType, properties, pick)
+  }
+
+  if (type instanceof ObjectType) {
+    let propIndex = 0
+    // gather all the positional omit/picks
+    //     Omit(T, 0, 'prop', 2) --> [0, 2]
+    // Note: order is preserved according to the original type
+    //     T = {Int, String, Float}
+    //     Pick(T, 2, 0) --> {Int, Float}
+    // Order is not determined by the Pick expression
+    const selectedPositions = properties
+      .filter(property => property.kind === 'position')
+      .map(property => property.value)
+      .sort((a, b) => a - b)
+
+    // iterate over the props, "keeping" the ones that match according to `pick`
+    //     T = {Int, Float, address: String, year: Int}
+    //     Pick(T, 0, 'address')
+    //
+    // 1. Int @ propIndex == 0
+    //    properties[0] = {kind: 'position', value: 0} -> keep = true
+    // 2. Float @ propIndex == 1
+    //    nope, no match -> keep = false
+    // 3. 'address': String
+    //    properties[1] = {kind: 'property', value: 'address'} -> keep = true
+    // 4. 'year': Int
+    //    no match -> keep = false
+    //
+    // props = {Int, address: String}
+    // (for the Omit case, all those 'keep' match pick = false, and so the
+    // result is inverted, `{Float, year: Int}`)
+    const props: ObjectProp[] = []
+    for (const prop of type.props) {
+      if (prop.is === 'positional') {
+        const selected = properties.some(
+          property => property.kind === 'position' && property.value === propIndex,
+        )
+        if (pick === selected) {
+          props.push(prop)
+        }
+        propIndex++
+      } else if (prop.is === 'named') {
+        const selected = properties.some(
+          property => property.kind === 'property' && property.value === prop.name,
+        )
+        if (pick === selected) {
+          props.push(prop)
+        }
+      } else if (prop.is === 'spread-positional') {
+        // T = { A, B, c: C, ...[D, >=2] }
+        if (pick) {
+          // Pick(T, 0, 2, 4) -> {A, D, D?}
+          // keep the selectedPositions that are greater than the last
+          // propIndex (spread-positional is always the last prop in the
+          // array). Using propAtPosition lets us take advantage of the
+          // existing array narrowing logic
+          for (const position of selectedPositions) {
+            if (position >= propIndex) {
+              const picked = type.propAtPosition(position)
+              if (picked) {
+                props.push(positionalProp(picked))
+              }
+            }
+          }
+        } else {
+          // Omit(T, 0, 2, 4, 20) -> {B, c: C, ...[D, length: 1...8]}
+          // Each selected position >= propIndex omits the corresponding array
+          // offset from the spread-positional prop. For a spread array with
+          // length L, only offsets < L can be removed, so the resulting length
+          // is L minus the number of selected offsets before L.
+          const spreadPositionIndexes = selectedPositions
+            .filter(position => position >= propIndex)
+            .map(position => position - propIndex)
+
+          const omittedBeforeLength = (length: number) =>
+            spreadPositionIndexes.filter(spreadPositionIndex => spreadPositionIndex < length).length
+
+          const {min, max} = prop.type.narrowedLength
+          const narrowedLength: Narrowed.NarrowedLength = {
+            min: min - omittedBeforeLength(min),
+            max: max === undefined ? undefined : max - omittedBeforeLength(max),
+          }
+          props.push(spreadPositionalProp(array(prop.type.of, narrowedLength)))
+        }
+      }
+    }
+
+    return new ObjectType(props)
+  }
+
+  if (type instanceof FormulaType) {
+    return new FormulaType(
+      type.returnType,
+      type.args,
+      type.genericTypes,
+      new Map(
+        Array.from(type.props.entries()).filter(([name]) =>
+          pick
+            ? properties.some(property => property.kind === 'property' && property.value === name)
+            : !properties.some(property => property.kind === 'property' && property.value === name),
+        ),
+      ),
+    )
+  }
+
+  return type
+}
+
+function unwrapOpaqueType(type: Type): Type {
+  if (type instanceof OpaqueType) {
+    return type.of
+  }
+
+  return type
+}
+
+export function partialType(type: Type): Type {
+  type = unwrapOpaqueType(type)
+
+  if (type instanceof OneOfType) {
+    return oneOf(type.of.map(partialType))
+  }
+
+  if (type instanceof ObjectType) {
+    return new ObjectType(
+      type.props.map(prop => {
+        if (prop.is === 'spread-positional') {
+          return spreadPositionalProp(
+            new ArrayType(optional(prop.type.of), prop.type.narrowedLength),
+          )
+        }
+        return {...prop, type: optional(prop.type)}
+      }),
+    )
+  }
+
+  if (type instanceof FormulaType) {
+    return new FormulaType(
+      type.returnType,
+      type.args,
+      type.genericTypes,
+      new Map(
+        Array.from(type.props.entries()).map(([name, propType]) => [name, optional(propType)]),
+      ),
+    )
+  }
+
+  return type
+}
+
+export function requiredType(type: Type, recurse = true): Type {
+  type = unwrapOpaqueType(type)
+
+  if (type instanceof OneOfType) {
+    return oneOf(
+      type.of.filter(ofType => ofType !== NullType).map(type => requiredType(type, false)),
+    )
+  }
+
+  if (!recurse) {
+    return type
+  }
+
+  if (type instanceof ObjectType) {
+    return new ObjectType(
+      type.props.map(prop => {
+        if (prop.is === 'spread-positional') {
+          return spreadPositionalProp(
+            new ArrayType(requiredType(prop.type.of, false), prop.type.narrowedLength),
+          )
+        }
+        return {...prop, type: requiredType(prop.type, false)}
+      }),
+    )
+  }
+
+  if (type instanceof FormulaType) {
+    return new FormulaType(
+      type.returnType,
+      type.args,
+      type.genericTypes,
+      new Map(
+        Array.from(type.props.entries()).map(([name, propType]) => [
+          name,
+          requiredType(propType, false),
+        ]),
+      ),
+    )
+  }
+
+  return type
+}
+
+/**
+ * If `excludedType` refers to an enum name (`.some-name`), we need to pull
+ * those out of the baseType, because they won't match against excludedType
+ * as-is. This function maps from the excludedType to the matching named enum
+ * type, if it/they exist(s). Otherwise, returns the original excludedType.
+ */
+function findEnumTypes(baseType: Type, excludedType: Type): Type {
+  if (!(excludedType instanceof AnonymousEnumType)) {
+    return excludedType
+  }
+
+  if (baseType instanceof NamedEnumDefinitionType) {
+    return baseType.lookupCase(excludedType.member.name) ?? excludedType
+  }
+
+  if (baseType instanceof NamedEnumInstanceType) {
+    return baseType.member.name === excludedType.member.name ? baseType : excludedType
+  }
+
+  if (baseType instanceof OneOfType) {
+    const matches = baseType.of.flatMap(type => {
+      const normalized = findEnumTypes(type, excludedType)
+      if (excludedType === normalized) {
+        return []
+      }
+      return [normalized]
+    })
+
+    if (matches.length) {
+      return oneOf(matches)
+    }
+  }
+
+  return excludedType
+}
+
+export function excludeType(baseType: Type, excludedType: Type): Type {
+  baseType = unwrapOpaqueType(baseType)
+  excludedType = unwrapOpaqueType(findEnumTypes(baseType, excludedType))
+
+  if (baseType instanceof NamedEnumDefinitionType) {
+    return excludeType(baseType.instanceType, excludedType)
+  }
+
+  if (baseType instanceof OneOfType) {
+    return oneOf(baseType.of.map(ofType => excludeType(ofType, excludedType)))
+  }
+
+  if (baseType.isLiteral() && excludedType.isLiteral()) {
+    return baseType.value === excludedType.value ? NeverType : baseType
+  }
+
+  if (canBeAssignedTo(baseType, excludedType)) {
+    return NeverType
+  }
+
+  return narrowTypeIsNot(baseType, excludedType)
+}
+
+function includeSingleType(baseType: Type, includedType: Type): Type {
+  includedType = unwrapOpaqueType(findEnumTypes(baseType, includedType))
+
+  if (baseType.isLiteral() && includedType.isLiteral()) {
+    return baseType.value === includedType.value ? baseType : NeverType
+  }
+
+  return narrowTypeIs(baseType, includedType)
+}
+
+export function includeType(baseType: Type, includedTypes: Type[]): Type {
+  baseType = unwrapOpaqueType(baseType)
+  includedTypes = includedTypes.map(unwrapOpaqueType)
+
+  if (baseType instanceof NamedEnumDefinitionType) {
+    return includeType(baseType.instanceType, includedTypes)
+  }
+
+  if (baseType instanceof OneOfType) {
+    const included = oneOf(baseType.of.map(ofType => includeType(ofType, includedTypes)))
+    if (included === NeverType && includedTypes.some(type => type instanceof ObjectType)) {
+      return baseType
+    }
+    return included
+  }
+
+  return oneOf(includedTypes.map(includedType => includeSingleType(baseType, includedType)))
+}
 /**
  * This function works *opposite* to how you might think.
  *
