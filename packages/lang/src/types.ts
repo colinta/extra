@@ -305,8 +305,157 @@ export function lazy(returnType: Type) {
   return new FormulaType(returnType, [], [])
 }
 
-export function combined(_types: Type[]): Type {
-  throw new Error('Not implemented yet')
+export function combined(types: Type[]): Type {
+  if (types.length === 0) {
+    return NeverType
+  }
+
+  return types.reduce((lhs, rhs) => combineTypes(lhs, rhs))
+}
+
+function combineTypes(lhs: Type, rhs: Type): Type {
+  if (lhs === rhs) {
+    return lhs
+  }
+
+  if (lhs === NeverType || rhs === NeverType) {
+    return NeverType
+  }
+
+  if (lhs === AnyType) {
+    return rhs
+  }
+
+  if (rhs === AnyType) {
+    return lhs
+  }
+
+  if (lhs instanceof OpaqueType) {
+    return combineTypes(lhs.of, rhs)
+  }
+
+  if (rhs instanceof OpaqueType) {
+    return combineTypes(lhs, rhs.of)
+  }
+
+  if (lhs instanceof OneOfType) {
+    return oneOf(
+      lhs.of.flatMap(ofType => {
+        const combined = combineTypes(ofType, rhs)
+        return combined === NeverType ? [] : [combined]
+      }),
+    )
+  }
+
+  if (rhs instanceof OneOfType) {
+    return oneOf(
+      rhs.of.flatMap(ofType => {
+        const combined = combineTypes(lhs, ofType)
+        return combined === NeverType ? [] : [combined]
+      }),
+    )
+  }
+
+  if (lhs instanceof ObjectType && rhs instanceof ObjectType) {
+    return combineObjectTypes(lhs, rhs)
+  }
+
+  if (canBeAssignedTo(lhs, rhs)) {
+    return lhs
+  }
+
+  if (canBeAssignedTo(rhs, lhs)) {
+    return rhs
+  }
+
+  return narrowTypeIs(lhs, rhs)
+}
+
+function combinePropertyTypes(lhs: Type, rhs: Type): Type {
+  if (canBeAssignedTo(lhs, rhs)) {
+    return lhs
+  }
+
+  if (canBeAssignedTo(rhs, lhs)) {
+    return rhs
+  }
+
+  return narrowTypeIs(lhs, rhs)
+}
+
+function combineObjectTypes(lhs: ObjectType, rhs: ObjectType): Type {
+  const lhsPositionals = lhs.props.filter(prop => prop.is === 'positional') as PositionalProp[]
+  const rhsPositionals = rhs.props.filter(prop => prop.is === 'positional') as PositionalProp[]
+  const lhsSpread = lhs.props.find(prop => prop.is === 'spread-positional') as
+    | SpreadPositionalProp
+    | undefined
+  const rhsSpread = rhs.props.find(prop => prop.is === 'spread-positional') as
+    | SpreadPositionalProp
+    | undefined
+
+  const props: ObjectProp[] = []
+  const positionalCount = Math.max(lhsPositionals.length, rhsPositionals.length)
+  for (let index = 0; index < positionalCount; index++) {
+    const lhsProp = lhsPositionals[index]
+    const rhsProp = rhsPositionals[index]
+    if (lhsProp && rhsProp) {
+      const type = combinePropertyTypes(lhsProp.type, rhsProp.type)
+      if (type === NeverType) {
+        return NeverType
+      }
+      props.push(positionalProp(type))
+    } else if (lhsProp) {
+      props.push(lhsProp)
+    } else if (rhsProp) {
+      props.push(rhsProp)
+    }
+  }
+
+  if (lhsSpread && rhsSpread) {
+    const type = combinePropertyTypes(lhsSpread.type.of, rhsSpread.type.of)
+    if (type === NeverType) {
+      return NeverType
+    }
+    const length = Narrowed.compatibleWithBothLengths(
+      lhsSpread.type.narrowedLength,
+      rhsSpread.type.narrowedLength,
+    )
+    if (!length) {
+      return NeverType
+    }
+    props.push(spreadPositionalProp(array(type, length)))
+  } else if (lhsSpread) {
+    props.push(lhsSpread)
+  } else if (rhsSpread) {
+    props.push(rhsSpread)
+  }
+
+  const seenNames = new Set<string>()
+  for (const prop of lhs.props) {
+    if (prop.is !== 'named') {
+      continue
+    }
+
+    seenNames.add(prop.name)
+    const rhsProp = rhs.namedTypes.get(prop.name)
+    if (rhsProp) {
+      const type = combinePropertyTypes(prop.type, rhsProp)
+      if (type === NeverType) {
+        return NeverType
+      }
+      props.push(namedProp(prop.name, type))
+    } else {
+      props.push(prop)
+    }
+  }
+
+  for (const prop of rhs.props) {
+    if (prop.is === 'named' && !seenNames.has(prop.name)) {
+      props.push(prop)
+    }
+  }
+
+  return new ObjectType(props)
 }
 
 export function namedFormula(

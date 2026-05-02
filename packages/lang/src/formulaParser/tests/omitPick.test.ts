@@ -19,15 +19,15 @@ beforeEach(() => {
     ],
   })
 
+  const user = Types.object([
+    Types.namedProp('name', Types.StringType),
+    Types.namedProp('age', Types.IntType),
+    Types.positionalProp(Types.BooleanType),
+  ])
+
   runtimeTypes = {
-    User: [
-      Types.object([
-        Types.namedProp('name', Types.StringType),
-        Types.namedProp('age', Types.IntType),
-        Types.positionalProp(Types.BooleanType),
-      ]),
-      Values.booleanValue(true),
-    ],
+    User: [user, Values.booleanValue(true)],
+    Users: [new Types.ArrayType(user), Values.booleanValue(true)],
     Foo: [
       Types.namedFormula(
         'Foo',
@@ -146,11 +146,7 @@ describe('omit/pick type functions', () => {
       "Omit(Thing | Other, 'name')",
       '{age: Int} | {role: String}',
     ]),
-    c([
-      'Pick(A, 0, 1, 2)',
-      'Pick(A, 0, 1, 2)',
-      '{Int, String, String?}',
-    ]),
+    c(['Pick(A, 0, 1, 2)', 'Pick(A, 0, 1, 2)', '{Int, String, String?}']),
     c([
       'Omit(B, 0, 2, 4, 20)',
       'Omit(B, 0, 2, 4, 20)',
@@ -161,15 +157,13 @@ describe('omit/pick type functions', () => {
       'Omit(B, 0, 2, 4, 20)',
       '{Boolean, c: Float, ...[String, length: 1...8]}',
     ]),
+    c(['Pick(OpaqueA, 0, 1)', 'Pick(OpaqueA, 0, 1)', '{Int, String}']),
+    c(["Omit(User, 'age', 'age', 0, 0)", "Omit(User, 'age', 0)", '{name: String}']),
+    c(["Omit(Element(Users), 'name')", "Omit(Element(Users), 'name')", '{age: Int, Boolean}']),
     c([
-      'Pick(OpaqueA, 0, 1)',
-      'Pick(OpaqueA, 0, 1)',
-      '{Int, String}',
-    ]),
-    c([
-      "Omit(User, 'age', 'age', 0, 0)",
-      "Omit(User, 'age', 0)",
-      '{name: String}',
+      "Omit(Element(Users) & {role: String}, 'name')",
+      "Omit(Element(Users) & {role: String}, 'name')",
+      '{Boolean, age: Int, role: String}',
     ]),
   ).run(([formula, expectedCode, expectedType], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
