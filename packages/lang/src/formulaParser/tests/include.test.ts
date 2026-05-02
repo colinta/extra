@@ -37,6 +37,10 @@ beforeEach(() => {
       Values.booleanValue(true),
     ],
     B: [Types.oneOf([Types.literal('a'), Types.int({min: 1})]), Values.booleanValue(true)],
+    OpaqueB: [
+      Types.opaque('OpaqueB', Types.oneOf([Types.literal('a'), Types.int({min: 1})])),
+      Values.booleanValue(true),
+    ],
     Status: [status, Values.booleanValue(true)],
   }
   typeRuntime = mockTypeRuntime(runtimeTypes)
@@ -46,6 +50,7 @@ describe('include/extract type function', () => {
   cases<[string, string, string]>(
     c(["Include(C, 'b', Int(>=0))", "Include(C, 'b', Int(>=0))", '"b" | Int(>=0)']),
     c(["Include(B, 'b', Int(>=0))", "Include(B, 'b', Int(>=0))", 'Int(>=1)']),
+    c(["Include(OpaqueB, 'b', Int(>=0))", "Include(OpaqueB, 'b', Int(>=0))", 'Int(>=1)']),
     c([
       'Include(Status, .loading, .notAsked)',
       'Include(Status, .loading, .notAsked)',

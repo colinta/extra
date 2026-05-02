@@ -1638,6 +1638,10 @@ abstract class PropertySelectionFunctionExpression extends TypeExpression {
   }
 
   selectTypeProps(type: Types.Type, properties: PropertySelection[], pick: boolean): Types.Type {
+    if (type instanceof Types.OpaqueType) {
+      return this.selectTypeProps(type.of, properties, pick)
+    }
+
     if (type instanceof Types.OneOfType) {
       return Types.oneOf(type.of.map(ofType => this.selectTypeProps(ofType, properties, pick)))
     }
@@ -1780,6 +1784,14 @@ export class PickTypeExpression extends PropertySelectionFunctionExpression {
   }
 }
 
+function unwrapOpaqueType(type: Types.Type): Types.Type {
+  if (type instanceof Types.OpaqueType) {
+    return type.of
+  }
+
+  return type
+}
+
 abstract class RequirementTypeFunctionExpression extends TypeExpression {
   abstract name: string
 
@@ -1809,6 +1821,8 @@ abstract class RequirementTypeFunctionExpression extends TypeExpression {
 }
 
 function partialType(type: Types.Type): Types.Type {
+  type = unwrapOpaqueType(type)
+
   if (type instanceof Types.OneOfType) {
     return Types.oneOf(type.of.map(partialType))
   }
@@ -1844,6 +1858,8 @@ function partialType(type: Types.Type): Types.Type {
 }
 
 function requiredType(type: Types.Type, recurse = true): Types.Type {
+  type = unwrapOpaqueType(type)
+
   if (type instanceof Types.OneOfType) {
     return Types.oneOf(
       type.of.filter(ofType => ofType !== Types.NullType).map(type => requiredType(type, false)),
@@ -1993,7 +2009,8 @@ export class ExcludeTypeExpression extends TypeExpression {
   }
 
   static excludeType(baseType: Types.Type, excludedType: Types.Type): Types.Type {
-    excludedType = findEnumTypes(baseType, excludedType)
+    baseType = unwrapOpaqueType(baseType)
+    excludedType = unwrapOpaqueType(findEnumTypes(baseType, excludedType))
 
     if (baseType instanceof Types.NamedEnumDefinitionType) {
       return ExcludeTypeExpression.excludeType(baseType.instanceType, excludedType)
@@ -2058,6 +2075,9 @@ export class IncludeTypeExpression extends TypeExpression {
   }
 
   static includeType(baseType: Types.Type, includedTypes: Types.Type[]): Types.Type {
+    baseType = unwrapOpaqueType(baseType)
+    includedTypes = includedTypes.map(unwrapOpaqueType)
+
     if (baseType instanceof Types.NamedEnumDefinitionType) {
       return IncludeTypeExpression.includeType(baseType.instanceType, includedTypes)
     }
@@ -2083,7 +2103,7 @@ export class IncludeTypeExpression extends TypeExpression {
   }
 
   static includeSingleType(baseType: Types.Type, includedType: Types.Type): Types.Type {
-    includedType = findEnumTypes(baseType, includedType)
+    includedType = unwrapOpaqueType(findEnumTypes(baseType, includedType))
 
     if (baseType.isLiteral() && includedType.isLiteral()) {
       return baseType.value === includedType.value ? baseType : Types.NeverType
@@ -2137,6 +2157,8 @@ export class ReturnTypeExpression extends FormulaExtractionTypeExpression {
   }
 
   static formulaReturnType(expr: Expression, type: Types.Type): GetTypeResult {
+    type = unwrapOpaqueType(type)
+
     if (type instanceof Types.OneOfType) {
       return mapAll(
         type.of.map(ofType => ReturnTypeExpression.formulaReturnType(expr, ofType)),
@@ -2167,6 +2189,8 @@ export class ParamsTypeExpression extends FormulaExtractionTypeExpression {
   }
 
   static formulaParamsType(expr: Expression, type: Types.Type): GetTypeResult {
+    type = unwrapOpaqueType(type)
+
     if (type instanceof Types.OneOfType) {
       return mapAll(
         type.of.map(ofType => ParamsTypeExpression.formulaParamsType(expr, ofType)),

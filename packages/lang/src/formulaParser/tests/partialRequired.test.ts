@@ -26,6 +26,17 @@ beforeEach(() => {
       ]),
       Values.booleanValue(true),
     ],
+    OpaqueUser: [
+      Types.opaque(
+        'OpaqueUser',
+        Types.object([
+          Types.namedProp('name', Types.StringType),
+          Types.namedProp('age', Types.IntType),
+          Types.positionalProp(Types.BooleanType),
+        ]),
+      ),
+      Values.booleanValue(true),
+    ],
     Foo: [
       Types.namedFormula(
         'Foo',
@@ -59,6 +70,7 @@ beforeEach(() => {
 describe('partial/required type functions', () => {
   cases<[string, string, string]>(
     c(['Partial(User)', 'Partial(User)', '{name: String?, age: Int?, Boolean?}']),
+    c(['Partial(OpaqueUser)', 'Partial(OpaqueUser)', '{name: String?, age: Int?, Boolean?}']),
     c(['Required(OptionalUser)', 'Required(OptionalUser)', '{name: String, age: Int, Boolean}']),
     c(['Required(String?)', 'Required(String?)', 'String']),
     c(['Partial(Foo)', 'Partial(Foo)', 'fn{(# input: Int): String, a: Int?, b: String?}']),

@@ -74,6 +74,16 @@ beforeEach(() => {
       ]),
       Values.booleanValue(true),
     ],
+    OpaqueA: [
+      Types.opaque(
+        'OpaqueA',
+        Types.object([
+          Types.positionalProp(Types.IntType),
+          Types.spreadPositionalProp(Types.array(Types.StringType, {min: 1})),
+        ]),
+      ),
+      Values.booleanValue(true),
+    ],
     B: [
       Types.object([
         Types.positionalProp(Types.IntType),
@@ -150,6 +160,11 @@ describe('omit/pick type functions', () => {
       'Omit(B, 4, 2, 4, 20, 0)',
       'Omit(B, 0, 2, 4, 20)',
       '{Boolean, c: Float, ...[String, length: 1...8]}',
+    ]),
+    c([
+      'Pick(OpaqueA, 0, 1)',
+      'Pick(OpaqueA, 0, 1)',
+      '{Int, String}',
     ]),
     c([
       "Omit(User, 'age', 'age', 0, 0)",

@@ -30,6 +30,10 @@ beforeEach(() => {
       Types.oneOf([Types.literal('a'), Types.literal('b'), Types.IntType]),
       Values.booleanValue(true),
     ],
+    OpaqueB: [
+      Types.opaque('OpaqueB', Types.oneOf([Types.literal('a'), Types.literal('b'), Types.IntType])),
+      Values.booleanValue(true),
+    ],
     Status: [status, Values.booleanValue(true)],
   }
   typeRuntime = mockTypeRuntime(runtimeTypes)
@@ -38,6 +42,7 @@ beforeEach(() => {
 describe('exclude type function', () => {
   cases<[string, string, string]>(
     c(["Exclude(B, 'b')", "Exclude(B, 'b')", '"a" | Int']),
+    c(["Exclude(OpaqueB, 'b')", "Exclude(OpaqueB, 'b')", '"a" | Int']),
     c(["Exclude(B, 'a', 'b')", "Exclude(B, 'a', 'b')", 'Int']),
     c(["Exclude(B, 'a' | 'b')", "Exclude(B, 'a' | 'b')", 'Int']),
     c(['Exclude(B, Int)', 'Exclude(B, Int)', '"a" | "b"']),
