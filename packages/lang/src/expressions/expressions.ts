@@ -2093,6 +2093,112 @@ export class IncludeTypeExpression extends TypeExpression {
   }
 }
 
+abstract class FormulaExtractionTypeExpression extends TypeExpression {
+  abstract name: string
+
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly of: Expression,
+  ) {
+    super(range, precedingComments)
+  }
+
+  dependencies(parentScopes: Scope[]) {
+    return this.of.dependencies(parentScopes)
+  }
+
+  childExpressions() {
+    return [this.of]
+  }
+
+  toLisp() {
+    return `(${this.name} ${this.of.toLisp()})`
+  }
+
+  toCode() {
+    return `${this.name}(${this.of.toCode()})`
+  }
+}
+
+export class ReturnTypeExpression extends FormulaExtractionTypeExpression {
+  name = 'Return'
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    const result = this.of.getAsTypeExpression(runtime)
+    if (result.type === 'err') {
+      return result
+    }
+    return ReturnTypeExpression.formulaReturnType(this, result.value)
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.ReturnType(toSource(this), type))
+  }
+
+  static formulaReturnType(expr: Expression, type: Types.Type): GetTypeResult {
+    if (type instanceof Types.OneOfType) {
+      return mapAll(
+        type.of.map(ofType => ReturnTypeExpression.formulaReturnType(expr, ofType)),
+      ).map(Types.oneOf)
+    }
+
+    if (type instanceof Types.FormulaType) {
+      return ok(type.returnType)
+    }
+
+    return err(new RuntimeError(expr, `Return requires a function type, got ${type.toCode()}`))
+  }
+}
+
+export class ParamsTypeExpression extends FormulaExtractionTypeExpression {
+  name = 'Params'
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    const result = this.of.getAsTypeExpression(runtime)
+    if (result.type === 'err') {
+      return result
+    }
+    return ParamsTypeExpression.formulaParamsType(this, result.value)
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.ParamsType(toSource(this), type))
+  }
+
+  static formulaParamsType(expr: Expression, type: Types.Type): GetTypeResult {
+    if (type instanceof Types.OneOfType) {
+      return mapAll(
+        type.of.map(ofType => ParamsTypeExpression.formulaParamsType(expr, ofType)),
+      ).map(Types.oneOf)
+    }
+
+    if (type instanceof Types.FormulaType) {
+      return ok(
+        Types.object(
+          type.args.map(arg => {
+            if (arg.is === 'positional-argument') {
+              return Types.positionalProp(arg.type)
+            }
+
+            if (arg.is === 'spread-positional-argument') {
+              return Types.spreadPositionalProp(arg.type)
+            }
+
+            if (arg.is === 'named-argument' || arg.is === 'repeated-named-argument') {
+              return Types.namedProp(arg.alias, arg.type)
+            }
+
+            return Types.namedProp(arg.name, arg.type)
+          }),
+        ),
+      )
+    }
+
+    return err(new RuntimeError(expr, `Params requires a function type, got ${type.toCode()}`))
+  }
+}
+
 /**
  * While scanning a type, we might come across a module or namespace "type access"
  * operation, ie

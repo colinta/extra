@@ -28,6 +28,9 @@ import {
   EXCLUDE_KEYWORD,
   INCLUDE_KEYWORD,
   EXTRACT_KEYWORD,
+  RETURN_KEYWORD,
+  RETURN_TYPE_KEYWORD,
+  PARAMS_KEYWORD,
   TYPE_START,
   BLOCK_OPEN,
   BLOCK_CLOSE,
@@ -549,6 +552,26 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
             scanner.flushComments(),
             ofType,
           )
+    } else if (typeName.name === RETURN_KEYWORD || typeName.name === RETURN_TYPE_KEYWORD) {
+      const ofType = scanType(scanner, moduleOrArgument, parseNext)
+      scanner.scanAllWhitespace()
+      scanner.expectString(ARGS_CLOSE)
+
+      return new Expressions.ReturnTypeExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        ofType,
+      )
+    } else if (typeName.name === PARAMS_KEYWORD) {
+      const ofType = scanType(scanner, moduleOrArgument, parseNext)
+      scanner.scanAllWhitespace()
+      scanner.expectString(ARGS_CLOSE)
+
+      return new Expressions.ParamsTypeExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        ofType,
+      )
     } else if (typeName.name === EXCLUDE_KEYWORD) {
       const ofType = scanType(scanner, moduleOrArgument, parseNext)
       scanner.scanAllWhitespace()

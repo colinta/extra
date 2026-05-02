@@ -272,6 +272,24 @@ export class IncludeType extends TypeNode {
   }
 }
 
+export class ReturnType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
+export class ParamsType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
 export class StringTemplate extends Node {
   constructor(
     readonly source: Source,
