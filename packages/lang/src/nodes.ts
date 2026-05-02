@@ -290,6 +290,15 @@ export class ParamsType extends TypeNode {
   }
 }
 
+export class ElementType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
 export class StringTemplate extends Node {
   constructor(
     readonly source: Source,

@@ -79,6 +79,7 @@ export const EXTRACT_KEYWORD = 'Extract'
 export const RETURN_KEYWORD = 'Return'
 export const RETURN_TYPE_KEYWORD = 'ReturnType'
 export const PARAMS_KEYWORD = 'Params'
+export const ELEMENT_KEYWORD = 'Element'
 
 export const MACRO_START = '#'
 export const MSG_TYPE = '&'

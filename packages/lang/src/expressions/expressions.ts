@@ -2223,6 +2223,46 @@ export class ParamsTypeExpression extends FormulaExtractionTypeExpression {
   }
 }
 
+export class ElementTypeExpression extends FormulaExtractionTypeExpression {
+  name = 'Element'
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    const result = this.of.getAsTypeExpression(runtime)
+    if (result.type === 'err') {
+      return result
+    }
+    return ElementTypeExpression.elementType(this, result.value)
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(
+      type => new Nodes.ElementType(toSource(this), type),
+    )
+  }
+
+  static elementType(expr: Expression, type: Types.Type): GetTypeResult {
+    type = unwrapOpaqueType(type)
+
+    if (type instanceof Types.OneOfType) {
+      return mapAll(type.of.map(ofType => ElementTypeExpression.elementType(expr, ofType))).map(
+        Types.oneOf,
+      )
+    }
+
+    if (
+      type instanceof Types.ArrayType ||
+      type instanceof Types.DictType ||
+      type instanceof Types.SetType
+    ) {
+      return ok(type.of)
+    }
+
+    return err(
+      new RuntimeError(expr, `Element requires an array, dict, or set type, got ${type.toCode()}`),
+    )
+  }
+}
+
 /**
  * While scanning a type, we might come across a module or namespace "type access"
  * operation, ie

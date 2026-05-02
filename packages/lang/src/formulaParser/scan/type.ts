@@ -31,6 +31,7 @@ import {
   RETURN_KEYWORD,
   RETURN_TYPE_KEYWORD,
   PARAMS_KEYWORD,
+  ELEMENT_KEYWORD,
   TYPE_START,
   BLOCK_OPEN,
   BLOCK_CLOSE,
@@ -568,6 +569,16 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
       scanner.expectString(ARGS_CLOSE)
 
       return new Expressions.ParamsTypeExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        ofType,
+      )
+    } else if (typeName.name === ELEMENT_KEYWORD) {
+      const ofType = scanType(scanner, moduleOrArgument, parseNext)
+      scanner.scanAllWhitespace()
+      scanner.expectString(ARGS_CLOSE)
+
+      return new Expressions.ElementTypeExpression(
         [arg0, scanner.charIndex],
         scanner.flushComments(),
         ofType,
