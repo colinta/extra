@@ -41,14 +41,14 @@ describe('Property Access Operator', () => {
   describe('getType', () => {
     cases<[string, [string, Types.Type], Types.Type]>(
       //
-      c([`a.b`, ['a', Types.object([Types.namedProp('b', Types.string())])], Types.string()]),
+      c(['a.b', ['a', Types.object([Types.namedProp('b', Types.string())])], Types.string()]),
       c([
-        `a?.b`,
+        'a?.b',
         ['a', Types.optional(Types.object([Types.namedProp('b', Types.string())]))],
         Types.optional(Types.string()),
       ]),
       c([
-        `a?.b.c`,
+        'a?.b.c',
         [
           'a',
           Types.optional(
@@ -58,7 +58,61 @@ describe('Property Access Operator', () => {
         Types.optional(Types.int()),
       ]),
       c([
-        `a?.b?.c`,
+        'a[2]',
+        [
+          'a',
+          // a: {Int, ...[String]}
+          Types.object([
+            Types.positionalProp(Types.int()),
+            Types.spreadPositionalProp(Types.array(Types.string())),
+          ]),
+        ],
+        Types.optional(Types.string()),
+      ]),
+      c([
+        'a.2',
+        [
+          'a',
+          // a: {Int, ...[String]}
+          Types.object([
+            Types.positionalProp(Types.int()),
+            Types.spreadPositionalProp(Types.array(Types.string())),
+          ]),
+        ],
+        Types.optional(Types.string()),
+      ]),
+      c([
+        'a.0',
+        [
+          'a',
+          // a: {Int, ...[String]}
+          Types.object([
+            Types.positionalProp(Types.int()),
+            Types.spreadPositionalProp(Types.array(Types.string())),
+          ]),
+        ],
+        Types.int(),
+      ]),
+      c([
+        'a.0',
+        [
+          'a',
+          // a: {...[Int, >=1]}
+          Types.object([Types.spreadPositionalProp(Types.array(Types.int(), {min: 1}))]),
+        ],
+        Types.int(),
+      ]),
+      c([
+        'a.1',
+        [
+          'a',
+          // a: {...[Int, >=1]}
+          Types.object([Types.spreadPositionalProp(Types.array(Types.int(), {min: 1}))]),
+        ],
+        Types.optional(Types.int()),
+      ]),
+      c([
+        'a?.b?.c',
         [
           'a',
           Types.optional(

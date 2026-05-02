@@ -1875,7 +1875,7 @@ export class MatchEnumExpression extends MatchExpression {
                   remaining.push(arg)
                 }
                 argIndex++
-              } else if (!this.names.has(arg.name)) {
+              } else if (arg.is === 'named' && !this.names.has(arg.name)) {
                 remaining.push(arg)
               }
             }
@@ -1945,7 +1945,7 @@ export class MatchEnumExpression extends MatchExpression {
                   remaining.push(arg)
                 }
                 argIndex++
-              } else if (!this.names.has(arg.name)) {
+              } else if (arg.is === 'named' && !this.names.has(arg.name)) {
                 remaining.push(arg)
               }
             }
@@ -2018,7 +2018,7 @@ export class MatchEnumExpression extends MatchExpression {
                     remaining.push(prop)
                   }
                   remainingIndex++
-                } else if (!this.names.has(prop.name)) {
+                } else if (prop.is === 'named' && !this.names.has(prop.name)) {
                   remaining.push(prop)
                 }
               }
@@ -2271,10 +2271,10 @@ export class MatchObjectExpression extends MatchExpression {
         let propType: Types.Type | undefined
         if (matchExpr instanceof MatchNamedArgument) {
           propName = matchExpr.name
-          propType = subjectType.namedProp(propName)
+          propType = subjectType.propNamed(propName)
         } else {
           propName = matchExpr.index
-          propType = subjectType.positionalProp(propName)
+          propType = subjectType.propAtPosition(propName)
         }
 
         if (propType) {

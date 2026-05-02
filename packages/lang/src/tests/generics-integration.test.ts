@@ -141,8 +141,8 @@ describe('generics integration', () => {
       const result = getType(`pair(a: 1, b: "hello")`)
       expect(result).toBeInstanceOf(Types.ObjectType)
       const obj = result as Types.ObjectType
-      expect(obj.namedProp('first')).toEqual(Types.literal(1))
-      expect(obj.namedProp('second')).toEqual(Types.literal('hello'))
+      expect(obj.propNamed('first')).toEqual(Types.literal(1))
+      expect(obj.propNamed('second')).toEqual(Types.literal('hello'))
     })
   })
 
@@ -223,8 +223,8 @@ describe('generics integration', () => {
       const result = getType(`convert(num: n, fmt: s)`)
       expect(result).toBeInstanceOf(Types.ObjectType)
       const obj = result as Types.ObjectType
-      expect(obj.namedProp('value')).toBe(Types.int())
-      expect(obj.namedProp('label')).toBe(Types.string())
+      expect(obj.propNamed('value')).toBe(Types.int())
+      expect(obj.propNamed('label')).toBe(Types.string())
     })
 
     test('bound with literal that widens within bound', () => {

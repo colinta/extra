@@ -68,7 +68,12 @@ export function scanNamedEnum(
       let args: [Expressions.Reference | undefined, Expressions.Expression][]
       if (scanner.scanIfString(ARGS_OPEN)) {
         // scans `Type` and `named: Type` until it reaches ')'
-        args = scanInsideObjectType(scanner, 'type', ARGS_CLOSE, parseNext)
+        args = scanInsideObjectType(scanner, 'type', ARGS_CLOSE, parseNext).map(arg => {
+          if (arg.isSpread) {
+            throw new ParseError(scanner, 'Enum case arguments do not support object type spread')
+          }
+          return [arg.nameRef, arg.value]
+        })
       } else {
         args = []
       }

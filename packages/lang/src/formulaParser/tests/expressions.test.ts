@@ -424,8 +424,13 @@ describe('eval', () => {
         ]),
       ),
     ]),
-
     c([Values.array([Values.string('bazz')]), Values.int(0), 'lhs[rhs]', Values.string('bazz')]),
+    c([
+      Values.array([Values.string('bazz')]),
+      Values.int(1),
+      '{rhs, ...lhs}[1]',
+      Values.string('bazz'),
+    ]),
     c([
       Values.array([Values.string('bazz')]),
       Values.array([Values.string('barr')]),

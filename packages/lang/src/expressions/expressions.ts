@@ -2178,11 +2178,17 @@ export class CombineTypeExpression extends TypeExpression {
   }
 }
 
+export type ObjectTypeEntry = {
+  nameRef: Reference | undefined
+  value: Expression
+  isSpread: boolean
+}
+
 export class ObjectTypeExpression extends TypeExpression {
   constructor(
     range: Range,
     precedingComments: Comment[],
-    readonly values: [Reference | undefined, Expression][],
+    readonly values: ObjectTypeEntry[],
   ) {
     super(range, precedingComments)
   }
@@ -2192,12 +2198,15 @@ export class ObjectTypeExpression extends TypeExpression {
   }
 
   childExpressions() {
-    return this.values.map(([_, value]) => value)
+    return this.values.map(({value}) => value)
   }
 
   toLisp() {
     const code = this.values
-      .map(([nameRef, it]) => {
+      .map(({nameRef, value: it, isSpread}) => {
+        if (isSpread) {
+          return `(... ${it.toLisp()})`
+        }
         if (nameRef === undefined) {
           return it.toLisp()
         }
@@ -2209,12 +2218,16 @@ export class ObjectTypeExpression extends TypeExpression {
   }
 
   toCode() {
-    const code = this.values.map(([nameRef, it]) => {
+    const code = this.values.map(({nameRef, value: it, isSpread}) => {
       // if we want to support `{ fn foo() => Value }`
       // (currently this is `{ foo: fn() => Value }`)
       // if (it instanceof NamedFormulaTypeExpression) {
       //   return it.toCode()
       // }
+
+      if (isSpread) {
+        return `${SPREAD_OPERATOR}${it.toCode()}`
+      }
 
       if (nameRef === undefined) {
         return it.toCode()
@@ -2228,17 +2241,26 @@ export class ObjectTypeExpression extends TypeExpression {
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
     return mapAll(
-      this.values.map(([nameRef, expr]) =>
+      this.values.map(({nameRef, value: expr, isSpread}) =>
         expr
           .getAsTypeExpression(runtime)
-          .map(type => [nameRef, type] as [Reference | undefined, Types.Type]),
+          .map(type => [nameRef, type, isSpread] as [Reference | undefined, Types.Type, boolean]),
       ),
     ).map(
       types =>
         new Types.ObjectType(
-          types.map(([nameRef, type]) =>
-            nameRef ? Types.namedProp(nameRef.name, type) : Types.positionalProp(type),
-          ),
+          types.map(([nameRef, type, isSpread]) => {
+            if (isSpread) {
+              if (!(type instanceof Types.ArrayType)) {
+                throw new RuntimeError(
+                  this,
+                  `Object spread positional type must be an Array, found ${type}`,
+                )
+              }
+              return Types.spreadPositionalProp(type)
+            }
+            return nameRef ? Types.namedProp(nameRef.name, type) : Types.positionalProp(type)
+          }),
         ),
     )
   }
@@ -2700,20 +2722,24 @@ export abstract class SpreadArgument extends Argument {
  * A spread argument passed to an object
  */
 export class SpreadObjectArgument extends SpreadArgument {
-  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ObjectType> {
+  getType(runtime: TypeRuntime): GetRuntimeResult<Types.ObjectType | Types.ArrayType> {
     return getChildType(this, this.value, runtime).map(type => {
-      if (!(type instanceof Types.ObjectType)) {
-        return err(new RuntimeError(this, 'Expected an Object, found ' + type.constructor.name))
+      if (!(type instanceof Types.ObjectType) && !(type instanceof Types.ArrayType)) {
+        return err(
+          new RuntimeError(this, 'Expected an Object or Array, found ' + type.constructor.name),
+        )
       }
 
       return type
     })
   }
 
-  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ObjectValue> {
+  eval(runtime: ValueRuntime): GetRuntimeResult<Values.ObjectValue | Values.ArrayValue> {
     return this.value.eval(runtime).map(value => {
-      if (!(value instanceof Values.ObjectValue)) {
-        return err(new RuntimeError(this, 'Expected an Object, found ' + value.constructor.name))
+      if (!(value instanceof Values.ObjectValue) && !(value instanceof Values.ArrayValue)) {
+        return err(
+          new RuntimeError(this, 'Expected an Object or Array, found ' + value.constructor.name),
+        )
       }
 
       return value
@@ -3031,7 +3057,9 @@ export class ObjectExpression extends Expression {
     return mapAll(
       this.values.map((arg): GetRuntimeResult<Types.ObjectProp[]> => {
         if (arg instanceof SpreadObjectArgument) {
-          return getChildType(this, arg, runtime).map(type => type.props)
+          return getChildType(this, arg, runtime).map(type =>
+            type instanceof Types.ArrayType ? [Types.spreadPositionalProp(type)] : type.props,
+          )
         }
 
         if (arg instanceof DictEntry) {
@@ -3071,7 +3099,13 @@ export class ObjectExpression extends Expression {
     return mapAll(
       this.values.map(arg => {
         if (arg instanceof SpreadObjectArgument) {
-          return arg.eval(runtime).map(value => [value.tupleValues, value.namedValues] as const)
+          return arg
+            .eval(runtime)
+            .map(value =>
+              value instanceof Values.ArrayValue
+                ? ([value.values, new Map()] as const)
+                : ([value.tupleValues, value.namedValues] as const),
+            )
         }
 
         if (arg instanceof DictEntry) {

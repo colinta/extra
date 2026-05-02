@@ -112,6 +112,10 @@ export function positionalProp(type: Type): PositionalProp {
   return {is: 'positional', type}
 }
 
+export function spreadPositionalProp(type: ArrayType): SpreadPositionalProp {
+  return {is: 'spread-positional', type}
+}
+
 export function namedProp(name: string, type: Type): NamedProp {
   return {is: 'named', name, type}
 }
@@ -2988,8 +2992,9 @@ export const LiteralFalseType = new (class LiteralFalseType extends LiteralBoole
 })()
 
 export type PositionalProp = {is: 'positional'; name?: undefined; type: Type}
+export type SpreadPositionalProp = {is: 'spread-positional'; name?: undefined; type: ArrayType}
 export type NamedProp = {is: 'named'; name: string; type: Type}
-export type ObjectProp = PositionalProp | NamedProp
+export type ObjectProp = PositionalProp | NamedProp | SpreadPositionalProp
 
 export class NamespaceType extends Type {
   readonly is = 'namespace'
@@ -3405,26 +3410,63 @@ export class ObjectType extends Type {
 
   readonly namedTypes: Map<string, Type> = new Map()
   readonly positionalTypes: Map<number, Type> = new Map()
+  readonly spreadPositionalType: ArrayType | undefined = undefined
+  readonly spreadPositionalStart: number | undefined = undefined
 
   constructor(readonly props: ObjectProp[]) {
     super()
 
     let propIndex = 0
+    let foundSpread = false
     for (const prop of props) {
       if (prop.is === 'named') {
         this.namedTypes.set(prop.name, prop.type)
+      } else if (prop.is === 'spread-positional') {
+        if (foundSpread) {
+          throw new Error('ObjectType can only have one positional spread property')
+        }
+        foundSpread = true
+        this.spreadPositionalType = prop.type
+        this.spreadPositionalStart = propIndex
       } else {
+        if (foundSpread) {
+          throw new Error(
+            'ObjectType positional spread property must be the last positional property',
+          )
+        }
         this.positionalTypes.set(propIndex++, prop.type)
       }
     }
   }
 
-  namedProp(name: string) {
+  propNamed(name: string) {
     return this.namedTypes.get(name)
   }
 
-  positionalProp(index: number) {
-    return this.positionalTypes.get(index)
+  propAtPosition(index: number) {
+    const fixed = this.positionalTypes.get(index)
+    if (fixed) {
+      return fixed
+    }
+
+    if (this.spreadPositionalStart === undefined || index < this.spreadPositionalStart) {
+      return undefined
+    }
+
+    const offset = index - this.spreadPositionalStart
+    const spreadType = this.spreadPositionalType
+    if (!spreadType) {
+      return undefined
+    }
+
+    if (spreadType.narrowedLength.max !== undefined && offset >= spreadType.narrowedLength.max) {
+      return undefined
+    }
+    if (offset < spreadType.narrowedLength.min) {
+      return spreadType.of
+    }
+
+    return optional(spreadType.of)
   }
 
   isObject(): this is ObjectType {
@@ -3434,10 +3476,14 @@ export class ObjectType extends Type {
   fromTypeConstructor() {
     const props: ObjectProp[] = []
     for (const arg of this.props) {
-      props.push({
-        ...arg,
-        type: arg.type.fromTypeConstructor(),
-      })
+      if (arg.is === 'spread-positional') {
+        const type = arg.type.fromTypeConstructor()
+        props.push(spreadPositionalProp(type instanceof ArrayType ? type : arg.type))
+      } else if (arg.is === 'named') {
+        props.push(namedProp(arg.name, arg.type.fromTypeConstructor()))
+      } else {
+        props.push(positionalProp(arg.type.fromTypeConstructor()))
+      }
     }
 
     return new ObjectType(props)
@@ -3466,9 +3512,14 @@ export class ObjectType extends Type {
 
   toCode() {
     const propDesc = this.props
-      .map(({name, type}) =>
-        name === undefined ? `${type.toCode()}` : `${name}: ${type.toCode()}`,
-      )
+      .map(prop => {
+        if (prop.is === 'spread-positional') {
+          return `...${prop.type.toCode()}`
+        }
+        return prop.name === undefined
+          ? `${prop.type.toCode()}`
+          : `${prop.name}: ${prop.type.toCode()}`
+      })
       .join(', ')
     return `{${propDesc}}`
   }
@@ -3505,10 +3556,14 @@ export class ObjectType extends Type {
     for (const prop of this.props) {
       if (
         (prop.is === 'positional' && propType === 'int') ||
+        (prop.is === 'spread-positional' && propType === 'int') ||
         (prop.is === 'named' && propType === 'string')
       ) {
         foundAny = true
-        reducedType = compatibleWithBothTypes(reducedType, prop.type)
+        reducedType = compatibleWithBothTypes(
+          reducedType,
+          prop.is === 'spread-positional' ? prop.type.of : prop.type,
+        )
       }
 
       if (reducedType === NeverType) {
@@ -3534,10 +3589,10 @@ export class ObjectType extends Type {
     }
 
     if (typeof propName === 'string') {
-      return this.namedProp(propName)
+      return this.propNamed(propName)
     }
 
-    return this.positionalProp(propName)
+    return this.propAtPosition(propName)
   }
 
   /**
@@ -3553,7 +3608,7 @@ export class ObjectType extends Type {
         this.props.map(prop => {
           const isMatch =
             (prop.is === 'positional' && propName === propIndex) ||
-            (typeof propName === 'string' && propName === prop.name)
+            (prop.is === 'named' && typeof propName === 'string' && propName === prop.name)
 
           if (prop.is === 'positional') {
             propIndex++
@@ -3590,9 +3645,13 @@ export class ObjectType extends Type {
 
   defaultInferredClassProp() {
     return new ObjectType(
-      this.props.map(
-        ({is, name, type}) => ({is, name, type: type.defaultInferredClassProp()}) as ObjectProp,
-      ),
+      this.props.map(prop => {
+        if (prop.is === 'spread-positional') {
+          const of = prop.type.of.defaultInferredClassProp()
+          return {...prop, type: new ArrayType(of, prop.type.narrowedLength)} as ObjectProp
+        }
+        return {...prop, type: prop.type.defaultInferredClassProp()} as ObjectProp
+      }),
     )
   }
 }
@@ -3611,8 +3670,10 @@ export class EnumCase {
     for (const arg of args) {
       if (arg.is === 'positional') {
         this.positionalTypes.push(arg.type)
-      } else {
+      } else if (arg.is === 'named') {
         this.namedTypes.set(arg.name, arg.type)
+      } else {
+        throw new Error('Enum cases do not support object type spread')
       }
     }
   }
@@ -3782,13 +3843,15 @@ export class NamedEnumDefinitionType extends Type {
               type: arg.type,
               isRequired: true,
             })
-          } else {
+          } else if (arg.is === 'named') {
             return namedArgument({
               name: arg.name,
               type: arg.type,
               isRequired: true,
             })
           }
+
+          throw new Error('Enum cases do not support object type spread')
         })
         return new NamedFormulaType(this.name, caseType, args, [])
       }
@@ -4238,7 +4301,11 @@ export function applySubst(subst: Substitution, type: Type): Type {
     for (const prop of type.props) {
       const r = applySubst(subst, prop.type)
       if (r !== prop.type) changed = true
-      props.push({...prop, type: r})
+      if (prop.is === 'spread-positional') {
+        props.push(spreadPositionalProp(r instanceof ArrayType ? r : prop.type))
+      } else {
+        props.push({...prop, type: r})
+      }
     }
     if (!changed) return type
     return new ObjectType(props)
@@ -4335,6 +4402,8 @@ function _applySubstToEnumCase<T extends Type>(
     if (r !== arg.type) changed = true
     if (arg.is === 'named') {
       resolvedArgs.push(namedProp(arg.name, r))
+    } else if (arg.is === 'spread-positional') {
+      resolvedArgs.push(spreadPositionalProp(r instanceof ArrayType ? r : arg.type))
     } else {
       resolvedArgs.push(positionalProp(r))
     }
@@ -4604,6 +4673,9 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
 
       const newArgs = lhsMember.args.map((arg, i) => {
         if (i === narrowedIndex) {
+          if (arg.is === 'spread-positional') {
+            return spreadPositionalProp(narrowedArg instanceof ArrayType ? narrowedArg : arg.type)
+          }
           return {...arg, type: narrowedArg}
         }
         return arg
@@ -4663,9 +4735,11 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
     for (const prop of lhsType.props) {
       let assertionProp: Type | undefined
       if (prop.is === 'named') {
-        assertionProp = typeAssertion.namedProp(prop.name)
+        assertionProp = typeAssertion.propNamed(prop.name)
+      } else if (prop.is === 'spread-positional') {
+        assertionProp = typeAssertion.spreadPositionalType
       } else {
-        assertionProp = typeAssertion.positionalProp(propIndex++)
+        assertionProp = typeAssertion.propAtPosition(propIndex++)
       }
       if (!assertionProp) {
         return lhsType
@@ -4681,7 +4755,13 @@ export function narrowTypeIsNot(lhsType: Type, typeAssertion: Type): Type {
         if (narrowedType === NeverType) {
           return NeverType
         }
-        props.push({...prop, type: narrowedType})
+        if (prop.is === 'spread-positional') {
+          props.push(
+            spreadPositionalProp(narrowedType instanceof ArrayType ? narrowedType : prop.type),
+          )
+        } else {
+          props.push({...prop, type: narrowedType})
+        }
       }
     }
     return new ObjectType(props)
@@ -5114,7 +5194,7 @@ function compatibleWithBothObjects(lhs: ObjectType, rhs: ObjectType): ObjectType
   for (const arg of lhs.props) {
     if (arg.is === 'positional') {
       lhsPositionalArguments.push(arg)
-    } else {
+    } else if (arg.is === 'named') {
       lhsNamedArguments.set(arg.name, arg)
     }
   }
@@ -5124,7 +5204,7 @@ function compatibleWithBothObjects(lhs: ObjectType, rhs: ObjectType): ObjectType
   for (const arg of rhs.props) {
     if (arg.is === 'positional') {
       rhsPositionalArguments.push(arg)
-    } else {
+    } else if (arg.is === 'named') {
       rhsNamedArguments.set(arg.name, arg)
     }
   }
@@ -5512,7 +5592,7 @@ export function canBeAssignedTo(
     for (const prop of assignTo.props) {
       if (prop.is === 'positional') {
         assignToTupleProps.push(prop)
-      } else {
+      } else if (prop.is === 'named') {
         assignToNamedProps.push(prop)
       }
     }
@@ -5522,7 +5602,7 @@ export function canBeAssignedTo(
     for (const prop of testType.props) {
       if (prop.is === 'positional') {
         testTupleProps.push(prop)
-      } else {
+      } else if (prop.is === 'named') {
         testNamedProps.push(prop)
       }
     }
@@ -5544,6 +5624,61 @@ export function canBeAssignedTo(
         return why(
           false,
           `Incompatible types in object at index '${index}'. '${testProp.toCode()}' cannot be assigned to '${assignType.toCode()}'.`,
+        )
+      }
+    }
+
+    if (assignTo.spreadPositionalType && assignTo.spreadPositionalStart !== undefined) {
+      const assignType = assignTo.spreadPositionalType.of
+      const assignMin =
+        assignTo.spreadPositionalStart + assignTo.spreadPositionalType.narrowedLength.min
+      const assignMax =
+        assignTo.spreadPositionalType.narrowedLength.max === undefined
+          ? undefined
+          : assignTo.spreadPositionalStart + assignTo.spreadPositionalType.narrowedLength.max
+      const testMin =
+        testType.spreadPositionalType && testType.spreadPositionalStart !== undefined
+          ? testType.spreadPositionalStart + testType.spreadPositionalType.narrowedLength.min
+          : testType.positionalTypes.size
+      const testMax =
+        testType.spreadPositionalType && testType.spreadPositionalStart !== undefined
+          ? testType.spreadPositionalType.narrowedLength.max === undefined
+            ? undefined
+            : testType.spreadPositionalStart + testType.spreadPositionalType.narrowedLength.max
+          : testType.positionalTypes.size
+
+      if (testMin < assignMin) {
+        return why(
+          false,
+          `Object has ${testMin} positional properties, expected at least ${assignMin}.`,
+        )
+      }
+
+      if (assignMax !== undefined && (testMax === undefined || testMax > assignMax)) {
+        return why(
+          false,
+          `Object has too many positional properties, expected at most ${assignMax}.`,
+        )
+      }
+
+      for (const [index, testProp] of testType.positionalTypes) {
+        if (
+          index >= assignTo.spreadPositionalStart &&
+          !canBeAssignedTo(testProp, assignType, reason)
+        ) {
+          return why(
+            false,
+            `Incompatible types in object at index '${index}'. '${testProp.toCode()}' cannot be assigned to '${assignType.toCode()}'.`,
+          )
+        }
+      }
+      if (
+        testType.spreadPositionalType &&
+        !canBeAssignedTo(testType.spreadPositionalType.of, assignType, reason)
+      ) {
+        return why(
+          false,
+          `Incompatible types in object spread. '${testType.spreadPositionalType.of.toCode()}' cannot be assigned to '${assignType.toCode()}'.`,
         )
       }
     }

@@ -3132,10 +3132,13 @@ class PropertyAccessOperator extends PropertyChainOperator {
 
   rhsName(): GetRuntimeResult<string | number> {
     const [, rhsExpr] = this.args
-    if (!(rhsExpr instanceof Expressions.Identifier)) {
-      return err(new RuntimeError(rhsExpr, expectedType('property name', rhsExpr)))
+    if (rhsExpr instanceof Expressions.LiteralInt) {
+      return ok(rhsExpr.value.value)
     }
-    return ok(rhsExpr.name)
+    if (rhsExpr instanceof Expressions.Identifier) {
+      return ok(rhsExpr.name)
+    }
+    return err(new RuntimeError(rhsExpr, expectedType('property name or index', rhsExpr)))
   }
 
   chainOperatorType(
@@ -3725,13 +3728,15 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
             type: arg.type,
             isRequired: true,
           })
-        } else {
+        } else if (arg.is === 'named') {
           return Types.namedArgument({
             name: arg.name,
             type: arg.type,
             isRequired: true,
           })
         }
+
+        throw new Error('Enum cases do not support object type spread')
       })
       const genericTypes = [...lhFormulaType.generics()]
       lhFormulaType = new Types.NamedFormulaType(

@@ -33,6 +33,7 @@ import {
   BLOCK_CLOSE,
   DICT_SEPARATOR,
   PROPERTY_ACCESS_OPERATOR,
+  SPREAD_OPERATOR,
 } from '../grammars'
 import {type Scanner} from '../scanner'
 import {ParseError, type ParseNext} from '../types'
@@ -386,7 +387,10 @@ export function scanObjectType(
 
   scanner.whereAmI(
     `scanObjectType: {${values
-      .map(([name, value]) => (name ? name + ':' : '') + value.toCode())
+      .map(
+        ({nameRef, value, isSpread}) =>
+          (isSpread ? SPREAD_OPERATOR : '') + (nameRef ? nameRef + ':' : '') + value.toCode(),
+      )
       .join(' ')}}`,
   )
 
@@ -403,7 +407,7 @@ export function scanInsideObjectType(
   closer: string,
   parseNext: ParseNext,
 ) {
-  const values: [Expressions.Reference | undefined, Expression][] = []
+  const values: Expressions.ObjectTypeEntry[] = []
   scanner.scanAllWhitespace()
   if (scanner.scanIfString(closer)) {
     return values
@@ -412,6 +416,10 @@ export function scanInsideObjectType(
   for (;;) {
     scanner.whereAmI(`objectArgType: start of loop`)
     let nameRef: Expressions.Reference | undefined
+    const isSpread = scanner.scanIfString(SPREAD_OPERATOR)
+    if (isSpread) {
+      scanner.scanAllWhitespace()
+    }
 
     //     I played with the idea of having
     //     {
@@ -439,7 +447,7 @@ export function scanInsideObjectType(
     //   )
     // } else {
     // }
-    if (isNamedArg(scanner)) {
+    if (!isSpread && isNamedArg(scanner)) {
       nameRef = scanAnyReference(scanner)
       scanner.scanAllWhitespace()
       scanner.expectString(TYPE_START)
@@ -449,7 +457,7 @@ export function scanInsideObjectType(
     const objectArgType = scanType(scanner, moduleOrArgument, parseNext)
 
     scanner.whereAmI(`objectArgType: ${objectArgType.toCode()}`)
-    values.push([nameRef, objectArgType])
+    values.push({nameRef, value: objectArgType, isSpread})
 
     if (scanner.scanCommaOrBreak(closer, `Expected ',' or '${closer}' in object type definition`)) {
       break
@@ -476,7 +484,12 @@ function scanEnumShorthand(scanner: Scanner, moduleOrArgument: ArgumentType, par
   scanner.whereAmI(`scanEnum: ${enumCaseName}`)
   let args: [Expressions.Reference | undefined, Expressions.Expression][]
   if (scanner.scanIfString(ARGS_OPEN)) {
-    args = scanInsideObjectType(scanner, 'type', ARGS_CLOSE, parseNext)
+    args = scanInsideObjectType(scanner, 'type', ARGS_CLOSE, parseNext).map(arg => {
+      if (arg.isSpread) {
+        throw new ParseError(scanner, 'Enum case arguments do not support object type spread')
+      }
+      return [arg.nameRef, arg.value]
+    })
   } else {
     args = []
   }

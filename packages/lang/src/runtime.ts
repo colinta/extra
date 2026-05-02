@@ -258,13 +258,15 @@ export class MutableTypeRuntime {
                   type: arg.type,
                   isRequired: true,
                 })
-              } else {
+              } else if (arg.is === 'named') {
                 return namedArgument({
                   name: arg.name,
                   type: arg.type,
                   isRequired: true,
                 })
               }
+
+              throw new Error('Enum cases do not support object type spread')
             })
             results.push(new NamedFormulaType(caseName, caseType, args, type.genericTypes))
           } else {

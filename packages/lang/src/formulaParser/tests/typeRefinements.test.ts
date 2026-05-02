@@ -42,6 +42,10 @@ describe('type refinements', () => {
 
   describe('container types', () => {
     cases<[string] | [string, string]>(
+      c(['{...[String]}']),
+      c(['{...[Int, >=1]}', '{...[Int, length: >=1]}']),
+      c(['{String, ...[String]}']),
+      c(['{String, ...[String], name: String}']),
       c(['Array(Int, length: =3)', '[Int, length: =3]']),
       c(['[Int, length: =3]']),
       c(['[Int, length: 3]', '[Int, length: =3]']),

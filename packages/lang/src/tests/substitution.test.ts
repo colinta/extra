@@ -87,7 +87,7 @@ describe('applySubst', () => {
     const obj = Types.object([Types.namedProp('value', T)])
     const result = applySubst(subst, obj)
     expect(result).toBeInstanceOf(Types.ObjectType)
-    expect((result as Types.ObjectType).namedProp('value')).toEqual(Types.int())
+    expect((result as Types.ObjectType).propNamed('value')).toEqual(Types.int())
   })
 
   test('ObjectType with positional generic property', () => {
@@ -96,7 +96,7 @@ describe('applySubst', () => {
     const obj = Types.object([Types.positionalProp(T)])
     const result = applySubst(subst, obj)
     expect(result).toBeInstanceOf(Types.ObjectType)
-    expect((result as Types.ObjectType).positionalProp(0)).toEqual(Types.string())
+    expect((result as Types.ObjectType).propAtPosition(0)).toEqual(Types.string())
   })
 
   test('ObjectType without generics is returned as-is', () => {
@@ -223,8 +223,8 @@ describe('applySubst', () => {
     ])
     const obj = Types.object([Types.namedProp('first', T), Types.namedProp('second', U)])
     const result = applySubst(subst, obj) as Types.ObjectType
-    expect(result.namedProp('first')).toEqual(Types.int())
-    expect(result.namedProp('second')).toEqual(Types.string())
+    expect(result.propNamed('first')).toEqual(Types.int())
+    expect(result.propNamed('second')).toEqual(Types.string())
   })
 
   test('substitution with generic mapping to another generic', () => {
@@ -242,7 +242,7 @@ describe('applySubst', () => {
     const subst: Substitution = new Map([[T, Types.float()]])
     const deep = Types.object([Types.namedProp('data', Types.array(Types.dict(T)))])
     const result = applySubst(subst, deep) as Types.ObjectType
-    const data = result.namedProp('data') as Types.ArrayType
+    const data = result.propNamed('data') as Types.ArrayType
     const inner = data.of as Types.DictType
     expect(inner.of).toEqual(Types.float())
   })
