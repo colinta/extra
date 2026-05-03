@@ -367,7 +367,7 @@ type StillUser = Pick(User, 'name', 'age')
 
 ### Include/Exclude
 
-`Include(T, ...Types)` returns types of `T` that match `Types`
+`Include(T, ...Types)` returns types of `T` that are assignable to `Types`. alias: `Extract`
 `Exclude(T, ...Types)` removes `Types` from `T`
 
 ```extra
@@ -393,26 +393,40 @@ type NotLoading = Exclude(Status, .loading)
 --> Status.notAsked | Status.error | Status.done
 ```
 
+### NonNull
+
+`NonNull(T)` is a convenient shorthand for `Exclude(T, null)`. alias: `NonNullable`
+
 ### Partial/Required
 
 `Partial(T)` makes all the properties of an object optional.
 `Required(T)` removes `null` from the type of all the properties.
 
+Note, `Required` doesn't remove `null` from a union type. If `Partial` doesn't _add_ `null` to a union, `Required` (the inverse) shouldn't remove it.
+
 ```extra
 type Post = {title: String, created-at: Temporal.Instant, content?: String}
 type DraftPost = Partial(Post) -- all fields are optional
 type FinishedPost = Required(Post) -- 'content' becomes non-null
+
+-- `Required` removes `null` from *properties* but not from a union type
+type Info = {name: String?} | null
+type RequiredInfo = Required(Info) -- {name: String} | null
 ```
 
 ### Return/Params
 
-`Params(T)` extracts the arguments of a function as a tuple type.
-`Return(T)` extracts the return type.
+`Params(T)` extracts the arguments of a function as a tuple type. alias: `Parameters` or `Arguments`
+`Return(T)` extracts the return type. alias: `ReturnType`
 
 ```extra
 type CreateUser = fn(name: String, age: Int): {User, Boolean}
+fn create-user(name: String, age: Int) =>
+  {User(name:, age:), age > 42}
 
 type CreateUserArgs = Params(CreateUser) -- {name: String, age: Int}
+-- also accepts constants that are in scope
+-- type CreateUserArgs = Params(create-user) -- {name: String, age: Int}
 type CreateUserReturn = Return(CreateUser) -- {User, Boolean}
 ```
 

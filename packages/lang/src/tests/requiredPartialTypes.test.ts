@@ -14,8 +14,14 @@ const optionalUser = Types.object([
 ])
 
 const nestedOptionalUser = Types.object([
-  Types.namedProp('profile', Types.object([Types.namedProp('nickname', Types.optional(Types.StringType))])),
-  Types.namedProp('settings', Types.optional(Types.object([Types.namedProp('darkMode', Types.BooleanType)]))),
+  Types.namedProp(
+    'profile',
+    Types.object([Types.namedProp('nickname', Types.optional(Types.StringType))]),
+  ),
+  Types.namedProp(
+    'settings',
+    Types.optional(Types.object([Types.namedProp('darkMode', Types.BooleanType)])),
+  ),
 ])
 
 const tupleWithSpread = Types.object([
@@ -39,7 +45,13 @@ const formula = Types.formula(
 )
 
 const optionalFormula = Types.formula(
-  [Types.positionalArgument({name: 'input', type: Types.optional(Types.IntType), isRequired: true})],
+  [
+    Types.positionalArgument({
+      name: 'input',
+      type: Types.optional(Types.IntType),
+      isRequired: true,
+    }),
+  ],
   Types.optional(Types.StringType),
   [],
   new Map<string, Types.Type>([
@@ -51,7 +63,11 @@ const optionalFormula = Types.formula(
 describe('partialType', () => {
   cases<[name: string, type: Types.Type, expected: string]>(
     c(['makes object props optional', user, '{name: String?, age: Int?, Boolean?}']),
-    c(['leaves optional object props optional', optionalUser, '{name: String?, age: Int?, Boolean?}']),
+    c([
+      'leaves optional object props optional',
+      optionalUser,
+      '{name: String?, age: Int?, Boolean?}',
+    ]),
     c([
       'makes spread-positional element types optional',
       tupleWithSpread,
@@ -98,13 +114,13 @@ describe('requiredType', () => {
       '{name: String, age: Int, Boolean}',
     ]),
     c([
-      'maps over one-of types and removes null',
+      'maps over one-of types and preserves null',
       Types.oneOf([
         Types.object([Types.namedProp('name', Types.optional(Types.StringType))]),
         Types.NullType,
         Types.object([Types.namedProp('age', Types.optional(Types.IntType))]),
       ]),
-      '{age: Int?} | {name: String?}',
+      '{age: Int} | {name: String} | null',
     ]),
     c([
       'only recurses one level into object props',

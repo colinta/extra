@@ -6295,16 +6295,75 @@ export function selectTypeProps(type: Type, properties: PropertySelection[], pic
   return type
 }
 
-function unwrapOpaqueType(type: Type): Type {
-  if (type instanceof OpaqueType) {
+function unwrapBoxType(type: Type): Type {
+  if (type instanceof BoxType) {
     return type.of
   }
 
   return type
 }
 
+export function formulaReturnType(type: Type): Result<Type, string> {
+  type = unwrapBoxType(type)
+
+  if (type instanceof OneOfType) {
+    return mapAll(type.of.map(ofType => formulaReturnType(ofType))).map(oneOf)
+  }
+
+  if (type instanceof FormulaType) {
+    return ok(type.returnType)
+  }
+
+  return err(`Return requires a function type, got ${type.toCode()}`)
+}
+
+export function formulaParamsType(type: Type): Result<Type, string> {
+  type = unwrapBoxType(type)
+
+  if (type instanceof OneOfType) {
+    return mapAll(type.of.map(ofType => formulaParamsType(ofType))).map(oneOf)
+  }
+
+  if (type instanceof FormulaType) {
+    return ok(
+      object(
+        type.args.map(arg => {
+          if (arg.is === 'positional-argument') {
+            return positionalProp(arg.type)
+          }
+
+          if (arg.is === 'spread-positional-argument') {
+            return spreadPositionalProp(arg.type)
+          }
+
+          if (arg.is === 'named-argument' || arg.is === 'repeated-named-argument') {
+            return namedProp(arg.alias, arg.type)
+          }
+
+          return namedProp(arg.name, arg.type)
+        }),
+      ),
+    )
+  }
+
+  return err(`Params requires a function type, got ${type.toCode()}`)
+}
+
+export function elementType(type: Type): Result<Type, string> {
+  type = unwrapBoxType(type)
+
+  if (type instanceof OneOfType) {
+    return mapAll(type.of.map(ofType => elementType(ofType))).map(oneOf)
+  }
+
+  if (type instanceof ArrayType || type instanceof DictType || type instanceof SetType) {
+    return ok(type.of)
+  }
+
+  return err(`Element requires an array, dict, or set type, got ${type.toCode()}`)
+}
 export function partialType(type: Type): Type {
-  type = unwrapOpaqueType(type)
+  type = unwrapBoxType(type)
 
   if (type instanceof OneOfType) {
     return oneOf(type.of.map(partialType))
@@ -6337,16 +6396,28 @@ export function partialType(type: Type): Type {
   return type
 }
 
-export function requiredType(type: Type, recurse = true): Type {
-  type = unwrapOpaqueType(type)
+/**
+ * Removes `null` as a type from the properties of `type`. It only modifies
+ * properties, it doesn't remove `null` from a union type.
+ *
+ *     type Info = {name: String | null} | null
+ *     type RequiredInfo = Required(Info) -- {name: String} | null
+ */
+export function requiredType(type: Type, topLevel = true): Type {
+  type = unwrapBoxType(type)
 
   if (type instanceof OneOfType) {
+    // if we are looking at the "topLevel" type, we should *keep* null types.
+    // We pass topLevel into requiredType recursively (treat each type in the
+    // union as a toplevel type)
     return oneOf(
-      type.of.filter(ofType => ofType !== NullType).map(type => requiredType(type, false)),
+      type.of
+        .filter(ofType => topLevel || ofType !== NullType)
+        .map(type => requiredType(type, topLevel)),
     )
   }
 
-  if (!recurse) {
+  if (!topLevel) {
     return type
   }
 
@@ -6417,8 +6488,8 @@ function findEnumTypes(baseType: Type, excludedType: Type): Type {
 }
 
 export function excludeType(baseType: Type, excludedType: Type): Type {
-  baseType = unwrapOpaqueType(baseType)
-  excludedType = unwrapOpaqueType(findEnumTypes(baseType, excludedType))
+  baseType = unwrapBoxType(baseType)
+  excludedType = unwrapBoxType(findEnumTypes(baseType, excludedType))
 
   if (baseType instanceof NamedEnumDefinitionType) {
     return excludeType(baseType.instanceType, excludedType)
@@ -6440,7 +6511,7 @@ export function excludeType(baseType: Type, excludedType: Type): Type {
 }
 
 function includeSingleType(baseType: Type, includedType: Type): Type {
-  includedType = unwrapOpaqueType(findEnumTypes(baseType, includedType))
+  includedType = unwrapBoxType(findEnumTypes(baseType, includedType))
 
   if (baseType.isLiteral() && includedType.isLiteral()) {
     return baseType.value === includedType.value ? baseType : NeverType
@@ -6450,8 +6521,8 @@ function includeSingleType(baseType: Type, includedType: Type): Type {
 }
 
 export function includeType(baseType: Type, includedTypes: Type[]): Type {
-  baseType = unwrapOpaqueType(baseType)
-  includedTypes = includedTypes.map(unwrapOpaqueType)
+  baseType = unwrapBoxType(baseType)
+  includedTypes = includedTypes.map(unwrapBoxType)
 
   if (baseType instanceof NamedEnumDefinitionType) {
     return includeType(baseType.instanceType, includedTypes)

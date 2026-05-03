@@ -1670,14 +1670,6 @@ export class PickTypeExpression extends PropertySelectionFunctionExpression {
   }
 }
 
-function unwrapOpaqueType(type: Types.Type): Types.Type {
-  if (type instanceof Types.OpaqueType) {
-    return type.of
-  }
-
-  return type
-}
-
 abstract class RequirementTypeFunctionExpression extends TypeExpression {
   abstract name: string
 
@@ -1849,31 +1841,15 @@ export class ReturnTypeExpression extends FormulaExtractionTypeExpression {
   name = RETURN_KEYWORD
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    const result = this.of.getAsTypeExpression(runtime)
-    if (result.type === 'err') {
-      return result
-    }
-    return ReturnTypeExpression.formulaReturnType(this, result.value)
+    return this.of
+      .getAsTypeExpression(runtime)
+      .map(type =>
+        Types.formulaReturnType(type).mapError(message => err(new RuntimeError(this, message))),
+      )
   }
 
   compileAsTypeExpression(runtime: TypeRuntime) {
     return this.getAsTypeExpression(runtime).map(type => new Nodes.ReturnType(toSource(this), type))
-  }
-
-  static formulaReturnType(expr: Expression, type: Types.Type): GetTypeResult {
-    type = unwrapOpaqueType(type)
-
-    if (type instanceof Types.OneOfType) {
-      return mapAll(
-        type.of.map(ofType => ReturnTypeExpression.formulaReturnType(expr, ofType)),
-      ).map(Types.oneOf)
-    }
-
-    if (type instanceof Types.FormulaType) {
-      return ok(type.returnType)
-    }
-
-    return err(new RuntimeError(expr, `Return requires a function type, got ${type.toCode()}`))
   }
 }
 
@@ -1881,49 +1857,15 @@ export class ParamsTypeExpression extends FormulaExtractionTypeExpression {
   name = PARAMS_KEYWORD
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    const result = this.of.getAsTypeExpression(runtime)
-    if (result.type === 'err') {
-      return result
-    }
-    return ParamsTypeExpression.formulaParamsType(this, result.value)
+    return this.of
+      .getAsTypeExpression(runtime)
+      .map(type =>
+        Types.formulaParamsType(type).mapError(message => new RuntimeError(this, message)),
+      )
   }
 
   compileAsTypeExpression(runtime: TypeRuntime) {
     return this.getAsTypeExpression(runtime).map(type => new Nodes.ParamsType(toSource(this), type))
-  }
-
-  static formulaParamsType(expr: Expression, type: Types.Type): GetTypeResult {
-    type = unwrapOpaqueType(type)
-
-    if (type instanceof Types.OneOfType) {
-      return mapAll(
-        type.of.map(ofType => ParamsTypeExpression.formulaParamsType(expr, ofType)),
-      ).map(Types.oneOf)
-    }
-
-    if (type instanceof Types.FormulaType) {
-      return ok(
-        Types.object(
-          type.args.map(arg => {
-            if (arg.is === 'positional-argument') {
-              return Types.positionalProp(arg.type)
-            }
-
-            if (arg.is === 'spread-positional-argument') {
-              return Types.spreadPositionalProp(arg.type)
-            }
-
-            if (arg.is === 'named-argument' || arg.is === 'repeated-named-argument') {
-              return Types.namedProp(arg.alias, arg.type)
-            }
-
-            return Types.namedProp(arg.name, arg.type)
-          }),
-        ),
-      )
-    }
-
-    return err(new RuntimeError(expr, `Params requires a function type, got ${type.toCode()}`))
   }
 }
 
@@ -1931,38 +1873,14 @@ export class ElementTypeExpression extends FormulaExtractionTypeExpression {
   name = ELEMENT_KEYWORD
 
   getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
-    const result = this.of.getAsTypeExpression(runtime)
-    if (result.type === 'err') {
-      return result
-    }
-    return ElementTypeExpression.elementType(this, result.value)
+    return this.of
+      .getAsTypeExpression(runtime)
+      .map(type => Types.elementType(type).mapError(message => new RuntimeError(this, message)))
   }
 
   compileAsTypeExpression(runtime: TypeRuntime) {
     return this.getAsTypeExpression(runtime).map(
       type => new Nodes.ElementType(toSource(this), type),
-    )
-  }
-
-  static elementType(expr: Expression, type: Types.Type): GetTypeResult {
-    type = unwrapOpaqueType(type)
-
-    if (type instanceof Types.OneOfType) {
-      return mapAll(type.of.map(ofType => ElementTypeExpression.elementType(expr, ofType))).map(
-        Types.oneOf,
-      )
-    }
-
-    if (
-      type instanceof Types.ArrayType ||
-      type instanceof Types.DictType ||
-      type instanceof Types.SetType
-    ) {
-      return ok(type.of)
-    }
-
-    return err(
-      new RuntimeError(expr, `Element requires an array, dict, or set type, got ${type.toCode()}`),
     )
   }
 }
