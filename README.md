@@ -1750,7 +1750,13 @@ let
 in
   {...a, ...b} --> {a: 1, b: "2", c: 4, d: "5", e: 6}
   -- a ~~ b --> same
+```
 
+Remember (scroll up _I just went over this_) that positional entries in an object are funny. Intuitively they seem "array like", but in an object they are treated as having fixed numeric keys. `a.0` can have a different type from `a.1`.
+
+Therefore, when merging objects, the positional values override instead of concatenate.
+
+```extra
 -- tuples
 let
   a: {0, 0, spin: 'up', name: 'electron'}
@@ -1760,7 +1766,7 @@ in
   -- a ~~ b --> same
 ```
 
-If you really had your heart set on concatenating two tuples... I don't have an easy shorthand for this. I didn't want `...` and `~~` to behave differently, and I didn't want to override the `..` or `++` operators. The one thing that's very easy is to just _insert_ the values into the new tuple explicitly.
+If you really had your heart set on concatenating two tuples... well, you can't. You can insert a new value onto the "end" of a tuple:
 
 ```extra
 let
@@ -1769,11 +1775,17 @@ let
 in
   {...weather, new_temp}
   -- {50, unit: 'celsius', 60}
+```
+
+What you _really_ want to do (I'll tell you what you want, what you really really want) is insert an _array_ into an object. _This_ you can do!
+
+```extra
 let
-  user = {name: 'Alice', age: 50}
-  updates = {age: 51}
+  fourAges: Array(Int, length: =4) = [0, 10, 20, 42]
+  twoNames: Array(String, length: =2) = ['bob', 'tom']
 in
-  {...user, ...updates}
+  {...fourAges, ...twoNames} -- {Int, Int, Int, Int, String, String}
+  -- all the array lengths are known at compile time
 ```
 
 ### Putting it all together
