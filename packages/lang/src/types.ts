@@ -371,91 +371,138 @@ function combineTypes(lhs: Type, rhs: Type): Type {
   return narrowTypeIs(lhs, rhs)
 }
 
-function combinePropertyTypes(lhs: Type, rhs: Type): Type {
-  if (canBeAssignedTo(lhs, rhs)) {
-    return lhs
-  }
-
-  if (canBeAssignedTo(rhs, lhs)) {
-    return rhs
-  }
-
-  return narrowTypeIs(lhs, rhs)
-}
-
-function combineObjectTypes(lhs: ObjectType, rhs: ObjectType): Type {
-  const lhsPositionals = lhs.props.filter(prop => prop.is === 'positional') as PositionalProp[]
-  const rhsPositionals = rhs.props.filter(prop => prop.is === 'positional') as PositionalProp[]
-  const lhsSpread = lhs.props.find(prop => prop.is === 'spread-positional') as
-    | SpreadPositionalProp
-    | undefined
-  const rhsSpread = rhs.props.find(prop => prop.is === 'spread-positional') as
-    | SpreadPositionalProp
-    | undefined
-
+export function combineObjectTypes(lhs: ObjectType, rhs: ObjectType): Type {
   const props: ObjectProp[] = []
-  const positionalCount = Math.max(lhsPositionals.length, rhsPositionals.length)
-  for (let index = 0; index < positionalCount; index++) {
-    const lhsProp = lhsPositionals[index]
-    const rhsProp = rhsPositionals[index]
-    if (lhsProp && rhsProp) {
-      const type = combinePropertyTypes(lhsProp.type, rhsProp.type)
-      if (type === NeverType) {
-        return NeverType
+
+  const lhsPositionals = lhs.props.filter(prop => prop.is === 'positional')
+  const rhsPositionals = rhs.props.filter(prop => prop.is === 'positional')
+  let lhsSpread = lhs.props.find(prop => prop.is === 'spread-positional')
+  let rhsSpread = rhs.props.find(prop => prop.is === 'spread-positional')
+
+  const foundKeys = new Set<string | number>()
+  let propIndex = 0
+  for (const {is, name, type: lhsType} of lhs.props) {
+    if (is === 'spread-positional') {
+      continue
+    }
+
+    let type: Type
+    if (is === 'positional') {
+      if (propIndex < rhsPositionals.length) {
+        // if rhs defines a positional prop at this index, use that
+        type = rhsPositionals[propIndex].type
+      } else if (rhsSpread) {
+        // it has a spread type - ok, is the index (as it appears to the spread
+        // array) within the known or possible range?
+        const spreadIndex = propIndex - rhsPositionals.length
+        if (spreadIndex < rhsSpread.type.narrowedLength.min) {
+          // known minimum range case
+          type = rhsSpread.type.of
+        } else if (
+          rhsSpread.type.narrowedLength.max === undefined ||
+          spreadIndex < rhsSpread.type.narrowedLength.max
+        ) {
+          // possible maximum range case
+          type = oneOf([lhsType, rhsSpread.type.of])
+        } else {
+          // known outside range case
+          type = lhsType
+        }
+      } else {
+        type = lhsType
       }
-      props.push(positionalProp(type))
-    } else if (lhsProp) {
-      props.push(lhsProp)
-    } else if (rhsProp) {
-      props.push(rhsProp)
+    } else {
+      type = rhs.propNamed(name) ?? lhsType
+    }
+
+    props.push(is === 'positional' ? positionalProp(type) : namedProp(name, type))
+    foundKeys.add(name ?? propIndex)
+    if (is === 'positional') {
+      propIndex += 1
+    }
+  }
+
+  propIndex = 0
+  for (const prop of rhs.props) {
+    if (prop.is === 'spread-positional' || foundKeys.has(prop.name ?? propIndex)) {
+      if (prop.is === 'positional') {
+        propIndex += 1
+      }
+      continue
+    }
+
+    props.push(prop)
+    if (prop.is === 'positional') {
+      propIndex += 1
+    }
+  }
+
+  // if lhs and rhs have a different number of positional values, adjust the
+  // minimum number of values in the rhsSpread/lhsSpread array type.
+  //
+  // if the max is decreased to 0, remove that spread type
+  const deltaPositionals = Math.abs(lhsPositionals.length - rhsPositionals.length)
+  if (deltaPositionals > 0) {
+    if (lhsPositionals.length > rhsPositionals.length && rhsSpread) {
+      const newLength = Narrowed.adjustNarrowLength(
+        rhsSpread.type.narrowedLength,
+        -deltaPositionals,
+      )
+      const rhsArray = array(rhsSpread.type.of, newLength)
+      rhsSpread =
+        newLength.max !== undefined && newLength.max === 0
+          ? undefined
+          : spreadPositionalProp(rhsArray)
+    } else if (lhsPositionals.length < rhsPositionals.length && lhsSpread) {
+      const newLength = Narrowed.adjustNarrowLength(
+        lhsSpread.type.narrowedLength,
+        -deltaPositionals,
+      )
+      const lhsArray = array(lhsSpread.type.of, newLength)
+      lhsSpread =
+        newLength.max !== undefined && newLength.max === 0
+          ? undefined
+          : spreadPositionalProp(lhsArray)
     }
   }
 
   if (lhsSpread && rhsSpread) {
-    const type = combinePropertyTypes(lhsSpread.type.of, rhsSpread.type.of)
-    if (type === NeverType) {
-      return NeverType
+    // case one: lhs has a max length, and rhs has a min length that's >= that
+    // max length, e.g. [spread 5] ~~ [spread 6], which can only result in
+    // [spread 6]
+    if (
+      lhsSpread.type.narrowedLength.max !== undefined &&
+      rhsSpread.type.narrowedLength.min >= lhsSpread.type.narrowedLength.max
+    ) {
+      props.push(
+        spreadPositionalProp(
+          array(rhsSpread.type.of, {
+            min: rhsSpread.type.narrowedLength.min,
+            max:
+              rhsSpread.type.narrowedLength.max === undefined
+                ? undefined
+                : rhsSpread.type.narrowedLength.max,
+          }),
+        ),
+      )
+    } else {
+      const min = Math.max(lhsSpread.type.narrowedLength.min, rhsSpread.type.narrowedLength.min)
+      const max =
+        lhsSpread.type.narrowedLength.max === undefined ||
+        rhsSpread.type.narrowedLength.max === undefined
+          ? undefined
+          : Math.max(lhsSpread.type.narrowedLength.max, rhsSpread.type.narrowedLength.max)
+
+      const combinedType = compatibleWithBothTypes(rhsSpread.type.of, lhsSpread.type.of)
+      props.push(spreadPositionalProp(array(combinedType, {min, max})))
     }
-    const length = Narrowed.compatibleWithBothLengths(
-      lhsSpread.type.narrowedLength,
-      rhsSpread.type.narrowedLength,
-    )
-    if (!length) {
-      return NeverType
-    }
-    props.push(spreadPositionalProp(array(type, length)))
   } else if (lhsSpread) {
     props.push(lhsSpread)
   } else if (rhsSpread) {
     props.push(rhsSpread)
   }
 
-  const seenNames = new Set<string>()
-  for (const prop of lhs.props) {
-    if (prop.is !== 'named') {
-      continue
-    }
-
-    seenNames.add(prop.name)
-    const rhsProp = rhs.namedTypes.get(prop.name)
-    if (rhsProp) {
-      const type = combinePropertyTypes(prop.type, rhsProp)
-      if (type === NeverType) {
-        return NeverType
-      }
-      props.push(namedProp(prop.name, type))
-    } else {
-      props.push(prop)
-    }
-  }
-
-  for (const prop of rhs.props) {
-    if (prop.is === 'named' && !seenNames.has(prop.name)) {
-      props.push(prop)
-    }
-  }
-
-  return new ObjectType(props)
+  return object(props)
 }
 
 export function namedFormula(
@@ -1951,21 +1998,7 @@ export class MetaFloatType extends NumberType<Narrowed.NarrowedFloat> {
       return this
     }
 
-    const next = {...this.narrowed}
-
-    if (Array.isArray(next.min)) {
-      next.min = [next.min[0] + amount]
-    } else if (next.min !== undefined) {
-      next.min += amount
-    }
-
-    if (Array.isArray(next.max)) {
-      next.max = [next.max[0] + amount]
-    } else if (next.max !== undefined) {
-      next.max += amount
-    }
-
-    return new MetaFloatType(next)
+    return new MetaFloatType(Narrowed.adjustNarrowNumber(this.narrowed, amount))
   }
 
   /**
@@ -2152,17 +2185,7 @@ export class MetaIntType extends NumberType<Narrowed.NarrowedInt> {
       return this
     }
 
-    const next = {...this.narrowed}
-
-    if (next.min !== undefined) {
-      next.min += amount
-    }
-
-    if (next.max !== undefined) {
-      next.max += amount
-    }
-
-    return new MetaIntType(next)
+    return new MetaIntType(Narrowed.adjustNarrowNumber(this.narrowed, amount))
   }
 
   /**

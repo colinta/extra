@@ -424,6 +424,46 @@ export function compatibleWithBothInts(
   return next
 }
 
+export function compatibleWithBothLengths(
+  narrowed: NarrowedLength,
+  nextNarrowed: NarrowedLength,
+): NarrowedLength | undefined {
+  const {min, max} = narrowed
+  const {min: nextMin, max: nextMax} = nextNarrowed
+  // overlap by one
+  if (max !== undefined && max === nextMin - 1) {
+    return {min: Math.min(min, nextMin), max: nextMax}
+  }
+  if (nextMax !== undefined && nextMax === min - 1) {
+    return {min: Math.min(min, nextMin), max}
+  }
+
+  // no overlap
+  if ((max !== undefined && max < nextMin) || (nextMax !== undefined && nextMax < min)) {
+    return undefined
+  }
+
+  const retMin = Math.min(min, nextMin)
+  let retMax: number | undefined
+
+  if (nextMax !== undefined && max !== undefined) {
+    retMax = Math.max(nextMax, max)
+  } else {
+    retMax = undefined
+  }
+
+  const next = {min: retMin, max: retMax}
+  if (narrowedIsNever(next)) {
+    return undefined
+  }
+
+  if (isDefaultNarrowedLength(next)) {
+    return DEFAULT_NARROWED_LENGTH
+  }
+
+  return next
+}
+
 /**
  * Two strings or arrays are concatenated; concatenate their length assertion.
  */
@@ -500,41 +540,41 @@ export function narrowLengths(
   return next
 }
 
-export function compatibleWithBothLengths(
-  narrowed: NarrowedLength,
-  nextNarrowed: NarrowedLength,
-): NarrowedLength | undefined {
-  const {min, max} = narrowed
-  const {min: nextMin, max: nextMax} = nextNarrowed
-  // overlap by one
-  if (max !== undefined && max === nextMin - 1) {
-    return {min: Math.min(min, nextMin), max: nextMax}
-  }
-  if (nextMax !== undefined && nextMax === min - 1) {
-    return {min: Math.min(min, nextMin), max}
+export function adjustNarrowNumber<T extends NarrowedFloat>(narrowed: T, amount: number): T {
+  if (amount === 0 || isDefaultNarrowedNumber(narrowed)) {
+    return narrowed
   }
 
-  // no overlap
-  if ((max !== undefined && max < nextMin) || (nextMax !== undefined && nextMax < min)) {
-    return undefined
+  const next = {...narrowed}
+
+  if (Array.isArray(next.min)) {
+    next.min = [next.min[0] + amount]
+  } else if (next.min !== undefined) {
+    next.min += amount
   }
 
-  const retMin = Math.min(min, nextMin)
-  let retMax: number | undefined
-
-  if (nextMax !== undefined && max !== undefined) {
-    retMax = Math.max(nextMax, max)
-  } else {
-    retMax = undefined
+  if (Array.isArray(next.max)) {
+    next.max = [next.max[0] + amount]
+  } else if (next.max !== undefined) {
+    next.max += amount
   }
 
-  const next = {min: retMin, max: retMax}
-  if (narrowedIsNever(next)) {
-    return undefined
+  return next
+}
+
+export function adjustNarrowLength(narrowed: NarrowedLength, amount: number): NarrowedLength {
+  if (amount === 0 || isDefaultNarrowedLength(narrowed)) {
+    return narrowed
   }
 
-  if (isDefaultNarrowedLength(next)) {
-    return DEFAULT_NARROWED_LENGTH
+  const next = {...narrowed}
+
+  if (next.min !== undefined) {
+    next.min = Math.max(0, next.min + amount)
+  }
+
+  if (next.max !== undefined) {
+    next.max = Math.max(0, next.max + amount)
   }
 
   return next

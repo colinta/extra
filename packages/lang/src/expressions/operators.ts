@@ -2588,6 +2588,18 @@ addBinaryOperator({
   },
 })
 
+// order is determined by the... lhs? Yeah.. because values from the rhs are
+// being merged *into* the lhs.
+function mergeDictTypes(lhs: Types.DictType, rhs: Types.DictType) {
+  const narrowedNames = new Set([...lhs.narrowedNames, ...rhs.narrowedNames])
+  const combinedLength = combineSetLengths(lhs.narrowedLength, rhs.narrowedLength)
+  const narrowedLength = {
+    ...combinedLength,
+    min: Math.max(combinedLength.min, narrowedNames.size),
+  }
+  return Types.dict(Types.compatibleWithBothTypes(lhs.of, rhs.of), narrowedLength, narrowedNames)
+}
+
 class ObjectMergeOperator extends BinaryOperator {
   symbol = '~~'
 
@@ -2598,15 +2610,19 @@ class ObjectMergeOperator extends BinaryOperator {
     lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
-    if (!lhs.isObject()) {
-      return err(new RuntimeError(lhsExpr, expectedType('Object', lhsExpr, lhs)))
+    if (lhs.isObject() && rhs.isObject()) {
+      return ok(Types.combineObjectTypes(lhs, rhs))
     }
 
-    if (!rhs.isObject()) {
-      return err(new RuntimeError(rhsExpr, expectedType('Object', rhsExpr, rhs)))
+    if (lhs instanceof Types.DictType && rhs instanceof Types.DictType) {
+      return ok(mergeDictTypes(lhs, rhs))
     }
 
-    return ok(Types.object([...lhs.props, ...rhs.props]))
+    if (!lhs.isObject() && !(lhs instanceof Types.DictType)) {
+      return err(new RuntimeError(lhsExpr, expectedType('Object or Dict', lhsExpr, lhs)))
+    }
+
+    return err(new RuntimeError(rhsExpr, expectedType('Object or Dict', rhsExpr, rhs)))
   }
 
   compile(runtime: TypeRuntime) {
@@ -2621,15 +2637,26 @@ class ObjectMergeOperator extends BinaryOperator {
     rhsExpr: Expression,
   ) {
     return rhs().map((rhs): GetValueResult => {
+      if (lhs instanceof Values.DictValue && rhs instanceof Values.DictValue) {
+        const values = new Map(lhs.values)
+        for (const [key, value] of rhs.values) {
+          values.set(key, value)
+        }
+        return ok(Values.dict(values))
+      }
+
       if (!lhs.isObject()) {
-        return err(new RuntimeError(lhsExpr, expectedType('Object', lhsExpr, lhs)))
+        return err(new RuntimeError(lhsExpr, expectedType('Object or Dict', lhsExpr, lhs)))
       }
 
       if (!rhs.isObject()) {
-        return err(new RuntimeError(rhsExpr, expectedType('Object', rhsExpr, rhs)))
+        return err(new RuntimeError(rhsExpr, expectedType('Object or Dict', rhsExpr, rhs)))
       }
 
-      const tupleValues = lhs.tupleValues.concat(rhs.tupleValues)
+      const tupleValues = [...lhs.tupleValues]
+      rhs.tupleValues.forEach((value, index) => {
+        tupleValues[index] = value
+      })
       const namedValues = new Map(lhs.namedValues)
       for (const [key, value] of rhs.namedValues) {
         namedValues.set(key, value)

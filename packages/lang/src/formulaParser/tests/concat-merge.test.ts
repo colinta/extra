@@ -90,6 +90,227 @@ describe('getType', () => {
     )
   })
 
+  describe('object merge operators', () => {
+    cases<[string, Types.Type, Types.Type, Types.Type]>(
+      c([
+        'named props are merged',
+        Types.object([Types.namedProp('a', Types.string()), Types.namedProp('b', Types.string())]),
+        Types.object([Types.namedProp('b', Types.string()), Types.namedProp('c', Types.string())]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.string()),
+          Types.namedProp('c', Types.string()),
+        ]),
+      ]),
+      c([
+        'rhs named props override lhs named props',
+        Types.object([Types.namedProp('a', Types.string()), Types.namedProp('b', Types.string())]),
+        Types.object([Types.namedProp('b', Types.int()), Types.namedProp('c', Types.string())]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.namedProp('c', Types.string()),
+        ]),
+      ]),
+      c([
+        'rhs positional props override lhs positional props',
+        Types.object([
+          Types.positionalProp(Types.string()),
+          Types.positionalProp(Types.int()),
+          Types.positionalProp(Types.float()),
+        ]),
+        Types.object([Types.positionalProp(Types.string()), Types.positionalProp(Types.string())]),
+        Types.object([
+          Types.positionalProp(Types.string()),
+          Types.positionalProp(Types.string()),
+          Types.positionalProp(Types.float()),
+        ]),
+      ]),
+      c([
+        'lhs spread positional props are preserved',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.positionalProp(Types.float()),
+          Types.positionalProp(Types.float()),
+          Types.spreadPositionalProp(Types.array(Types.string())),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.positionalProp(Types.int()),
+          Types.positionalProp(Types.float()),
+          Types.namedProp('b', Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.string())),
+        ]),
+      ]),
+      c([
+        'spread positional props are merged with a union',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.spreadPositionalProp(Types.array(Types.string())),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.int())),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.oneOf([Types.int(), Types.string()]))),
+        ]),
+      ]),
+      c([
+        'lhs has at least 3, rhs has an extra prop, and at least 1; they overlap by one',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.spreadPositionalProp(Types.array(Types.string(), {max: 3})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.int(), {min: 1})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(
+            Types.array(Types.oneOf([Types.string(), Types.int()]), {min: 1}),
+          ),
+        ]),
+      ]),
+      c([
+        'rhs spread positional props take over when rhs is known to be larger',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.spreadPositionalProp(Types.array(Types.string(), {max: 10})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.int(), {min: 10})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.int(), {min: 10})),
+        ]),
+      ]),
+      c([
+        'rhs spread is ignored when covered by the lhs',
+        Types.object([
+          Types.namedProp('a', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.positionalProp(Types.int()),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.spreadPositionalProp(Types.array(Types.string(), {max: 4})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.positionalProp(Types.oneOf([Types.int(), Types.string()])),
+          Types.positionalProp(Types.oneOf([Types.int(), Types.string()])),
+          Types.positionalProp(Types.oneOf([Types.int(), Types.string()])),
+          Types.positionalProp(Types.oneOf([Types.int(), Types.string()])),
+          Types.positionalProp(Types.int()),
+        ]),
+      ]),
+      c([
+        'spread positional bounds are dropped when overlap loses information',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.spreadPositionalProp(Types.array(Types.string(), {min: 4, max: 4})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.int())),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(
+            Types.array(Types.oneOf([Types.int(), Types.string()]), {min: 3}),
+          ),
+        ]),
+      ]),
+      c([
+        'spread positional bounds are merged when possible',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.spreadPositionalProp(Types.array(Types.string(), {min: 1, max: 4})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.int(), {max: 10})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.spreadPositionalProp(
+            Types.array(Types.oneOf([Types.int(), Types.string()]), {min: 1, max: 10}),
+          ),
+        ]),
+      ]),
+      c([
+        'spread positional bounds are merged when possible adjusting for positional prop difference',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.spreadPositionalProp(Types.array(Types.string(), {min: 2, max: 4})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.int(), {max: 10})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(
+            Types.array(Types.oneOf([Types.int(), Types.string()]), {min: 1, max: 10}),
+          ),
+        ]),
+      ]),
+    ).run(([name, lhs, rhs, expected], {only, skip}) => {
+      describe('using ~~', () => {
+        ;(only ? it.only : skip ? it.skip : it)(name, () => {
+          runtimeTypes['lhs'] = [lhs, Values.nullValue()]
+          runtimeTypes['rhs'] = [rhs, Values.nullValue()]
+          const expression = parse('lhs ~~ rhs').get()
+          expect(expression.getType(typeRuntime).get()).toEqual(expected)
+        })
+      })
+
+      describe.skip('using {...}', () => {
+        ;(only ? it.only : skip ? it.skip : it)(name, () => {
+          runtimeTypes['lhs'] = [lhs, Values.nullValue()]
+          runtimeTypes['rhs'] = [rhs, Values.nullValue()]
+          const expression = parse('{...lhs, ...rhs}').get()
+          expect(expression.getType(typeRuntime).get()).toEqual(expected)
+        })
+      })
+    })
+  })
+
   describe('array cons operator ::', () => {
     beforeEach(() => {
       runtimeTypes['testString'] = [Types.string(), Values.string('testString')]

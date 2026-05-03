@@ -163,7 +163,7 @@ describe('omit/pick type functions', () => {
     c([
       "Omit(Element(Users) & {role: String}, 'name')",
       "Omit(Element(Users) & {role: String}, 'name')",
-      '{Boolean, age: Int, role: String}',
+      '{age: Int, Boolean, role: String}',
     ]),
   ).run(([formula, expectedCode, expectedType], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`should parse ${formula}`, () => {
