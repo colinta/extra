@@ -27,15 +27,15 @@ describe('module', () => {
   describe('evaluation', () => {
     cases<[string]>(
       c([
-        `type User = {Int, ...[String, >=1] }
-type Foo = Pick(User, 0, 1)`,
+        `box User = {Int, ...[String, >=1] }
+box Foo = Pick(User, 0, 1)`,
       ]),
     ).run(([content]) =>
       it('should resolve prior type definitions while evaluating module values', () => {
         const moduleExpr = parseModule(content).get()
         const moduleValue = moduleExpr.eval(mockValueRuntime({})).get()
 
-        expect(moduleValue.definitions.get('Foo')?.toCode()).toEqual('Foo')
+        expect(moduleValue.definitions.get('Foo')?.toCode()).toEqual('Foo({Int, String})')
       }),
     )
   })

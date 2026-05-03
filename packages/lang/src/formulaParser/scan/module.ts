@@ -16,8 +16,8 @@ import {
   IMPORT_ONLY_KEYWORD,
   PROVIDES_KEYWORD,
   REQUIRES_KEYWORD,
+  BOX_KEYWORD,
   TYPE_KEYWORD,
-  ALIAS_KEYWORD,
   VERSION_START,
   VIEW_KEYWORD,
 } from '../grammars'
@@ -341,17 +341,17 @@ export function scanModuleTypeDefinition(scanner: Scanner, parseNext: ParseNext)
   const precedingComments = scanner.flushComments()
   const range0 = scanner.charIndex
 
-  // scan optional 'export' and 'opaque' modifiers, in either order
+  // scan optional 'export' modifier, then 'box' or 'type'
   let isExport = scanner.scanIfWord(EXPORT_KEYWORD)
   scanner.scanAllWhitespace()
 
-  let isOpaque: boolean
-  if (scanner.scanIfWord(ALIAS_KEYWORD)) {
+  let isBox: boolean
+  if (scanner.scanIfWord(TYPE_KEYWORD)) {
     scanner.scanAllWhitespace()
-    isOpaque = false
+    isBox = false
   } else {
-    scanner.expectWord(TYPE_KEYWORD, 'Types must be preceded by the "type" or "alias" keyword.')
-    isOpaque = true
+    scanner.expectWord(BOX_KEYWORD, 'Types must be preceded by the "box" or "type" keyword.')
+    isBox = true
   }
 
   const nameRef = scanValidTypeName(scanner)
@@ -374,7 +374,7 @@ export function scanModuleTypeDefinition(scanner: Scanner, parseNext: ParseNext)
     type,
     generics,
     isExport,
-    isOpaque,
+    isBox,
   )
 }
 
@@ -420,7 +420,7 @@ function isEnum(scanner: Scanner) {
 function isTypeDefinition(scanner: Scanner) {
   scanner.scanIfWord(EXPORT_KEYWORD)
 
-  return scanner.isWord(TYPE_KEYWORD) || scanner.isWord(ALIAS_KEYWORD)
+  return scanner.isWord(BOX_KEYWORD) || scanner.isWord(TYPE_KEYWORD)
 }
 
 function isExport(keyword: string) {

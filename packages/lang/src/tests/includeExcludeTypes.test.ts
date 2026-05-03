@@ -33,15 +33,15 @@ describe('excludeType', () => {
   cases<[name: string, baseType: Types.Type, excludedType: Types.Type, expected: string]>(
     c(['excludes matching literals from one-of types', literalOrInt, Types.literal('b'), '"a" | Int']),
     c([
-      'unwraps opaque base types',
-      Types.opaque('OpaqueLiteralOrInt', literalOrInt),
+      'unwraps box base types',
+      Types.box('OpaqueLiteralOrInt', literalOrInt),
       Types.literal('b'),
       '"a" | Int',
     ]),
     c([
-      'unwraps opaque excluded types',
+      'unwraps box excluded types',
       literalOrInt,
-      Types.opaque('OpaqueB', Types.literal('b')),
+      Types.box('OpaqueB', Types.literal('b')),
       '"a" | Int',
     ]),
     c(['excludes assignable types from one-of types', literalOrInt, Types.IntType, '"a" | "b"']),
@@ -78,15 +78,15 @@ describe('includeType', () => {
       '"b" | Int(>=0)',
     ]),
     c([
-      'unwraps opaque base types',
-      Types.opaque('OpaqueNarrowedLiteralOrInt', narrowedLiteralOrInt),
+      'unwraps box base types',
+      Types.box('OpaqueNarrowedLiteralOrInt', narrowedLiteralOrInt),
       [Types.literal('b'), Types.int({min: 0})],
       'Int(>=1)',
     ]),
     c([
-      'unwraps opaque included types',
+      'unwraps box included types',
       narrowedLiteralOrInt,
-      [Types.opaque('OpaqueIncludedInt', Types.int({min: 0}))],
+      [Types.box('OpaqueIncludedInt', Types.int({min: 0}))],
       'Int(>=1)',
     ]),
     c([

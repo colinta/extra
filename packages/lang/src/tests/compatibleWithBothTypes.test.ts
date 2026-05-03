@@ -189,9 +189,9 @@ describe('compatibleWithBothTypes', () => {
     props: new Map([['grade', Types.int()]]),
     parent: human,
   })
-  const userId = Types.opaque('UserId', Types.int())
-  const userIdMin2 = Types.opaque('UserId', Types.int({min: 2}), userId.identity)
-  const orderId = Types.opaque('OrderId', Types.int())
+  const userId = Types.box('UserId', Types.int())
+  const userIdMin2 = Types.box('UserId', Types.int({min: 2}), userId.identity)
+  const orderId = Types.box('OrderId', Types.int())
 
   cases<[Types.Type, Types.Type, Types.Type]>(
     // never
@@ -367,7 +367,7 @@ describe('compatibleWithBothTypes', () => {
     c([human, animal, privateOneOf(human, animal)]),
     c([student, human, human]),
     c([dog, human, privateOneOf(dog, human)]),
-    // opaque
+    // box
     c([userId, userId, userId]),
     c([userId, userIdMin2, userId]),
     c([userId, Types.int(), privateOneOf(userId, Types.int())]),

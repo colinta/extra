@@ -57,11 +57,7 @@ describe('partialType', () => {
       tupleWithSpread,
       '{Int?, ...[String?, length: 1...3]}',
     ]),
-    c([
-      'unwraps opaque types',
-      Types.opaque('OpaqueUser', user),
-      '{name: String?, age: Int?, Boolean?}',
-    ]),
+    c(['unwraps box types', Types.box('OpaqueUser', user), '{name: String?, age: Int?, Boolean?}']),
     c([
       'maps over one-of types',
       Types.oneOf([
@@ -96,7 +92,11 @@ describe('requiredType', () => {
       optionalTupleWithSpread,
       '{Int, ...[String, length: 1...3]}',
     ]),
-    c(['unwraps opaque types', Types.opaque('OpaqueOptionalUser', optionalUser), '{name: String, age: Int, Boolean}']),
+    c([
+      'unwraps box types',
+      Types.box('OpaqueOptionalUser', optionalUser),
+      '{name: String, age: Int, Boolean}',
+    ]),
     c([
       'maps over one-of types and removes null',
       Types.oneOf([

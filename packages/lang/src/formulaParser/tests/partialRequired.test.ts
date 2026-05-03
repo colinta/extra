@@ -27,7 +27,7 @@ beforeEach(() => {
       Values.booleanValue(true),
     ],
     OpaqueUser: [
-      Types.opaque(
+      Types.box(
         'OpaqueUser',
         Types.object([
           Types.namedProp('name', Types.StringType),

@@ -14,7 +14,7 @@ beforeEach(() => {
     UserDict: [new Types.DictType(Types.StringType), Values.booleanValue(true)],
     UserSet: [new Types.SetType(Types.StringType), Values.booleanValue(true)],
     OpaqueUsers: [
-      Types.opaque('OpaqueUsers', new Types.ArrayType(Types.StringType)),
+      Types.box('OpaqueUsers', new Types.ArrayType(Types.StringType)),
       Values.booleanValue(true),
     ],
     Containers: [

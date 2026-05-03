@@ -402,10 +402,10 @@
     },
     {
       "desc": "simple user id",
-      "preamble": "type UserId = Int\n",
+      "preamble": "box UserId = Int\n",
       "formula": "let\n  id = UserId(5)\nin\n  id",
       "expectedCode": "let\n  id = UserId(5)\nin\n  id\n",
-      "expectedType": "UserId",
+      "expectedType": "UserId(Int)",
       "expectedValue": "UserId(5)",
       "variables": []
     },

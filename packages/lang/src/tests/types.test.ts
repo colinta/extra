@@ -8,21 +8,21 @@ import {type TypeRuntime} from '../runtime'
 import {mockTypeRuntime} from './mockTypeRuntime'
 
 describe('module type definitions', () => {
-  it('compiles opaque type aliases to OpaqueType definitions', () => {
+  it('compiles box type aliases to BoxType definitions', () => {
     const runtime = mockTypeRuntime({})
-    const moduleDef = parseModule('type UserId = Int\n').get()
+    const moduleDef = parseModule('box UserId = Int\n').get()
     const moduleType = moduleDef.getType(runtime).get()
     const userId = moduleType.definitions.get('UserId')
 
-    expect(userId).toBeInstanceOf(Types.OpaqueType)
-    expect((userId as Types.OpaqueType).name).toEqual('UserId')
-    expect((userId as Types.OpaqueType).of).toEqual(Types.int())
-    expect((userId as Types.OpaqueType).identity.name).toEqual('UserId')
+    expect(userId).toBeInstanceOf(Types.BoxType)
+    expect((userId as Types.BoxType).name).toEqual('UserId')
+    expect((userId as Types.BoxType).of).toEqual(Types.int())
+    expect((userId as Types.BoxType).identity.name).toEqual('UserId')
   })
 
-  it('leaves non-opaque type aliases as their underlying type', () => {
+  it('leaves non-box type aliases as their underlying type', () => {
     const runtime = mockTypeRuntime({})
-    const moduleDef = parseModule('alias Age = Int\n').get()
+    const moduleDef = parseModule('type Age = Int\n').get()
     const moduleType = moduleDef.getType(runtime).get()
 
     expect(moduleType.definitions.get('Age')).toEqual(Types.int())
@@ -110,7 +110,7 @@ describe('toCode', () => {
     c([Types.set(Types.oneOf([Types.int(), Types.string()])), 'Set(Int | String)']),
     c([Types.object([Types.namedProp('foo', Types.string())]), '{foo: String}']),
     c([Types.classType({name: 'Mario', props: new Map([['foo', Types.string()]])}), 'Mario']),
-    c([Types.opaque('UserId', Types.int()), 'UserId']),
+    c([Types.box('UserId', Types.int()), 'UserId(Int)']),
     c([
       Types.classType({
         name: 'Mario',
@@ -546,7 +546,7 @@ function args(
         isRequired: isRequired ?? true,
       })
     } else {
-      alias = alias ?? name
+      type = type ?? name
 
       return Types.namedArgument({name, alias, type, isRequired: isRequired ?? true})
     }

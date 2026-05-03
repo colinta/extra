@@ -31,7 +31,7 @@ beforeEach(() => {
   runtimeTypes = {
     User: [user, Values.booleanValue(true)],
     CreateUser: [createUser, Values.booleanValue(true)],
-    OpaqueCreateUser: [Types.opaque('OpaqueCreateUser', createUser), Values.booleanValue(true)],
+    OpaqueCreateUser: [Types.box('OpaqueCreateUser', createUser), Values.booleanValue(true)],
     ToString: [
       Types.namedFormula(
         'ToString',

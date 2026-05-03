@@ -38,7 +38,7 @@ beforeEach(() => {
     ],
     B: [Types.oneOf([Types.literal('a'), Types.int({min: 1})]), Values.booleanValue(true)],
     OpaqueB: [
-      Types.opaque('OpaqueB', Types.oneOf([Types.literal('a'), Types.int({min: 1})])),
+      Types.box('OpaqueB', Types.oneOf([Types.literal('a'), Types.int({min: 1})])),
       Values.booleanValue(true),
     ],
     Status: [status, Values.booleanValue(true)],

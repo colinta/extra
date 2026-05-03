@@ -31,7 +31,7 @@ beforeEach(() => {
       Values.booleanValue(true),
     ],
     OpaqueB: [
-      Types.opaque('OpaqueB', Types.oneOf([Types.literal('a'), Types.literal('b'), Types.IntType])),
+      Types.box('OpaqueB', Types.oneOf([Types.literal('a'), Types.literal('b'), Types.IntType])),
       Values.booleanValue(true),
     ],
     Status: [status, Values.booleanValue(true)],

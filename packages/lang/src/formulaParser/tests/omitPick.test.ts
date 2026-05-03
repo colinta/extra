@@ -75,7 +75,7 @@ beforeEach(() => {
       Values.booleanValue(true),
     ],
     OpaqueA: [
-      Types.opaque(
+      Types.box(
         'OpaqueA',
         Types.object([
           Types.positionalProp(Types.IntType),

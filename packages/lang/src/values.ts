@@ -91,8 +91,8 @@ export function namedFormula(
   return new NamedFormulaValue(name, fn, undefined, [], props)
 }
 
-export function opaque(value: Value, opaqueType?: Types.OpaqueType) {
-  return new OpaqueValue(value, opaqueType)
+export function box(value: Value, boxType?: Types.BoxType) {
+  return new BoxValue(value, boxType)
 }
 
 export function classDefinition({
@@ -1388,22 +1388,22 @@ export class SetValue extends Value {
   }
 }
 
-export class OpaqueValue extends Value {
-  static _props: Map<string, (value: OpaqueValue) => Value> = new Map([])
+export class BoxValue extends Value {
+  static _props: Map<string, (value: BoxValue) => Value> = new Map([])
 
-  readonly opaqueType: Types.OpaqueType | undefined
+  readonly boxType: Types.BoxType | undefined
 
   constructor(
     readonly value: Value,
-    opaqueType?: Types.OpaqueType,
+    boxType?: Types.BoxType,
   ) {
     super()
-    this.opaqueType = opaqueType
-    Object.defineProperty(this, 'opaqueType', {enumerable: false})
+    this.boxType = boxType
+    Object.defineProperty(this, 'boxType', {enumerable: false})
   }
 
   getType() {
-    return this.opaqueType ?? Types.unique('OpaqueValue')
+    return this.boxType ?? Types.unique('BoxValue')
   }
 
   isTruthy() {
@@ -1411,12 +1411,12 @@ export class OpaqueValue extends Value {
   }
 
   isEqual(rhs: Value): boolean {
-    return rhs instanceof OpaqueValue && this.value.isEqual(rhs.value)
+    return rhs instanceof BoxValue && this.value.isEqual(rhs.value)
   }
 
   toCode() {
-    if (this.opaqueType) {
-      return `${this.opaqueType.name}(${this.value.toCode()})`
+    if (this.boxType) {
+      return `${this.boxType.name}(${this.value.toCode()})`
     }
     return this.value.toCode()
   }
@@ -1430,7 +1430,7 @@ export class OpaqueValue extends Value {
       return undefined
     }
 
-    const prop = OpaqueValue._props.get(name)
+    const prop = BoxValue._props.get(name)
     return prop?.(this)
   }
 }
@@ -2144,31 +2144,31 @@ export class MessageValue extends Value {
 }
 
 ;(function init() {
-  OpaqueValue._props.set('value', (opaque: OpaqueValue) => opaque.value)
-  OpaqueValue._props.set('map', (opaque: OpaqueValue) =>
+  BoxValue._props.set('value', (box: BoxValue) => box.value)
+  BoxValue._props.set('map', (box: BoxValue) =>
     namedFormula('map', args =>
       args
         .at(0, FormulaValue)
-        .map(apply => apply.call(new FormulaArgs([[undefined, opaque.value, 'arg']]))),
+        .map(apply => apply.call(new FormulaArgs([[undefined, box.value, 'arg']]))),
     ),
   )
-  OpaqueValue._props.set('rewrap', (opaque: OpaqueValue) =>
+  BoxValue._props.set('rewrap', (box: BoxValue) =>
     namedFormula('rewrap', args =>
       args.at(0, FormulaValue).map(apply => {
-        const result = apply.call(new FormulaArgs([[undefined, opaque.value, 'arg']]))
+        const result = apply.call(new FormulaArgs([[undefined, box.value, 'arg']]))
         if (result.isErr()) {
           return result
         }
 
         const value = result.get()
-        const opaqueType = opaque.opaqueType
-        if (!opaqueType) {
-          return ok(new OpaqueValue(value))
+        const boxType = box.boxType
+        if (!boxType) {
+          return ok(new BoxValue(value))
         }
-        if (!Types.canBeAssignedTo(value.getType(), opaqueType.of)) {
-          return err(`Value '${value.getType()}' cannot be rewrapped as '${opaqueType.name}'.`)
+        if (!Types.canBeAssignedTo(value.getType(), boxType.of)) {
+          return err(`Value '${value.getType()}' cannot be rewrapped as '${boxType.name}'.`)
         }
-        return ok(new OpaqueValue(value, opaqueType))
+        return ok(new BoxValue(value, boxType))
       }),
     ),
   )

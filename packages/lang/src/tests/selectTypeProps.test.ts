@@ -68,8 +68,8 @@ describe('selectTypeProps', () => {
       '{Boolean, c: Float, ...[String, length: 1...8]}',
     ]),
     c([
-      'selects through opaque types',
-      Types.opaque('OpaqueTuple', tupleWithSpread),
+      'selects through box types',
+      Types.box('OpaqueTuple', tupleWithSpread),
       [position(0), position(1)],
       true,
       '{Int, String}',

@@ -16,8 +16,8 @@ beforeEach(() => {
   typeRuntime = mockTypeRuntime(runtimeTypes)
   valueRuntime = mockValueRuntime(runtimeTypes)
 
-  const userId = Types.opaque('UserId', Types.int())
-  const userName = Types.opaque('UserName', Types.string())
+  const userId = Types.box('UserId', Types.int())
+  const userName = Types.box('UserName', Types.string())
   runtimeTypes.UserId = [userId, new Values.TypeValue(userId)]
   runtimeTypes.UserName = [userName, new Values.TypeValue(userName)]
 })
@@ -30,10 +30,10 @@ function getValue(code: string) {
   return parse(code).get().eval(valueRuntime).get()
 }
 
-describe('opaque type constructors', () => {
+describe('box type constructors', () => {
   cases<[string, Types.Type]>(
     //
-    c(['UserId(5)', Types.opaque('UserId', Types.int())]),
+    c(['UserId(5)', Types.box('UserId', Types.int())]),
     c([
       `let
   a = UserId(5)
@@ -74,7 +74,7 @@ in
   id = UserId(5)
 in
   id.rewrap(fn(input) => input + 1)`,
-      Types.opaque('UserId', Types.int()),
+      Types.box('UserId', Types.int()),
     ]),
   ).run(([code, expected], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(`types '${code}' as '${expected}'`, () => {
@@ -107,7 +107,7 @@ in
 
   cases<[string, Values.Value]>(
     //
-    c(['UserId(5)', Values.opaque(Values.int(5))]),
+    c(['UserId(5)', Values.box(Values.int(5))]),
     c([
       `let
   next = fn(# input: Int): Int => input + 1
@@ -156,7 +156,7 @@ in
   id = UserId(5)
 in
   id.rewrap(fn(input) => input + 1)`,
-      Values.opaque(Values.int(6)),
+      Values.box(Values.int(6)),
     ]),
     c([
       `let
@@ -181,7 +181,7 @@ in
     ]),
   ).run(([code], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(
-      `rejects opaque construction shortcut in '${code}'`,
+      `rejects box construction shortcut in '${code}'`,
       () => {
         const result = parse(code).get().getType(typeRuntime)
         expect(result.isErr()).toBe(true)

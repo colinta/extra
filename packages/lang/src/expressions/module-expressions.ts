@@ -35,7 +35,7 @@ import {RuntimeError} from './errors'
 import {type ViewFormulaDefinition} from './view-expressions'
 import {type ClassDefinition} from './class-expressions'
 import {type NamedEnumDefinition} from './enum-expressions'
-import {ALIAS_KEYWORD, EXPORT_KEYWORD, TYPE_KEYWORD, VERSION_START} from '@/formulaParser/grammars'
+import {BOX_KEYWORD, EXPORT_KEYWORD, TYPE_KEYWORD, VERSION_START} from '@/formulaParser/grammars'
 
 /**
  * Declares the default export type. The compiler can use this to ensure that
@@ -332,15 +332,15 @@ export class ImportSpecific extends Expression {
 
 /**
  * Effectively a type alias, but Extra's type aliases can also be tagged
- * 'opaque'. Opaque types are distinguished first by their type alias, and then
+ * 'box'. Box types are distinguished first by their type alias, and then
  * compared as usual. They are effectively a Record/Struct type with only one
  * data member.
  *
- *     [public] [opaque] typeName[<generics>] = type
+ *     [public] [box] typeName[<generics>] = type
  *
  *     public Age = Int  -- Age is just an alias for Int
- *     public opaque UserId = Int  -- UserId and Int are considered non-overlapping
- *     public opaque User = {...}
+ *     public box UserId = Int  -- UserId and Int are considered non-overlapping
+ *     public box User = {...}
  *
  */
 export class TypeDefinition extends Expression {
@@ -351,7 +351,7 @@ export class TypeDefinition extends Expression {
     readonly type: Expression,
     readonly generics: GenericExpression[],
     readonly isExport: boolean,
-    readonly isOpaque: boolean,
+    readonly isBox: boolean,
   ) {
     super(range, precedingComments)
   }
@@ -379,10 +379,10 @@ export class TypeDefinition extends Expression {
       code += EXPORT_KEYWORD + ' '
     }
 
-    if (this.isOpaque) {
-      code += TYPE_KEYWORD + ' '
+    if (this.isBox) {
+      code += BOX_KEYWORD + ' '
     } else {
-      code += ALIAS_KEYWORD + ' '
+      code += TYPE_KEYWORD + ' '
     }
     code += this.name
     if (this.generics.length) {
@@ -401,10 +401,10 @@ export class TypeDefinition extends Expression {
       code += EXPORT_KEYWORD + ' '
     }
 
-    if (this.isOpaque) {
-      code += TYPE_KEYWORD + ' '
+    if (this.isBox) {
+      code += BOX_KEYWORD + ' '
     } else {
-      code += ALIAS_KEYWORD + ' '
+      code += TYPE_KEYWORD + ' '
     }
     code += this.name
     if (this.generics.length) {
@@ -429,8 +429,8 @@ export class TypeDefinition extends Expression {
    */
   getType(runtime: TypeRuntime): GetTypeResult {
     return getChildAsTypeExpression(this, this.type, runtime).map(type => {
-      if (this.isOpaque) {
-        return Types.opaque(this.name, type, Types.unique(this.name))
+      if (this.isBox) {
+        return Types.box(this.name, type, Types.unique(this.name))
       }
 
       return type

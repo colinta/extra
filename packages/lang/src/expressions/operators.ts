@@ -3704,19 +3704,8 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
       lhFormulaType = lhFormulaType.konstructor!
     }
 
-    if (lhFormulaType instanceof Types.OpaqueType) {
-      lhFormulaType = new Types.NamedFormulaType(
-        lhFormulaType.name,
-        lhFormulaType,
-        [
-          Types.positionalArgument({
-            name: 'input',
-            type: lhFormulaType.of,
-            isRequired: true,
-          }),
-        ],
-        [],
-      )
+    if (lhFormulaType instanceof Types.BoxType) {
+      lhFormulaType = lhFormulaType.konstructor
     }
 
     if (lhFormulaType instanceof Types.EnumType && lhFormulaType.member.args.length > 0) {
@@ -3809,8 +3798,8 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
       lhFormula = lhFormula.konstructor(lhFormula)
     }
 
-    if (lhFormula instanceof Values.TypeValue && lhFormula.type instanceof Types.OpaqueType) {
-      const opaqueType = lhFormula.type
+    if (lhFormula instanceof Values.TypeValue && lhFormula.type instanceof Types.BoxType) {
+      const boxType = lhFormula.type
 
       if (!(rhArgsExpression instanceof Expressions.ArgumentsList)) {
         return err(
@@ -3827,12 +3816,12 @@ export class FunctionInvocationOperator extends PropertyChainOperator {
           return err(
             new RuntimeError(
               rhArgsExpression,
-              `Expected an argument for opaque constructor '${opaqueType.name}'`,
+              `Expected an argument for box constructor '${boxType.name}'`,
             ),
           )
         }
 
-        return ok(Values.opaque(value, opaqueType))
+        return ok(Values.box(value, boxType))
       })
     }
 
