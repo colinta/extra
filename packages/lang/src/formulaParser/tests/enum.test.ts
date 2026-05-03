@@ -32,6 +32,57 @@ enum User {
 }
 `,
       ]),
+      // optional `case` syntax normalizes to preferred member syntax
+      c([
+        `\
+enum User {
+  case one
+  case two
+  case three
+}
+`,
+        `\
+enum User {
+  .one
+  .two
+  .three
+}
+`,
+      ]),
+      // optional `case` syntax with arguments
+      c([
+        `\
+enum Operation {
+  case add(a: Int, b: Int)
+  case negate(Int)
+  case identity
+}
+`,
+        `\
+enum Operation {
+  .add(a: Int, b: Int)
+  .negate(Int)
+  .identity
+}
+`,
+      ]),
+      // optional `case` syntax for the true weirdos
+      c([
+        `\
+enum User {
+  case .one
+  case .two
+  case .three
+}
+`,
+        `\
+enum User {
+  .one
+  .two
+  .three
+}
+`,
+      ]),
       // members with arguments (algebraic data types)
       c([
         `\
@@ -215,6 +266,25 @@ enum Role { -- simple members
   .stranger
   .staff
   .admin
+}`,
+        Types.namedEnumDefinition({
+          name: 'Role',
+          members: [
+            //
+            Types.enumCase('stranger'),
+            Types.enumCase('staff'),
+            Types.enumCase('admin'),
+          ],
+        }),
+        [],
+      ]),
+      // optional `case` syntax
+      c([
+        `\
+enum Role { -- optional case syntax
+  case stranger
+  case staff
+  case admin
 }`,
         Types.namedEnumDefinition({
           name: 'Role',

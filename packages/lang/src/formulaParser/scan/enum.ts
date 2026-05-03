@@ -4,6 +4,7 @@ import {
   ARGS_OPEN,
   BLOCK_CLOSE,
   BLOCK_OPEN,
+  CASE_KEYWORD,
   ENUM_KEYWORD,
   ENUM_START,
   EXPORT_KEYWORD,
@@ -54,9 +55,17 @@ export function scanNamedEnum(
   const staticProperties: Expressions.ClassStaticPropertyExpression[] = []
   const staticFormulas: Expressions.NamedFormulaExpression[] = []
   while (!scanner.scanIfString(BLOCK_CLOSE)) {
-    if (scanner.scanIfString(ENUM_START)) {
-      scanner.scanAllWhitespace()
-
+    // supported syntaxes, because Extra is chill about it:
+    //     enum Foo {
+    //       .foo  ← preferred
+    //       case foo
+    //       case .foo
+    const hasCaseKeyword = scanner.scanIfWord(CASE_KEYWORD)
+    if (hasCaseKeyword) {
+      scanner.expectWhitespace()
+    }
+    const hasEnumStart = scanner.scanIfString(ENUM_START)
+    if (hasEnumStart || hasCaseKeyword) {
       const enum0 = scanner.charIndex
       const enumCaseName = scanEnumName(scanner).name
       if (caseNames.has(enumCaseName)) {
