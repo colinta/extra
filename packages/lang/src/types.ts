@@ -6520,6 +6520,10 @@ function includeSingleType(baseType: Type, includedType: Type): Type {
   return narrowTypeIs(baseType, includedType)
 }
 
+export function notNullType(type: Type): Type {
+  return excludeType(type, NullType)
+}
+
 export function includeType(baseType: Type, includedTypes: Type[]): Type {
   baseType = unwrapBoxType(baseType)
   includedTypes = includedTypes.map(unwrapBoxType)

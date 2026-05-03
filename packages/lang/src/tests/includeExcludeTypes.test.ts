@@ -69,6 +69,18 @@ describe('excludeType', () => {
   )
 })
 
+describe('notNullType', () => {
+  cases<[name: string, baseType: Types.Type, expected: string]>(
+    c(['removes null from optional types', Types.optional(Types.StringType), 'String']),
+    c(['removes null from one-of types', Types.oneOf([Types.StringType, Types.NullType, Types.IntType]), 'Int | String']),
+    c(['leaves non-nullable types unchanged', Types.StringType, 'String']),
+  ).run(([name, baseType, expected], {only, skip}) =>
+    (only ? it.only : skip ? it.skip : it)(name, () => {
+      expect(Types.notNullType(baseType).toString()).toEqual(expected)
+    }),
+  )
+})
+
 describe('includeType', () => {
   cases<[name: string, baseType: Types.Type, includedTypes: Types.Type[], expected: string]>(
     c([

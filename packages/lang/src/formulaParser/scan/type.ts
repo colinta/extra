@@ -26,6 +26,8 @@ import {
   PARTIAL_KEYWORD,
   REQUIRED_KEYWORD,
   EXCLUDE_KEYWORD,
+  NOT_NULL_KEYWORD,
+  NOT_NULL_KEYWORD_ALIAS,
   INCLUDE_KEYWORD,
   INCLUDE_KEYWORD_ALIAS,
   RETURN_KEYWORD,
@@ -580,6 +582,16 @@ function scanNamedType(scanner: Scanner, moduleOrArgument: ArgumentType, parseNe
       scanner.expectString(ARGS_CLOSE)
 
       return new Expressions.ElementTypeExpression(
+        [arg0, scanner.charIndex],
+        scanner.flushComments(),
+        ofType,
+      )
+    } else if (typeName.name === NOT_NULL_KEYWORD || typeName.name === NOT_NULL_KEYWORD_ALIAS) {
+      const ofType = scanType(scanner, moduleOrArgument, parseNext)
+      scanner.scanAllWhitespace()
+      scanner.expectString(ARGS_CLOSE)
+
+      return new Expressions.NotNullTypeExpression(
         [arg0, scanner.charIndex],
         scanner.flushComments(),
         ofType,

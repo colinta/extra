@@ -263,6 +263,15 @@ export class ExcludeType extends TypeNode {
   }
 }
 
+export class NotNullType extends TypeNode {
+  constructor(
+    readonly source: Source,
+    readonly type: Types.Type,
+  ) {
+    super(source, type)
+  }
+}
+
 export class IncludeType extends TypeNode {
   constructor(
     readonly source: Source,

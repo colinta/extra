@@ -11,6 +11,8 @@ import {
   PARTIAL_KEYWORD,
   REQUIRED_KEYWORD,
   EXCLUDE_KEYWORD,
+  NOT_NULL_KEYWORD,
+  NOT_NULL_KEYWORD_ALIAS,
   INCLUDE_KEYWORD,
   INCLUDE_KEYWORD_ALIAS,
   RETURN_KEYWORD,
@@ -309,6 +311,15 @@ export function scanIdentifier(scanner: Scanner): Expressions.Identifier {
         scanner.flushComments(),
         currentToken,
         `${currentToken} requires a type and excluded members (${currentToken}(Type, ExcludedType))`,
+      )
+      break
+    case NOT_NULL_KEYWORD:
+    case NOT_NULL_KEYWORD_ALIAS:
+      identifier = new Expressions.InvalidTypeIdentifier(
+        range,
+        scanner.flushComments(),
+        currentToken,
+        `${currentToken} requires a type (${currentToken}(Type))`,
       )
       break
     case INCLUDE_KEYWORD:

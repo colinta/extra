@@ -48,6 +48,9 @@ describe('exclude type function', () => {
     c(['Exclude(B, Int)', 'Exclude(B, Int)', '"a" | "b"']),
     c(['Exclude(B, Int(<0))', 'Exclude(B, Int(<=-1))', '"a" | "b" | Int(>=0)']),
     c(['Exclude(String?, null)', 'Exclude(String?, null)', 'String']),
+    c(['NotNull(String?)', 'NotNull(String?)', 'String']),
+    c(['NotNullable(String?)', 'NotNull(String?)', 'String']),
+    c(['NotNull(B | null)', 'NotNull(B?)', '"a" | "b" | Int']),
     c(['Exclude(A, {})', 'Exclude(A, {})', 'Int']),
     c(['Exclude(A, {foo: Int})', 'Exclude(A, {foo: Int})', '{user: {name: String}} | Int']),
     c([

@@ -51,6 +51,7 @@ import {
   REQUIRED_KEYWORD,
   PARTIAL_KEYWORD,
   EXCLUDE_KEYWORD,
+  NOT_NULL_KEYWORD,
   INCLUDE_KEYWORD,
   ELEMENT_KEYWORD,
   FORMULA_SHORTHAND_DELIMITER,
@@ -1765,6 +1766,18 @@ export class ExcludeTypeExpression extends TypeExpression {
     return this.getAsTypeExpression(runtime).map(
       type => new Nodes.ExcludeType(toSource(this), type),
     )
+  }
+}
+
+export class NotNullTypeExpression extends RequirementTypeFunctionExpression {
+  name = NOT_NULL_KEYWORD
+
+  getAsTypeExpression(runtime: TypeRuntime): GetTypeResult {
+    return this.of.getAsTypeExpression(runtime).map(type => Types.excludeType(type, Types.NullType))
+  }
+
+  compileAsTypeExpression(runtime: TypeRuntime) {
+    return this.getAsTypeExpression(runtime).map(type => new Nodes.NotNullType(toSource(this), type))
   }
 }
 
