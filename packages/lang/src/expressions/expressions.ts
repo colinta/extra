@@ -5108,8 +5108,20 @@ export function argumentToArgumentType(
       let message = 'Unable to infer type for argument '
       if (argExpr.isPositional) {
         message += `at position #${atPosition + 1}`
-      } else if (argExpr instanceof PositionalArgument) {
-        message += `'${argExpr.aliasRef.name}'`
+      } else {
+        const providedName = argExpr.aliasRef.name
+        message += `'${providedName}'`
+        if (formulaArgumentType) {
+          const expectedNames = formulaArgumentType.args.flatMap(arg =>
+            arg.alias ? [arg.alias] : [],
+          )
+          const suggestion = Types.namedArgumentTypoSuggestion(providedName, expectedNames, [
+            providedName,
+          ])
+          if (suggestion) {
+            message = `Unknown named argument '${providedName}'. Did you mean '${suggestion}'?`
+          }
+        }
       }
       return err(new RuntimeError(argExpr, message))
     }

@@ -228,6 +228,7 @@ fn(
       c(['(fn(# a: Int): Int => a)(1)', Values.int(1)]),
       c(['(fn(# a: Int = 0): Int => a)(1)', Values.int(1)]),
       c(['(fn(a: Int): Int => a)(a: 1)', Values.int(1)]),
+      c(['(fn(a: Int): Int => a)(1)', Values.int(1)]),
       c(['(fn(# a: Int, b: Int): Int => a + b)(1, b: 2)', Values.int(3)]),
       c(['(fn(# a: Int, b: Int): Int => a + b)(b: 2, 1)', Values.int(3)]),
       c(['(fn(...# a: [Int]): Int => (a[0] ?? -1) + (a[1] ?? -1))()', Values.int(-2)]),

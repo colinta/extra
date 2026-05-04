@@ -276,6 +276,16 @@ in
   `,
         'Ambiguous reference detected in let assignment',
       ]),
+      c([
+        'suggests the correct callback argument name when shorthand uses a typo',
+        `\
+let
+  fn foo(# a: fn(input: Int): Int, initial: Int) => a(input: initial)
+in
+  foo(|in| in + 1, initial: 1)
+`,
+        "Unknown named argument 'in'. Did you mean 'input'?",
+      ]),
     ).run(([desc, code, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`${desc}`, () => {
         expect(() => {

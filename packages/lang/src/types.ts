@@ -6866,6 +6866,18 @@ function _checkFormulaArguments(
   return errors
 }
 
+export function namedArgumentTypoSuggestion(
+  providedName: string,
+  expectedNames: string[],
+  providedNames: Iterable<string>,
+) {
+  const providedSet = new Set(providedNames)
+  const candidates = expectedNames.filter(expectedName => !providedSet.has(expectedName))
+  return candidates.find(
+    expectedName => expectedName.startsWith(providedName) || providedName.startsWith(expectedName),
+  )
+}
+
 /**
  * Used in _checkFormulaArguments to retrieve one argument named 'alias'.
  */
