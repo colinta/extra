@@ -207,8 +207,8 @@ describe('Object syntax', () => {
           Types.positionalProp(Types.literal(2)),
         ]),
         Types.object([Types.spreadPositionalProp(Types.array(Types.int(), {min: 2, max: 2}))]),
-        false,
-        '{0, 1, 2} cannot be assigned to {...[Int, =2]}',
+        true,
+        '{0, 1, 2} can be assigned to {...[Int, =2]}',
       ]),
     ).run(([provided, expected, canAssign, name], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(name, () => {

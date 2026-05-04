@@ -4697,9 +4697,9 @@ function functionInvocationOperatorType(
         if (!(expectedFormulaType instanceof Types.FormulaType)) {
           let message = `Expected argument of type '${expectedFormulaType.toCode()}' for argument`
           if (providedArg instanceof Expressions.NamedArgument) {
-            message += `'${providedArg.alias}'`
+            message += ` '${providedArg.alias}'`
           } else if (providedArg instanceof Expressions.PositionalArgument) {
-            message += `at position #${currentPosition}`
+            message += ` at position #${currentPosition}`
           }
 
           return err(new RuntimeError(providedArg, message))

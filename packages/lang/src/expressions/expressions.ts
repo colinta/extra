@@ -1,4 +1,4 @@
-import {err, mapAll, mapMany, ok, type Result} from '@extra-lang/result'
+import {err, mapAll, mapMany, ok, type Result, reduceAll} from '@extra-lang/result'
 
 import {
   indent,
@@ -1777,7 +1777,9 @@ export class NotNullTypeExpression extends RequirementTypeFunctionExpression {
   }
 
   compileAsTypeExpression(runtime: TypeRuntime) {
-    return this.getAsTypeExpression(runtime).map(type => new Nodes.NotNullType(toSource(this), type))
+    return this.getAsTypeExpression(runtime).map(
+      type => new Nodes.NotNullType(toSource(this), type),
+    )
   }
 }
 
@@ -2958,12 +2960,42 @@ export class ObjectExpression extends Expression {
   }
 
   getType(runtime: TypeRuntime): GetTypeResult {
-    return mapAll(
-      this.values.map((arg): GetRuntimeResult<Types.ObjectProp[]> => {
+    return reduceAll(
+      {spread: [], props: [], objects: []} as {
+        spread: Types.ArrayType[]
+        props: (Types.PositionalProp | Types.NamedProp)[]
+      },
+      this.values,
+      ({spread, props}, arg) => {
         if (arg instanceof SpreadObjectArgument) {
-          return getChildType(this, arg, runtime).map(type =>
-            type instanceof Types.ArrayType ? [Types.spreadPositionalProp(type)] : type.props,
-          )
+          return getChildType(this, arg, runtime).map(type => {
+            if (type instanceof Types.ArrayType) {
+              spread.push(type)
+            } else if (type instanceof Types.ObjectType) {
+              if (spread.length) {
+                const namedProps = type.props.filter(prop => prop.is === 'named')
+                const positionalProps = type.props.filter(prop => prop.is === 'positional')
+                props.push(...namedProps)
+                spread.push(...positionalProps.map(({type}) => Types.array(type, {min: 1, max: 1})))
+              } else {
+                const regularProps = type.props.filter(prop => prop.is !== 'spread-positional')
+                props.push(...regularProps)
+              }
+
+              const spreadType = type.spreadPositionalType
+              if (spreadType) {
+                spread.push(spreadType)
+              }
+            } else {
+              return err(
+                new RuntimeError(
+                  arg,
+                  `Expected an array or object in spread operation, found ${type}`,
+                ),
+              )
+            }
+            return ok({spread, props})
+          })
         }
 
         if (arg instanceof DictEntry) {
@@ -2972,31 +3004,47 @@ export class ObjectExpression extends Expression {
             return err(
               new RuntimeError(
                 key,
-                `Expected a literal key, object does not support arbitrary key ${key}`,
+                `Object does not support key ${key}. Objects only support string keys.`,
               ),
             )
           }
 
+          // support `{ name: }` shorthand
           const value = arg.value ? arg.value : arg.name
-          return getChildType(this, value, runtime).map(type => [
-            {
-              is: 'named',
-              name: key.value.value,
-              type,
-            },
-          ])
-        } else {
-          return getChildType(this, arg, runtime).map(type => [
-            {
-              is: 'positional',
-              type,
-            },
-          ])
+          return getChildType(this, value, runtime).map(type => {
+            props.push(Types.namedProp(key.value.value, type))
+            return {spread, props}
+          })
         }
-      }),
-    )
-      .map(types => types.flat())
-      .map(types => new Types.ObjectType(types))
+
+        return getChildType(this, arg, runtime).map(type => {
+          props.push(Types.positionalProp(type))
+          return {spread, props}
+        })
+      },
+    ).map(({spread, props}) => {
+      if (!spread.length) {
+        return Types.object(props)
+      }
+
+      if (spread.length === 1) {
+        return Types.object([...props, Types.spreadPositionalProp(spread[0])])
+      }
+
+      const spreadArrayType = spread.reduce((prevType, nextType) => {
+        const concatLength = Narrowed.combineConcatLengths(
+          prevType.narrowedLength,
+          nextType.narrowedLength,
+        )
+        const combinedType = Types.array(
+          Types.compatibleWithBothTypes(prevType.of, nextType.of),
+          concatLength,
+        )
+        return combinedType
+      })
+
+      return Types.object([...props, Types.spreadPositionalProp(spreadArrayType)])
+    })
   }
 
   eval(runtime: ValueRuntime) {

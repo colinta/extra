@@ -1715,77 +1715,60 @@ I went with option A. I'm relieved to hear that you agree with this decision.
 All of the container types (Array, Tuple, Object, Dict, and Set) support the `...` unary operator to merge multiple arrays/tuples/dicts/sets into one. Some containers can be mixed and matched, others can't. Try 'em and find out!
 
 ```extra
--- arrays
+-- Arrays
 let
-  a: [1, 2, 3]
-  b: [4, 5, 6]
+  a = [1, 2, 3]
+  b = [4, 5, 6]
 in
   [...a, ...b] --> [1, 2, 3, 4, 5, 6]
   -- a ++ b --> same
 
--- dicts
+-- Sets
 let
-  a: Dict(a: 1, b: 2, c: 3)
-  b: Dict(d: 4, e: 5, f: 6)
+  a = Set(1, 2, 3)
+  b = Set(3, 4, 5)
+in
+  Set(...a, ...b) --> Set(1, 2, 3, 4, 5)
+  -- a ++ b --> same
+
+-- Dicts
+let
+  a = Dict(a: 1, b: 2, c: 3)
+  b = Dict(d: 4, e: 5, f: 6)
 in
   Dict(...a, ...b) --> Dict(a: 1, b: "2", c: 3, d: 4, e: "5", f: 6)
   -- a ~~ b --> same
 
--- sets
+-- Dict + Object
 let
-  a: Set(1, 2, 3)
-  b: Set(3, 4, 5)
+  a = Dict(a: 1, b: 2, c: 3)
+  b = {d: 4, e: 5, f: 6, 'foo'}
 in
-  Set(...a, ...b) --> Set(1, 2, 3, 4, 5)
-  -- a ++ b --> same
-```
-
-The `...` operator will also merge keys, preferring the later values, which provides yet another way to merge Dicts and Objects.
-
-```extra
--- objects
-let
-  a: {a: 1, b: "2", c: 3}
-  b: {c: 4, d: "5", e: 6}
-in
-  {...a, ...b} --> {a: 1, b: "2", c: 4, d: "5", e: 6}
+  Dict(...a, ...b) --> Dict(a: 1, b: "2", c: 3, d: 4, e: "5", f: 6, 0: 'foo')
   -- a ~~ b --> same
 ```
 
-Remember (scroll up _I just went over this_) that positional entries in an object are funny. Intuitively they seem "array like", but in an object they are treated as having fixed numeric keys. `a.0` can have a different type from `a.1`.
-
-Therefore, when merging objects, the positional values override instead of concatenate.
+In an object type, the `...` operator works much like the `~~` operator, but consider merging multiple tuple objects (objects using positional values):
 
 ```extra
--- tuples
 let
-  a: {0, 0, spin: 'up', name: 'electron'}
-  b: {1, 1, spin: 'down', quarks: 3}
+  a = {1, "2"}
+  b = {3, "4"}
 in
-  {...a, ...b} --> {1, 1, spin: 'down', name: 'electron', quarks: 3}
-  -- a ~~ b --> same
+  {
+    ">"
+    ...a
+    "|"
+    ...b
+    "<"
+  } --> ?
 ```
 
-If you really had your heart set on concatenating two tuples... well, you can't. You can insert a new value onto the "end" of a tuple:
+I hope it's clear from this example that the positional values all need to concat. This is very _unlike_ merging two `Dict`s together, where the key semantic is very explicit.
 
 ```extra
-let
-  weather = {50, unit: 'celsius'}
-  new_temp = 60
-in
-  {...weather, new_temp}
-  -- {50, unit: 'celsius', 60}
-```
-
-What you _really_ want to do (I'll tell you what you want, what you really really want) is insert an _array_ into an object. _This_ you can do!
-
-```extra
-let
-  fourAges: Array(Int, length: =4) = [0, 10, 20, 42]
-  twoNames: Array(String, length: =2) = ['bob', 'tom']
-in
-  {...fourAges, ...twoNames} -- {Int, Int, Int, Int, String, String}
-  -- all the array lengths are known at compile time
+    ...
+  } --> {">", 1, "2", "|", 3, "4", "<"}
 ```
 
 ### Putting it all together

@@ -371,7 +371,7 @@ function combineTypes(lhs: Type, rhs: Type): Type {
   return narrowTypeIs(lhs, rhs)
 }
 
-export function combineObjectTypes(lhs: ObjectType, rhs: ObjectType): Type {
+export function combineObjectTypes(lhs: ObjectType, rhs: ObjectType): ObjectType {
   const props: ObjectProp[] = []
 
   const lhsPositionals = lhs.props.filter(prop => prop.is === 'positional')
@@ -3598,14 +3598,36 @@ export class ObjectType extends Type {
   readonly positionalTypes: Map<number, Type> = new Map()
   readonly spreadPositionalType: ArrayType | undefined = undefined
   readonly spreadPositionalStart: number | undefined = undefined
+  readonly props: ObjectProp[]
 
-  constructor(readonly props: ObjectProp[]) {
+  constructor(props: ObjectProp[]) {
     super()
+
+    // convert any spread-positional types that use a fixed array into regular positional props
+    props = props.flatMap(prop => {
+      if (
+        prop.is === 'spread-positional' &&
+        prop.type.narrowedLength.min === prop.type.narrowedLength.max
+      ) {
+        return Array.from({length: prop.type.narrowedLength.min}, () => ({
+          is: 'positional',
+          type: prop.type.of,
+        }))
+      } else {
+        return [prop]
+      }
+    })
+    this.props = []
 
     let propIndex = 0
     let foundSpread = false
-    for (const prop of props) {
+    for (let prop of props) {
       if (prop.is === 'named') {
+        if (this.namedTypes.has(prop.name)) {
+          this.props = this.props.map(p => (p.is === 'named' && p.name === prop.name ? prop : p))
+        } else {
+          this.props.push(prop)
+        }
         this.namedTypes.set(prop.name, prop.type)
       } else if (prop.is === 'spread-positional') {
         if (foundSpread) {
@@ -3614,6 +3636,7 @@ export class ObjectType extends Type {
         foundSpread = true
         this.spreadPositionalType = prop.type
         this.spreadPositionalStart = propIndex
+        this.props.push(prop)
       } else {
         if (foundSpread) {
           throw new Error(
@@ -3621,6 +3644,7 @@ export class ObjectType extends Type {
           )
         }
         this.positionalTypes.set(propIndex++, prop.type)
+        this.props.push(prop)
       }
     }
   }
@@ -5562,26 +5586,6 @@ export function canBeAssignedTo(
   assignTo: Type,
   reason?: {reason: string}, // if provided, this object will be modified to include an error message.
 ): boolean {
-  if (testType === NeverType || assignTo === NeverType) {
-    return why(false, `Encountered unexpected type 'never'.`)
-  }
-
-  if (assignTo === AnyType) {
-    return true
-  }
-
-  if (testType === AnyType) {
-    return why(false, `Type 'Any' must be narrowed before assigning to '${assignTo}'.`)
-  }
-
-  if (testType === assignTo) {
-    return true
-  }
-
-  if (testType instanceof UniqueType || assignTo instanceof UniqueType) {
-    return false
-  }
-
   // this little helper accepts the canBeAssigned check, and if an error object
   // was provided, assigns the failure reason.
   function why(canBeAssigned: boolean, error: string) {
@@ -5600,6 +5604,26 @@ export function canBeAssignedTo(
       }
     }
 
+    return false
+  }
+
+  if (testType === NeverType || assignTo === NeverType) {
+    return why(false, `Encountered unexpected type 'never'.`)
+  }
+
+  if (assignTo === AnyType) {
+    return true
+  }
+
+  if (testType === AnyType) {
+    return why(false, `Type 'Any' must be narrowed before assigning to '${assignTo}'.`)
+  }
+
+  if (testType === assignTo) {
+    return true
+  }
+
+  if (testType instanceof UniqueType || assignTo instanceof UniqueType) {
     return false
   }
 
@@ -5773,29 +5797,27 @@ export function canBeAssignedTo(
 
     return true
   } else if (testType instanceof ObjectType && assignTo instanceof ObjectType) {
-    const assignToTupleProps: PositionalProp[] = []
+    const assignToPositionalProps: PositionalProp[] = []
     const assignToNamedProps: NamedProp[] = []
     for (const prop of assignTo.props) {
       if (prop.is === 'positional') {
-        assignToTupleProps.push(prop)
+        assignToPositionalProps.push(prop)
       } else if (prop.is === 'named') {
         assignToNamedProps.push(prop)
       }
     }
 
-    const testTupleProps: PositionalProp[] = []
-    const testNamedProps: NamedProp[] = []
-    for (const prop of testType.props) {
-      if (prop.is === 'positional') {
-        testTupleProps.push(prop)
-      } else if (prop.is === 'named') {
-        testNamedProps.push(prop)
-      }
-    }
-
-    // every prop in testType also in assignTo must be assignable
+    // every named and positional prop in testType:
+    // - must exist in assignTo
+    // - must be assignable to corresponding prop in assignTo
     for (const {name, type: assignType} of assignToNamedProps) {
-      const testProp = testType.literalAccessType(name) ?? NullType
+      const testProp = testType.propNamed(name)
+      if (!testProp) {
+        return why(
+          false,
+          `Expected '${assignType.toCode()}' but '${testType}' is undefined at for property '${name}'.`,
+        )
+      }
       if (!canBeAssignedTo(testProp, assignType, reason)) {
         return why(
           false,
@@ -5804,8 +5826,16 @@ export function canBeAssignedTo(
       }
     }
 
-    for (const [index, {type: assignType}] of assignToTupleProps.entries()) {
-      const testProp = testType.literalAccessType(index)
+    for (const [index, {type: assignType}] of assignToPositionalProps.entries()) {
+      // propAtPosition pulls from testType.spreadPositionalType if necessary,
+      // and checks index against the min/max of the array length
+      const testProp = testType.propAtPosition(index)
+      if (!testProp) {
+        return why(
+          false,
+          `Expected '${assignType.toCode()}' but '${testType}' is undefined at index ${index}.`,
+        )
+      }
       if (testProp && !canBeAssignedTo(testProp, assignType, reason)) {
         return why(
           false,
@@ -5814,58 +5844,65 @@ export function canBeAssignedTo(
       }
     }
 
-    if (assignTo.spreadPositionalType && assignTo.spreadPositionalStart !== undefined) {
-      const assignType = assignTo.spreadPositionalType.of
-      const assignMin =
-        assignTo.spreadPositionalStart + assignTo.spreadPositionalType.narrowedLength.min
-      const assignMax =
-        assignTo.spreadPositionalType.narrowedLength.max === undefined
-          ? undefined
-          : assignTo.spreadPositionalStart + assignTo.spreadPositionalType.narrowedLength.max
-      const testMin =
-        testType.spreadPositionalType && testType.spreadPositionalStart !== undefined
-          ? testType.spreadPositionalStart + testType.spreadPositionalType.narrowedLength.min
-          : testType.positionalTypes.size
-      const testMax =
-        testType.spreadPositionalType && testType.spreadPositionalStart !== undefined
-          ? testType.spreadPositionalType.narrowedLength.max === undefined
-            ? undefined
-            : testType.spreadPositionalStart + testType.spreadPositionalType.narrowedLength.max
-          : testType.positionalTypes.size
+    // extra positional and names props in testType are ignored
 
-      if (testMin < assignMin) {
-        return why(
-          false,
-          `Object has ${testMin} positional properties, expected at least ${assignMin}.`,
-        )
-      }
+    if (assignTo.spreadPositionalType) {
+      // any remaining props in testType must be assignable to assignTo.spreadPositionalType
+      const remainingIndex = assignToPositionalProps.length
+      const remainingTestPositionalProps: PositionalProp[] = testType.props
+        .filter(prop => prop.is === 'positional')
+        .slice(remainingIndex)
 
-      if (assignMax !== undefined && (testMax === undefined || testMax > assignMax)) {
-        return why(
-          false,
-          `Object has too many positional properties, expected at most ${assignMax}.`,
-        )
-      }
-
-      for (const [index, testProp] of testType.positionalTypes) {
-        if (
-          index >= assignTo.spreadPositionalStart &&
-          !canBeAssignedTo(testProp, assignType, reason)
-        ) {
+      for (const [index, {type: testProp}] of remainingTestPositionalProps.entries()) {
+        if (!canBeAssignedTo(testProp, assignTo.spreadPositionalType.of, reason)) {
           return why(
             false,
-            `Incompatible types in object at index '${index}'. '${testProp.toCode()}' cannot be assigned to '${assignType.toCode()}'.`,
+            `Incompatible types in object at index '${index + remainingIndex}'. '${testProp}' cannot be assigned to '${assignTo.spreadPositionalType.of}'.`,
           )
         }
       }
-      if (
-        testType.spreadPositionalType &&
-        !canBeAssignedTo(testType.spreadPositionalType.of, assignType, reason)
-      ) {
+
+      // remaining count of the props that are required to be assignable
+      const minAssignToPropsCount =
+        assignTo.spreadPositionalType.narrowedLength.min - remainingTestPositionalProps.length
+      // count the minimum number of props that are available to be tested
+      const remainingTestPropsCount = testType.spreadPositionalType?.narrowedLength.min ?? 0
+      if (remainingTestPropsCount < minAssignToPropsCount) {
+        const rangeStr =
+          minAssignToPropsCount === 1
+            ? `index ${remainingIndex}`
+            : `indices ${remainingIndex}...${minAssignToPropsCount - 1}`
         return why(
           false,
-          `Incompatible types in object spread. '${testType.spreadPositionalType.of.toCode()}' cannot be assigned to '${assignType.toCode()}'.`,
+          `Expected type '${assignTo.spreadPositionalType.of}' at ${rangeStr}. No value defined in '${testType}'`,
         )
+      }
+
+      // no more props need to be tested - there were enough in
+      // remainingTestPositionalProps to satisfy all the items in assignTo
+      if (
+        assignTo.spreadPositionalType.narrowedLength.max !== undefined &&
+        assignTo.spreadPositionalType.narrowedLength.max <= remainingTestPositionalProps.length
+      ) {
+        return true
+      }
+
+      // if testType is exhausted, it can be assigned
+      // if it has spreadPositionalType, they all need to be assignable to the
+      // assignTo.spreadPositionalType
+      if (testType.spreadPositionalType) {
+        if (
+          !canBeAssignedTo(
+            testType.spreadPositionalType.of,
+            assignTo.spreadPositionalType.of,
+            reason,
+          )
+        ) {
+          return why(
+            false,
+            `'${testType.spreadPositionalType.of}' cannot be assigned to '${assignTo.spreadPositionalType.of}'.`,
+          )
+        }
       }
     }
 

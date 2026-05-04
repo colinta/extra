@@ -90,11 +90,11 @@ describe('getType', () => {
     )
   })
 
-  describe('object merge operators', () => {
+  describe('object merge using ~~', () => {
     cases<[string, Types.Type, Types.Type, Types.Type]>(
       c([
         'named props are merged',
-        Types.object([Types.namedProp('a', Types.string()), Types.namedProp('b', Types.string())]),
+        Types.object([Types.namedProp('a', Types.string()), Types.namedProp('b', Types.int())]),
         Types.object([Types.namedProp('b', Types.string()), Types.namedProp('c', Types.string())]),
         Types.object([
           Types.namedProp('a', Types.string()),
@@ -233,7 +233,7 @@ describe('getType', () => {
         'spread positional bounds are dropped when overlap loses information',
         Types.object([
           Types.namedProp('a', Types.string()),
-          Types.spreadPositionalProp(Types.array(Types.string(), {min: 4, max: 4})),
+          Types.spreadPositionalProp(Types.array(Types.string(), {min: 3, max: 4})),
         ]),
         Types.object([
           Types.namedProp('a', Types.string()),
@@ -246,7 +246,7 @@ describe('getType', () => {
           Types.namedProp('b', Types.int()),
           Types.positionalProp(Types.int()),
           Types.spreadPositionalProp(
-            Types.array(Types.oneOf([Types.int(), Types.string()]), {min: 3}),
+            Types.array(Types.oneOf([Types.int(), Types.string()]), {min: 2}),
           ),
         ]),
       ]),
@@ -290,25 +290,169 @@ describe('getType', () => {
           ),
         ]),
       ]),
-    ).run(([name, lhs, rhs, expected], {only, skip}) => {
-      describe('using ~~', () => {
-        ;(only ? it.only : skip ? it.skip : it)(name, () => {
-          runtimeTypes['lhs'] = [lhs, Values.nullValue()]
-          runtimeTypes['rhs'] = [rhs, Values.nullValue()]
-          const expression = parse('lhs ~~ rhs').get()
-          expect(expression.getType(typeRuntime).get()).toEqual(expected)
-        })
-      })
+    ).run(([name, lhs, rhs, expected], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(name, () => {
+        runtimeTypes['lhs'] = [lhs, Values.nullValue()]
+        runtimeTypes['rhs'] = [rhs, Values.nullValue()]
+        const expression = parse('lhs ~~ rhs').get()
+        expect(expression.getType(typeRuntime).get()).toEqual(expected)
+      }),
+    )
+  })
 
-      describe.skip('using {...}', () => {
-        ;(only ? it.only : skip ? it.skip : it)(name, () => {
+  describe('object merge using splat {...}', () => {
+    cases<[string, Types.Type, Types.Type, Types.Type]>(
+      c([
+        'named props are merged',
+        Types.object([Types.namedProp('a', Types.string()), Types.namedProp('b', Types.int())]),
+        Types.object([Types.namedProp('b', Types.string()), Types.namedProp('c', Types.string())]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.string()),
+          Types.namedProp('c', Types.string()),
+        ]),
+      ]),
+      c([
+        'rhs named props override lhs named props',
+        Types.object([Types.namedProp('a', Types.string()), Types.namedProp('b', Types.string())]),
+        Types.object([Types.namedProp('b', Types.int()), Types.namedProp('c', Types.string())]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.namedProp('c', Types.string()),
+        ]),
+      ]),
+      c([
+        'rhs positional props append to lhs positional props',
+        Types.object([
+          Types.positionalProp(Types.string()),
+          Types.positionalProp(Types.int()),
+          Types.positionalProp(Types.float()),
+        ]),
+        Types.object([
+          //
+          Types.positionalProp(Types.string()),
+          Types.positionalProp(Types.string()),
+        ]),
+        Types.object([
+          Types.positionalProp(Types.string()),
+          Types.positionalProp(Types.int()),
+          Types.positionalProp(Types.float()),
+          Types.positionalProp(Types.string()),
+          Types.positionalProp(Types.string()),
+        ]),
+      ]),
+      c([
+        'lhs spread positional props are preserved',
+        Types.object([
+          Types.namedProp('a', Types.int()),
+          Types.positionalProp(Types.float()),
+          Types.positionalProp(Types.float()),
+          Types.spreadPositionalProp(Types.array(Types.string())),
+        ]),
+        Types.object([
+          //
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.positionalProp(Types.float()),
+          Types.positionalProp(Types.float()),
+          Types.namedProp('b', Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.string())),
+        ]),
+      ]),
+      c([
+        'lhs spread positional props are merged with rhs positional props',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.positionalProp(Types.float()),
+          Types.positionalProp(Types.float()),
+          Types.spreadPositionalProp(Types.array(Types.string())),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.positionalProp(Types.float()),
+          Types.positionalProp(Types.float()),
+          Types.namedProp('b', Types.int()),
+          Types.spreadPositionalProp(
+            Types.array(Types.oneOf([Types.string(), Types.int()]), {min: 1}),
+          ),
+        ]),
+      ]),
+      c([
+        'spread positional props are merged with a union',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.spreadPositionalProp(Types.array(Types.string())),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.int())),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.oneOf([Types.int(), Types.string()]))),
+        ]),
+      ]),
+      c([
+        'lhs has at least 3, rhs has an extra prop, and at least 1; they overlap by one',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.spreadPositionalProp(Types.array(Types.string(), {max: 3})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.positionalProp(Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.int(), {min: 1})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.spreadPositionalProp(
+            Types.array(Types.oneOf([Types.string(), Types.int()]), {min: 2}),
+          ),
+        ]),
+      ]),
+      c([
+        'spread positional bounds are merged when possible',
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.spreadPositionalProp(Types.array(Types.string(), {min: 1, max: 4})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.spreadPositionalProp(Types.array(Types.int(), {max: 10})),
+        ]),
+        Types.object([
+          Types.namedProp('a', Types.string()),
+          Types.namedProp('b', Types.int()),
+          Types.spreadPositionalProp(
+            Types.array(Types.oneOf([Types.int(), Types.string()]), {min: 1, max: 14}),
+          ),
+        ]),
+      ]),
+    ).run(([name, lhs, rhs, expected], {only, skip}) =>
+      (only ? it.only : skip ? it.skip : it)(
+        name, //+ ` ({\n  ...${lhs}\n  ...${rhs}\n} -> ${expected})`,
+        () => {
           runtimeTypes['lhs'] = [lhs, Values.nullValue()]
           runtimeTypes['rhs'] = [rhs, Values.nullValue()]
           const expression = parse('{...lhs, ...rhs}').get()
           expect(expression.getType(typeRuntime).get()).toEqual(expected)
-        })
-      })
-    })
+        },
+      ),
+    )
   })
 
   describe('array cons operator ::', () => {
