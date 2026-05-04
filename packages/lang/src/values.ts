@@ -2190,4 +2190,27 @@ export class MessageValue extends Value {
       ),
     ),
   )
+  ArrayValue._props.set('reduce', (array: ArrayValue) =>
+    namedFormula('reduce', args =>
+      args.at(1).map(initial =>
+        args.at(0, FormulaValue).map(apply => {
+          let memo = initial
+          for (const [index, val] of array.values.entries()) {
+            const result = apply.call(
+              new FormulaArgs([
+                [undefined, memo, 'arg'],
+                [undefined, val, 'arg'],
+                [undefined, int(index), 'arg'],
+              ]),
+            )
+            if (result.isErr()) {
+              return result
+            }
+            memo = result.get()
+          }
+          return ok(memo)
+        }),
+      ),
+    ),
+  )
 })()

@@ -7171,11 +7171,6 @@ export function cannotAssignToError(testType: Type, assignTo: Type) {
           'reduce',
           [
             positionalArgument({
-              name: 'initial',
-              type: genericT,
-              isRequired: true,
-            }),
-            positionalArgument({
               name: 'apply',
               type: formula(
                 [
@@ -7185,6 +7180,11 @@ export function cannotAssignToError(testType: Type, assignTo: Type) {
                 ],
                 genericT,
               ),
+              isRequired: true,
+            }),
+            positionalArgument({
+              name: 'initial',
+              type: genericT,
               isRequired: true,
             }),
           ],

@@ -4,6 +4,7 @@ import {generateConstraints, solveConstraints} from '@/constraints'
 import * as Nodes from '@/nodes'
 import * as Values from '@/values'
 import {Scope} from '@/scope'
+import {type Constraint} from '@/constraints'
 import {
   MutableTypeRuntime,
   MutableValueRuntime,
@@ -4639,7 +4640,7 @@ function functionInvocationOperatorType(
   const hasSpreadDictName: Set<string> = new Set()
 
   // check formulaType arguments for any enum shorthands and provide them in runtime
-  let mutableRuntime: MutableTypeRuntime | undefined
+  const nextRuntime = new MutableTypeRuntime(runtime)
   const allEnumShorthandTypes = formulaType.args
     .flatMap(arg => {
       if (arg.type instanceof Types.OneOfType) {
@@ -4650,12 +4651,48 @@ function functionInvocationOperatorType(
     })
     .filter(type => type instanceof Types.AnonymousEnumType)
   for (const argType of allEnumShorthandTypes) {
-    if (!mutableRuntime) {
-      mutableRuntime = new MutableTypeRuntime(runtime)
-    }
-    mutableRuntime.addLocalType(argType.enumName, argType)
+    nextRuntime.addLocalType(argType.enumName, argType)
   }
-  const nextRuntime = mutableRuntime ?? runtime
+
+  const contextualGenerics = new Set(formulaType.genericTypes)
+  const contextualConstraints: Constraint[] = []
+  let contextualPositionIndex = 0
+  for (const providedArg of argsList.allArgs) {
+    let expectedArg: Types.Argument | undefined
+
+    if (providedArg instanceof Expressions.NamedArgument) {
+      expectedArg = formulaType.namedArg(providedArg.alias)
+    } else if (providedArg instanceof Expressions.PositionalArgument) {
+      expectedArg = formulaType.positionalArg(contextualPositionIndex)
+      contextualPositionIndex += 1
+    }
+
+    if (!expectedArg || providedArg.value instanceof Expressions.FormulaExpression) {
+      continue
+    }
+
+    const providedTypeResult = getChildType(formulaExpression, providedArg.value, nextRuntime)
+    if (providedTypeResult.isErr()) {
+      return err(providedTypeResult.error)
+    }
+
+    contextualConstraints.push(
+      ...generateConstraints(
+        providedTypeResult.get().defaultInferredClassProp(),
+        expectedArg.type,
+        contextualGenerics,
+      ),
+    )
+  }
+
+  let contextualSubst: Types.Substitution = new Map()
+  if (contextualConstraints.length > 0) {
+    const solved = solveConstraints(contextualConstraints, [...contextualGenerics])
+    if (solved.isErr()) {
+      return err(new RuntimeError(formulaExpression, solved.error))
+    }
+    contextualSubst = solved.get()
+  }
 
   return mapAll(
     // argsList.args is an array of:
@@ -4682,11 +4719,12 @@ function functionInvocationOperatorType(
 
         // Guard for unexpected argument
         if (!expectedFormulaType) {
+          // TODO: this is an unhelpful error message - providedArg doesn't
+          // match up with a positional or named argument in formulaType
           let message = 'Unexpected argument '
           if (providedArg instanceof Expressions.NamedArgument) {
             message += `'${providedArg.alias}'`
           } else if (providedArg instanceof Expressions.PositionalArgument) {
-            // positionIndex has already been bumped +1
             message += `at position #${currentPosition}`
           }
 
@@ -4695,7 +4733,7 @@ function functionInvocationOperatorType(
 
         // Guard for wrong argument type
         if (!(expectedFormulaType instanceof Types.FormulaType)) {
-          let message = `Expected argument of type '${expectedFormulaType.toCode()}' for argument`
+          let message = `Expected argument of type '${expectedFormulaType}' for argument`
           if (providedArg instanceof Expressions.NamedArgument) {
             message += ` '${providedArg.alias}'`
           } else if (providedArg instanceof Expressions.PositionalArgument) {
@@ -4705,15 +4743,24 @@ function functionInvocationOperatorType(
           return err(new RuntimeError(providedArg, message))
         }
 
+        const substitutedExpected = Types.applySubst(contextualSubst, expectedFormulaType)
+        if (substitutedExpected instanceof Types.FormulaType) {
+          expectedFormulaType = substitutedExpected
+        }
+
         // FormulaExpression.getType accepts a FormulaType which it can use to resolve inferred arguments.
         return providedArg.value
-          .getType(nextRuntime, expectedFormulaType)
+          .getType(nextRuntime, expectedFormulaType as Types.FormulaType)
           .mapResult(decorateError(formulaExpression))
           .map(type => [
             providedArg.alias
               ? ['named', providedArg.alias, type]
               : ['positional', undefined, type],
           ])
+      }
+
+      if (providedArg instanceof Expressions.PositionalArgument) {
+        positionIndex += 1
       }
 
       return getChildType(formulaExpression, providedArg.value, nextRuntime).map(type => {
@@ -4849,7 +4896,7 @@ function functionInvocationOperatorType(
 
       // Generate constraints against the instantiated formula's args
       // (which use fresh type variables).
-      const constraints: import('@/constraints').Constraint[] = []
+      const constraints: Constraint[] = []
       let posIdx = 0
       for (const arg of instantiatedFormula.args) {
         let providedTypes: Types.Type[] = []

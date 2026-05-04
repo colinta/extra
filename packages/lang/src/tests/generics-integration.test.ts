@@ -1,7 +1,8 @@
 import * as Types from '../types'
 import {parse, parseModule} from '../formulaParser'
-import {type TypeRuntime} from '../runtime'
+import {type TypeRuntime, type ValueRuntime} from '../runtime'
 import {mockTypeRuntime} from './mockTypeRuntime'
+import {mockValueRuntime} from './mockValueRuntime'
 import * as Values from '../values'
 
 /**
@@ -12,11 +13,13 @@ import * as Values from '../values'
  */
 
 let typeRuntime: TypeRuntime
-let runtimeTypes: {[K in string]: [Types.Type, any]}
+let valueRuntime: ValueRuntime
+let runtimeTypes: {[K in string]: [Types.Type, Values.Value]}
 
 function setup() {
   runtimeTypes = {}
   typeRuntime = mockTypeRuntime(runtimeTypes)
+  valueRuntime = mockValueRuntime(runtimeTypes)
 }
 
 function addFormula(name: string, definition: string) {
@@ -59,6 +62,15 @@ function addEnum(definition: string) {
 function getType(code: string): Types.Type {
   const expression = parse(code).get()
   const result = expression.getType(typeRuntime)
+  if (result.isErr()) {
+    throw result.error
+  }
+  return result.get()
+}
+
+function getValue(code: string): Values.Value {
+  const expression = parse(code).get()
+  const result = expression.eval(valueRuntime)
   if (result.isErr()) {
     throw result.error
   }
@@ -132,6 +144,32 @@ describe('generics integration', () => {
       runtimeTypes['nums'] = [Types.array(Types.int()), Values.nullValue()]
       expect(getType(`first(nums)`).toCode()).toEqual('Int')
     })
+
+    test('variadic Int args collect as [Int] and reduce to Int', () => {
+      const code = `\
+let
+  fn sum(...# nums: [Int]): Int =>
+    nums.reduce(|a, b| a + b, 0)
+in
+  sum(1, 2)`
+
+      expect(getType(code).toCode()).toEqual('Int')
+      expect(getValue(code)).toEqual(Values.int(3))
+    })
+
+    test('variadic Int args collect as [Int] and reduce2 to Int', () => {
+      const code = `\
+let
+  fn reduce2<T, U>(# items: [T], # initial: U, # accum: fn(# memo: U, # item: T, # index: Int): U): U =>
+    items.reduce(accum, initial)
+  fn sum(...# nums: [Int]): Int =>
+    reduce2(nums, 0, |a, b| a + b)
+in
+  sum(1, 2)`
+
+      expect(getType(code).toCode()).toEqual('Int')
+      expect(getValue(code)).toEqual(Values.int(3))
+    })
   })
 
   describe('multiple generics', () => {
@@ -160,6 +198,17 @@ describe('generics integration', () => {
       addFormula('identity', `fn<T>(val: T) => val`)
       const result = getType(`map(1, map: identity)`)
       expect(result.toCode()).toEqual('1')
+    })
+
+    test('callback literal can be typed from generic hints in later arguments', () => {
+      const code = `\
+let
+  fn applyAfter<T>(# apply: fn(# value: T): T, # value: T): T => apply(value)
+in
+  applyAfter(|a| a + 1, 2)`
+
+      expect(getType(code).toCode()).toEqual('Int')
+      expect(getValue(code)).toEqual(Values.int(3))
     })
 
     test('callback with wider param type than provided value', () => {
