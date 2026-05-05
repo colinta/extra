@@ -777,7 +777,10 @@ export class ClassDefinition extends Expression {
         },
         {resolved: [], remaining: []} as StaticNodesResult,
       )
-        .mapError(errors => new RuntimeError(this, 'TODO', errors))
+        .mapError(
+          errors =>
+            new RuntimeError(this, 'TODO - error resolving class static expressions', errors),
+        )
         .map(({resolved: resolvedStatics, remaining: remainingStatics}) => {
           // here is the class definition we will build up. Static properties are
           // added to this instance, then we create the ClassInstanceType and
@@ -958,7 +961,10 @@ export class ClassDefinition extends Expression {
                 },
                 undefined,
               )
-                .mapError(errors => new RuntimeError(this, 'TODO', errors))
+                .mapError(
+                  errors =>
+                    new RuntimeError(this, 'TODO - error resolving statics and properties', errors),
+                )
                 .map(
                   () =>
                     new Nodes.ClassDefinition(

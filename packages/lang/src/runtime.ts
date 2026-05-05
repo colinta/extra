@@ -278,14 +278,6 @@ export class MutableTypeRuntime {
 
     if (this.parent instanceof MutableTypeRuntime) {
       this.parent._collectEnumCaseTypes(caseName, argsCriteria, results, seen)
-    } else if (this.parent) {
-      // Parent is a TypeRuntime (the Omit type), but it's still a MutableTypeRuntime instance
-      ;(this.parent as MutableTypeRuntime)._collectEnumCaseTypes(
-        caseName,
-        argsCriteria,
-        results,
-        seen,
-      )
     }
   }
 
@@ -321,7 +313,7 @@ export class MutableTypeRuntime {
     // that scope is always 'inherited' downwards - you can just go up the
     // expression tree to find a value... so assigning 'this' from the parent
     // makes sense?
-    return this.thisType ?? this.parent?.thisType
+    return this.thisType ?? this.parent?.getThisType()
   }
 
   /**

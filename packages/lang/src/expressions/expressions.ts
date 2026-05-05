@@ -4629,9 +4629,16 @@ export class GenericExpression extends Expression {
     return this.name
   }
 
-  compile(): GetRuntimeResult<Nodes.Generic> {
-    const genericType = new Types.GenericType(this.name)
-    return ok(new Nodes.Generic(toSource(this), genericType))
+  compile(runtime: TypeRuntime): GetRuntimeResult<Nodes.Generic> {
+    if (!this.boundExpression) {
+      const genericType = new Types.GenericType(this.name)
+      return ok(new Nodes.Generic(toSource(this), genericType))
+    }
+
+    return this.boundExpression.compileAsTypeExpression(runtime).map(boundNode => {
+      const genericType = new Types.GenericType(this.name, undefined, boundNode.type)
+      return ok(new Nodes.Generic(toSource(this), genericType))
+    })
   }
 
   /**
@@ -4874,67 +4881,70 @@ export class FormulaExpression extends Expression {
     runtime: TypeRuntime,
     formulaArgumentType?: Types.FormulaType | undefined,
   ): GetRuntimeResult<Nodes.AnonymousFunction> {
-    const mutableRuntime = new MutableTypeRuntime(runtime)
-    return mapMany(
-      mapAll(
-        this.generics.map(generic =>
-          generic.compileWithBound(mutableRuntime).map(genericType => {
-            const node = new Nodes.Generic(toSource(generic), genericType)
-            mutableRuntime.addLocalType(generic.name, genericType)
-            return node
-          }),
-        ),
+    const genericsRuntime = new MutableTypeRuntime(new MutableTypeRuntime(runtime))
+    const formulaBodyRuntime = new MutableTypeRuntime(genericsRuntime)
+    return mapAll(
+      // all generics need to be resolved and placed in mutableRuntime before
+      // running resolveArgumentNodes
+      this.generics.map(generic =>
+        generic
+          .compile(genericsRuntime)
+          .tap(node => genericsRuntime.addLocalType(generic.name, node.type)),
       ),
-      resolveArgumentNodes(this, mutableRuntime, formulaArgumentType),
-    ).map(([generics, argumentNodes]) => {
-      argumentNodes.forEach(arg => {
-        mutableRuntime.addLocalType(arg.name, arg.type)
-      })
+    ).map(generics => {
+      return mapMany(
+        // then resolve all the arguments in Types.FormulaType and put those in
+        // mutableRuntime
+        resolveArgumentNodes(this, genericsRuntime, formulaArgumentType).tap(argumentNodes => {
+          for (const arg of argumentNodes) {
+            formulaBodyRuntime.addLocalType(arg.name, arg.type)
+          }
+        }),
+        // and resolve the props (they may rely on generics, but they don't rely
+        // on the formula arguments or body)
+        mapAll(
+          this.props.map(prop =>
+            prop.value
+              .getType(genericsRuntime)
+              .map(type => [prop.nameRef.name, type] as [string, Types.Type]),
+          ),
+        ).map(props => new Map(props)),
+      ).map(([argumentNodes, props]) => {
+        const functionName = this.macroFunctionName()
+        if (functionName) {
+          formulaBodyRuntime.addLocalType('#fn', Types.literal(functionName))
+        }
 
-      return mapAll(
-        this.props.map(prop =>
-          prop.value
-            .getType(mutableRuntime)
-            .map(type => [prop.nameRef.name, type] as [string, Types.Type]),
-        ),
-      )
-        .map(props => new Map(props))
-        .map(props => {
-          const functionName = this.macroFunctionName()
-          if (functionName) {
-            mutableRuntime.addLocalType('#fn', Types.literal(functionName))
+        return this.body.compile(formulaBodyRuntime).map(bodyNode => {
+          const inferReturnType = this.returnType instanceof InferIdentifier
+          let returnTypeResult: GetRuntimeResult<Nodes.Node | undefined>
+          if (inferReturnType) {
+            returnTypeResult = ok(undefined)
+          } else {
+            returnTypeResult = this.returnType
+              .compileAsTypeExpression(formulaBodyRuntime)
+              .mapResult(decorateError(this))
+              .map(returnTypeNode => {
+                const returnType = returnTypeNode.type.fromTypeConstructor()
+
+                if (!Types.canBeAssignedTo(bodyNode.type, returnType)) {
+                  return err(
+                    new RuntimeError(
+                      this,
+                      `Function body result type '${bodyNode.type.toCode()}' is not assignable to explicit return type '${returnType.toCode()}'`,
+                    ),
+                  )
+                }
+
+                return returnTypeNode
+              })
           }
 
-          return this.body.compile(mutableRuntime).map(bodyNode => {
-            const inferReturnType = this.returnType instanceof InferIdentifier
-            let returnTypeResult: GetRuntimeResult<Nodes.Node | undefined>
-            if (inferReturnType) {
-              returnTypeResult = ok(undefined)
-            } else {
-              returnTypeResult = this.returnType
-                .compileAsTypeExpression(mutableRuntime)
-                .mapResult(decorateError(this))
-                .map(returnTypeNode => {
-                  const returnType = returnTypeNode.type.fromTypeConstructor()
-
-                  if (!Types.canBeAssignedTo(bodyNode.type, returnType)) {
-                    return err(
-                      new RuntimeError(
-                        this,
-                        `Function body result type '${bodyNode.type.toCode()}' is not assignable to explicit return type '${returnType.toCode()}'`,
-                      ),
-                    )
-                  }
-
-                  return returnTypeNode
-                })
-            }
-
-            return returnTypeResult.map(returnTypeNode =>
-              this.compileFormulaTypeWith(generics, argumentNodes, returnTypeNode, bodyNode, props),
-            )
-          })
+          return returnTypeResult.map(returnTypeNode =>
+            this.compileFormulaTypeWith(generics, argumentNodes, returnTypeNode, bodyNode, props),
+          )
         })
+      })
     })
   }
 

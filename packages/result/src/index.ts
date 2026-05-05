@@ -17,6 +17,31 @@ export abstract class ResultClass<OK, ERR> {
     return undefined
   }
 
+  tap(fn?: (t: OK) => void): this {
+    try {
+      if (this.isOk()) {
+        fn?.(this.get())
+      }
+    } catch (e) {}
+    return this
+  }
+
+  tapError(fn?: (err: ERR) => void): this {
+    try {
+      if (this.isErr()) {
+        fn?.(this.error)
+      }
+    } catch (e) {}
+    return this
+  }
+
+  tapResult(fn?: (result: Result<OK, ERR>) => void): this {
+    try {
+      fn?.(this as Result<OK, ERR>)
+    } catch (e) {}
+    return this
+  }
+
   map<TOK>(
     fn: (t: OK) => TOK | Result<TOK, ERR>,
     errorClass?: (value: unknown) => value is ERR,
