@@ -20,7 +20,7 @@ function defineClass(definition: string) {
   return classDefType
 }
 
-function addFormula(name: string, definition: string) {
+function defineFormula(name: string, definition: string) {
   const expression = parse(definition).get()
   const type = expression.getType(typeRuntime).get()
   runtimeTypes[name] = [type, Values.nullValue()]
@@ -69,8 +69,6 @@ class Box<T> {
   })
 
   describe('type constructor', () => {
-    // BUG: canBeAssignedTo uses identity comparison for ClassInstanceType,
-    // so Box(Int) from type constructor !== Box(Int) from constructor invocation
     it('Box(Int) produces instance type with Int property', () => {
       defineClass(`\
 class Box<T> {
@@ -80,10 +78,9 @@ class Box<T> {
       const result = getType(code)
       expect(result).toBeInstanceOf(Types.ClassInstanceType)
       const instance = result as Types.ClassInstanceType
-      expect(instance.allProps.get('value')).toBe(Types.int())
+      expect(instance.allProps.get('value')).toEqual(Types.int())
     })
 
-    // BUG: same identity comparison issue
     it('Pair(Int, String) resolves both params', () => {
       defineClass(`\
 class Pair<T, U> {
@@ -94,8 +91,8 @@ class Pair<T, U> {
       const result = getType(code)
       expect(result).toBeInstanceOf(Types.ClassInstanceType)
       const instance = result as Types.ClassInstanceType
-      expect(instance.allProps.get('first')).toBe(Types.int())
-      expect(instance.allProps.get('second')).toBe(Types.string())
+      expect(instance.allProps.get('first')).toEqual(Types.int())
+      expect(instance.allProps.get('second')).toEqual(Types.string())
     })
   })
 
@@ -108,7 +105,7 @@ class Box<T> {
       const result = getType(`Box(value: 42)`)
       expect(result).toBeInstanceOf(Types.ClassInstanceType)
       const instance = result as Types.ClassInstanceType
-      expect(instance.allProps.get('value')?.toCode()).toBe('42')
+      expect(instance.allProps.get('value')).toEqual(Types.literal(42))
     })
 
     it('constructor infers multiple generics', () => {
@@ -120,36 +117,32 @@ class Pair<T, U> {
       const result = getType(`Pair(first: 1, second: 'hello')`)
       expect(result).toBeInstanceOf(Types.ClassInstanceType)
       const instance = result as Types.ClassInstanceType
-      expect(instance.allProps.get('first')?.toCode()).toBe('1')
-      expect(instance.allProps.get('second')?.toCode()).toBe('"hello"')
+      expect(instance.allProps.get('first')).toEqual(Types.literal(1))
+      expect(instance.allProps.get('second')).toEqual(Types.literal('hello'))
     })
   })
 
   describe('generic class as function parameter', () => {
-    // BUG: canBeAssignedTo identity comparison means Box(42) can't be
-    // assigned to Box(T) — they're different ClassInstanceType objects
     it('function accepts generic class instance', () => {
       defineClass(`\
 class Box<T> {
   @value: T
 }`)
-      addFormula('unbox', `fn<T>(box: Box(T)): T => box.value`)
+      defineFormula('unbox', `fn<T>(box: Box(T)): T => box.value`)
       const result = getType(`unbox(box: Box(value: 42))`)
-      expect(result.toCode()).toBe('42')
+      expect(result).toEqual(Types.literal(42))
     })
 
-    // BUG: "Function body result type 'Box' is not assignable to explicit
-    // return type 'Box'" — same identity issue in return type checking
     it('function returns generic class instance', () => {
       defineClass(`\
 class Box<T> {
   @value: T
 }`)
-      addFormula('wrap', `fn<T>(#value: T): Box(T) => Box(value:)`)
+      defineFormula('wrap', `fn<T>(#value: T): Box(T) => Box(value:)`)
       const result = getType(`wrap(5)`)
       expect(result).toBeInstanceOf(Types.ClassInstanceType)
       const instance = result as Types.ClassInstanceType
-      expect(instance.allProps.get('value')?.toCode()).toBe('5')
+      expect(instance.allProps.get('value')).toEqual(Types.literal(5))
     })
   })
 
@@ -159,37 +152,26 @@ class Box<T> {
 class Box<T> {
   @value: T
 }`)
-      // Manually create a Box(Int) instance in the runtime
-      const classType = runtimeTypes['Box'][0] as Types.ClassDefinitionType
-      const subst: Types.Substitution = new Map()
-      subst.set(classType.genericTypes[0], Types.int())
-      const resolved = Types.applySubst(
-        subst,
-        classType.classInstanceType!,
-      ) as Types.ClassInstanceType
-      runtimeTypes['b'] = [resolved, Values.nullValue()]
-      const result = getType(`b.value`)
-      expect(result).toBe(Types.int())
+      runtimeTypes['b'] = [Types.int(), Values.nullValue()]
+      const result = getType(`Box(value: b).value`)
+      expect(result).toEqual(Types.int())
     })
   })
 
   describe('generic class with formulas', () => {
     it('instance formula uses generic type', () => {
-      defineClass(`\
+      const classType = defineClass(`\
 class Box<T> {
   @value: T
 
   fn get(): T => @value
 }`)
-      const classType = runtimeTypes['Box'][0] as Types.ClassDefinitionType
       const instanceType = classType.classInstanceType!
       const getFormula = instanceType.formulas.get('get')
       expect(getFormula).toBeInstanceOf(Types.FormulaType)
-      expect((getFormula as Types.FormulaType).returnType.hasGeneric()).toBe(true)
+      expect((getFormula as Types.FormulaType).returnType.hasGeneric()).toEqual(true)
     })
 
-    // BUG: applySubst doesn't substitute inside ClassInstanceType.formulas,
-    // so the formula's return type stays as unresolved GenericType
     it('formula on resolved instance returns concrete type', () => {
       defineClass(`\
 class Box<T> {
@@ -197,17 +179,12 @@ class Box<T> {
 
   fn get(): T => @value
 }`)
-      const classType = runtimeTypes['Box'][0] as Types.ClassDefinitionType
-      const subst: Types.Substitution = new Map()
-      subst.set(classType.genericTypes[0], Types.int())
-      const resolved = Types.applySubst(
-        subst,
-        classType.classInstanceType!,
-      ) as Types.ClassInstanceType
-      runtimeTypes['b'] = [resolved, Values.nullValue()]
-      const getFormula = resolved.formulas.get('get')
+      runtimeTypes['b'] = [Types.int(), Values.nullValue()]
+      const getFormula = getType(`Box(value: b).get`)
+      const result = getType(`Box(value: b).get()`)
       expect(getFormula).toBeInstanceOf(Types.FormulaType)
-      expect((getFormula as Types.FormulaType).returnType).toBe(Types.int())
+      expect((getFormula as Types.FormulaType).returnType).toEqual(Types.int())
+      expect(result).toEqual(Types.int())
     })
   })
 })
