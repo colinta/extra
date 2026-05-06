@@ -1296,6 +1296,7 @@ export class IntTypeIdentifier extends TypeIdentifier {
   }
 
   eval(_runtime: ValueRuntime): GetValueResult {
+    const auto = new Values.EnumShorthandValue('auto', new Map(), 'int-parse-radix-auto')
     return ok(
       Values.namedFormula(
         this.name,
@@ -1329,13 +1330,13 @@ export class IntTypeIdentifier extends TypeIdentifier {
 
                 const radixValue = args.safeNamed('radix')
                 const parsed =
-                  radixValue instanceof Values.EnumShorthandValue && radixValue.name === 'auto'
+                  radixValue === auto
                     ? parseIntegerStringAuto(input)
                     : parseIntegerString(input, radixValue?.isInt() ? radixValue.value : 10)
                 return ok(parsed === undefined ? Values.nullValue() : Values.int(parsed))
               },
               undefined,
-              [['.auto', new Values.EnumShorthandValue('auto', new Map(), 'int-parse-radix-auto')]],
+              [['.auto', auto]],
             ),
           ],
         ]),
@@ -2511,7 +2512,7 @@ export abstract class Argument extends Expression {
         .map(value => [undefined, value, 'spread'] as SpreadArgumentInfo)
         .concat(
           Array.from(value.namedValues).map(
-            ([alias, value]) => [alias, value, 'spread'] as SpreadArgumentInfo,
+            ([alias, value]) => [alias, value, 'spread'] satisfies SpreadArgumentInfo,
           ),
         )
     }
