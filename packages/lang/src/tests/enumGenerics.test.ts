@@ -1,15 +1,18 @@
 import * as Types from '../types'
 import * as Values from '../values'
 import {parse, parseModule} from '../formulaParser'
-import {type TypeRuntime} from '../runtime'
+import {type TypeRuntime, type ValueRuntime} from '../runtime'
 import {mockTypeRuntime} from './mockTypeRuntime'
+import {mockValueRuntime} from '../tests/mockValueRuntime'
 
 let typeRuntime: TypeRuntime
+let valueRuntime: ValueRuntime
 let runtimeTypes: {[K in string]: [Types.Type, any]}
 
 beforeEach(() => {
   runtimeTypes = {}
   typeRuntime = mockTypeRuntime(runtimeTypes)
+  valueRuntime = mockValueRuntime(runtimeTypes)
 })
 
 function defineEnum(definition: string) {
@@ -108,6 +111,9 @@ enum Simple {
     expect(resolvedType).toEqual(
       Types.optional(Types.oneOf([Types.literal(5), Types.literal(6), Types.literal(7)])),
     )
+
+    const resolvedValue = currentExpression.eval(valueRuntime).get()
+    expect(resolvedValue).toEqual(Values.int(6))
   })
 
   it('can use generic named enums in functions', () => {

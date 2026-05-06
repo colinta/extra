@@ -142,12 +142,7 @@ export class EnumLookupExpression extends Expression {
       return ok(value)
     }
 
-    return err(
-      new RuntimeError(
-        this,
-        'EnumLookupExpression cannot be evaluated (call formulaArgs(runtime))',
-      ),
-    )
+    return err(new RuntimeError(this, `No enum named '${this.enumName}' found in scope.`))
   }
 }
 
@@ -343,10 +338,33 @@ export class EnumShorthandExpression extends EnumTypeExpression {
 
   formulaLocalAssigns(_runtime: ValueRuntime): GetRuntimeResult<[string, Values.Value][]> {
     if (this.member.args.length === 0) {
-      const value = new Values.EnumShorthandValue(this.member.name, new Map(), this.id)
+      const value = new Values.EnumShorthandValue(this.member.enumName, new Map(), this.id)
       return ok([[this.member.enumName, value]])
     } else {
-      return ok([])
+      const value = new Values.EnumFormulaValue(
+        this.member.enumName,
+        this.id,
+        (args: Values.FormulaArgs) => {
+          const enumArgs = new Map<string | number, Values.Value>()
+          let positionIndex = 0
+          for (const [name, value, spread] of args.args) {
+            if (spread === 'spread') {
+              return err(
+                new RuntimeError(this, 'TODO: support spread args in enum case invocation'),
+              )
+            } else if (name !== undefined) {
+              enumArgs.set(name, value)
+            } else {
+              enumArgs.set(positionIndex, value)
+              positionIndex += 1
+            }
+          }
+          return ok(new Values.EnumShorthandValue(this.member.enumName, enumArgs, this.id))
+        },
+        undefined,
+        [],
+      )
+      return ok([[this.member.enumName, value]])
     }
   }
 

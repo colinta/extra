@@ -1731,6 +1731,22 @@ export class EnumDefinitionValue extends Value {
   }
 }
 
+export class EnumFormulaValue extends NamedFormulaValue {
+  constructor(
+    readonly name: string,
+    readonly id: string,
+    fn: (
+      _1: FormulaArgs,
+      _2: ClassInstanceValue | undefined,
+    ) => Result<Value, string | RuntimeError>,
+    boundThis: ClassInstanceValue | undefined,
+    localAssigns: [string, Value][],
+    props: Map<string, Value> = new Map(),
+  ) {
+    super(name, fn, boundThis, localAssigns, props)
+  }
+}
+
 export class EnumShorthandValue extends Value {
   readonly is = 'enum-shorthand'
 
@@ -1789,7 +1805,7 @@ export class EnumValue extends Value {
   readonly is = 'enum-value'
 
   constructor(
-    readonly namespace: EnumDefinitionValue,
+    readonly enumDefinition: EnumDefinitionValue,
     readonly name: string,
     readonly args: Map<number | string, Value>,
   ) {
@@ -1797,7 +1813,7 @@ export class EnumValue extends Value {
   }
 
   isEqual(value: Value): boolean {
-    if (!(value instanceof EnumValue) || value.namespace !== this.namespace) {
+    if (!(value instanceof EnumValue) || value.enumDefinition !== this.enumDefinition) {
       return false
     }
     if (value.name !== this.name) {
@@ -1825,7 +1841,7 @@ export class EnumValue extends Value {
   }
 
   toCode() {
-    return `${this.namespace.name}.${this.name}`
+    return `${this.enumDefinition.name}.${this.name}`
   }
 
   printable() {

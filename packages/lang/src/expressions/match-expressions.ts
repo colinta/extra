@@ -2074,17 +2074,73 @@ export class MatchEnumExpression extends MatchExpression {
     })
   }
 
-  evalWithSubject(runtime: ValueRuntime, _op: Expression, lhs: Values.Value) {
+  evalWithSubjectReturningRuntime(
+    runtime: ValueRuntime,
+    op: Expression,
+    lhs: Values.Value,
+  ): GetValueRuntimeResult {
     if (!(lhs instanceof Values.EnumShorthandValue)) {
-      return okBoolean(false)
+      return ok([Values.booleanValue(false), runtime])
     }
 
     const thisEnum = runtime.getLocalValue(ENUM_START + this.name)
     if (!thisEnum) {
-      return okBoolean(false)
+      return ok([Values.booleanValue(false), runtime])
     }
 
-    return okBoolean(lhs.isEqual(thisEnum))
+    if (thisEnum instanceof Values.EnumShorthandValue) {
+      return ok([Values.booleanValue(lhs.isEqual(thisEnum)), runtime])
+    }
+
+    if (thisEnum instanceof Values.EnumFormulaValue) {
+      if (thisEnum.id !== lhs.id) {
+        return ok([Values.booleanValue(false), runtime])
+      }
+
+      let positionIndex = 0
+      return this.enumArgs.reduce(
+        (
+          result: GetValueRuntimeResult,
+          arg: MatchEnumExpression['enumArgs'][number],
+        ): GetValueRuntimeResult => {
+          if (result.isErr()) {
+            return err(result.error)
+          }
+
+          const [value, runtime] = result.value
+          if (!value.isTruthy()) {
+            return ok([value, runtime])
+          }
+
+          if (arg instanceof MatchPositionalArgument) {
+            const value = lhs.args.get(positionIndex)
+            if (!value) {
+              return err(
+                new RuntimeError(this, `Unexpected missing argument at index ${positionIndex}`),
+              )
+            }
+            positionIndex += 1
+            return arg.evalWithSubjectReturningRuntime(runtime, op, value)
+          } else if (arg instanceof MatchNamedArgument) {
+            const value = lhs.args.get(arg.name)
+            if (!value) {
+              return err(
+                new RuntimeError(this, `Unexpected missing argument at index ${positionIndex}`),
+              )
+            }
+            positionIndex += 1
+            return arg.evalWithSubjectReturningRuntime(runtime, op, value)
+          } else if (arg instanceof MatchIgnoreRemainingExpression) {
+            return ok([value, runtime])
+          }
+
+          return ok([value, runtime])
+        },
+        ok([Values.booleanValue(true), runtime]) as GetValueRuntimeResult,
+      )
+    }
+
+    return ok([Values.booleanValue(false), runtime])
   }
 
   toLisp() {
