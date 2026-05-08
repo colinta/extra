@@ -621,7 +621,7 @@ export class ClassDefinition extends Expression {
 
     const genericNodes: Nodes.Generic[] = []
     for (const expr of this.generics) {
-      const genericProp = expr.compile()
+      const genericProp = expr.compile(runtime)
       if (genericProp.isErr()) {
         return err(genericProp.error)
       }
