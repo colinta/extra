@@ -35,7 +35,15 @@ import {RuntimeError} from './errors'
 import {type ViewFormulaDefinition} from './view-expressions'
 import {type ClassDefinition} from './class-expressions'
 import {type NamedEnumDefinition} from './enum-expressions'
-import {BOX_KEYWORD, EXPORT_KEYWORD, TYPE_KEYWORD, VERSION_START} from '@/formulaParser/grammars'
+import {
+  AS_KEYWORD,
+  BOX_KEYWORD,
+  EXPORT_KEYWORD,
+  FROM_KEYWORD,
+  IMPORT_KEYWORD,
+  TYPE_KEYWORD,
+  VERSION_START,
+} from '@/formulaParser/grammars'
 
 /**
  * Declares the default export type. The compiler can use this to ensure that
@@ -192,23 +200,23 @@ export class ImportSource extends Expression {
  * Imports from another package. Imports can come from different "sources":
  * - package: installed from the packages folder (where is that? TBD...)
  *   Example:
- *         import File : { reader }
+ *         import { reader } from File
 
  * - project: imported from the project, relative to the root of the project
  *   folder
  *   Example:
- *         import /components/nav : { Header }
+ *         import { Header } from /components/nav
 
  * - relative: imported from a neighbour or a file in a subfolder. *cannot*
  *   import from a parent folder. If node taught us one thing, it's that relative
  *   imports that "reach out" pave the way to darkness and despair.
  *   Example:
- *         import ./helpers : { parse }
+ *         import { parse } from ./helpers
 
  * - scheme: All sorts of import methods supported here, like `github:` and
  *   that's all of them.
  *   Example:
- *         import github://colinta/extra-extra : { amazing }
+ *         import { amazing } from github://colinta/extra-extra
  */
 export class ImportStatement extends Expression {
   readonly name: Reference | undefined
@@ -218,33 +226,33 @@ export class ImportStatement extends Expression {
     precedingComments: Comment[],
     readonly precedingSpecifierComments: Comment[],
     /**
-     * The path parts of the import path
-     */
-    readonly source: ImportSource,
-    /**
      * If alias is set, the package exports are made available using that name.
      */
     readonly alias: Reference | undefined,
     /**
-     * Specific things that were imported via `import... : { a, b }`
+     * Specific things that were imported via `import { a, b } from ...`
      */
     readonly importSpecifiers: ImportSpecific[],
+    /**
+     * The path parts of the import path
+     */
+    readonly source: ImportSource,
   ) {
     super(range, precedingComments)
-
-    this.name = source.name
 
     // no alias is needed if no specific imports are defined.
     // if specific imports are defined, an alias is required if you want to refer
     // to other package imports.
     if (
       this.alias &&
-      this.name &&
-      this.alias.name === this.name.name &&
+      source.name &&
+      this.alias.name === source.name.name &&
       importSpecifiers.length === 0
     ) {
       this.alias = undefined
     }
+
+    this.name = this.alias ?? (importSpecifiers.length ? undefined : source.name)
   }
 
   toLisp() {
@@ -252,17 +260,17 @@ export class ImportStatement extends Expression {
   }
 
   toCode() {
-    let code = 'import ' + this.source.toCode()
+    if (this.importSpecifiers.length) {
+      return `${IMPORT_KEYWORD} ${wrapValues('{ ', this.importSpecifiers, ' }')} ${FROM_KEYWORD} ${this.source.toCode()}`
+    }
+
+    let code = IMPORT_KEYWORD + ' '
 
     if (this.alias) {
-      code += ' as ' + this.alias.name
+      code += `${AS_KEYWORD} ${this.alias.name} `
     }
 
-    if (this.importSpecifiers.length) {
-      code += ' only '
-      code += wrapValues('{ ', this.importSpecifiers, ' }')
-      code += ''
-    }
+    code += `${FROM_KEYWORD} ${this.source.toCode()}`
 
     return code
   }
@@ -279,9 +287,9 @@ export class ImportStatement extends Expression {
       ([sourceNode, importSpecifiers]) =>
         new Nodes.ImportStatement(
           toSource(this),
-          sourceNode as Nodes.ImportSource,
           this.alias?.name,
           importSpecifiers as Nodes.ImportSpecific[],
+          sourceNode as Nodes.ImportSource,
         ),
     )
   }

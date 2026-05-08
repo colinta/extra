@@ -1,13 +1,13 @@
-import ./Foo  -- relative to file
-import Foo    -- relative to project
-import /Foo   -- relative to installed packages
-import /Foo/Bar/Baz: { a-a, b-b }  -- partial import
-import Bar: {a , b , c}
-import Baz: {
+import from ./Foo  -- relative to file
+import from Foo    -- relative to project
+import from /Foo   -- relative to installed packages
+import { a-a, b-b } from /Foo/Bar/Baz  -- partial import
+import {a , b , c} from Bar
+import {
   a
   b
   c
-}
+} from Baz
 
 ╭──────────╮
 │ <Main /> │

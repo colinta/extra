@@ -12,8 +12,8 @@ import {
   ENUM_KEYWORD,
   EXPORT_KEYWORD,
   FN_KEYWORD,
+  FROM_KEYWORD,
   IMPORT_KEYWORD,
-  IMPORT_ONLY_KEYWORD,
   PROVIDES_KEYWORD,
   REQUIRES_KEYWORD,
   BOX_KEYWORD,
@@ -177,13 +177,10 @@ export function scanProvidesStatement(scanner: Scanner) {
   )
 }
 
-export function scanImportStatement(scanner: Scanner) {
-  const precedingComments = scanner.flushComments()
-  let precedingSpecifierComments: Comment[] = []
-
-  scanner.expectWord(IMPORT_KEYWORD)
-  const precedingSourceComments = scanner.flushComments()
-
+function scanImportSource(
+  scanner: Scanner,
+  precedingSourceComments: Comment[],
+): Expressions.ImportSource {
   if (scanner.is(/^['"`]/)) {
     throw new ParseError(
       scanner,
@@ -229,7 +226,7 @@ export function scanImportStatement(scanner: Scanner) {
     }
   }
 
-  const source = new Expressions.ImportSource(
+  return new Expressions.ImportSource(
     [range0, scanner.charIndex],
     precedingSourceComments,
     location,
@@ -237,88 +234,102 @@ export function scanImportStatement(scanner: Scanner) {
     schema,
     version,
   )
+}
 
-  if (scanner.lookAhead(AS_KEYWORD) || scanner.lookAhead(IMPORT_ONLY_KEYWORD)) {
+function scanImportSpecifiers(scanner: Scanner): Expressions.ImportSpecific[] {
+  const importSpecifiers: Expressions.ImportSpecific[] = []
+
+  scanner.expectString(BLOCK_OPEN)
+  for (;;) {
     scanner.scanAllWhitespace()
-  } else {
-    scanner.scanSpaces()
-  }
-  source.followingComments.push(...scanner.flushComments())
 
+    if (scanner.isEOF()) {
+      throw new ParseError(scanner, 'Unexpected end of input while parsing imports list')
+    }
+
+    const specific0 = scanner.charIndex
+    const nameRef = scanValidName(scanner)
+    if (scanner.lookAhead(AS_KEYWORD)) {
+      scanner.scanAllWhitespace()
+    } else {
+      scanner.scanSpaces()
+    }
+    nameRef.followingComments.push(...scanner.flushComments())
+
+    let specificAlias: Expressions.Reference | undefined
+    if (scanner.scanIfWord(AS_KEYWORD)) {
+      scanner.expectWhitespace()
+      specificAlias = scanValidName(scanner)
+      scanner.scanSpaces()
+      specificAlias.followingComments.push(...scanner.flushComments())
+    }
+
+    scanner.whereAmI(`scanImportStatement ${nameRef} as ${specificAlias}`)
+    const importSpecifier = new Expressions.ImportSpecific(
+      [specific0, scanner.charIndex],
+      scanner.flushComments(),
+      nameRef,
+      specificAlias,
+    )
+    importSpecifiers.push(importSpecifier)
+
+    const shouldBreak = scanner.scanCommaOrBreak(
+      BLOCK_CLOSE,
+      "Expected ',' separating items in the import list",
+    )
+
+    if (shouldBreak) {
+      importSpecifier.followingComments.push(...scanner.flushComments())
+      break
+    }
+  }
+
+  return importSpecifiers
+}
+
+export function scanImportStatement(scanner: Scanner) {
+  const precedingComments = scanner.flushComments()
+  let precedingSpecifierComments: Comment[] = []
   const importSpecifiers: Expressions.ImportSpecific[] = []
   let aliasRef: Expressions.Reference | undefined
+
+  const statement0 = scanner.charIndex
+  scanner.expectWord(IMPORT_KEYWORD)
+
   if (scanner.scanIfWord(AS_KEYWORD)) {
-    scanner.scanAllWhitespace()
+    scanner.expectWhitespace()
     aliasRef = scanValidTypeName(scanner)
-    if (scanner.lookAhead(IMPORT_ONLY_KEYWORD)) {
+    if (scanner.lookAhead(FROM_KEYWORD)) {
       scanner.scanAllWhitespace()
     } else {
       scanner.scanSpaces()
     }
     aliasRef.followingComments.push(...scanner.flushComments())
-  }
-
-  if (scanner.scanIfString(IMPORT_ONLY_KEYWORD)) {
-    scanner.scanAllWhitespace()
+  } else if (scanner.is(BLOCK_OPEN)) {
     precedingSpecifierComments = scanner.flushComments()
-    scanner.expectString(BLOCK_OPEN)
-    for (;;) {
-      scanner.scanAllWhitespace()
-
-      if (scanner.isEOF()) {
-        throw new ParseError(scanner, 'Unexpected end of input while parsing imports list')
-      }
-
-      const specific0 = scanner.charIndex
-      const nameRef = scanValidName(scanner)
-      if (scanner.lookAhead(AS_KEYWORD)) {
-        scanner.scanAllWhitespace()
-      } else {
-        scanner.scanSpaces()
-      }
-      nameRef.followingComments.push(...scanner.flushComments())
-
-      let specificAlias: Expressions.Reference | undefined
-      if (scanner.scanIfWord(AS_KEYWORD)) {
-        scanner.expectWhitespace()
-        specificAlias = scanValidName(scanner)
-        scanner.scanSpaces()
-        specificAlias.followingComments.push(...scanner.flushComments())
-      }
-
-      scanner.whereAmI(`scanImportStatement ${nameRef} as ${specificAlias}`)
-      const importSpecifier = new Expressions.ImportSpecific(
-        [specific0, scanner.charIndex],
-        scanner.flushComments(),
-        nameRef,
-        specificAlias,
-      )
-      importSpecifiers.push(importSpecifier)
-
-      const shouldBreak = scanner.scanCommaOrBreak(
-        BLOCK_CLOSE,
-        "Expected ',' separating items in the import list",
-      )
-
-      if (shouldBreak) {
-        importSpecifier.followingComments.push(...scanner.flushComments())
-        break
-      }
-    }
+    importSpecifiers.push(...scanImportSpecifiers(scanner))
+    scanner.expectWhitespace()
   }
+
+  scanner.expectWord(FROM_KEYWORD, "Expected 'from' in import statement")
+  const precedingSourceComments = scanner.flushComments()
+  const source = scanImportSource(scanner, precedingSourceComments)
+
+  scanner.scanSpaces()
+  source.followingComments.push(...scanner.flushComments())
 
   const importExpr = new Expressions.ImportStatement(
-    [range0, scanner.charIndex],
+    [statement0, scanner.charIndex],
     precedingComments,
     precedingSpecifierComments,
-    source,
     aliasRef,
     importSpecifiers,
+    source,
   )
   scanner.scanSpaces()
   importExpr.followingComments.push(...scanner.flushComments())
   scanner.whereAmI(
-    `scanImportStatement ${location}:${parts.join('/')} ${aliasRef ? ` as ${aliasRef.name}` : ''}: ${importSpecifiers.join(
+    `scanImportStatement ${source.location}:${source.parts.join('/')} ${aliasRef ? ` as ${aliasRef.name}` : ''}: ${importSpecifiers.join(
       ' ',
     )}`,
   )

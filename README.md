@@ -864,11 +864,11 @@ add-two-numbers(
 -- > add-two-numbers(1, 2)
 
 -- import `sqrt` and `pow` functions from the Math package
-import Math only {
+import {
   sqrt
   pow
-}
--- import Math only { sqrt, pow }
+} from Math
+-- import { sqrt, pow } from Math
 ```
 
 ### Classes

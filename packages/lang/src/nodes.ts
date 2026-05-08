@@ -405,12 +405,12 @@ export class ImportStatement extends Node {
 
   constructor(
     readonly source: Source,
-    readonly importSource: ImportSource,
     readonly alias: string | undefined,
     readonly importSpecifiers: ImportSpecific[],
+    readonly importSource: ImportSource,
   ) {
     super(source, Types.unique('ImportStatement'))
-    this.name = importSource.name
+    this.name = alias ?? (importSpecifiers.length ? undefined : importSource.name)
   }
 }
 

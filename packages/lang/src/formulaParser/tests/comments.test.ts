@@ -911,24 +911,13 @@ foo --comment1
 --comment0
 import
   --comment1
-  Foo  --comment2
+  as --comment2
     --comment3
-    as --comment4
-      --comment5
-      FooBar --comment6
+    FooBar --comment4
+    --comment5
+    from --comment6
       --comment7
-      only --comment8
-        --comment9
-        { --comment10
-          bar --comment11
-          --comment12
-          bux --comment13
-            --comment14
-            as --comment15
-              --comment16
-              buxx --comment17
-        --comment18
-        } --comment19
+      Foo --comment8
 `
 
       const importExpr = testScan(formula, scanImportStatement).get()
@@ -938,82 +927,30 @@ import
         return
       }
 
-      // Assertions to add to the import comments test
-      // Extract components of the import statement
-      const importSource = importExpr.source // "Foo"
-      const asName = importExpr.alias! // "FooBar"
-      const importSpecifiers = importExpr.importSpecifiers
+      const importSource = importExpr.source
+      const asName = importExpr.alias!
 
-      // Test comments preceding the import statement
       expect(importExpr.precedingComments).toEqual([
         {delim: '--', comment: 'comment0', type: 'line'},
       ])
-
-      // Test comments after 'import' keyword but before the module name
-      expect(importSource.precedingComments).toEqual([
+      expect(asName.precedingComments).toEqual([
         {delim: '--', comment: 'comment1', type: 'line'},
-      ])
-
-      // Test comments following the module name
-      expect(importSource.followingComments).toEqual([
         {delim: '--', comment: 'comment2', type: 'line'},
         {delim: '--', comment: 'comment3', type: 'line'},
       ])
-
-      // Test comments following the alias name
-      expect(asName.precedingComments).toEqual([
+      expect(asName.followingComments).toEqual([
         {delim: '--', comment: 'comment4', type: 'line'},
         {delim: '--', comment: 'comment5', type: 'line'},
       ])
-      expect(asName.followingComments).toEqual([
+      expect(importSource.precedingComments).toEqual([
         {delim: '--', comment: 'comment6', type: 'line'},
         {delim: '--', comment: 'comment7', type: 'line'},
       ])
-
-      // Test comments after ':' but before the opening brace
-      expect(importExpr.precedingSpecifierComments).toEqual([
+      expect(importSource.followingComments).toEqual([
         {delim: '--', comment: 'comment8', type: 'line'},
-        {delim: '--', comment: 'comment9', type: 'line'},
       ])
-
-      // Test specifiers in the import statement
-      expect(importSpecifiers.length).toBe(2)
-
-      // First specifier - "bar"
-      const [bar, bux] = importSpecifiers
-      expect(bar.name.name).toBe('bar')
-      expect(bar.name.precedingComments).toEqual([
-        {delim: '--', comment: 'comment10', type: 'line'},
-      ])
-      expect(bar.name.followingComments).toEqual([
-        {delim: '--', comment: 'comment11', type: 'line'},
-      ])
-
-      // Second specifier - "bux as buxx"
-      expect(bux.name.name).toBe('bux')
-      expect(bux.name.precedingComments).toEqual([
-        {delim: '--', comment: 'comment12', type: 'line'},
-      ])
-      expect(bux.name.followingComments).toEqual([
-        {delim: '--', comment: 'comment13', type: 'line'},
-        {delim: '--', comment: 'comment14', type: 'line'},
-      ])
-
-      // Alias of second specifier
-      expect(bux.alias?.name).toBe('buxx')
-      expect(bux.alias?.precedingComments).toEqual([
-        {delim: '--', comment: 'comment15', type: 'line'},
-        {delim: '--', comment: 'comment16', type: 'line'},
-      ])
-      expect(bux.alias?.followingComments).toEqual([
-        {delim: '--', comment: 'comment17', type: 'line'},
-      ])
-      expect(bux.followingComments).toEqual([{delim: '--', comment: 'comment18', type: 'line'}])
-
-      // Test comments after closing brace
-      expect(importExpr.followingComments).toEqual([
-        {delim: '--', comment: 'comment19', type: 'line'},
-      ])
+      expect(importExpr.importSpecifiers).toEqual([])
+      expect(importExpr.followingComments).toEqual([])
     })
 
     it('attaches comments to imports 2', () => {
@@ -1021,14 +958,18 @@ import
 --comment0
 import
   --comment1
-  Foo  --comment2
-    --comment3
-    only --comment4
-      --comment5
-      { --comment6
-        bar --comment7
-        --comment8
-      } --comment9
+  { --comment2
+    bar --comment3
+    --comment4
+    bux --comment5
+      as --comment6
+        --comment7
+        buxx --comment8
+    --comment9
+  } --comment10
+  from --comment11
+    --comment12
+    Foo --comment13
 `
 
       const importExpr = testScan(formula, scanImportStatement).get()
@@ -1038,47 +979,54 @@ import
         return
       }
 
-      // Assertions to add to the import comments test
-      // Extract components of the import statement
-      const importSource = importExpr.source // "Foo"
+      const importSource = importExpr.source
       const importSpecifiers = importExpr.importSpecifiers
 
-      // Test comments preceding the import statement
       expect(importExpr.precedingComments).toEqual([
         {delim: '--', comment: 'comment0', type: 'line'},
       ])
-
-      // Test comments after 'import' keyword but before the module name
-      expect(importSource.precedingComments).toEqual([
+      expect(importExpr.precedingSpecifierComments).toEqual([
         {delim: '--', comment: 'comment1', type: 'line'},
       ])
 
-      // Test comments following the module name
-      expect(importSource.followingComments).toEqual([
+      expect(importSpecifiers.length).toBe(2)
+      const [bar, bux] = importSpecifiers
+      expect(bar.name.name).toBe('bar')
+      expect(bar.name.precedingComments).toEqual([
         {delim: '--', comment: 'comment2', type: 'line'},
+      ])
+      expect(bar.name.followingComments).toEqual([
         {delim: '--', comment: 'comment3', type: 'line'},
       ])
 
-      // Test comments after ':' but before the opening brace
-      expect(importExpr.precedingSpecifierComments).toEqual([
+      expect(bux.name.name).toBe('bux')
+      expect(bux.name.precedingComments).toEqual([
         {delim: '--', comment: 'comment4', type: 'line'},
+      ])
+      expect(bux.name.followingComments).toEqual([
         {delim: '--', comment: 'comment5', type: 'line'},
       ])
-
-      // Test specifiers in the import statement
-      expect(importSpecifiers.length).toBe(1)
-
-      // First specifier - "bar"
-      const [bar] = importSpecifiers
-      expect(bar.name.name).toBe('bar')
-      expect(bar.name.precedingComments).toEqual([{delim: '--', comment: 'comment6', type: 'line'}])
-      expect(bar.name.followingComments).toEqual([{delim: '--', comment: 'comment7', type: 'line'}])
-      expect(bar.followingComments).toEqual([{delim: '--', comment: 'comment8', type: 'line'}])
-
-      // Test comments after closing brace
-      expect(importExpr.followingComments).toEqual([
+      expect(bux.alias?.name).toBe('buxx')
+      expect(bux.alias?.precedingComments).toEqual([
+        {delim: '--', comment: 'comment6', type: 'line'},
+        {delim: '--', comment: 'comment7', type: 'line'},
+      ])
+      expect(bux.alias?.followingComments).toEqual([
+        {delim: '--', comment: 'comment8', type: 'line'},
+      ])
+      expect(bux.followingComments).toEqual([
         {delim: '--', comment: 'comment9', type: 'line'},
       ])
+
+      expect(importSource.precedingComments).toEqual([
+        {delim: '--', comment: 'comment10', type: 'line'},
+        {delim: '--', comment: 'comment11', type: 'line'},
+        {delim: '--', comment: 'comment12', type: 'line'},
+      ])
+      expect(importSource.followingComments).toEqual([
+        {delim: '--', comment: 'comment13', type: 'line'},
+      ])
+      expect(importExpr.followingComments).toEqual([])
     })
   })
 })
