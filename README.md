@@ -8,13 +8,13 @@ Extra is a strongly-typed language and runtime that can be used to create client
 
 ## OK, tell me moooore...
 
-While Elm made good on the promise of being extremely well-reasoned, it was painful, to me, to compose components that needed to track their own internal state. Extra makes that really easy – but still explicit. While I was in there, I figured it wouldn't hurt to add TypeScript's branch-based type refinements. Might as well add Swift's `guard` expression, too... and JSX seems like a good idea (but can we make it even more ergonomic?).
+While Elm made good on the promise of being extremely well-reasoned, it was painful, to me, to compose components that needed to track their own internal state. Extra makes that really easy – but still explicit. While I was in there, I figured it wouldn't hurt to add TypeScript's branch-based type inference and derived types. Might as well add Swift's `guard` expression, too... and JSX is a great idea (but can we make it even more ergonomic?).
 
-Extra will also feel familiar to React developers, but without the cognitive dissonance of "let it render" and "prevent too many rerenders", and obviously not the "this was your best idea?" mess that is hooks. Whenever someone says "React is (declarative|functional|good|fine/not-a-mess)!" I die a little inside.
+Extra will feel familiar to React developers, but without the cognitive dissonance of "let it render" or is it "prevent too many rerenders", and obviously not the "this was your best idea?" mess that is hooks. Whenever someone says "React is (declarative|functional|good|fine|not-a-mess)!" I die a little inside.
 
-The big difference in Extra with all these frameworks is how views are _updated_. Think spreadsheets instead of DOM diffing.
+The big difference in Extra with other "render and diff" frameworks is how views are _updated_. Think spreadsheets instead of DOM diffing.
 
-When you update a cell in a spreadsheet, the application is able to know exactly what cells were depending on that cell. It can create a dependency graph of all the downstream dependencies, including charts and pivot tables, triggers, etc, and only update _what is needed_. This is eerily similar to the goal that React and other virtual-dom-based frameworks attempted... but they work on a "render-and-diff" model instead of "render-what-changed". Extra tries to change that.
+When you update a cell in a spreadsheet, the application is able to know exactly what cells were depending on that cell. It can create a dependency graph of all the downstream dependencies, including charts and pivot tables, triggers, etc, and only update _what is needed_. This is the strategy I took in Extra (also called "push based updates").
 
 In Extra, your `<View/>` components create a runtime that is capable of tracking atomic changes. Think "assign new string value" and "push to an array". These atomic changes are handed to the components that were depending on that value, and the changes are propogated to the corresponding view object (dom or native view).
 
@@ -24,14 +24,19 @@ Before I jump into the application architecture, let's get to know Extra first. 
 
 ## Quick syntax primer
 
+Just a little sample of code to get familiar with the syntax.
+
 ```extra
 -- comments are hyphenated, like Ada
 {- or nested like this -} -- like Haskell or Elm because they're cool I'm cool
 <-- also this! Finally you can *point* to things using comments.
 
--- `let` is a special language construct that assigns values to scope.
+-- `let` assigns values to scope. Subsequent assigns can depend on previous
+-- ones, and they all get passed to the `in` block
+
 let
-  someNumber = 2 * 1 + 40
+  forty = 40, two = 2        -- comma separated
+  someNumber = 2 * 1 + 40    -- or newline separated
 
   name = "Extra"
 
@@ -54,25 +59,27 @@ let
   fn is-divisible-by-3(num: Int) =>
     num % 3 == 0 and num < max
 
-  -- if syntax is "clean", no parens. Expressions are terminated by a newline,
-  -- unless an operator indicates more.
+  -- `if` syntax is "clean" - no parens. Expressions are terminated by a
+  -- newline, unless an operator indicates there is more. (the parser looks
+  -- ahead for these trailing operators, they can be on the current or next
+  -- line)
   evens =
-    if max == 10
-      and max < 20
+    if max > 0
+        and max <= 10
       [2, 4, 6, 8, 10]
     else if
-      -- I'm just messing with whitespace to show what is possible.
-      -- the built-in code formatter (`extra normal`) can format this nicely
-      max == 12
-      or max > 20
-      -- the ++ at the end indicates that the expression is incomplete
+            -- I'm just messing with whitespace to show what is possible. the
+            -- built-in code formatter (`extra normal`) can format this nicely
+        max > 10
+        and max <= 20
+            -- the ++ at the end indicates that the expression is incomplete
       [2, 4, 6, 8, 10] ++
-      [12]
+      [12, 14, 16, 18, 20]
     else
       [2, 4, 6, 8, 10, 12, 14]
 
-    -- here the ++ comes *after* the entire if expression
-    ++ [-1]
+        -- here the ++ comes *after* the entire if expression - that's ok, too
+      ++ [-1]
 
   odds = [
     1   -- look ma, no commas!
@@ -81,12 +88,13 @@ let
     7
 
     -- '...' is the 'spread' operator; these items will be included in the array
+    ...[9, 11]
     -- 'then' can be used to form a ternary-expression-like-syntax
     -- (the code formatter will attempt to keep these on one line)
-    ...if max <= 10 then [9] else []
+    ...if max <= 20 then [13, 15, 17, 19] else []
 
-    -- even better, the `onlyif` operator is only allowed in arrays, objects,
-    -- dicts, and sets. `11` is only included if the condition is true
+    -- even better, the `onlyif` operator – only allowed in arrays, objects,
+    -- dicts, and sets. `11` is only included in the array if `max > 10`.
     11 onlyif max > 10
   ]
 in
