@@ -41,17 +41,31 @@ const status = Types.namedEnumDefinition({
 })
 
 describe('selectTypeProps', () => {
-  cases<[
-    name: string,
-    type: Types.Type,
-    properties: Types.PropertySelection[],
-    pick: boolean,
-    expected: string,
-  ]>(
+  cases<
+    [
+      name: string,
+      type: Types.Type,
+      properties: Types.PropertySelection[],
+      pick: boolean,
+      expected: string,
+    ]
+  >(
     c(['picks named properties from objects', user, [property('name')], true, '{name: String}']),
-    c(['omits named properties from objects', user, [property('age')], false, '{name: String, Boolean}']),
+    c([
+      'omits named properties from objects',
+      user,
+      [property('age')],
+      false,
+      '{name: String, Boolean}',
+    ]),
     c(['picks positional properties from objects', user, [position(0)], true, '{Boolean}']),
-    c(['omits positional properties from objects', user, [position(0)], false, '{name: String, age: Int}']),
+    c([
+      'omits positional properties from objects',
+      user,
+      [position(0)],
+      false,
+      '{name: String, age: Int}',
+    ]),
     c([
       'keeps object property order instead of selection order',
       user,
@@ -59,7 +73,13 @@ describe('selectTypeProps', () => {
       true,
       '{name: String, Boolean}',
     ]),
-    c(['picks positions from spread-positionals', tupleWithSpread, [position(0), position(1), position(2)], true, '{Int, String, String?}']),
+    c([
+      'picks positions from spread-positionals',
+      tupleWithSpread,
+      [position(0), position(1), position(2)],
+      true,
+      '{Int, String, String?}',
+    ]),
     c([
       'omits positions from spread-positionals',
       mixedSpread,
@@ -77,16 +97,40 @@ describe('selectTypeProps', () => {
     c([
       'selects each member of one-of types',
       Types.oneOf([
-        Types.object([Types.namedProp('name', Types.StringType), Types.namedProp('age', Types.IntType)]),
-        Types.object([Types.namedProp('name', Types.StringType), Types.namedProp('role', Types.StringType)]),
+        Types.object([
+          Types.namedProp('name', Types.StringType),
+          Types.namedProp('age', Types.IntType),
+        ]),
+        Types.object([
+          Types.namedProp('name', Types.StringType),
+          Types.namedProp('role', Types.StringType),
+        ]),
       ]),
       [property('name')],
       false,
       '{age: Int} | {role: String}',
     ]),
-    c(['picks formula props', formula, [property('b')], true, 'fn{(# input: Int): String, b: String}']),
-    c(['omits formula props', formula, [property('a')], false, 'fn{(# input: Int): String, b: String}']),
-    c(['ignores positional selections for formula props', formula, [position(0)], true, 'fn(# input: Int): String']),
+    c([
+      'picks formula props',
+      formula,
+      [property('b')],
+      true,
+      'fn{(# input: Int): String, b: String}',
+    ]),
+    c([
+      'omits formula props',
+      formula,
+      [property('a')],
+      false,
+      'fn{(# input: Int): String, b: String}',
+    ]),
+    c([
+      'ignores positional selections for formula props',
+      formula,
+      [position(0)],
+      true,
+      'fn(# input: Int): String',
+    ]),
     c([
       'selects named enum definitions through their instance type',
       status,
@@ -94,7 +138,13 @@ describe('selectTypeProps', () => {
       true,
       'Status.done | Status.loading',
     ]),
-    c(['returns non-selectable types unchanged', Types.IntType, [property('name'), position(0)], true, 'Int']),
+    c([
+      'returns non-selectable types unchanged',
+      Types.IntType,
+      [property('name'), position(0)],
+      true,
+      'Int',
+    ]),
   ).run(([name, type, properties, pick, expected], {only, skip}) =>
     (only ? it.only : skip ? it.skip : it)(name, () => {
       expect(Types.selectTypeProps(type, properties, pick).toString()).toEqual(expected)

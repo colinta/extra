@@ -180,12 +180,9 @@ in
   nextId(5)`,
     ]),
   ).run(([code], {only, skip}) =>
-    (only ? it.only : skip ? it.skip : it)(
-      `rejects box construction shortcut in '${code}'`,
-      () => {
-        const result = parse(code).get().getType(typeRuntime)
-        expect(result.isErr()).toBe(true)
-      },
-    ),
+    (only ? it.only : skip ? it.skip : it)(`rejects box construction shortcut in '${code}'`, () => {
+      const result = parse(code).get().getType(typeRuntime)
+      expect(result.isErr()).toBe(true)
+    }),
   )
 })

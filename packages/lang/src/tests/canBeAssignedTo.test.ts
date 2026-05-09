@@ -82,7 +82,10 @@ describe('canBeAssignedTo', () => {
       '{0} can be assigned to {...[Int, >=1]}',
     ]),
     c([
-      Types.object([Types.positionalProp(Types.literal(0)), Types.positionalProp(Types.literal(1))]),
+      Types.object([
+        Types.positionalProp(Types.literal(0)),
+        Types.positionalProp(Types.literal(1)),
+      ]),
       Types.object([Types.spreadPositionalProp(Types.array(Types.int(), {min: 1}))]),
       true,
       '{0, 1} can be assigned to {...[Int, >=1]}',

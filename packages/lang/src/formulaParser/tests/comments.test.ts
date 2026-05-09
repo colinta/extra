@@ -992,20 +992,12 @@ import
       expect(importSpecifiers.length).toBe(2)
       const [bar, bux] = importSpecifiers
       expect(bar.name.name).toBe('bar')
-      expect(bar.name.precedingComments).toEqual([
-        {delim: '--', comment: 'comment2', type: 'line'},
-      ])
-      expect(bar.name.followingComments).toEqual([
-        {delim: '--', comment: 'comment3', type: 'line'},
-      ])
+      expect(bar.name.precedingComments).toEqual([{delim: '--', comment: 'comment2', type: 'line'}])
+      expect(bar.name.followingComments).toEqual([{delim: '--', comment: 'comment3', type: 'line'}])
 
       expect(bux.name.name).toBe('bux')
-      expect(bux.name.precedingComments).toEqual([
-        {delim: '--', comment: 'comment4', type: 'line'},
-      ])
-      expect(bux.name.followingComments).toEqual([
-        {delim: '--', comment: 'comment5', type: 'line'},
-      ])
+      expect(bux.name.precedingComments).toEqual([{delim: '--', comment: 'comment4', type: 'line'}])
+      expect(bux.name.followingComments).toEqual([{delim: '--', comment: 'comment5', type: 'line'}])
       expect(bux.alias?.name).toBe('buxx')
       expect(bux.alias?.precedingComments).toEqual([
         {delim: '--', comment: 'comment6', type: 'line'},
@@ -1014,9 +1006,7 @@ import
       expect(bux.alias?.followingComments).toEqual([
         {delim: '--', comment: 'comment8', type: 'line'},
       ])
-      expect(bux.followingComments).toEqual([
-        {delim: '--', comment: 'comment9', type: 'line'},
-      ])
+      expect(bux.followingComments).toEqual([{delim: '--', comment: 'comment9', type: 'line'}])
 
       expect(importSource.precedingComments).toEqual([
         {delim: '--', comment: 'comment10', type: 'line'},
