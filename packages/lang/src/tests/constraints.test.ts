@@ -94,15 +94,42 @@ describe('generateConstraints', () => {
     const T = new Types.GenericType('T')
     const generics = new Set([T])
     const provided = Types.int()
-    const expected = Types.OneOfType.createOneOf([Types.string(), T])
+    const expected = Types.oneOf([Types.string(), T])
     const result = generateConstraints(provided, expected, generics)
     expect(result).toEqual([hint(T, Types.int())])
+  })
+
+  test('OneOfType on expected side: subset of generic members generate constraints', () => {
+    const T = new Types.GenericType('T')
+    const generics = new Set([T])
+    const provided = Types.oneOf([Types.string(), Types.int()])
+    const expected = Types.oneOf([Types.string(), T])
+    const result = generateConstraints(provided, expected, generics)
+    expect(result).toEqual([hint(T, Types.int())])
+  })
+
+  test('OneOfType on expected side: null generic members generate constraints', () => {
+    const T = new Types.GenericType('T')
+    const generics = new Set([T])
+    const provided = Types.nullType()
+    const expected = Types.oneOf([Types.string(), T])
+    const result = generateConstraints(provided, expected, generics)
+    expect(result).toEqual([hint(T, Types.nullType())])
+  })
+
+  test('OneOfType on expected side: only generic members that do not match generate constraints', () => {
+    const T = new Types.GenericType('T')
+    const generics = new Set([T])
+    const provided = Types.string()
+    const expected = Types.oneOf([Types.string(), T])
+    const result = generateConstraints(provided, expected, generics)
+    expect(result).toEqual([])
   })
 
   test('OneOfType on provided side against generic: single hint with full type', () => {
     const T = new Types.GenericType('T')
     const generics = new Set([T])
-    const provided = Types.OneOfType.createOneOf([Types.int(), Types.string()])
+    const provided = Types.oneOf([Types.int(), Types.string()])
     const expected = T
     const result = generateConstraints(provided, expected, generics)
     // The whole OneOfType is the hint — we don't decompose it
@@ -112,7 +139,7 @@ describe('generateConstraints', () => {
   test('OneOfType on provided side against compound: each member generates constraints', () => {
     const T = new Types.GenericType('T')
     const generics = new Set([T])
-    const provided = Types.OneOfType.createOneOf([
+    const provided = Types.oneOf([
       new Types.ArrayType(Types.int()),
       new Types.ArrayType(Types.string()),
     ])

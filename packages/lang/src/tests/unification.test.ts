@@ -36,7 +36,7 @@ describe('occursIn', () => {
 
   test('generic occurs in OneOfType', () => {
     const T = new Types.GenericType('T')
-    const oneOf = Types.OneOfType.createOneOf([Types.int(), T])
+    const oneOf = Types.oneOf([Types.int(), T])
     expect(occursIn(T, oneOf)).toBe(true)
   })
 

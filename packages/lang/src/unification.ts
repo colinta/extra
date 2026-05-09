@@ -22,6 +22,7 @@ import {
   AnonymousEnumType,
   ClassInstanceType,
   canBeAssignedTo,
+  oneOf,
 } from './types'
 import type {Substitution} from './types'
 
@@ -307,7 +308,7 @@ function sameFamilyWiden(a: Type, b: Type): Type {
 
   // Scalar types: combine into OneOf (createOneOf handles flattening
   // and simplification, e.g. OneOf([1|2, 3]) → 1|2|3)
-  return OneOfType.createOneOf([a, b])
+  return oneOf([a, b])
 }
 
 function unifyObjects(

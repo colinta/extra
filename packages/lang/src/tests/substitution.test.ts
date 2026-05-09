@@ -67,7 +67,7 @@ describe('applySubst', () => {
     const subst: Substitution = new Map([[T, Types.string()]])
     const oneOfT = Types.oneOf([T, Types.int()])
     const result = applySubst(subst, oneOfT)
-    // String | Int — order may vary depending on OneOfType.createOneOf
+    // String | Int — order may vary depending on OneOfType sorting
     expect(result).toBeInstanceOf(Types.OneOfType)
     const members = (result as Types.OneOfType).of
     expect(members).toContain(Types.string())
