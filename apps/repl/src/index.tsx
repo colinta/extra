@@ -4,6 +4,7 @@ import {resolve} from 'node:path'
 
 import {interceptConsoleLog, red} from '@teaui/core'
 import {
+  AutoLegend,
   Box,
   Button,
   Checkbox,
@@ -507,6 +508,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
       <Box>
         <Input value={formula} wrap multiline placeholder="Formula" onChange={setFormula} />
       </Box>
+      <AutoLegend />
       <Stack.right flex={1}>
         <Box width="fill" flex={2}>
           <Scrollable>

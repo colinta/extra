@@ -1049,7 +1049,7 @@ export class ClassDefinition extends Node {
   constructor(
     readonly source: Source,
     readonly name: string,
-    readonly parentClass: ClassDefinition | undefined,
+    readonly parentClass: Types.ClassDefinitionType | undefined,
     readonly type: Types.ClassDefinitionType,
     /**
      * OrderedMap of static properties. Ordering is determined by dependencies
@@ -1069,7 +1069,7 @@ export class ViewClassDefinition extends ClassDefinition {
   constructor(
     readonly source: Source,
     readonly name: string,
-    readonly parentClass: ViewClassDefinition | undefined,
+    readonly parentClass: Types.ViewClassDefinitionType | undefined,
     readonly type: Types.ViewClassDefinitionType,
     /**
      * OrderedMap of static properties. Ordering is determined by dependencies
@@ -1092,17 +1092,6 @@ export class ViewClassDefinition extends ClassDefinition {
       generics,
       isExport,
     )
-  }
-}
-
-export class ClassInstance extends Node {
-  constructor(
-    readonly source: Source,
-    readonly name: string,
-    readonly parentClass: ClassInstance | undefined,
-    readonly type: Types.ClassInstanceType,
-  ) {
-    super(source, type)
   }
 }
 

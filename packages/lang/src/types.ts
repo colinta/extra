@@ -3649,11 +3649,36 @@ export class ObjectType extends Type {
     }
   }
 
+  static fromMap(props: Map<string | number, Type>): ObjectType {
+    // very likely that props is already in order (Map preserves insertion
+    // order), but I don't like relying on that. Sort the entries using keys,
+    // making sure that numeric keys are sorted.
+    const entries = [...props.entries()].sort(([lhKey], [rhKey]) => {
+      if (typeof lhKey === 'number' && typeof rhKey === 'number') {
+        return lhKey - rhKey
+      }
+      return 1
+    })
+
+    const propTypes = entries.map(([key, type]) => {
+      if (typeof key === 'number') {
+        return positionalProp(type)
+      } else {
+        return namedProp(key, type)
+      }
+    })
+    return new ObjectType(propTypes)
+  }
+
   propNamed(name: string) {
     return this.namedTypes.get(name)
   }
 
   propAtPosition(index: number) {
+    if (index < 0) {
+      return undefined
+    }
+
     const fixed = this.positionalTypes.get(index)
     if (fixed) {
       return fixed
@@ -4234,6 +4259,10 @@ export class ClassDefinitionType extends Type {
       return undefined
     }
     return this.staticProps.get(name)
+  }
+
+  toCode() {
+    return `class ${this.name}`
   }
 }
 

@@ -2944,6 +2944,45 @@ export class ObjectExpression extends Expression {
     super(range, precedingComments)
   }
 
+  expressionNamed(name: string) {
+    return this.values.find(value => {
+      if (
+        value instanceof DictEntry &&
+        value.name instanceof Reference &&
+        value.name.name === name
+      ) {
+        return value
+      }
+    })
+  }
+
+  expressionAtPosition(index: number) {
+    let values = this.values
+    if (index < 0) {
+      values = [...values].reverse()
+      index = -1 - index
+    }
+
+    let positionIndex = 0
+    let didEncounterSpread = false
+    return values.find(value => {
+      if (didEncounterSpread) {
+        return
+      }
+
+      if (value instanceof DictEntry) {
+        return
+      } else if (value instanceof SpreadObjectArgument) {
+        didEncounterSpread = true
+        return
+      } else if (positionIndex === index) {
+        return value
+      }
+
+      positionIndex += 1
+    })
+  }
+
   dependencies(parentScopes: Scope[]) {
     return allDependencies(this.values, parentScopes)
   }
@@ -3144,6 +3183,31 @@ export class ArrayExpression extends Expression {
     readonly generic: Expression | undefined,
   ) {
     super(range, precedingComments, [])
+  }
+
+  expressionAtPosition(index: number) {
+    let values = this.values
+    if (index < 0) {
+      values = [...values].reverse()
+      index = -1 - index
+    }
+
+    let didEncounterSpread = false,
+      positionIndex = 0
+    return values.find(value => {
+      if (didEncounterSpread) {
+        return
+      }
+
+      if (value instanceof SpreadArrayArgument) {
+        didEncounterSpread = true
+        return false
+      } else if (positionIndex === index) {
+        return value
+      }
+
+      positionIndex += 1
+    })
   }
 
   dependencies(parentScopes: Scope[]) {

@@ -635,19 +635,19 @@ export class ClassDefinition extends Expression {
 
     // the parentMetaClass (and its instanceClass) is already defined, so at
     // least we have a starting point
-    const parentMetaClass = mapOptional(this.extendsExpression?.compile(runtime))
-    return parentMetaClass.map(extendsNode => {
+    const parentMetaClassNode = mapOptional(this.extendsExpression?.compile(runtime))
+    return parentMetaClassNode.map(extendsNode => {
       const parentMetaClass = extendsNode?.type
-      if (parentMetaClass && !(parentMetaClass instanceof Nodes.ClassDefinition)) {
+      if (parentMetaClass && !(parentMetaClass instanceof Types.ClassDefinitionType)) {
         return err(
           new RuntimeError(
             this,
-            `Class '${this.nameRef.name}' extends non-class type '${this.extendsExpression!}'`,
+            `Class '${this.nameRef.name}' extends non-class type '${parentMetaClass!}' (${parentMetaClass.constructor.name})`,
           ),
         )
       }
 
-      const parentInstanceClass = parentMetaClass?.type.classInstanceType
+      const parentInstanceClass = parentMetaClass?.classInstanceType
       const parentScopes = runtime.parentScopes().concat([new Scope(this.name)])
 
       const allStatics = (
@@ -788,7 +788,7 @@ export class ClassDefinition extends Expression {
           // compiling the remaining static and instance formulas.
           const classType = new Types.ClassDefinitionType(
             this.name,
-            parentMetaClass?.type,
+            parentMetaClass,
             // static properties - this is built up later
             new Map(),
             genericTypes,
