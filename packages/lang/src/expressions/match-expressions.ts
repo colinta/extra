@@ -31,24 +31,25 @@ import {indent, MAX_LEN} from '@/util'
 import * as Values from '@/values'
 import {ok, reduceAll, err, mapAll, mapMany, mapOptional} from '@extra-lang/result'
 import {
-  Expression,
-  toSource,
-  Reference,
-  getChildAsTypeExpression,
-  okBoolean,
-  Literal,
-  LiteralString,
-  LiteralRegex,
-  comparisonOperation,
-  allProvides,
   allNamesFrom,
+  allProvides,
+  comparisonOperation,
+  getChildAsTypeExpression,
   includeMissingNames,
+  okBoolean,
+  toSource,
+  ArrayExpression,
+  Expression,
+  Literal,
+  LiteralRegex,
+  LiteralString,
+  ObjectExpression,
+  Reference,
 } from './expressions'
 import {Range} from './types'
 import {RuntimeError} from './errors'
 
 interface SwitchCompileInfo {
-  subjectNode: Nodes.Node
   exhaustiveType: Types.Type
   caseNodes: Nodes.Case[]
   elseNode: Nodes.CaseMatch | undefined
@@ -135,16 +136,12 @@ export class SwitchExpression extends Expression {
 
       return reduceAll(
         {
-          subjectNode,
           exhaustiveType: subjectNode.type,
           caseNodes: [],
           elseNode: undefined,
         } as SwitchCompileInfo,
         caseExprs,
-        (
-          {subjectNode, exhaustiveType, caseNodes},
-          caseExpr,
-        ): GetRuntimeResult<SwitchCompileInfo> => {
+        ({exhaustiveType, caseNodes}, caseExpr): GetRuntimeResult<SwitchCompileInfo> => {
           if (exhaustiveType === Types.NeverType) {
             return err(
               new RuntimeError(
@@ -155,12 +152,12 @@ export class SwitchExpression extends Expression {
           }
 
           return caseExpr
-            .compileWithSubject(nextRuntime, trackingFormula, exhaustiveType)
+            .compileWithSubject(nextRuntime, trackingFormula, exhaustiveType, subjectExpr)
             .map(caseNode => {
               caseNodes.push(caseNode)
 
               return caseExpr
-                .assumeFalseWith(nextRuntime, trackingFormula, exhaustiveType)
+                .assumeFalseWithSubject(nextRuntime, trackingFormula, exhaustiveType, subjectExpr)
                 .map(nextRuntime => {
                   const caseSubjectType = relationshipToType(nextRuntime, trackingFormula)
                   if (!caseSubjectType) {
@@ -174,7 +171,6 @@ export class SwitchExpression extends Expression {
 
                   const nextSubjectType = Types.narrowTypeIs(exhaustiveType, caseSubjectType)
                   return ok({
-                    subjectNode,
                     exhaustiveType: nextSubjectType,
                     caseNodes,
                     elseNode: undefined,
@@ -254,22 +250,24 @@ export class SwitchExpression extends Expression {
 }
 
 export abstract class MatchExpression extends Expression {
-  assumeTrueWith(
+  assumeTrueWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ) {
-    return this.gimmeTrueStuffWith(runtime, formula, subjectType).map(stuff =>
+    return this.gimmeTrueStuffWithSubject(runtime, formula, subjectType, subjectExpr).map(stuff =>
       assignRelationshipsToRuntime(runtime, stuff, true),
     )
   }
 
-  assumeFalseWith(
+  assumeFalseWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ) {
-    return this.gimmeFalseStuffWith(runtime, formula, subjectType).map(stuff =>
+    return this.gimmeFalseStuffWithSubject(runtime, formula, subjectType, subjectExpr).map(stuff =>
       assignRelationshipsToRuntime(runtime, stuff, false),
     )
   }
@@ -277,10 +275,11 @@ export abstract class MatchExpression extends Expression {
   /**
    * Called from MatchOperator with the formula and expression of lhs.
    */
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     _runtime: TypeRuntime,
     _formula: RelationshipFormula | undefined,
-    _lhsType: Types.Type,
+    _subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     return ok([])
   }
@@ -288,10 +287,11 @@ export abstract class MatchExpression extends Expression {
   /**
    * Called from MatchOperator with the formula and expression of lhs.
    */
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     _runtime: TypeRuntime,
     _formula: RelationshipFormula | undefined,
-    _lhsType: Types.Type,
+    _subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     return ok([])
   }
@@ -397,10 +397,11 @@ export class MatchTypeExpression extends MatchExpression {
     return this.getAsTypeExpression(runtime)
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula && !this.assignRef) {
       return ok([])
@@ -423,10 +424,11 @@ export class MatchTypeExpression extends MatchExpression {
     })
   }
 
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -493,10 +495,11 @@ export abstract class MatchIdentifier extends MatchExpression {
     return this.name ? [this.name] : []
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     _runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!this.name) {
       return ok([])
@@ -506,7 +509,7 @@ export abstract class MatchIdentifier extends MatchExpression {
     const relationships: Relationship[] = [
       {
         formula: assign,
-        comparison: {operator: 'instanceof', rhs: lhsType},
+        comparison: {operator: 'instanceof', rhs: subjectType},
       },
     ]
     if (formula) {
@@ -518,10 +521,11 @@ export abstract class MatchIdentifier extends MatchExpression {
     return ok(relationships)
   }
 
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     _runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    _lhsType: Types.Type,
+    _subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     const relationships: Relationship[] = []
     if (formula) {
@@ -698,20 +702,22 @@ abstract class MatchArgumentExpression extends MatchExpression {
     return this.matchExpr.narrowUsingMatcherType(runtime, propType)
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
-    return this.matchExpr.gimmeTrueStuffWith(runtime, formula, subjectType)
+    return this.matchExpr.gimmeTrueStuffWithSubject(runtime, formula, subjectType, subjectExpr)
   }
 
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
-    return this.matchExpr.gimmeFalseStuffWith(runtime, formula, subjectType)
+    return this.matchExpr.gimmeFalseStuffWithSubject(runtime, formula, subjectType, subjectExpr)
   }
 
   evalWithSubject(runtime: ValueRuntime, op: Expression, lhs: Values.Value) {
@@ -826,10 +832,11 @@ export abstract class MatchLiteral extends MatchExpression {
     return this.getAsTypeExpression(runtime)
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -840,10 +847,11 @@ export abstract class MatchLiteral extends MatchExpression {
     })
   }
 
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -901,10 +909,11 @@ export class MatchLiteralRegex extends MatchLiteral {
     return this.getAsTypeExpression(runtime)
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula && !this.literal.groups.size) {
       return ok([])
@@ -934,10 +943,11 @@ export class MatchLiteralRegex extends MatchLiteral {
     })
   }
 
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     _runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     _subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -1030,7 +1040,7 @@ export class MatchUnaryRange extends MatchExpression {
     return this.getAsTypeExpression(runtime, isInt)
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
@@ -1049,10 +1059,11 @@ export class MatchUnaryRange extends MatchExpression {
     })
   }
 
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -1199,10 +1210,11 @@ export class MatchBinaryRange extends MatchExpression {
     return this.getAsTypeExpression(runtime, isInt)
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -1218,10 +1230,11 @@ export class MatchBinaryRange extends MatchExpression {
     })
   }
 
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -1399,10 +1412,11 @@ export class MatchStringExpression extends MatchExpression {
     return this.getAsTypeExpression().map(type => Types.narrowTypeIs(subjectType, type))
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     let stringType: Types.Type | undefined
     let stringTypeMaxLength: number | undefined = undefined
@@ -1477,7 +1491,7 @@ export class MatchStringExpression extends MatchExpression {
     })
 
     for (const arg of this.all()) {
-      const result = arg.gimmeTrueStuffWith(runtime, undefined, type)
+      const result = arg.gimmeTrueStuffWithSubject(runtime, undefined, type, subjectExpr)
       if (result.isErr()) {
         return err(result.error)
       }
@@ -1487,10 +1501,11 @@ export class MatchStringExpression extends MatchExpression {
     return ok(relationships)
   }
 
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -1911,10 +1926,11 @@ export class MatchEnumExpression extends MatchExpression {
     })
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     // TODO: add `ENUM_START + subjectType.members` to the runtime, so that
     // lookups can be inferred based on the subject
@@ -1957,7 +1973,7 @@ export class MatchEnumExpression extends MatchExpression {
             argIndex += 1
           }
 
-          const result = arg.gimmeTrueStuffWith(runtime, undefined, type)
+          const result = arg.gimmeTrueStuffWithSubject(runtime, undefined, type, undefined)
           if (result.isErr()) {
             return err(result.error)
           }
@@ -1977,10 +1993,11 @@ export class MatchEnumExpression extends MatchExpression {
 
   // cannot infer anything in the 'false' case (TODO: or _at most_ the one
   // matching case could be excluded, when 'Exclude' is implemented).
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     return this.findEnumTypeThatMatchesCase(runtime, subjectType).map(enumInfo => {
       const [enumType, _enumCase] = enumInfo
@@ -1998,8 +2015,6 @@ export class MatchEnumExpression extends MatchExpression {
     runtime: TypeRuntime,
     subjectType: Types.Type,
   ): GetRuntimeResult<Nodes.MatchEnum> {
-    // TODO: add `ENUM_START + subjectType.members` to the runtime, so that
-    // lookups can be inferred based on the subject
     return this.findEnumTypeThatMatchesCase(runtime, subjectType).map(enumInfo => {
       const [enumType, enumCases] = enumInfo
       let argIndex = 0
@@ -2399,10 +2414,11 @@ export class MatchObjectExpression extends MatchExpression {
     return ok(subjectType)
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     return this.earlyExitCheck(formula, subjectType).map(value => {
       if (value instanceof Array) {
@@ -2422,16 +2438,22 @@ export class MatchObjectExpression extends MatchExpression {
           })
         }
 
+        const subjectObjectExpr = subjectExpr instanceof ObjectExpression ? subjectExpr : undefined
+
         // now iterate over each matcher and assign relationships to the object
         // properties, and give matchers a chance to assign variables via
         // relationships
         let argIndex = 0
         for (const matchExpr of this.exprs) {
           let prop: string | number
+          let matchSubjectExpr: Expression | undefined
           if (matchExpr instanceof MatchNamedArgument) {
             prop = matchExpr.name
+            matchSubjectExpr = subjectObjectExpr?.expressionNamed(matchExpr.name)
           } else {
-            prop = argIndex++
+            prop = argIndex
+            matchSubjectExpr = subjectObjectExpr?.expressionAtPosition(argIndex)
+            argIndex++
           }
           const propType = replaceType.literalAccessType(prop)
 
@@ -2441,8 +2463,15 @@ export class MatchObjectExpression extends MatchExpression {
             continue
           }
 
-          const accessFormula = formula && relationshipFormula.propertyAccess(formula, prop)
-          const result = matchExpr.gimmeTrueStuffWith(runtime, accessFormula, propType)
+          const accessFormula =
+            matchSubjectExpr?.relationshipFormula(runtime) ??
+            (formula && relationshipFormula.propertyAccess(formula, prop))
+          const result = matchExpr.gimmeTrueStuffWithSubject(
+            runtime,
+            accessFormula,
+            propType,
+            matchSubjectExpr,
+          )
           if (result.isErr()) {
             return err(result.error)
           }
@@ -2454,16 +2483,17 @@ export class MatchObjectExpression extends MatchExpression {
     })
   }
 
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
-    lhsType: Types.Type,
+    subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
     }
 
-    return this.narrowUsingMatcherType(runtime, lhsType).map(replaceType => {
+    return this.narrowUsingMatcherType(runtime, subjectType).map(replaceType => {
       return [{formula, comparison: {operator: '!instanceof', rhs: replaceType}}]
     })
   }
@@ -2499,28 +2529,67 @@ export class MatchObjectExpression extends MatchExpression {
     return types
   }
 
+  /**
+   * Maybe worth noting, this is the main place that subjectExpr is used. If it
+   * is a literal object expression, then the matches against that expression
+   * can probably be used to better update the runtime.
+   *
+   *     switch {a, b} -- subjectExpr: ObjectExpression
+   *     case {Int, String} -- a: Int, b: String can be assigned to runtime
+   *
+   *     switch {a, b, c, d}
+   *     case {..., String} -- ❌ not allowed
+   */
   compileWithSubject(
     runtime: TypeRuntime,
     subjectType: Types.Type,
   ): GetRuntimeResult<Nodes.MatchObject> {
     return this.narrowUsingMatcherType(runtime, subjectType).map(objectType => {
       const types = this.collectTypes(objectType)
+      let didEncounterSpread = false
 
       return mapAll(
         this.exprs.map((arg): GetRuntimeResult<Nodes.MatchArgument | undefined> => {
-          let argKey: string | number
           let argType: Types.Type | undefined
           if (arg instanceof MatchNamedArgument) {
-            argKey = arg.name
-          } else {
-            argKey = arg.index
-          }
-          argType = types.get(argKey)
+            const argKey = arg.name
+            argType = types.get(argKey)
+            if (!argType) {
+              return err(
+                new RuntimeError(
+                  this,
+                  `No argument type for '${argKey}' of ${objectType.toCode()}`,
+                ),
+              )
+            }
 
-          if (!argType) {
+            types.delete(argKey)
+          } else if (
+            arg instanceof MatchIgnoreRemainingExpression ||
+            arg instanceof MatchAssignRemainingExpression
+          ) {
+            didEncounterSpread = true
+            argType = Types.ObjectType.fromMap(types)
+          } else if (didEncounterSpread) {
             return err(
-              new RuntimeError(this, `No argument type for '${argKey}' of ${objectType.toCode()}`),
+              new RuntimeError(
+                this,
+                `Unexpected match expression ${arg} encountered after remaining matcher '...'`,
+              ),
             )
+          } else {
+            const argKey = arg.index
+            argType = types.get(argKey)
+            if (!argType) {
+              return err(
+                new RuntimeError(
+                  this,
+                  `No argument type at index ${argKey} of ${objectType.toCode()}`,
+                ),
+              )
+            }
+
+            types.delete(argKey)
           }
 
           return arg.compileWithSubject(runtime, argType).map(node => {
@@ -2833,10 +2902,11 @@ export class MatchArrayExpression extends MatchExpression {
     return ok(subjectType)
   }
 
-  gimmeTrueStuffWith(
+  gimmeTrueStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     return this.earlyExitCheck(formula, subjectType).map(value => {
       if (value instanceof Array) {
@@ -2868,19 +2938,24 @@ export class MatchArrayExpression extends MatchExpression {
             })
           }
 
+          const subjectArrayExpr = subjectExpr instanceof ArrayExpression ? subjectExpr : undefined
+
           // for every expression in initialExprs, we can add a relationship for
-          // formula[0], formula[1], ...
+          // formula[0], formula[1], ... stopping if the subject array has a spread.
           for (const [index, matchExpr] of this.initialExprs.entries()) {
             const matchType = matchExprMap.get(matchExpr)
             if (matchType) {
-              // if we have a formula, we can compute an array access formula
-              // based on it (otherwise accessFormula is undefined, but it's still
-              // possible to add relationships)
-              // TODO: if the array is a fixed length, we should also assign
-              // relationships for negative indices.
+              const matchSubjectExpr = subjectArrayExpr?.expressionAtPosition(index)
               const accessFormula =
-                formula && relationshipFormula.arrayAccess(formula, relationshipFormula.int(index))
-              const result = matchExpr.gimmeTrueStuffWith(runtime, accessFormula, matchType)
+                matchSubjectExpr?.relationshipFormula(runtime) ??
+                (formula &&
+                  relationshipFormula.arrayAccess(formula, relationshipFormula.int(index)))
+              const result = matchExpr.gimmeTrueStuffWithSubject(
+                runtime,
+                accessFormula,
+                matchType,
+                matchSubjectExpr,
+              )
               if (result.isErr()) {
                 return err(result)
               }
@@ -2888,18 +2963,40 @@ export class MatchArrayExpression extends MatchExpression {
             }
           }
 
-          // TODO: handle remainingExpr and trailingExprs in relationship.ts
+          // TODO: handle remainingExpr in relationship.ts
           // - remainingExpr needs support for "all indices in this range"
-          // - trailingExprs needs support for negative indices
           // - or, if arrayType has a maximumLength, we can assign relationships
           //   using positive indices
-          const remainingAndTrailing = ([] as MatchExpression[])
-            .concat(this.remainingExpr ? [this.remainingExpr] : [])
-            .concat(this.trailingExprs)
-          for (const matchExpr of remainingAndTrailing) {
+          if (this.remainingExpr) {
+            const matchType = matchExprMap.get(this.remainingExpr)
+            if (matchType) {
+              const result = this.remainingExpr.gimmeTrueStuffWithSubject(
+                runtime,
+                undefined,
+                matchType,
+                undefined,
+              )
+              if (result.isErr()) {
+                return err(result)
+              }
+              relationships.push(...result.value)
+            }
+          }
+
+          // for every expression in trailingExprs, use negative indices into the
+          // subject array, stopping if a spread is encountered.
+          for (const [positionIndex, matchExpr] of this.trailingExprs.entries()) {
             const matchType = matchExprMap.get(matchExpr)
             if (matchType) {
-              const result = matchExpr.gimmeTrueStuffWith(runtime, undefined, matchType)
+              const indexFromEnd = positionIndex - this.trailingExprs.length
+              const matchSubjectExpr = subjectArrayExpr?.expressionAtPosition(indexFromEnd)
+              const accessFormula = matchSubjectExpr?.relationshipFormula(runtime)
+              const result = matchExpr.gimmeTrueStuffWithSubject(
+                runtime,
+                accessFormula,
+                matchType,
+                matchSubjectExpr,
+              )
               if (result.isErr()) {
                 return err(result)
               }
@@ -2927,10 +3024,11 @@ export class MatchArrayExpression extends MatchExpression {
    * `[all, minLength ... minLength]`. This comment was a lot more relevant
    * when this implementation was a hundred+ lines.
    */
-  gimmeFalseStuffWith(
+  gimmeFalseStuffWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    _subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Relationship[]> {
     if (!formula) {
       return ok([])
@@ -2967,6 +3065,20 @@ export class MatchArrayExpression extends MatchExpression {
     return Types.NeverType
   }
 
+  /**
+   * Similar to MatchObjectExpression's handling of subjectExpr:
+   * ObjectExpression, MatchArrayExpression can match against specific entries
+   * in an array.
+   *
+   *     switch [a, b] -- subjectExpr: ArrayExpression
+   *     case [0, Int] -- a: 0, b: Int can be assigned to runtime
+   *
+   *     switch [a, b, c, d] -- subjectExpr: ArrayExpression
+   *     case [..., Int] -- d: Int
+   *
+   *     switch [a, b, c, d] -- subjectExpr: ArrayExpression
+   *     case [_, ...[Int], _] -- ❌ does not match against b, c
+   */
   compileWithSubject(
     runtime: TypeRuntime,
     subjectType: Types.Type,
@@ -3101,20 +3213,22 @@ export class MatchAnyOneOfExpression extends MatchExpression {
    * final `combineEitherTypeRuntimes` (or if there is only one match
    * expression, this all reduces to just calculating its `assumeTrue` runtime)
    */
-  assumeTrueWith(
+  assumeTrueWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ) {
     let currentRuntime = runtime
     let nextRuntime: TypeRuntime | undefined
     let prevExpr: MatchExpression | undefined
     for (const matchExpr of this.matches) {
       if (prevExpr) {
-        const prevFalseRuntimeResult = prevExpr.assumeFalseWith(
+        const prevFalseRuntimeResult = prevExpr.assumeFalseWithSubject(
           currentRuntime,
           formula,
           subjectType,
+          subjectExpr,
         )
         if (prevFalseRuntimeResult.isErr()) {
           return err(prevFalseRuntimeResult.error)
@@ -3123,7 +3237,12 @@ export class MatchAnyOneOfExpression extends MatchExpression {
         currentRuntime = prevFalseRuntimeResult.value
       }
 
-      const nextRuntimeResult = matchExpr.assumeTrueWith(currentRuntime, formula, subjectType)
+      const nextRuntimeResult = matchExpr.assumeTrueWithSubject(
+        currentRuntime,
+        formula,
+        subjectType,
+        subjectExpr,
+      )
       if (nextRuntimeResult.isErr()) {
         return err(nextRuntimeResult.error)
       }
@@ -3150,13 +3269,14 @@ export class MatchAnyOneOfExpression extends MatchExpression {
    * The false condition is much simpler - `assumeFalse` of every match
    * expression (again, the same logic as `or` expressions).
    */
-  assumeFalseWith(
+  assumeFalseWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ) {
     return reduceAll(runtime, this.matches, (runtime, matchExpr): GetRuntimeResult<TypeRuntime> => {
-      return matchExpr.assumeFalseWith(runtime, formula, subjectType)
+      return matchExpr.assumeFalseWithSubject(runtime, formula, subjectType, subjectExpr)
     })
   }
 
@@ -3224,24 +3344,26 @@ export class CaseExpression extends Expression {
     return this.matchExpr.matchAssignReferences()
   }
 
-  assumeTrueWith(
+  assumeTrueWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ) {
-    return this.matchExpr.assumeTrueWith(runtime, formula, subjectType)
+    return this.matchExpr.assumeTrueWithSubject(runtime, formula, subjectType, subjectExpr)
   }
 
   /**
    * The false condition is much simpler - `assumeFalse` of every match
    * expression (again, the same logic as `or` expressions).
    */
-  assumeFalseWith(
+  assumeFalseWithSubject(
     runtime: TypeRuntime,
     formula: RelationshipFormula | undefined,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ) {
-    return this.matchExpr.assumeFalseWith(runtime, formula, subjectType)
+    return this.matchExpr.assumeFalseWithSubject(runtime, formula, subjectType, subjectExpr)
   }
 
   toLisp() {
@@ -3279,9 +3401,10 @@ export class CaseExpression extends Expression {
     runtime: TypeRuntime,
     formula: RelationshipAssign,
     subjectType: Types.Type,
+    subjectExpr: Expression | undefined,
   ): GetRuntimeResult<Nodes.Case> {
     return this.matchExpr.compileWithSubject(runtime, subjectType).map(matchNode =>
-      this.assumeTrueWith(runtime, formula, subjectType)
+      this.assumeTrueWithSubject(runtime, formula, subjectType, subjectExpr)
         .map(truthyRuntime => this.bodyExpression.compile(truthyRuntime))
         .map(bodyNode => new Nodes.Case(toSource(this), matchNode, bodyNode)),
     )

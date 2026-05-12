@@ -234,6 +234,66 @@ case [first, ..., last] or [first, last]
         Types.array(Types.string(), {min: 1, max: 2}),
         Values.array([Values.string('a')]),
       ]),
+      c([
+        `\
+switch {a, b}
+case {Int, Int}
+  a + b
+else
+  null
+`,
+        [
+          ['a', Types.optional(Types.int({max: 10})), Values.int(2)],
+          ['b', Types.optional(Types.int({max: 10})), Values.int(3)],
+        ],
+        Types.optional(Types.int({max: 20})),
+        Values.int(5),
+      ]),
+      c([
+        `\
+switch {a, b}
+case {Int, Int}
+  a + b
+else
+  null
+`,
+        [
+          ['a', Types.optional(Types.int({max: 10})), Values.int(0)],
+          ['b', Types.optional(Types.int({max: 10})), Values.nullValue()],
+        ],
+        Types.optional(Types.int({max: 20})),
+        Values.nullValue(),
+      ]),
+      c([
+        `\
+switch [a, b]
+case [Int, Int]
+  a + b
+else
+  null
+`,
+        [
+          ['a', Types.optional(Types.int({max: 10})), Values.int(2)],
+          ['b', Types.optional(Types.int({max: 10})), Values.int(3)],
+        ],
+        Types.optional(Types.int({max: 20})),
+        Values.int(5),
+      ]),
+      c([
+        `\
+switch [a, b]
+case [Int, Int]
+  a + b
+else
+  null
+`,
+        [
+          ['a', Types.optional(Types.int({max: 10})), Values.int(0)],
+          ['b', Types.optional(Types.int({max: 10})), Values.nullValue()],
+        ],
+        Types.optional(Types.int({max: 20})),
+        Values.nullValue(),
+      ]),
     ).run(([formula, values, expectedType, expectedValue], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
         `'${formula}' should have type '${expectedType}' and value '${expectedValue}'`,

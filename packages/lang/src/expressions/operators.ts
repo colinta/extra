@@ -1782,9 +1782,9 @@ abstract class MatchOperator extends BinaryOperator {
 
     return getChildType(this, lhsExpr, runtime).map(lhsType => {
       if (this.symbol === 'is') {
-        return rhsExpr.gimmeTrueStuffWith(runtime, formula, lhsType)
+        return rhsExpr.gimmeTrueStuffWithSubject(runtime, formula, lhsType, lhsExpr)
       } else {
-        return rhsExpr.gimmeFalseStuffWith(runtime, formula, lhsType)
+        return rhsExpr.gimmeFalseStuffWithSubject(runtime, formula, lhsType, lhsExpr)
       }
     })
   }
@@ -1799,9 +1799,9 @@ abstract class MatchOperator extends BinaryOperator {
 
     return getChildType(this, lhsExpr, runtime).map(lhsType => {
       if (this.symbol === 'is') {
-        return rhsExpr.gimmeFalseStuffWith(runtime, formula, lhsType)
+        return rhsExpr.gimmeFalseStuffWithSubject(runtime, formula, lhsType, lhsExpr)
       } else {
-        return rhsExpr.gimmeTrueStuffWith(runtime, formula, lhsType)
+        return rhsExpr.gimmeTrueStuffWithSubject(runtime, formula, lhsType, lhsExpr)
       }
     })
   }
