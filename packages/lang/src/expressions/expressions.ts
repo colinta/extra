@@ -3966,6 +3966,8 @@ export class ThisIdentifier extends ReservedWord {
  *       ^^^^^^^^^^^^
  *     in
  */
+export type LetBinding = LetAssign | LetObjectAssign | LetArrayAssign | NamedFormulaExpression
+
 export class LetAssign extends NamedArgument {
   constructor(
     range: Range,
@@ -4001,9 +4003,271 @@ export class LetAssign extends NamedArgument {
   }
 }
 
+export type LetObjectAssignPart =
+  | {kind: 'named'; prop: string; name: string | undefined}
+  | {kind: 'positional'; index: number; name: string | undefined}
+
+abstract class LetDestructureAssign extends Expression {
+  abstract readonly value: Expression
+  abstract assignmentNames(): string[]
+  abstract assignTypes(runtime: MutableTypeRuntime, valueType: Types.Type): GetRuntimeResult<void>
+  abstract assignValues(runtime: MutableValueRuntime, value: Values.Value): GetRuntimeResult<void>
+
+  dependencies(parentScopes: Scope[]) {
+    return this.value.dependencies(parentScopes)
+  }
+
+  childExpressions() {
+    return [this.value]
+  }
+
+  getType(runtime: TypeRuntime): GetTypeResult {
+    return this.value.getType(runtime)
+  }
+
+  compile(runtime: TypeRuntime): GetNodeResult {
+    return this.value.compile(runtime)
+  }
+
+  eval(runtime: ValueRuntime): GetValueResult {
+    return this.value.eval(runtime)
+  }
+}
+
+export class LetObjectAssign extends LetDestructureAssign {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly parts: LetObjectAssignPart[],
+    readonly restName: string | undefined,
+    readonly value: Expression,
+  ) {
+    super(range, precedingComments)
+  }
+
+  assignmentNames() {
+    return this.parts
+      .flatMap(part => (part.name ? [part.name] : []))
+      .concat(this.restName ? [this.restName] : [])
+  }
+
+  toLisp() {
+    return `(${this.patternCode()} = ${this.value.toLisp()})`
+  }
+
+  toCode() {
+    return `${this.patternCode()} = ${this.value.toCode()}`
+  }
+
+  private patternCode() {
+    const parts = this.parts.map(part => {
+      if (part.kind === 'positional') return part.name ?? '_'
+      if (part.name === undefined) return `${part.prop}: _`
+      if (part.name === part.prop) return `${part.prop}:`
+      return `${part.prop}: ${part.name}`
+    })
+    if (this.restName) parts.push(`${SPREAD_OPERATOR}${this.restName}`)
+    return `{${parts.join(', ')}}`
+  }
+
+  assignTypes(runtime: MutableTypeRuntime, valueType: Types.Type): GetRuntimeResult<void> {
+    const objectTypes = valueType instanceof Types.OneOfType ? valueType.of : [valueType]
+    if (!objectTypes.every(type => type instanceof Types.ObjectType)) {
+      return err(new RuntimeError(this, `Expected Object for destructuring, found '${valueType}'`))
+    }
+
+    for (const part of this.parts) {
+      const propTypes = objectTypes.map(type => {
+        const objectType = type as Types.ObjectType
+        return part.kind === 'named'
+          ? objectType.propNamed(part.prop)
+          : objectType.propAtPosition(part.index)
+      })
+
+      if (!propTypes.some(Boolean)) {
+        return err(
+          new RuntimeError(
+            this,
+            `Object destructuring property '${part.kind === 'named' ? part.prop : part.index}' does not exist on '${valueType}'`,
+          ),
+        )
+      }
+
+      if (part.name) {
+        runtime.addLocalType(part.name, Types.oneOf(propTypes.map(type => type ?? Types.NullType)))
+      }
+    }
+    if (this.restName) {
+      const restTypes = objectTypes.map(type => this.restType(type as Types.ObjectType))
+      runtime.addLocalType(this.restName, Types.oneOf(restTypes))
+    }
+    return ok()
+  }
+
+  private restType(valueType: Types.ObjectType): Types.ObjectType {
+    const usedNamed = new Set(
+      this.parts.flatMap(part => (part.kind === 'named' ? [part.prop] : [])),
+    )
+    const usedPositions = new Set(
+      this.parts.flatMap(part => (part.kind === 'positional' ? [part.index] : [])),
+    )
+    let position = 0
+    const restProps = valueType.props.filter(prop => {
+      if (prop.is === 'named') return !usedNamed.has(prop.name)
+      if (prop.is === 'spread-positional') return true
+      return !usedPositions.has(position++)
+    })
+    return Types.object(restProps)
+  }
+
+  assignValues(runtime: MutableValueRuntime, value: Values.Value): GetRuntimeResult<void> {
+    if (!(value instanceof Values.ObjectValue)) {
+      return err(new RuntimeError(this, `Expected Object for destructuring, found '${value}'`))
+    }
+
+    const usedNamed = new Set<string>()
+    const usedPositions = new Set<number>()
+    for (const part of this.parts) {
+      if (part.kind === 'named') {
+        usedNamed.add(part.prop)
+        if (part.name) {
+          runtime.addLocalValue(part.name, value.namedValues.get(part.prop) ?? Values.NullValue)
+        }
+      } else {
+        usedPositions.add(part.index)
+        if (part.name) {
+          runtime.addLocalValue(part.name, value.tupleValues[part.index] ?? Values.NullValue)
+        }
+      }
+    }
+    if (this.restName) {
+      const namedValues = new Map<string, Values.Value>()
+      for (const [name, namedValue] of value.namedValues) {
+        if (!usedNamed.has(name)) namedValues.set(name, namedValue)
+      }
+      const tupleValues = value.tupleValues.filter((_, index) => !usedPositions.has(index))
+      runtime.addLocalValue(this.restName, new Values.ObjectValue(tupleValues, namedValues))
+    }
+    return ok()
+  }
+}
+
+export class LetArrayAssign extends LetDestructureAssign {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly initialNames: (string | undefined)[],
+    readonly restName: string | undefined,
+    readonly trailingNames: (string | undefined)[],
+    readonly value: Expression,
+  ) {
+    super(range, precedingComments)
+  }
+
+  assignmentNames() {
+    return this.initialNames
+      .concat(this.restName ? [this.restName] : [], this.trailingNames)
+      .filter((name): name is string => name !== undefined)
+  }
+
+  toLisp() {
+    return `(${this.patternCode()} = ${this.value.toLisp()})`
+  }
+
+  toCode() {
+    return `${this.patternCode()} = ${this.value.toCode()}`
+  }
+
+  private patternCode() {
+    const parts = this.initialNames.map(name => name ?? '_')
+    if (this.restName !== undefined) {
+      parts.push(`${SPREAD_OPERATOR}${this.restName}`)
+    } else if (this.trailingNames.length) {
+      parts.push(SPREAD_OPERATOR)
+    }
+    parts.push(...this.trailingNames.map(name => name ?? '_'))
+    return `[${parts.join(', ')}]`
+  }
+
+  assignTypes(runtime: MutableTypeRuntime, valueType: Types.Type): GetRuntimeResult<void> {
+    if (!(valueType instanceof Types.ArrayType)) {
+      return err(new RuntimeError(this, `Expected Array for destructuring, found '${valueType}'`))
+    }
+
+    this.initialNames.forEach((name, index) => {
+      if (name) runtime.addLocalType(name, valueType.literalAccessType(index) ?? Types.NullType)
+    })
+    if (this.restName) {
+      const consumed = this.initialNames.length + this.trailingNames.length
+      const min = Math.max(0, valueType.narrowedLength.min - consumed)
+      const max =
+        valueType.narrowedLength.max === undefined
+          ? undefined
+          : Math.max(0, valueType.narrowedLength.max - consumed)
+      runtime.addLocalType(this.restName, Types.array(valueType.of, {min, max}))
+    }
+    this.trailingNames.forEach(name => {
+      const requiredLength = this.initialNames.length + this.trailingNames.length
+      if (
+        valueType.narrowedLength.max !== undefined &&
+        valueType.narrowedLength.max < requiredLength
+      ) {
+        if (name) runtime.addLocalType(name, Types.NullType)
+      } else if (valueType.narrowedLength.min >= requiredLength) {
+        if (name) runtime.addLocalType(name, valueType.of)
+      } else {
+        if (name) runtime.addLocalType(name, Types.optional(valueType.of))
+      }
+    })
+    return ok()
+  }
+
+  assignValues(runtime: MutableValueRuntime, value: Values.Value): GetRuntimeResult<void> {
+    if (!(value instanceof Values.ArrayValue)) {
+      return err(new RuntimeError(this, `Expected Array for destructuring, found '${value}'`))
+    }
+
+    this.initialNames.forEach((name, index) => {
+      if (name) runtime.addLocalValue(name, value.values[index] ?? Values.NullValue)
+    })
+
+    const trailingStart = value.values.length - this.trailingNames.length
+    this.trailingNames.forEach((name, index) => {
+      const valueIndex = trailingStart + index
+      const hasEnoughValues =
+        value.values.length >= this.initialNames.length + this.trailingNames.length
+      if (name) {
+        runtime.addLocalValue(
+          name,
+          hasEnoughValues ? (value.values[valueIndex] ?? Values.NullValue) : Values.NullValue,
+        )
+      }
+    })
+
+    if (this.restName) {
+      const start = this.initialNames.length
+      const end = Math.max(start, value.values.length - this.trailingNames.length)
+      runtime.addLocalValue(this.restName, new Values.ArrayValue(value.values.slice(start, end)))
+    }
+    return ok()
+  }
+}
+
+function bindingSortName(binding: LetBinding) {
+  if (binding instanceof NamedFormulaExpression) return binding.nameRef.name
+  if (binding instanceof LetAssign) return binding.alias
+  return binding.assignmentNames()[0] ?? '_'
+}
+
+function bindingNames(binding: LetBinding) {
+  if (binding instanceof NamedFormulaExpression) return [binding.nameRef.name]
+  if (binding instanceof LetAssign) return [binding.alias]
+  return binding.assignmentNames()
+}
+
 export class LetExpression extends Expression {
   readonly name = 'let'
-  readonly bindings: [string, LetAssign | NamedFormulaExpression][]
+  readonly bindings: [string, LetBinding][]
 
   constructor(
     range: Range,
@@ -4013,18 +4277,12 @@ export class LetExpression extends Expression {
      * - precedingInBodyComments: before 'in'
      */
     public precedingInBodyComments: Comment[],
-    bindings: (LetAssign | NamedFormulaExpression)[],
+    bindings: LetBinding[],
     readonly body: Expression,
   ) {
     super(range, precedingComments)
 
-    this.bindings = bindings.map(arg => {
-      if (arg instanceof NamedFormulaExpression) {
-        return [arg.nameRef.name, arg]
-      }
-
-      return [arg.alias, arg]
-    })
+    this.bindings = bindings.map(arg => [bindingSortName(arg), arg])
   }
 
   /**
@@ -4047,8 +4305,8 @@ export class LetExpression extends Expression {
    */
   dependencies(parentScopes: Scope[]) {
     const bindingExprs: Expression[] = this.bindings.map(([_, arg]) => arg)
-    const bindingNames = new Set(this.bindings.map(([name, _]) => name))
-    const filteredScopes = parentScopes.filter(scope => !bindingNames.has(scope.name))
+    const providedNames = new Set(this.bindings.flatMap(([_, binding]) => bindingNames(binding)))
+    const filteredScopes = parentScopes.filter(scope => !providedNames.has(scope.name))
     return difference(
       allDependencies(bindingExprs.concat([this.body]), filteredScopes),
       this.provides(),
@@ -4056,24 +4314,26 @@ export class LetExpression extends Expression {
   }
 
   provides() {
-    return new Set(this.bindings.map(([name, _]) => name))
+    return new Set(this.bindings.flatMap(([_, binding]) => bindingNames(binding)))
   }
 
   private sortedBindings(
     fromRuntime: (name: string) => boolean,
     parentScopes: Scope[],
-  ): GetRuntimeResult<[string, LetAssign | NamedFormulaExpression][]> {
+  ): GetRuntimeResult<[string, LetBinding][]> {
     // collect all deps of bindings that are referenced in another this.bindings
     // AND provided from another binding
     const allDeps = this.bindings.reduce(
       (all, [_, bindingExpr]) => union(all, bindingExpr.dependencies(parentScopes)),
       new Set<string>(),
     )
-    for (const [name, _] of this.bindings) {
-      if (allDeps.has(name) && fromRuntime(name)) {
-        return err(
-          new RuntimeError(this, `Ambiguous reference detected in let assignment for '${name}'`),
-        )
+    for (const [_, binding] of this.bindings) {
+      for (const name of bindingNames(binding)) {
+        if (allDeps.has(name) && fromRuntime(name)) {
+          return err(
+            new RuntimeError(this, `Ambiguous reference detected in let assignment for '${name}'`),
+          )
+        }
       }
     }
     return dependencySort(this.bindings, fromRuntime, parentScopes)
@@ -4092,13 +4352,16 @@ export class LetExpression extends Expression {
       if (arg instanceof NamedFormulaExpression) {
         line = ''
         exprCode = arg.toCode()
-      } else {
+      } else if (arg instanceof LetAssign) {
         line = alias
         if (arg.typeExpression !== undefined) {
           line += `: ${arg.typeExpression}`
         }
         line += ' = '
         exprCode = arg.value.toCode()
+      } else {
+        line = ''
+        exprCode = arg.toCode()
       }
 
       if ((line && exprCode.includes('\n')) || line.length + exprCode.length > MAX_INNER_LEN) {
@@ -4122,7 +4385,7 @@ export class LetExpression extends Expression {
   assignRelationships(
     runtime: MutableTypeRuntime,
     name: string,
-    assignment: LetAssign | NamedFormulaExpression,
+    assignment: LetBinding,
     inferredType: Types.Type,
     explicitType: Types.Type | undefined,
   ) {
@@ -4156,46 +4419,59 @@ export class LetExpression extends Expression {
     return this.sortedBindings(name => runtime.has(name), runtime.parentScopes())
       .map(deps =>
         mapAll(
-          deps.map(
-            ([name, assignment]): GetRuntimeResult<Nodes.LetEntry> =>
-              assignment
-                .compile(nextRuntime)
-                .map((assignmentNode): GetRuntimeResult<[Nodes.Node, Nodes.Node | undefined]> => {
-                  if (assignment instanceof LetAssign && assignment.typeExpression) {
-                    return assignment.typeExpression
-                      .compileAsTypeExpression(runtime)
-                      .mapResult(decorateError(this))
-                      .map(explicitType => [assignmentNode, explicitType])
-                  } else {
-                    return ok([assignmentNode, undefined])
-                  }
-                })
-                .map(([assignmentNode, explicitNode]) => {
-                  const explicitType = explicitNode?.type.fromTypeConstructor()
-                  if (explicitType && !Types.canBeAssignedTo(assignmentNode.type, explicitType)) {
-                    return err(
-                      new RuntimeError(
-                        this,
-                        `Cannot assign inferred type '${assignmentNode.type.toCode()}' to '${explicitType.toCode()}'`,
-                      ),
-                    )
-                  }
-
-                  this.assignRelationships(
-                    nextRuntime,
+          deps.map(([name, assignment]): GetRuntimeResult<Nodes.LetAssign[]> => {
+            return assignment.compile(nextRuntime).map(assignmentNode => {
+              if (assignment instanceof LetObjectAssign || assignment instanceof LetArrayAssign) {
+                const assignResult = assignment.assignTypes(nextRuntime, assignmentNode.type)
+                if (assignResult.isErr()) return err(assignResult.error)
+                return ok(
+                  assignment.assignmentNames().map(name => ({
+                    is: 'let-assign' as const,
                     name,
-                    assignment,
-                    assignmentNode.type,
-                    explicitType,
-                  )
+                    node: assignmentNode,
+                    type: undefined,
+                  })),
+                )
+              }
 
-                  return ok({is: 'let-assign', name, node: assignmentNode, type: explicitNode})
-                }),
-          ),
+              return ((): GetRuntimeResult<[Nodes.Node, Nodes.Node | undefined]> => {
+                if (assignment instanceof LetAssign && assignment.typeExpression) {
+                  return assignment.typeExpression
+                    .compileAsTypeExpression(runtime)
+                    .mapResult(decorateError(this))
+                    .map(explicitType => [assignmentNode, explicitType])
+                } else {
+                  return ok([assignmentNode, undefined])
+                }
+              })().map(([assignmentNode, explicitNode]) => {
+                const explicitType = explicitNode?.type.fromTypeConstructor()
+                if (explicitType && !Types.canBeAssignedTo(assignmentNode.type, explicitType)) {
+                  return err(
+                    new RuntimeError(
+                      this,
+                      `Cannot assign inferred type '${assignmentNode.type.toCode()}' to '${explicitType.toCode()}'`,
+                    ),
+                  )
+                }
+
+                this.assignRelationships(
+                  nextRuntime,
+                  name,
+                  assignment,
+                  assignmentNode.type,
+                  explicitType,
+                )
+
+                return ok([{is: 'let-assign', name, node: assignmentNode, type: explicitNode}])
+              })
+            })
+          }),
         ),
       )
-      .map(nodes =>
-        this.body.compile(nextRuntime).map(body => new Nodes.Let(toSource(this), body, nodes)),
+      .map(nodeGroups =>
+        this.body
+          .compile(nextRuntime)
+          .map(body => new Nodes.Let(toSource(this), body, nodeGroups.flat())),
       )
   }
 
@@ -4206,6 +4482,9 @@ export class LetExpression extends Expression {
         mapAll(
           deps.map(([name, dep]) =>
             dep.eval(nextRuntime).map(value => {
+              if (dep instanceof LetObjectAssign || dep instanceof LetArrayAssign) {
+                return dep.assignValues(nextRuntime, value)
+              }
               nextRuntime.addLocalValue(name, value)
               return ok()
             }),

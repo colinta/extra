@@ -558,7 +558,7 @@ export class SetLiteral extends Node {
   }
 }
 
-export type LetEntry = {
+export type LetAssign = {
   is: 'let-assign'
   name: string
   type: Node | undefined
@@ -569,7 +569,7 @@ export class Let extends Node {
   constructor(
     readonly source: Source,
     readonly body: Node,
-    readonly assigns: LetEntry[],
+    readonly assigns: LetAssign[],
   ) {
     super(source, body.type)
   }
