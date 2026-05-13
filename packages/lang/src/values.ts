@@ -121,8 +121,16 @@ export function classInstance({
   return new ClassInstanceValue(klass, props ?? new Map(), formulas ?? new Map())
 }
 
-export function enumDefinition({name, statics}: {name: string; statics?: Map<string, Value>}) {
-  return new EnumDefinitionValue(name, statics ?? new Map())
+export function enumDefinition(name: string, statics: Map<string, Value> = new Map()) {
+  return new EnumDefinitionValue(name, statics)
+}
+
+export function enumValue(
+  definition: EnumDefinitionValue,
+  name: string,
+  args: Map<number | string, Value> = new Map(),
+) {
+  return new EnumValue(definition, name, args)
 }
 
 export abstract class Value {
@@ -1684,8 +1692,8 @@ export class NamedFormulaValue extends FormulaValue {
  *       role = UserRole.admin -- UserRole is retrieved from runtime, returns a
  *                             -- namespace. `.admin` returns the `EnumValue`
  *       foo = UserRole  -- not sure what the intention is here, but returns an
- *                       -- object of type `NamespaceType`
- *       role: UserRole = .admin -- .admin is "decorated" with the namespace during compilation
+ *                       -- object of type `EnumDefinitionValue`
+ *       role: UserRole = .admin -- type inference kicks in
  *     in …
  */
 export class EnumDefinitionValue extends Value {
@@ -1724,13 +1732,26 @@ export class EnumDefinitionValue extends Value {
     return this.name
   }
 
-  static _props: Map<string, (value: EnumValue) => Value> = new Map([])
+  static _props: Map<string, (value: EnumDefinitionValue) => Value> = new Map([])
 
   propValue(_propName: string): Value | undefined {
     return
   }
 }
 
+/**
+ * Represents an enum constructor - returns an instance of `EnumShorthandValue`
+ * or `EnumValue`
+ *
+ *     enum User {
+ *       .admin(permissions: String)
+ *       .anonymous
+ *     }
+ *
+ *     let
+ *       a = .admin -- EnumFormulaValue
+ *              (permissions: '') -- invoked with arguments
+ */
 export class EnumFormulaValue extends NamedFormulaValue {
   constructor(
     readonly name: string,
@@ -1794,7 +1815,7 @@ export class EnumShorthandValue extends Value {
     return ''
   }
 
-  static _props: Map<string, (value: EnumValue) => Value> = new Map([])
+  static _props: Map<string, (value: EnumShorthandValue) => Value> = new Map([])
 
   propValue(_propName: string): Value | undefined {
     return

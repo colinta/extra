@@ -790,7 +790,9 @@ fn permission(user: User): Permission =>
 -- input: String | [String]
 switch input
 case 'foo' .. bar
-  bar -- bar: String, input: String (TODO: add 'prefix' info to String type)
+  bar
+   -- bar: String, input: String
+   -- (TODO: add 'prefix' info to String type)
 case [onlyOne]
   onlyOne  -- onlyOne: String, input: [String, length: =1]
 case [...many, last]

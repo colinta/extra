@@ -2,7 +2,7 @@ import {c, cases} from '@extra-lang/cases'
 import {type TypeRuntime, type ValueRuntime} from '../../runtime'
 import * as Types from '../../types'
 import * as Values from '../../values'
-import {parse} from '../../formulaParser'
+import {parse, parseModule} from '../../formulaParser'
 import {type Expression} from '../../expressions'
 import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
 import {mockValueRuntime} from '../../tests/mockValueRuntime'
@@ -582,6 +582,92 @@ in
         expect(value).toEqual(expectedValue)
       }),
     )
+
+    function registerFooBarEnums() {
+      const fooDef = parseModule(`\
+enum Foo {
+  .one
+  .two
+}`).get().expressions[0]
+      const barDef = parseModule(`\
+enum Bar {
+  .one, .two, .three
+}`).get().expressions[0]
+      const fooType = fooDef.getType(typeRuntime).get() as Types.NamedEnumDefinitionType
+      const barType = barDef.getType(typeRuntime).get() as Types.NamedEnumDefinitionType
+      runtimeTypes['Foo'] = [fooType, Values.nullValue()]
+      runtimeTypes['Bar'] = [barType, Values.nullValue()]
+      typeRuntime.getLocalType('Foo')
+      typeRuntime.getLocalType('Bar')
+      return {fooType, barType}
+    }
+
+    it('uses let assignment annotations to disambiguate enum shorthand values to Foo', () => {
+      const {fooType} = registerFooBarEnums()
+
+      const expression = parse(`\
+let
+  a: Foo = .one
+in
+  a
+`).get()
+
+      expect(expression.getType(typeRuntime).get()).toEqual(fooType.lookupCase('one'))
+    })
+
+    it('uses let assignment annotations to disambiguate enum shorthand values to Bar', () => {
+      const {barType} = registerFooBarEnums()
+
+      const expression = parse(`\
+let
+  a: Bar = .one
+in
+  a
+`).get()
+
+      expect(expression.getType(typeRuntime).get()).toEqual(barType.lookupCase('one'))
+    })
+
+    it('errors when enum shorthand let assignments are ambiguous without an annotation', () => {
+      registerFooBarEnums()
+
+      const expression = parse(`\
+let
+  a = .one
+in
+  a
+`).get()
+
+      expect(() => expression.getType(typeRuntime).get()).toThrow(
+        "Ambiguous enum case '.one' — matches cases in multiple enum types",
+      )
+    })
+
+    it('uses let assignment annotations to disambiguate enum shorthand calls with args', () => {
+      const fooDef = parseModule(`\
+enum Foo {
+  .num(Int)
+}`).get().expressions[0]
+      const barDef = parseModule(`\
+enum Bar {
+  .num(Int)
+}`).get().expressions[0]
+      const fooType = fooDef.getType(typeRuntime).get() as Types.NamedEnumDefinitionType
+      const barType = barDef.getType(typeRuntime).get() as Types.NamedEnumDefinitionType
+      runtimeTypes['Foo'] = [fooType, Values.nullValue()]
+      runtimeTypes['Bar'] = [barType, Values.nullValue()]
+      typeRuntime.getLocalType('Foo')
+      typeRuntime.getLocalType('Bar')
+
+      const expression = parse(`\
+let
+  a: Foo = .num(0)
+in
+  a
+`).get()
+
+      expect(expression.getType(typeRuntime).get()).toEqual(fooType.lookupCase('num'))
+    })
 
     it('types [first] as optional for unconstrained arrays', () => {
       runtimeTypes['items'] = [Types.array(Types.int()), Values.array([Values.int(1)])]

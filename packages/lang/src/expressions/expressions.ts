@@ -55,6 +55,7 @@ import {
   INCLUDE_KEYWORD,
   ELEMENT_KEYWORD,
   FORMULA_SHORTHAND_DELIMITER,
+  ENUM_START,
 } from '@/formulaParser/grammars'
 import {ReferenceRuntimeError, RuntimeError} from './errors'
 import {Range} from './types'
@@ -287,7 +288,7 @@ export abstract class Expression {
    * assignments within the same `let` expression).
    *
    * `evalReturningRuntime` is not called universally - it is only invoked from
-   * `and`, `or`, `if`, `guard`, and `switch` expressions.
+   * `and`, `or`, `is`, `if`, `guard`, and `switch` expressions.
    */
   evalReturningRuntime(runtime: ValueRuntime): GetValueRuntimeResult {
     return this.eval(runtime).map(value => [value, runtime])
@@ -4390,7 +4391,13 @@ export class LetExpression extends Expression {
     explicitType: Types.Type | undefined,
   ) {
     let localType: Types.Type
-    if (explicitType) {
+    if (
+      explicitType &&
+      inferredType instanceof Types.NamedEnumInstanceType &&
+      Types.canBeAssignedTo(inferredType, explicitType)
+    ) {
+      localType = inferredType
+    } else if (explicitType) {
       localType = explicitType
     } else {
       localType = inferredType
@@ -4410,6 +4417,91 @@ export class LetExpression extends Expression {
     }
   }
 
+  private enumCasesForExpectedType(type: Types.Type): Types.NamedEnumInstanceType[] {
+    if (type instanceof Types.NamedEnumInstanceType) {
+      return [type]
+    }
+
+    if (type instanceof Types.OneOfType) {
+      return type.of.flatMap(type => this.enumCasesForExpectedType(type))
+    }
+
+    return []
+  }
+
+  private enumLookupTypeForCase(caseType: Types.NamedEnumInstanceType): Types.Type {
+    const member = caseType.member
+    if (!member.positionalTypes.length && !member.namedTypes.size) {
+      return caseType
+    }
+
+    let argIndex = 0
+    const args = member.args.map(arg => {
+      if (arg.is === 'positional') {
+        return Types.positionalArgument({
+          name: arg.name ?? `_${argIndex++}`,
+          type: arg.type,
+          isRequired: true,
+        })
+      } else if (arg.is === 'named') {
+        return Types.namedArgument({
+          name: arg.name,
+          type: arg.type,
+          isRequired: true,
+        })
+      }
+
+      throw new Error('Enum cases do not support object type spread')
+    })
+
+    return new Types.NamedFormulaType(member.name, caseType, args, caseType.metaType.genericTypes)
+  }
+
+  private addEnumLookupTypesForExpectedType(runtime: MutableTypeRuntime, expectedType: Types.Type) {
+    const byCaseName = new Map<string, Types.NamedEnumInstanceType[]>()
+    for (const caseType of this.enumCasesForExpectedType(expectedType)) {
+      byCaseName.set(
+        caseType.member.name,
+        (byCaseName.get(caseType.member.name) ?? []).concat(caseType),
+      )
+    }
+
+    byCaseName.forEach((caseTypes, name) => {
+      if (caseTypes.length === 1) {
+        runtime.addLocalType(ENUM_START + name, this.enumLookupTypeForCase(caseTypes[0]))
+      }
+      // TODO: else, add a local type lookup that throws a more descriptive error
+    })
+  }
+
+  private compileLetAssign(
+    runtime: TypeRuntime,
+    nextRuntime: MutableTypeRuntime,
+    assignment: LetAssign,
+  ): GetRuntimeResult<[Nodes.Node, Nodes.Node | undefined]> {
+    if (!assignment.typeExpression) {
+      return assignment
+        .compile(nextRuntime)
+        .map((assignmentNode): [Nodes.Node, Nodes.Node | undefined] => [assignmentNode, undefined])
+    }
+
+    return assignment.typeExpression
+      .compileAsTypeExpression(runtime)
+      .mapResult(decorateError(this))
+      .map(explicitNode => {
+        const explicitType = explicitNode.type.fromTypeConstructor()
+        const assignmentRuntime = new MutableTypeRuntime(nextRuntime)
+        this.addEnumLookupTypesForExpectedType(assignmentRuntime, explicitType)
+
+        return assignment
+          .compile(assignmentRuntime)
+          .map((assignmentNode): [Nodes.Node, Nodes.Node | undefined] => [
+            assignmentNode,
+            explicitNode,
+          ])
+      })
+  }
+
   getType(runtime: TypeRuntime): GetTypeResult {
     return this.compile(runtime).map(node => node.type)
   }
@@ -4420,8 +4512,8 @@ export class LetExpression extends Expression {
       .map(deps =>
         mapAll(
           deps.map(([name, assignment]): GetRuntimeResult<Nodes.LetAssign[]> => {
-            return assignment.compile(nextRuntime).map(assignmentNode => {
-              if (assignment instanceof LetObjectAssign || assignment instanceof LetArrayAssign) {
+            if (assignment instanceof LetObjectAssign || assignment instanceof LetArrayAssign) {
+              return assignment.compile(nextRuntime).map(assignmentNode => {
                 const assignResult = assignment.assignTypes(nextRuntime, assignmentNode.type)
                 if (assignResult.isErr()) return err(assignResult.error)
                 return ok(
@@ -4432,38 +4524,39 @@ export class LetExpression extends Expression {
                     type: undefined,
                   })),
                 )
+              })
+            }
+
+            const compileAssignment =
+              assignment instanceof LetAssign
+                ? this.compileLetAssign(runtime, nextRuntime, assignment)
+                : assignment
+                    .compile(nextRuntime)
+                    .map((assignmentNode): [Nodes.Node, Nodes.Node | undefined] => [
+                      assignmentNode,
+                      undefined,
+                    ])
+
+            return compileAssignment.map(([assignmentNode, explicitNode]) => {
+              const explicitType = explicitNode?.type.fromTypeConstructor()
+              if (explicitType && !Types.canBeAssignedTo(assignmentNode.type, explicitType)) {
+                return err(
+                  new RuntimeError(
+                    this,
+                    `Cannot assign inferred type '${assignmentNode.type.toCode()}' to '${explicitType.toCode()}'`,
+                  ),
+                )
               }
 
-              return ((): GetRuntimeResult<[Nodes.Node, Nodes.Node | undefined]> => {
-                if (assignment instanceof LetAssign && assignment.typeExpression) {
-                  return assignment.typeExpression
-                    .compileAsTypeExpression(runtime)
-                    .mapResult(decorateError(this))
-                    .map(explicitType => [assignmentNode, explicitType])
-                } else {
-                  return ok([assignmentNode, undefined])
-                }
-              })().map(([assignmentNode, explicitNode]) => {
-                const explicitType = explicitNode?.type.fromTypeConstructor()
-                if (explicitType && !Types.canBeAssignedTo(assignmentNode.type, explicitType)) {
-                  return err(
-                    new RuntimeError(
-                      this,
-                      `Cannot assign inferred type '${assignmentNode.type.toCode()}' to '${explicitType.toCode()}'`,
-                    ),
-                  )
-                }
+              this.assignRelationships(
+                nextRuntime,
+                name,
+                assignment,
+                assignmentNode.type,
+                explicitType,
+              )
 
-                this.assignRelationships(
-                  nextRuntime,
-                  name,
-                  assignment,
-                  assignmentNode.type,
-                  explicitType,
-                )
-
-                return ok([{is: 'let-assign', name, node: assignmentNode, type: explicitNode}])
-              })
+              return ok([{is: 'let-assign', name, node: assignmentNode, type: explicitNode}])
             })
           }),
         ),
@@ -5316,6 +5409,7 @@ export class FormulaExpression extends Expression {
   eval(runtime: ValueRuntime): GetRuntimeResult<Values.FormulaValue> {
     const argDefinitions = this.argDefinitions
     return mapMany(
+      // TODO disambiguate - multiple local assigns should cancel each other out.
       mapAll(argDefinitions.map(definition => definition.argType.formulaLocalAssigns(runtime))).map(
         assigns => assigns.flat(),
       ),
