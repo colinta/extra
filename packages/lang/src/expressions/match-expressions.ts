@@ -146,7 +146,7 @@ export class SwitchExpression extends Expression {
             return err(
               new RuntimeError(
                 caseExpr,
-                `Unreachable case detected. '${subjectExpr}' is of type '${exhaustiveType}' because the previous cases are exhaustive.`,
+                `Unreachable case detected '${caseExpr}'. '${subjectExpr}' is of type '${exhaustiveType}' because the previous cases are exhaustive.`,
               ),
             )
           }
@@ -185,7 +185,7 @@ export class SwitchExpression extends Expression {
               return err(
                 new RuntimeError(
                   elseExpr,
-                  `Unreachable case detected. '${subjectExpr}' is of type '${exhaustiveType}' because the previous cases are exhaustive.`,
+                  `Unreachable case 'else' detected. '${subjectExpr}' is of type '${exhaustiveType}' because the previous cases are exhaustive.`,
                 ),
               )
             }

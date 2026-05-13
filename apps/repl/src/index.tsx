@@ -417,7 +417,7 @@ function Repl({state, warning: initialWarning}: {state: State; warning: string})
 
     const type = parsed.value.getType(typeRuntime)
     if (type.isErr()) {
-      successText += '-\n' + red(type.error.toString())
+      successText += '\n' + red(type.error.toString())
       return {type: 'formula-error', text: successText, code, variables}
     }
     const typeText = type.value.toCode()
