@@ -1,5 +1,5 @@
 import {c, cases} from '@extra-lang/cases'
-import {parse} from '../'
+import {parse, parseModule} from '../'
 import * as Expressions from '../../expressions'
 
 describe('comments', () => {
@@ -83,6 +83,17 @@ describe('comments', () => {
   })
 
   describe('attaching comments to expressions', () => {
+    it('preserves trailing newlines after block comments', () => {
+      const formula = `{- line one
+   line two
+-}
+type Foo = Int`
+      const expression = parseModule(formula).get().expressions[0]
+
+      expect(expression.precedingComments[0].trailingNewlines).toEqual(1)
+      expect(expression.toCode()).toEqual(formula)
+    })
+
     it('attaches comments to lhs + rhs', () => {
       const formula = `\
 --comment0

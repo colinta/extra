@@ -367,7 +367,8 @@ export class Scanner {
     } else if (this.is('{-')) {
       // Elm style {- -}
       comment = scanCommentContainer(this)
-      this.pushComment('block', comment, '{-', commentIndex)
+      const trailingNewlines = this.scanTrailingNewlines()
+      this.pushComment('block', comment, '{-', commentIndex, trailingNewlines)
     } else if (this.is('<--')) {
       // point at thing comment
       comment = scanArrowCommentLine(this)
@@ -380,9 +381,29 @@ export class Scanner {
     }
   }
 
-  pushComment(type: CommentType, comment: string, delim: string, index: number) {
+  scanTrailingNewlines() {
+    let trailingNewlines = 0
+    while (this.char === '\n') {
+      trailingNewlines += 1
+      this.charIndex += 1
+    }
+    return trailingNewlines
+  }
+
+  pushComment(
+    type: CommentType,
+    comment: string,
+    delim: string,
+    index: number,
+    trailingNewlines = 0,
+  ) {
     this.whereAmI(`pushComment ${delim}${comment}`)
-    this.#comments.push([index, {type, delim, comment}])
+    const parsedComment = {type, delim, comment} as Comment
+    Object.defineProperty(parsedComment, 'trailingNewlines', {
+      value: trailingNewlines,
+      enumerable: false,
+    })
+    this.#comments.push([index, parsedComment])
   }
 
   peekComments() {

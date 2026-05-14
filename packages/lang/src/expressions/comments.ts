@@ -22,7 +22,7 @@ export function formatComments(comments: Comment[]) {
         code += formatComment(comment) + '\n'
         break
       case 'block':
-        code += formatComment(comment)
+        code += formatComment(comment) + '\n'.repeat(comment.trailingNewlines)
         break
     }
   }
@@ -45,7 +45,7 @@ export function formatFollowingComments(comments: Comment[]) {
         code += '\n' + formatComment(comment) + '\n'
         break
       case 'block':
-        code += ' ' + formatComment(comment)
+        code += ' ' + formatComment(comment) + '\n'.repeat(comment.trailingNewlines)
         break
     }
   }

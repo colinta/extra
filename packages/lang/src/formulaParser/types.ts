@@ -51,6 +51,7 @@ export interface Comment {
   type: CommentType
   delim: string // redundant in most cases, but necessary for 'box' comments
   comment: string
+  trailingNewlines: number
 }
 
 export class ParseError extends Error {

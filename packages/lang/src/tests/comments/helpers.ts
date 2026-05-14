@@ -6,7 +6,11 @@ import * as Expressions from '../../expressions'
 import {scanImportStatement} from '../../formulaParser/scan/module'
 
 export function lineComments(...comments: string[]): Comment[] {
-  return comments.map(comment => ({delim: '--', comment, type: 'line'}))
+  return comments.map(comment => {
+    const parsedComment = {delim: '--', comment, type: 'line'} as Comment
+    Object.defineProperty(parsedComment, 'trailingNewlines', {value: 0, enumerable: false})
+    return parsedComment
+  })
 }
 
 export function expectComments(actual: Comment[] | undefined, ...comments: string[]) {
