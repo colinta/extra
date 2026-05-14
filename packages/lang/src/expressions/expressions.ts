@@ -58,6 +58,7 @@ import {
 } from '@/formulaParser/grammars'
 import {ReferenceRuntimeError, RuntimeError} from './errors'
 import {Range} from './types'
+import {formatComments} from './comments'
 
 /**
  * Each Expression represents a section of code, like a number, reference, or
@@ -6133,24 +6134,7 @@ function findChain(
   }
 }
 
-export function formatComments(comments: Comment[]) {
-  let code = ''
-  for (const comment of comments) {
-    switch (comment.type) {
-      case 'line':
-      case 'arrow':
-        code += comment.delim + comment.comment + '\n'
-        break
-      case 'box':
-        code += comment.comment + '\n'
-        break
-      case 'block':
-        code += '{-' + comment.comment + '-}'
-        break
-    }
-  }
-  return code
-}
+export {formatComments} from './comments'
 
 export function okBoolean(value: boolean): GetValueResult {
   return ok(Values.booleanValue(value))

@@ -24,7 +24,6 @@ import {
   type NamedFormulaExpression,
   type Reference,
   dependencySort,
-  formatComments,
   wrapValues,
   getChildAsTypeExpression,
   getChildType,
@@ -32,6 +31,12 @@ import {
 } from './expressions'
 import {type Range} from './types'
 import {RuntimeError} from './errors'
+import {
+  formatWrappedComments,
+  formatComments,
+  formatFollowingComments,
+  formatLeadingComments,
+} from './comments'
 import {type ViewFormulaDefinition} from './view-expressions'
 import {type ClassDefinition} from './class-expressions'
 import {type NamedEnumDefinition} from './enum-expressions'
@@ -260,19 +265,37 @@ export class ImportStatement extends Expression {
   }
 
   toCode() {
+    let code = formatLeadingComments(this.precedingComments) + IMPORT_KEYWORD
+
     if (this.importSpecifiers.length) {
-      return `${IMPORT_KEYWORD} ${wrapValues('{ ', this.importSpecifiers, ' }')} ${FROM_KEYWORD} ${this.source.toCode()}`
+      code += ' '
+      code += formatLeadingComments(this.precedingSpecifierComments)
+      code += wrapValues('{ ', this.importSpecifiers, ' }')
+      code += ` ${FROM_KEYWORD} ${formatWrappedComments(
+        this.source.precedingComments,
+        this.source.toCode(),
+        this.source.followingComments,
+      )}`
+      return code.trimEnd()
     }
 
-    let code = IMPORT_KEYWORD + ' '
+    code += ' '
 
     if (this.alias) {
-      code += `${AS_KEYWORD} ${this.alias.name} `
+      code += `${AS_KEYWORD} ${formatWrappedComments(
+        this.alias.precedingComments,
+        this.alias.name,
+        this.alias.followingComments,
+      )} `
     }
 
-    code += `${FROM_KEYWORD} ${this.source.toCode()}`
+    code += `${FROM_KEYWORD} ${formatWrappedComments(
+      this.source.precedingComments,
+      this.source.toCode(),
+      this.source.followingComments,
+    )}`
 
-    return code
+    return code.trimEnd()
   }
 
   getType(): GetTypeResult {
@@ -318,11 +341,23 @@ export class ImportSpecific extends Expression {
   }
 
   toCode() {
+    let code = formatWrappedComments(
+      this.name.precedingComments,
+      this.name.name,
+      this.name.followingComments,
+    )
+
     if (this.alias) {
-      return `${this.name.name} as ${this.alias.name}`
+      code += ` ${AS_KEYWORD} ${formatWrappedComments(
+        this.alias.precedingComments,
+        this.alias.name,
+        this.alias.followingComments,
+      )}`
     }
 
-    return this.name.name
+    code += formatFollowingComments(this.followingComments)
+
+    return code.trimEnd()
   }
 
   getType(): GetTypeResult {

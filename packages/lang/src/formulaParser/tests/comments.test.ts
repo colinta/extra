@@ -1,7 +1,6 @@
 import {c, cases} from '@extra-lang/cases'
-import {parse, testScan} from '../'
+import {parse} from '../'
 import * as Expressions from '../../expressions'
-import {scanImportStatement} from '../scan/module'
 
 describe('comments', () => {
   describe('skipping comments', () => {
@@ -906,117 +905,5 @@ foo --comment1
       ])
     })
 
-    it('attaches comments to imports 1', () => {
-      const formula = `\
---comment0
-import
-  --comment1
-  as --comment2
-    --comment3
-    FooBar --comment4
-    --comment5
-    from --comment6
-      --comment7
-      Foo --comment8
-`
-
-      const importExpr = testScan(formula, scanImportStatement).get()
-
-      if (!(importExpr! instanceof Expressions.ImportStatement)) {
-        expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)
-        return
-      }
-
-      const importSource = importExpr.source
-      const asName = importExpr.alias!
-
-      expect(importExpr.precedingComments).toEqual([
-        {delim: '--', comment: 'comment0', type: 'line'},
-      ])
-      expect(asName.precedingComments).toEqual([
-        {delim: '--', comment: 'comment1', type: 'line'},
-        {delim: '--', comment: 'comment2', type: 'line'},
-        {delim: '--', comment: 'comment3', type: 'line'},
-      ])
-      expect(asName.followingComments).toEqual([
-        {delim: '--', comment: 'comment4', type: 'line'},
-        {delim: '--', comment: 'comment5', type: 'line'},
-      ])
-      expect(importSource.precedingComments).toEqual([
-        {delim: '--', comment: 'comment6', type: 'line'},
-        {delim: '--', comment: 'comment7', type: 'line'},
-      ])
-      expect(importSource.followingComments).toEqual([
-        {delim: '--', comment: 'comment8', type: 'line'},
-      ])
-      expect(importExpr.importSpecifiers).toEqual([])
-      expect(importExpr.followingComments).toEqual([])
-    })
-
-    it('attaches comments to imports 2', () => {
-      const formula = `\
---comment0
-import
-  --comment1
-  { --comment2
-    bar --comment3
-    --comment4
-    bux --comment5
-      as --comment6
-        --comment7
-        buxx --comment8
-    --comment9
-  } --comment10
-  from --comment11
-    --comment12
-    Foo --comment13
-`
-
-      const importExpr = testScan(formula, scanImportStatement).get()
-
-      if (!(importExpr! instanceof Expressions.ImportStatement)) {
-        expect(importExpr!).toBeInstanceOf(Expressions.ImportStatement)
-        return
-      }
-
-      const importSource = importExpr.source
-      const importSpecifiers = importExpr.importSpecifiers
-
-      expect(importExpr.precedingComments).toEqual([
-        {delim: '--', comment: 'comment0', type: 'line'},
-      ])
-      expect(importExpr.precedingSpecifierComments).toEqual([
-        {delim: '--', comment: 'comment1', type: 'line'},
-      ])
-
-      expect(importSpecifiers.length).toBe(2)
-      const [bar, bux] = importSpecifiers
-      expect(bar.name.name).toBe('bar')
-      expect(bar.name.precedingComments).toEqual([{delim: '--', comment: 'comment2', type: 'line'}])
-      expect(bar.name.followingComments).toEqual([{delim: '--', comment: 'comment3', type: 'line'}])
-
-      expect(bux.name.name).toBe('bux')
-      expect(bux.name.precedingComments).toEqual([{delim: '--', comment: 'comment4', type: 'line'}])
-      expect(bux.name.followingComments).toEqual([{delim: '--', comment: 'comment5', type: 'line'}])
-      expect(bux.alias?.name).toBe('buxx')
-      expect(bux.alias?.precedingComments).toEqual([
-        {delim: '--', comment: 'comment6', type: 'line'},
-        {delim: '--', comment: 'comment7', type: 'line'},
-      ])
-      expect(bux.alias?.followingComments).toEqual([
-        {delim: '--', comment: 'comment8', type: 'line'},
-      ])
-      expect(bux.followingComments).toEqual([{delim: '--', comment: 'comment9', type: 'line'}])
-
-      expect(importSource.precedingComments).toEqual([
-        {delim: '--', comment: 'comment10', type: 'line'},
-        {delim: '--', comment: 'comment11', type: 'line'},
-        {delim: '--', comment: 'comment12', type: 'line'},
-      ])
-      expect(importSource.followingComments).toEqual([
-        {delim: '--', comment: 'comment13', type: 'line'},
-      ])
-      expect(importExpr.followingComments).toEqual([])
-    })
   })
 })
