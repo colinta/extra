@@ -121,8 +121,16 @@ export function classInstance({
   return new ClassInstanceValue(klass, props ?? new Map(), formulas ?? new Map())
 }
 
-export function enumDefinition(name: string, statics: Map<string, Value> = new Map()) {
-  return new EnumDefinitionValue(name, statics)
+export function enumDefinition({
+  name,
+  definition,
+  statics = new Map(),
+}: {
+  name: string
+  definition?: Types.NamedEnumDefinitionType
+  statics?: Map<string, Value>
+}) {
+  return new EnumDefinitionValue(name, definition, statics)
 }
 
 export function enumValue(
@@ -1702,6 +1710,7 @@ export class EnumDefinitionValue extends Value {
 
   constructor(
     readonly name: string,
+    readonly definition: Types.NamedEnumDefinitionType | undefined,
     readonly statics: Map<string, Value>,
   ) {
     super()
@@ -1717,7 +1726,7 @@ export class EnumDefinitionValue extends Value {
   }
 
   getType(): Types.Type {
-    return this.namespaceType
+    return this.definition ?? this.namespaceType
   }
 
   toLisp() {
@@ -1854,7 +1863,7 @@ export class EnumValue extends Value {
   }
 
   getType(): Types.Type {
-    return Types.NeverType
+    return this.enumDefinition.definition?.lookupCase(this.name) ?? Types.NeverType
   }
 
   toLisp() {

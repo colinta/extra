@@ -1811,20 +1811,16 @@ abstract class MatchOperator extends BinaryOperator {
   }
 
   operatorType(
-    runtime: TypeRuntime,
+    _runtime: TypeRuntime,
     lhs: Types.Type,
     rhs: Types.Type,
-    lhsExpr: Expression,
+    _lhsExpr: Expression,
     rhsExpr: Expression,
   ) {
     if (!(rhsExpr instanceof MatchExpression)) {
       return err(new RuntimeError(rhsExpr, expectedType('match expression', rhsExpr, rhs)))
     }
 
-    // this little gem prevents 'expr is bar', which might look fine, but try to
-    // calculate the 'false' branch of that thing... expr always assigns to
-    // 'bar', so 'expr' would be type 'never', but it... assigns to bar? Doesn't
-    // assign? I don't know. So it's a compile-time error instead. 😎
     if (rhsExpr.alwaysMatches(lhs)) {
       return ok(Types.LiteralTrueType)
     }

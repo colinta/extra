@@ -179,6 +179,7 @@ describe('match operator', () => {
       members: [Types.enumCase('zero'), Types.enumCase('one')],
     })
     const Ints = IntsDefinition.instanceType
+    const IntsDef = Values.enumDefinition({name: 'Ints', definition: IntsDefinition})
 
     const XYZ = Types.oneOf([Types.literal('x'), Types.literal('y'), Types.literal('z')])
     const LettersDefinition = Types.namedEnumDefinition({
@@ -195,7 +196,7 @@ describe('match operator', () => {
     const LiteralInts = Types.oneOf([Types.literal(0), Types.literal(1)])
 
     beforeEach(() => {
-      runtimeTypes['Ints'] = [Types.typeConstructor('Ints', Ints), Values.string('test')]
+      runtimeTypes['Ints'] = [Types.typeConstructor('Ints', Ints), IntsDef]
       runtimeTypes['LiteralInts'] = [
         Types.typeConstructor('LiteralInts', LiteralInts),
         Values.string('test'),
@@ -1276,8 +1277,10 @@ describe('match operator', () => {
       cases<MatchGetTypeCase>(
         c([
           Types.optional(Ints),
-          // TODO: test enum values
-          [],
+          [
+            [valueNull, valueFalse],
+            [Values.enumValue(IntsDef, 'one'), valueTrue],
+          ],
           'foo is Ints',
           {
             truthy: Ints,
