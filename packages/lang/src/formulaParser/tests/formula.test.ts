@@ -1,14 +1,18 @@
 import {c, cases} from '@extra-lang/cases'
 import * as Values from '../../values'
-import {type ValueRuntime} from '../../runtime'
+import * as Types from '../../types'
+import {type TypeRuntime, type ValueRuntime} from '../../runtime'
 import {parse, parseType} from '../../formulaParser'
 import {type Expression} from '../../expressions'
+import {mockTypeRuntime} from '../../tests/mockTypeRuntime'
 import {mockValueRuntime} from '../../tests/mockValueRuntime'
 
 let valueRuntime: ValueRuntime
+let typeRuntime: TypeRuntime
 
 beforeEach(() => {
   valueRuntime = mockValueRuntime({})
+  typeRuntime = mockTypeRuntime({})
 })
 
 describe('formulas', () => {
@@ -254,6 +258,33 @@ fn(
         }).toThrow(expectedMessage)
       }),
     )
+  })
+
+  describe('getType', () => {
+    it('infers return type', () => {
+      const expression = parse('fn(a: Int) => a + a').get()
+      const type = expression.getType(typeRuntime).get()
+      expect(type).toEqual(
+        Types.formula(
+          [Types.namedArgument({name: 'a', type: Types.int(), isRequired: true})],
+          Types.int(),
+        ),
+      )
+    })
+
+    it('validates return type', () => {
+      const expression = parse('fn(a: Int): Int => a + a').get()
+      expect(expression.getType(typeRuntime).get()).toEqual(
+        Types.formula(
+          [Types.namedArgument({name: 'a', type: Types.int(), isRequired: true})],
+          Types.int(),
+        ),
+      )
+
+      expect(() => parse('fn(a: Float): Int => a + a').get().getType(typeRuntime).get()).toThrow(
+        "Function body result type 'Float' is not assignable to explicit return type 'Int'",
+      )
+    })
   })
 
   describe('invalid', () => {

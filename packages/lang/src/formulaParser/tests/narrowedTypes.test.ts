@@ -605,29 +605,4 @@ describe('narrowed types', () => {
     })
   })
 
-  // TODO: These return type tests should not be in narrowedTypes.test.ts
-  it('infers return type', () => {
-    const expression = parse('fn(a: Int) => a + a').get()
-    const type = expression.getType(typeRuntime).get()
-    expect(type).toEqual(
-      Types.formula(
-        [Types.namedArgument({name: 'a', type: Types.int(), isRequired: true})],
-        Types.int(),
-      ),
-    )
-  })
-
-  it('validates return type', () => {
-    const expression = parse('fn(a: Int): Int => a + a').get()
-    expect(expression.getType(typeRuntime).get()).toEqual(
-      Types.formula(
-        [Types.namedArgument({name: 'a', type: Types.int(), isRequired: true})],
-        Types.int(),
-      ),
-    )
-
-    expect(() => parse('fn(a: Float): Int => a + a').get().getType(typeRuntime).get()).toThrow(
-      "Function body result type 'Float' is not assignable to explicit return type 'Int'",
-    )
-  })
 })
