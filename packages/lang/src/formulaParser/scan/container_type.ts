@@ -113,11 +113,10 @@ export function scanObject(
         //     } -> {key: key, value}, expected: {key: value}
         // Easy way to avoid confusion: require a comma, and always insert the
         // comma in `toCode()`
-        entry = new Expressions.DictEntry(
+        entry = new Expressions.DictShorthand(
           [argRange0, scanner.charIndex],
           nameComments,
-          dictKey,
-          undefined,
+          dictName,
         )
         scanner.whereAmI(`scanObjectArg: {${dictKey}:} shorthand`)
       } else {
@@ -330,13 +329,15 @@ export function scanDict(
 
       let entry: Expressions.DictEntry
       if (scanner.is(',') || scanner.is(closer) || scanner.is('\n')) {
-        // { name: } shorthand
-        scanner.whereAmI(`scanDictArg: Dict( ${name}: ${name} ) shorthand`)
+        if (!(maybeValue instanceof Expressions.Reference)) {
+          throw new ParseError(scanner, `Expected value for Dict entry '${name}'`)
+        }
 
-        entry = new Expressions.DictEntry(
+        scanner.whereAmI(`scanDictArg: Dict( ${name}: ${maybeValue} ) shorthand`)
+
+        entry = new Expressions.DictShorthand(
           [argRange0, scanner.charIndex],
           precedingComments,
-          name,
           maybeValue,
         )
       } else {

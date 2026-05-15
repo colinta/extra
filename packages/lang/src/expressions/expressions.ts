@@ -2946,13 +2946,13 @@ export class ObjectExpression extends Expression {
   }
 
   expressionNamed(name: string) {
-    return this.values.find(value => {
+    return this.values.find(entry => {
       if (
-        value instanceof DictEntry &&
-        value.name instanceof Reference &&
-        value.name.name === name
+        entry instanceof DictEntry &&
+        entry.name instanceof LiteralString &&
+        entry.name.value.value === name
       ) {
-        return value
+        return entry.value
       }
     })
   }
@@ -3041,6 +3041,7 @@ export class ObjectExpression extends Expression {
 
         if (arg instanceof DictEntry) {
           const key = arg.name
+          const value = arg.value
           if (!(key instanceof LiteralString)) {
             return err(
               new RuntimeError(
@@ -3050,8 +3051,6 @@ export class ObjectExpression extends Expression {
             )
           }
 
-          // support `{ name: }` shorthand
-          const value = arg.value ? arg.value : arg.name
           return getChildType(this, value, runtime).map(type => {
             props.push(Types.namedProp(key.value.value, type))
             return {spread, props}
@@ -3103,6 +3102,7 @@ export class ObjectExpression extends Expression {
 
         if (arg instanceof DictEntry) {
           const key = arg.name
+          const value = arg.value
           if (!(key instanceof LiteralString)) {
             return err(
               new RuntimeError(
@@ -3112,7 +3112,6 @@ export class ObjectExpression extends Expression {
             )
           }
 
-          const value = arg.value ? arg.value : arg.name
           return value
             .eval(runtime)
             .map(
@@ -3152,12 +3151,11 @@ export class ObjectExpression extends Expression {
           }
 
           if (arg instanceof DictEntry) {
-            return arg.name.compile(runtime).map(key => {
-              if (arg.value) {
-                return arg.value.compile(runtime).map(node => ({is: 'key-value-pair', key, node}))
-              }
-              return ok({is: 'key-value-pair', key, node: key})
-            })
+            return arg.name
+              .compile(runtime)
+              .map(key =>
+                arg.value.compile(runtime).map(node => ({is: 'key-value-pair', key, node})),
+              )
           }
 
           return arg.compile(runtime).map(node => ({is: 'positional-value', node}))
@@ -3318,56 +3316,26 @@ export class DictEntry extends Expression {
     range: Range,
     precedingComments: Comment[],
     readonly name: Expression,
-    readonly value: Expression | undefined,
+    readonly value: Expression,
   ) {
     super(range, precedingComments)
   }
 
   dependencies(parentScopes: Scope[]) {
-    if (!this.value) {
-      return this.name.dependencies(parentScopes)
-    }
-
     return union(this.name.dependencies(parentScopes), this.value.dependencies(parentScopes))
   }
 
   childExpressions() {
-    return [this.name].concat(this.value ? [this.value] : [])
+    return [this.name, this.value]
   }
 
   toLisp() {
-    let name: string
-    if (this.isLiteralKey(this.name)) {
-      name = this.name.value.value
-    } else {
-      name = this.name.toLisp()
-    }
-
-    if (this.value) {
-      return `(${name}: ${this.value.toLisp()})`
-    } else {
-      return `(${name}:)`
-    }
-  }
-
-  isLiteralKey(key: Expression): key is LiteralString {
-    return (
-      key instanceof LiteralString &&
-      !!key.value.value.match(
-        /^([a-zA-Z_]|\p{Extended_Pictographic})([a-zA-Z0-9_-]|\p{Extended_Pictographic})*$/u,
-      )
-    )
+    return `(${dictKeyToCode(this.name, 'lisp')}: ${this.value.toLisp()})`
   }
 
   toCode() {
-    let name: string
-    if (this.isLiteralKey(this.name)) {
-      name = this.name.value.value
-    } else {
-      name = this.name.toCode(HIGHEST_PRECEDENCE)
-    }
-
-    if (!this.value || (this.value instanceof Reference && this.value.name === name)) {
+    const name = dictKeyToCode(this.name, 'code')
+    if (this.value instanceof Reference && this.value.name === name) {
       return name + DICT_SEPARATOR
     }
 
@@ -3390,6 +3358,42 @@ export class DictEntry extends Expression {
   compile(runtime: TypeRuntime) {
     return err(new RuntimeError(this, 'DictEntry cannot be compiled'))
   }
+}
+
+export class DictShorthand extends DictEntry {
+  constructor(
+    range: Range,
+    precedingComments: Comment[],
+    readonly nameRef: Reference,
+  ) {
+    super(
+      range,
+      precedingComments,
+      new LiteralString(nameRef.range, [], Values.string(nameRef.name)),
+      nameRef,
+    )
+  }
+
+  toCode() {
+    return this.nameRef.name + DICT_SEPARATOR
+  }
+}
+
+function isLiteralDictKey(key: Expression): key is LiteralString {
+  return (
+    key instanceof LiteralString &&
+    !!key.value.value.match(
+      /^([a-zA-Z_]|\p{Extended_Pictographic})([a-zA-Z0-9_-]|\p{Extended_Pictographic})*$/u,
+    )
+  )
+}
+
+function dictKeyToCode(key: Expression, format: 'code' | 'lisp') {
+  if (isLiteralDictKey(key)) {
+    return key.value.value
+  }
+
+  return format === 'code' ? key.toCode(HIGHEST_PRECEDENCE) : key.toLisp()
 }
 
 export class DictExpression extends Expression {
@@ -3443,11 +3447,11 @@ export class DictExpression extends Expression {
 
   eval(runtime: ValueRuntime) {
     return mapAll(
-      this.values.map((valueExpr): GetRuntimeResult<[Types.Key, Values.Value][]> => {
-        if (valueExpr instanceof SpreadDictArgument) {
-          return valueExpr.eval(runtime).map(dict => [...dict.values])
+      this.values.map((entry): GetRuntimeResult<[Types.Key, Values.Value][]> => {
+        if (entry instanceof SpreadDictArgument) {
+          return entry.eval(runtime).map(dict => [...dict.values])
         } else {
-          return valueExpr.name
+          return entry.name
             .eval(runtime)
             .map((name): GetRuntimeResult<[Types.Key, Values.Value]> => {
               const key = name.validKey()
@@ -3455,10 +3459,9 @@ export class DictExpression extends Expression {
                 return err(new RuntimeError(this, `Invalid key type ${name}`))
               }
 
-              const value: GetValueResult = valueExpr.value
-                ? valueExpr.value.eval(runtime)
-                : ok(name)
-              return value.map(value => [key, value] as [Types.Key, Values.Value])
+              return entry.value
+                .eval(runtime)
+                .map(value => [key, value] as [Types.Key, Values.Value])
             })
             .map(kv => [kv])
         }
@@ -3727,12 +3730,10 @@ function combineAllTypesForDict(expr: DictExpression, runtime: TypeRuntime) {
       ): GetRuntimeResult<[true, Types.DictType, undefined] | [false, Types.Type, Types.Type]> => {
         if (entry instanceof SpreadDictArgument) {
           return getChildType(expr, entry, runtime).map(dict => [true, dict, undefined])
-        } else if (entry.value) {
+        } else {
           return getChildType(expr, entry.value, runtime).map(valueType =>
             getChildType(expr, entry.name, runtime).map(keyType => [false, valueType, keyType]),
           )
-        } else {
-          return getChildType(expr, entry.name, runtime).map(keyType => [false, keyType, keyType])
         }
       },
     ),

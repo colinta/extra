@@ -99,7 +99,11 @@ describe('dict', () => {
   })
 
   describe('invalid', () => {
-    cases<[string, string]>(c(['Dict(foo: 1, :)', ''])).run(([formula, message], {only, skip}) =>
+    cases<[string, string]>(
+      c(['Dict(foo: 1, :)', '']),
+      c(['Dict(1:)', "Expected value for Dict entry '1'"]),
+      c(['#{1:}', "Expected value for Dict entry '1'"]),
+    ).run(([formula, message], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(`should not parse ${formula}`, () => {
         expect(() => {
           parse(formula).get()
