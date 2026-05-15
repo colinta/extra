@@ -4793,7 +4793,7 @@ export class FormulaExpression extends Expression {
         boundThis: Values.ClassInstanceValue | undefined,
       ): Result<Values.Value, RuntimeError> =>
         argumentValues(runtime, argDefinitions, args, boundThis).map(argRuntime => {
-          const mutableRuntime = new MutableValueRuntime(argRuntime)
+          const mutableRuntime = new MutableValueRuntime(argRuntime, boundThis)
           for (const [name, value] of localAssigns) {
             mutableRuntime.addLocalValue(name, value)
           }

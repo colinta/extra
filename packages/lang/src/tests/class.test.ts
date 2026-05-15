@@ -187,6 +187,18 @@ class Foo(optional: Int? = null) {
           ['Foo(optional: 1).prop1', Values.int(1)],
         ],
       ]),
+      c([
+        `\
+class Foo {
+  @name: String
+
+  fn data() =>
+    { name: this.name }
+}
+`,
+        [["let\n  f = Foo(name: 'foobar')\nin\n  f.data().name", Values.string('foobar')]],
+      ]),
+
     ).run(([classDefinition, tests], {only, skip}) =>
       (only ? it.only : skip ? it.skip : it)(
         `should evaluate instances from ${desc(classDefinition)}`,
@@ -199,5 +211,25 @@ class Foo(optional: Int? = null) {
         },
       ),
     )
+
+    it('does not resolve object shorthand to this properties', () => {
+      const moduleDef = parseModule(`\
+class Foo {
+  @name: String
+
+  fn data() =>
+    { name: }
+}
+`).get()
+      const classDef = moduleDef.expressions[0]
+      const result = classDef.getType(typeRuntime)
+
+      expect(result.isErr()).toBe(true)
+      if (result.isErr()) {
+        expect(result.error.children[0].message).toContain(
+          "There is no reference in scope named 'name'",
+        )
+      }
+    })
   })
 })
